@@ -87,13 +87,12 @@ export class AuthService {
     // (terminals, cashier_sessions) - now that orgUser resolves the tenant,
     // establish it for the rest of this unit of work so FORCE ROW LEVEL
     // SECURITY doesn't hide/reject these operations.
-    // Same 15s timeout as TenantScopedPrismaService.run() (see its
-    // comment) - this call predates that service and talks to the raw
-    // PrismaClient directly (there's no tenant context to establish yet
-    // going in, so TenantScopedPrismaService.run doesn't fit here), but
-    // it's exposed to the same Neon round-trip latency and was still on
-    // Prisma's 5s default, which a load test caught throwing a raw
-    // PrismaClientKnownRequestError (P2028) all the way to a 500.
+    // Same timeout/maxWait as TenantScopedPrismaService.run() (see its
+    // comment for why both are needed, not just one) - this call predates
+    // that service and talks to the raw PrismaClient directly (there's no
+    // tenant context to establish yet going in, so
+    // TenantScopedPrismaService.run doesn't fit here), but it's exposed
+    // to the same Neon round-trip latency and pool contention.
     const { session } = await this.prisma.$transaction(
       async (tx) => {
         await tx.$executeRaw`SELECT set_config('app.current_tenant', ${orgUser.organizationId}, true)`;
@@ -109,7 +108,7 @@ export class AuthService {
 
         return { session };
       },
-      { timeout: 15_000 },
+      { timeout: 15_000, maxWait: 15_000 },
     );
 
     const token = this.issueToken({

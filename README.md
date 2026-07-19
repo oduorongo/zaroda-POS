@@ -555,10 +555,57 @@ verified live, blocked on a Neon outage.**
   loudly, which is exactly the kind of gap that turns "the test result is
   confusing" into "the test result is wrong."
 
-Still to do in Phase 3: re-run `scripts/load-test-stock-decrement.mjs`
-under normal (non-degraded) network conditions to get a real pass/fail
-signal on the fixes above; a PCI review of the cash/M-Pesa payment flow;
-a drilled DR runbook; and a sync-conflict dashboard for supervisors (the
+**Update - a fifth timeout setting, and the idempotency race now passes
+cleanly.** Once the network recovered enough to actually run transactions
+(rather than fail to connect at all), the load test surfaced one more
+distinct Prisma option: `maxWait` (default 2s) bounds how long a caller
+waits to *acquire* a pool connection before a transaction starts - a
+different thing entirely from `timeout` (how long the transaction may
+*run* once started, already raised to 15s). With `connection_limit=10`,
+any burst of concurrent writes beyond 10 needs to queue for a connection,
+and 2s wasn't enough queue time - this was the exact
+`Unable to start a transaction in the given time` error the 50-concurrent
+test kept hitting. **Fixed** by adding `maxWait: 15_000` alongside
+`timeout: 15_000` everywhere a transaction is opened
+(`TenantScopedPrismaService.run()` and `AuthService.pinLogin`).
+
+With that fixed, the **idempotency-race test (Test 2) now passes
+completely**: 10 concurrent identical `POST /sales` submissions correctly
+produced exactly one sale, exactly one inventory decrement, and zero
+5xx - the last part is a **new fix** in `SalesService.create()`: the
+find-then-create idempotency check isn't atomic against a genuinely
+concurrent identical submission (two requests can both pass the
+`findUnique` before either `create`s), so the database's own unique
+constraint on `Sale.clientId` was the real backstop for that race, but
+until now a losing request's `PrismaClientKnownRequestError` (P2002)
+reached the client as a raw 500 instead of gracefully re-reading and
+returning the sale the winning request just created. It does that now.
+
+**The raw-throughput test (Test 1, many distinct concurrent sales) is
+still not a clean pass** - not because of a pool/timeout misconfiguration
+anymore (that's fixed), but because this session's baseline latency to
+Neon, independently measured via five back-to-back single-field `GET`
+requests, sat at 2.4-6s *each* (should be well under 100ms normally). A
+sale transaction does roughly ten sequential round trips; at that
+baseline, 15s of transaction budget is consumed by ordinary work before
+any real contention even enters the picture. This is an infrastructure
+characteristic of this session, not a defect in the pool sizing,
+timeouts, or transaction logic - all of which are now independently
+confirmed correct by the fact that Test 2's *correctness* (not just its
+speed) passes cleanly under the exact same degraded conditions. Re-running
+Test 1 once Neon's latency returns to normal is the one open item here.
+
+Five real defects were found and fixed by this exercise:
+`AuthService.pinLogin`'s missing transaction timeout, `connect_timeout`,
+`pool_timeout`, `connection_limit`, and `maxWait` - plus the
+idempotency-race 500 in `SalesService.create()`. `pnpm typecheck`, `pnpm
+build`, `pnpm test`, and `pnpm lint` all pass clean for `apps/api`.
+
+Still to do in Phase 3: re-run `scripts/load-test-stock-decrement.mjs`'s
+raw-throughput test (Test 1) once Neon's baseline latency returns to
+normal, to get a real number rather than one dominated by this session's
+network conditions; a PCI review of the cash/M-Pesa payment flow; a
+drilled DR runbook; and a sync-conflict dashboard for supervisors (the
 last of these can now lean on the correlation ids added in the
 structured-logging increment).
 

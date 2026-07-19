@@ -7,6 +7,7 @@ import {
 import {
   DiscountType,
   InventoryTxnType,
+  Prisma,
   Role,
   SaleStatus,
 } from '@prisma/client';
@@ -67,6 +68,36 @@ export class SalesService {
       );
     }
 
+    try {
+      return await this.createInner(dto);
+    } catch (e) {
+      // The findUnique-then-create idempotency check below isn't atomic
+      // against a *concurrent* identical submission (two requests can both
+      // pass the findUnique before either creates the row) - the unique
+      // constraint on Sale.clientId is the real backstop for that race,
+      // but until now it surfaced as a raw, unhandled
+      // PrismaClientKnownRequestError (P2002) reaching the client as a
+      // 500 instead of the same idempotent response a non-racing retry
+      // gets. A load test firing the same clientId concurrently caught
+      // this. Recovered here by re-reading the row the other request just
+      // created, rather than making the client retry blind.
+      if (
+        e instanceof Prisma.PrismaClientKnownRequestError &&
+        e.code === 'P2002'
+      ) {
+        const existing = await this.tenantPrisma.run((tx) =>
+          tx.sale.findUnique({
+            where: { clientId: dto.clientId },
+            include: SALE_INCLUDE,
+          }),
+        );
+        if (existing) return existing;
+      }
+      throw e;
+    }
+  }
+
+  private async createInner(dto: CreateSaleDto) {
     return this.tenantPrisma.run(async (tx) => {
       // Idempotent: a retried submission with the same client-generated id
       // returns the original sale rather than erroring or double-selling
