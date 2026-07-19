@@ -601,13 +601,65 @@ Five real defects were found and fixed by this exercise:
 idempotency-race 500 in `SalesService.create()`. `pnpm typecheck`, `pnpm
 build`, `pnpm test`, and `pnpm lint` all pass clean for `apps/api`.
 
+**Phase 3 — PCI review of the payment flow: done, and it found (and
+fixed) a real, separate security gap.**
+
+- **Scope determination first**: reviewed every payment-related file
+  (`cash-payment.processor.ts`, `mpesa-payment.processor.ts`,
+  `SalePayment` in `schema.prisma`, `SalesService.create()`'s payment
+  handling) and confirmed **no cardholder data is processed, stored, or
+  transmitted anywhere in this codebase**. `CARD` exists only as a
+  `PaymentMethod` enum value; `SalesService.create()` explicitly rejects
+  any non-`CASH` payment method with a 400 (M-Pesa is scaffolded but not
+  wired in yet - see the Phase 1 sales-pipeline decision). `SalePayment`
+  has no PAN/expiry/CVV columns, only `amount`, `method`, and an opaque
+  `providerReference`. This means the app is currently **entirely out of
+  PCI-DSS scope** for cardholder data - PCI-DSS governs payment card
+  brand data specifically, and M-Pesa (mobile money, not a card scheme)
+  isn't covered by it either. This scope determination is itself the most
+  important output of the review: it's a documented, checkable claim
+  ("grep for PAN/card columns, confirm zero"), not an assumption.
+- **What this means for the future**: if/when `CARD` is ever wired in,
+  the correct approach to stay out of PCI scope (SAQ A) is a hosted
+  payment page or a P2PE terminal that never sends raw card data through
+  this app's own backend at all - this codebase should never itself
+  receive, log, or store a PAN. Documented here as the constraint for
+  whoever builds that later, rather than left implicit.
+- **Adjacent findings, reviewed as part of the same pass** (not
+  cardholder data, but the same "how are payment/auth credentials
+  handled" lens): `JWT_SECRET` is read via `getOrThrow` with no hardcoded
+  fallback; passwords and PINs are bcrypt-hashed (`User.passwordHash`,
+  `User.pinHash`); `.env` is confirmed gitignored and no secret has ever
+  been committed (checked before every commit all session); the
+  structured-logging redaction added earlier this phase already covers
+  the `Authorization` header.
+- **The one real gap the review found**: there was **no rate limiting
+  anywhere in the app**. `POST /auth/pin-login` accepts a 4-8 digit PIN
+  compared with bcrypt - a 4-digit PIN has only 10,000 possible values,
+  and with zero throttling that's trivially brute-forceable against a
+  shared terminal's PIN-switch endpoint. **Fixed**: added
+  `@nestjs/throttler` globally (100 requests/minute/IP default, generous
+  enough not to interfere with normal terminal traffic) with a much
+  stricter override on `/auth/login` and `/auth/pin-login` specifically
+  (5 attempts/minute/IP each, independent buckets) - the only two public,
+  pre-JWT endpoints in the app.
+- **Verified live**: 5 login attempts succeeded/failed normally
+  (validation errors), the 6th+ within the same minute correctly returned
+  `429 ThrottlerException`; `pin-login` was independently confirmed to
+  have its own separate 5/minute bucket (not sharing `login`'s budget);
+  the window was confirmed to reset after ~60s (a legitimate login that
+  had been blocked succeeded again once the minute rolled over); and 15
+  back-to-back authenticated requests to an ordinary endpoint
+  (`GET /customers`) all returned `200`, confirming the generous global
+  limit doesn't interfere with real usage. `pnpm typecheck`, `pnpm
+  build`, `pnpm test`, and `pnpm lint` all pass clean for `apps/api`.
+
 Still to do in Phase 3: re-run `scripts/load-test-stock-decrement.mjs`'s
 raw-throughput test (Test 1) once Neon's baseline latency returns to
 normal, to get a real number rather than one dominated by this session's
-network conditions; a PCI review of the cash/M-Pesa payment flow; a
-drilled DR runbook; and a sync-conflict dashboard for supervisors (the
-last of these can now lean on the correlation ids added in the
-structured-logging increment).
+network conditions; a drilled DR runbook; and a sync-conflict dashboard
+for supervisors (the last of these can now lean on the correlation ids
+added in the structured-logging increment).
 
 ## Getting started
 

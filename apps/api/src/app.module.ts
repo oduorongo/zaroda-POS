@@ -3,6 +3,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { LoggerModule } from 'nestjs-pino';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
@@ -66,6 +67,15 @@ import { AllExceptionsFilter } from './common/logging/all-exceptions.filter';
         },
       },
     }),
+    // Global default: 100 requests/minute per IP - generous enough not to
+    // interfere with a busy terminal's normal traffic. auth.controller.ts
+    // overrides this to a much stricter limit on /auth/login and
+    // /auth/pin-login specifically, since those are the only public
+    // (pre-JWT) endpoints and pin-login's 4-8 digit PIN has as few as
+    // 10,000 possible values - with no rate limit at all, that's
+    // trivially brute-forceable (found during the Phase 3 PCI/security
+    // review; there was previously no throttling anywhere in the app).
+    ThrottlerModule.forRoot([{ ttl: 60_000, limit: 100 }]),
     PrismaModule,
     AuditLogModule,
     ModuleRegistryModule,
@@ -85,8 +95,12 @@ import { AllExceptionsFilter } from './common/logging/all-exceptions.filter';
   controllers: [AppController],
   providers: [
     AppService,
-    // Order matters: JwtAuthGuard populates req.user, RolesGuard reads it,
-    // TenantContextInterceptor (below) reads it after both guards have run.
+    // Order matters: ThrottlerGuard runs first (IP-based, doesn't need
+    // req.user) so rate limiting applies even to @Public() routes like
+    // /auth/login and /auth/pin-login; JwtAuthGuard then populates
+    // req.user, RolesGuard reads it, TenantContextInterceptor (below)
+    // reads it after both guards have run.
+    { provide: APP_GUARD, useClass: ThrottlerGuard },
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
     { provide: APP_INTERCEPTOR, useClass: TenantContextInterceptor },
