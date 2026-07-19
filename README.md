@@ -654,11 +654,62 @@ fixed) a real, separate security gap.**
   limit doesn't interfere with real usage. `pnpm typecheck`, `pnpm
   build`, `pnpm test`, and `pnpm lint` all pass clean for `apps/api`.
 
+**Phase 3 — DR runbook: written and partially drilled live against the
+real database.**
+
+- New `DR_RUNBOOK.md` at the repo root: RPO/RTO targets sized for this
+  pilot's stated scale, what actually protects the data today (Neon's own
+  PITR + this repo being the source of truth for schema/RLS/roles, with
+  an honest callout that `.env` secrets are *not* backed up by design),
+  and four recovery scenarios (accidental bad write, total database loss,
+  credential compromise, API-host-down-only) each with exact commands
+  already used throughout this project.
+- **Writing it surfaced a real, fixable gap**: `rls.sql`'s 28 `CREATE
+  POLICY` statements were never idempotent, which is exactly why every
+  new tenant-owned table added in earlier phases needed a hand-rolled
+  temp-file workaround (see the Phase 2 stock-transfers/customers/
+  layaways entries above) instead of just re-running the whole file. That
+  workaround relies on remembering which tables are already covered -
+  tribal knowledge that has no business surviving into an actual
+  disaster-recovery restore. **Fixed**: every `CREATE POLICY` is now
+  preceded by a matching `DROP POLICY IF EXISTS`, making the entire file
+  safely re-runnable against any target - a fresh schema (the drops are
+  harmless no-ops) or an already-provisioned one (no more naming
+  collision).
+- **Drilled live, not just written**: ran the newly-idempotent
+  `rls.sql` against the actual pilot database (already fully set up, not
+  a throwaway) and confirmed it completed with zero errors: This is the
+  literal command the runbook's "total database loss" scenario calls for
+  at its RLS step, exercised for real rather than only described.
+  Re-verified afterward that isolation still held on every regular
+  tenant-owned table (0 rows visible with no tenant context set) and that
+  `org_users`' deliberate pre-auth exception still showed its intended
+  2 rows rather than either 0 (broken login) or an unexpectedly wide
+  leak - then smoke-tested the running API end-to-end (`GET /customers`
+  with a real token) to confirm the re-apply didn't disturb anything
+  live.
+- **Honestly not drilled**: standing up a brand-new disposable Neon
+  project end-to-end, an actual Neon point-in-time restore, and a
+  branch-based recovery - each would need either a throwaway project or
+  destructive action against the real pilot data, neither appropriate to
+  do unprompted in this session. The individual commands those scenarios
+  call for have each been run against a real database at least once
+  during this project's build (every migration, the original `rls.sql`
+  and `create-app-role.sql` setup), but a true continuous fire drill on a
+  disposable project is the honest next step before relying on this
+  runbook in a real incident - documented as such in the runbook itself
+  rather than glossed over.
+- `pnpm typecheck`, `pnpm build`, `pnpm test`, and `pnpm lint` all pass
+  clean for `apps/api` (only `rls.sql` and documentation changed, no
+  TypeScript touched, but the full suite was still run to confirm
+  nothing else was disturbed).
+
 Still to do in Phase 3: re-run `scripts/load-test-stock-decrement.mjs`'s
 raw-throughput test (Test 1) once Neon's baseline latency returns to
 normal, to get a real number rather than one dominated by this session's
-network conditions; a drilled DR runbook; and a sync-conflict dashboard
-for supervisors (the last of these can now lean on the correlation ids
+network conditions; a full end-to-end DR fire drill on a disposable Neon
+project (per the "honestly not drilled" note above); and a sync-conflict
+dashboard for supervisors (which can now lean on the correlation ids
 added in the structured-logging increment).
 
 ## Getting started
