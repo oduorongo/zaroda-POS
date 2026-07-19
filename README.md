@@ -476,10 +476,60 @@ skipped above.
   typecheck`, `pnpm build`, `pnpm test`, and `pnpm lint` all pass clean
   for `apps/api`.
 
-Still to do in Phase 3: load-test the stock-decrement path, a PCI review
-of the cash/M-Pesa payment flow, a drilled DR runbook, and a
-sync-conflict dashboard for supervisors (the last of these can now lean
-on the correlation ids just added).
+**Phase 3 — Load-testing the stock-decrement path: in progress, partially
+verified live, blocked on a Neon outage.**
+
+- Added `apps/api/scripts/load-test-stock-decrement.mjs`, a standalone
+  script (no new dependencies - built-in `fetch`) that fires many
+  concurrent `POST /sales` at the same branch+variant and checks the
+  atomic-`increment` claim in `InventoryTransactionsService.recordInTx`
+  actually holds under concurrency (no lost updates - final quantity
+  matches `start - successfulSales` exactly), plus a second test that
+  fires the *same* `clientId` concurrently many times to probe the
+  idempotency check-then-create path for a race.
+- **What the load test actually caught**: running it exposed a real bug
+  in `AuthService.pinLogin` - it opened its own `this.prisma.$transaction`
+  directly (bypassing `TenantScopedPrismaService`'s 15s timeout override,
+  which was added earlier in Phase 1 for exactly this class of problem)
+  and was still on Prisma's 5s interactive-transaction default. Under the
+  elevated Neon round-trip latency this session was already experiencing,
+  that surfaced as a raw `PrismaClientKnownRequestError` (P2028,
+  "Transaction not found") reaching the client as an unstyled 500 -
+  **fixed** by adding the same `{ timeout: 15_000 }` override, matching
+  every other transactional entry point in the codebase (confirmed via
+  grep that `auth.service.ts` was the only other direct
+  `this.prisma.$transaction` call besides `TenantScopedPrismaService`
+  itself).
+- **A second, distinct root cause surfaced while chasing the first**:
+  Prisma's default *connection* timeout (separate from the interactive-
+  transaction timeout above) is also 5s, and a Neon free-tier compute
+  waking from autosuspend was directly observed taking ~12s to accept its
+  first connection after being idle - independently confirmed by raising
+  `connect_timeout` to 30s on a throwaway client and watching a `SELECT 1`
+  succeed in 12097ms where the default config had been failing at
+  exactly 5000ms every time. **Fixed** by adding `connect_timeout=30` to
+  both `DATABASE_URL` and `DIRECT_URL` in `.env` and documenting it in
+  `.env.example` (this is very likely the root cause of most of the
+  `P1001`/timeout flakiness logged throughout every earlier phase of this
+  build - a cold-start latency issue, not an actual outage each time).
+- **Still pending**: the load test itself (concurrency correctness,
+  latency percentiles) and a live re-verification of the `pinLogin` fix
+  have **not yet run to completion** - the database went from
+  intermittently slow to consistently unreachable (`Timed out fetching a
+  new connection from the connection pool` on both the pooled and direct
+  URLs, with no local stray processes holding connections) partway
+  through this investigation, and stayed down through multiple retries
+  and backoff waits. This is now genuinely blocked on Neon's side
+  clearing up, not something more retrying from here resolves. Both code
+  fixes are typecheck/build/test/lint-clean and one already has a live
+  proof-of-concept (the successful 12s connect above), but the load test
+  itself needs to be re-run once the database is reachable again.
+
+Still to do in Phase 3: finish running the load test above (blocked on DB
+availability), a PCI review of the cash/M-Pesa payment flow, a drilled DR
+runbook, and a sync-conflict dashboard for supervisors (the last of these
+can now lean on the correlation ids added in the structured-logging
+increment).
 
 ## Getting started
 
