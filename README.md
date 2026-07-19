@@ -33,6 +33,23 @@ strategy) and the build roadmap.
   unit tests. E2E tests need a real database and aren't wired into CI yet
   (they do pass locally against the provisioned Neon database).
 
+**Phase 1 — in progress.** Catalog module done and verified live:
+
+- Categories, tax classes, products, and product variants — full CRUD, all
+  routed through `TenantScopedPrismaService` (the first real use of the
+  Phase 0 tenant-context plumbing for business logic, not just auth).
+- RBAC in practice: reads open to any authenticated role (cashiers browse
+  the catalog at the point of sale); writes restricted to
+  `MANAGER`/`OWNER`. Verified live: a `CASHIER` token gets 200 on reads,
+  403 on writes.
+- RLS re-verified for the new tables after adding them, the same way as
+  Phase 0 (0 rows visible with no tenant set) — including
+  `product_variants`, whose policy is an `EXISTS` through `products` rather
+  than a direct `organizationId` column.
+
+Still to do in Phase 1: inventory ledger, sales pipeline (cash + M-Pesa STK
+push), shifts/X-Z reports, core reporting, terminal PWA.
+
 ## Getting started
 
 ```

@@ -10,6 +10,7 @@ import { AuthModule } from './auth/auth.module';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
 import { RolesGuard } from './auth/roles.guard';
 import { ModuleRegistryModule } from './module-registry/module-registry.module';
+import { CatalogModule } from './catalog/catalog.module';
 
 // Phase 1+ will import vertical module packages here and register their
 // manifests on ModuleRegistryService at bootstrap (see DESIGN.md §3) - none
@@ -22,6 +23,7 @@ import { ModuleRegistryModule } from './module-registry/module-registry.module';
     PrismaModule,
     ModuleRegistryModule,
     AuthModule,
+    CatalogModule,
   ],
   controllers: [AppController],
   providers: [

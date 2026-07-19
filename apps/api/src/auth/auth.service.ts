@@ -87,17 +87,19 @@ export class AuthService {
     // (terminals, cashier_sessions) - now that orgUser resolves the tenant,
     // establish it for the rest of this unit of work so FORCE ROW LEVEL
     // SECURITY doesn't hide/reject these operations.
-    const { terminal, session } = await this.prisma.$transaction(async (tx) => {
+    const { session } = await this.prisma.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT set_config('app.current_tenant', ${orgUser.organizationId}, true)`;
 
-      const terminal = await tx.terminal.findUnique({ where: { id: dto.terminalId } });
+      const terminal = await tx.terminal.findUnique({
+        where: { id: dto.terminalId },
+      });
       if (!terminal) throw new UnauthorizedException('Unknown terminal');
 
       const session = await tx.cashierSession.create({
         data: { terminalId: dto.terminalId, orgUserId: orgUser.id },
       });
 
-      return { terminal, session };
+      return { session };
     });
 
     const token = this.issueToken({

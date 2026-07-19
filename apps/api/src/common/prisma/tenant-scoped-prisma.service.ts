@@ -3,7 +3,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from './prisma.service';
 import { getTenantStore } from '../tenant/tenant-context';
 
-type TenantTx = Omit<Prisma.TransactionClient, '$transaction'>;
+export type TenantTx = Omit<Prisma.TransactionClient, '$transaction'>;
 
 /**
  * Wraps a unit of work in a transaction that first sets the RLS session
