@@ -1,7 +1,9 @@
+import { randomUUID } from 'crypto';
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { EventEmitterModule } from '@nestjs/event-emitter';
-import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
+import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
+import { LoggerModule } from 'nestjs-pino';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { PrismaModule } from './common/prisma/prisma.module';
@@ -22,6 +24,7 @@ import { StockTransfersModule } from './stock-transfers/stock-transfers.module';
 import { StockTakesModule } from './stock-takes/stock-takes.module';
 import { CustomersModule } from './customers/customers.module';
 import { LayawaysModule } from './layaways/layaways.module';
+import { AllExceptionsFilter } from './common/logging/all-exceptions.filter';
 
 // Phase 1+ will import vertical module packages here and register their
 // manifests on ModuleRegistryService at bootstrap (see DESIGN.md §3) - none
@@ -31,6 +34,38 @@ import { LayawaysModule } from './layaways/layaways.module';
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     EventEmitterModule.forRoot(),
+    LoggerModule.forRoot({
+      pinoHttp: {
+        // Every log line JSON with a requestId - the correlation key that
+        // ties a request's access log, any error inside it, and the
+        // AuditLog row it produced together, so a support/incident
+        // investigation isn't limited to timestamp-nearby guessing.
+        genReqId: (req) =>
+          (req.headers['x-request-id'] as string | undefined) ?? randomUUID(),
+        // Pretty-printed in local dev (readable in a terminal); plain JSON
+        // in production, since that's what a log aggregator actually
+        // wants to ingest.
+        transport:
+          process.env.NODE_ENV === 'production'
+            ? undefined
+            : { target: 'pino-pretty', options: { singleLine: true } },
+        // pino-http's default request serializer never includes the body
+        // (only method/url/headers/etc), so login/PIN payloads are never
+        // logged in the first place - nothing to redact there. The
+        // Authorization header and any cookie are the only credential-
+        // bearing fields that DO appear in the default serialized request,
+        // so those are what actually need redacting.
+        redact: {
+          paths: ['req.headers.authorization', 'req.headers.cookie'],
+          censor: '[REDACTED]',
+        },
+        customLogLevel: (_req, res, err) => {
+          if (res.statusCode >= 500 || err) return 'error';
+          if (res.statusCode >= 400) return 'warn';
+          return 'info';
+        },
+      },
+    }),
     PrismaModule,
     AuditLogModule,
     ModuleRegistryModule,
@@ -55,6 +90,7 @@ import { LayawaysModule } from './layaways/layaways.module';
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
     { provide: APP_INTERCEPTOR, useClass: TenantContextInterceptor },
+    { provide: APP_FILTER, useClass: AllExceptionsFilter },
   ],
 })
 export class AppModule {}

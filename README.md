@@ -430,6 +430,57 @@ low-stock alerts, deferred until real Africa's Talking credentials exist)
 are the natural point to pause and decide how to proceed. Phase 3
 (non-functional hardening) is next per the roadmap in DESIGN.md.
 
+**Phase 3 — Structured logging: done and verified end-to-end against a
+live running server.** Started here because the other Phase 3 items
+(load testing, a sync-conflict dashboard) are more useful to build on top
+of structured logs than blind console output, and this needs no external
+credentials or hardware to verify live - unlike the printer/scanner work
+skipped above.
+
+- Replaced Nest's default console logger with `nestjs-pino` (JSON in
+  production, pretty-printed single-line in local dev via `pino-pretty`).
+  `main.ts` uses `bufferLogs: true` + `app.useLogger(app.get(Logger))` so
+  even Nest's own startup/route-mapping logs go through it, not just
+  request-scoped ones.
+- Every request gets a `requestId` (`x-request-id` header if the caller
+  sent one, else a generated UUID) attached to both its access log line
+  and any error raised inside it - the correlation key for tying a
+  request, an error, and the `AuditLog` row it produced together during
+  an investigation, instead of timestamp-nearby guessing.
+- New `AllExceptionsFilter` (global, via `APP_FILTER`) is the one place
+  every unhandled error passes through: a caught `HttpException` (the
+  normal `BadRequestException`/`NotFoundException`/etc. every service
+  already throws) is logged with full context and passed through to the
+  client unchanged; anything unexpected (a bug, a driver error) is logged
+  with its full stack server-side but returns a generic 500 to the
+  client, since leaking a raw Prisma/driver error message to a POS
+  terminal could expose schema or connection details.
+- Access-log level is derived from the response: 5xx/exceptions log as
+  `error`, 4xx as `warn`, everything else as `info` - so a log aggregator
+  can alert on volume of `error`/`warn` lines without every service
+  needing to remember to log failures itself.
+- `Authorization` and `Cookie` headers are redacted (`[REDACTED]`) in
+  every log line. Verified this is actually necessary and actually
+  sufficient by checking what pino-http logs by default: request **bodies
+  are never logged at all** (only method/url/headers), so a login/PIN
+  payload's `password`/`pin` fields were never at risk of appearing in a
+  log line in the first place - confirmed live by submitting a wrong
+  password and grepping the entire log output for it (zero matches).
+- **Verified live**: a wrong-password login attempt produced a `warn`
+  (401) access-log line and no trace of the submitted password anywhere
+  in the log; a validation failure produced a `warn` (400) line and the
+  filter's own structured error log; an authenticated request's
+  `Authorization: Bearer ...` header appeared as `[REDACTED]` in the
+  access log; every bootstrap/route-mapping line came through as
+  structured JSON via the same logger, not raw console output. `pnpm
+  typecheck`, `pnpm build`, `pnpm test`, and `pnpm lint` all pass clean
+  for `apps/api`.
+
+Still to do in Phase 3: load-test the stock-decrement path, a PCI review
+of the cash/M-Pesa payment flow, a drilled DR runbook, and a
+sync-conflict dashboard for supervisors (the last of these can now lean
+on the correlation ids just added).
+
 ## Getting started
 
 ```

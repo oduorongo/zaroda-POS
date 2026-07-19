@@ -1,9 +1,14 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
+import { Logger } from 'nestjs-pino';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule, { bufferLogs: true });
+  // bufferLogs holds Nest's own startup logs (module init, route mapping)
+  // until the pino logger below is attached, so they come out as
+  // structured JSON too instead of bypassing it as raw console.log lines.
+  app.useLogger(app.get(Logger));
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
   // The terminal PWA (and eventually the back-office app) call this API
   // from a different origin/port via browser fetch() - without CORS
