@@ -791,6 +791,141 @@ from within this specific sandboxed session - re-run
 environment for that number), and a full end-to-end DR fire drill on a
 disposable Neon project.
 
+## Phase 4 — Second vertical module (restaurant)
+
+**Done: table/floor management, built as a genuine module against the
+module contract, and verified end-to-end against a live database.**
+
+### Prerequisite work: the module contract was scaffolded but non-functional
+
+Before building anything restaurant-specific, investigating what "build
+as a module" actually requires found that DESIGN.md §3's module contract
+- `IndustryModuleManifest`, `ModuleRegistryService`, the four core domain
+events (`sale.beforeComplete`, `sale.afterComplete`,
+`inventory.beforeDecrement`, `refund.afterApproved`) - had existed since
+Phase 0 but was **entirely non-functional**: a repo-wide grep confirmed
+core never called `emit()` anywhere, so any module's declared hooks would
+register but silently never fire. Separately, `packages/modules/retail`'s
+README described Phase 1-2's discount/loyalty/layaway work as belonging
+to a retail module package - it never did; all three were built directly
+into core services (`SalesService`, `CustomersService`, `LayawaysService`)
+because they're genuinely cross-vertical functionality, not
+retail-specific. Both READMEs were corrected to state this plainly rather
+than leave the contract's first real test looking already-proven when it
+wasn't.
+
+Fixed before writing any restaurant code:
+
+- Wired real `emitAsync()` calls into `SalesService.create()`
+  (`sale.beforeComplete` before the sale row is created - inside the
+  transaction, so a listener that throws aborts it naturally;
+  `sale.afterComplete` after the transaction commits, and only for a
+  genuinely new sale, never an idempotent replay) and
+  `InventoryTransactionsService.recordInTx()` (`inventory.beforeDecrement`,
+  only for actual decrements). `refund.afterApproved` remains **not**
+  wireable - there is no `RefundsService` at all yet, only the `Refund`
+  Prisma model with no API to create one - documented as such rather than
+  faked.
+- Found and fixed a second, deeper bug while wiring the first: **module
+  registration order was backwards**. `ModuleRegistryService`'s original
+  design wired a manifest's hooks onto the event bus in its own
+  `OnModuleInit`, looping over already-registered manifests - but a
+  module normally calls `register()` from *its own* `OnModuleInit`, which
+  Nest runs *after* its dependencies (including `ModuleRegistryService`)
+  finish initializing. That meant the wiring pass would always run over
+  an empty map before anything had a chance to register. Fixed by moving
+  the event-bus wiring into `register()` itself, removing the dependency
+  on init order entirely.
+- `SalesService` was never exported from `SalesModule` - a pure DI gap
+  TypeScript can't catch (it's a runtime resolution concern, not a type
+  error), only caught by actually trying to inject it from a new module
+  and running the app.
+
+### The restaurant module itself
+
+- **Packaging decision, stated plainly**: `packages/modules/restaurant`
+  is intentionally an empty placeholder pointing at
+  `apps/api/src/restaurant/` - a real, separately-compiled pnpm package
+  (own `package.json`/`tsconfig.json`/build step, workspace-linked into
+  `apps/api`) is real infrastructure investment that no other "module" in
+  this codebase (Sales, Inventory, Layaways, Customers...) has ever
+  needed, since they all live under `apps/api/src/*` as ordinary NestJS
+  modules within the one deployable (DESIGN.md §1). What's enforced here
+  is the *dependency direction* that actually matters - `restaurant/`
+  imports `SalesService` freely; nothing in core imports from
+  `restaurant/` - as a logical/code-review boundary, not a physical
+  package boundary this codebase doesn't otherwise use.
+- New `RestaurantTable` (branch, label, seats, status: `AVAILABLE` /
+  `OCCUPIED` / `RESERVED` / `NEEDS_CLEANING`) and `RestaurantSaleTable`
+  (a `transactionExtensions`-style 1:1 link table, per DESIGN.md §3,
+  rather than a JSONB blob or a nullable column added to core's `Sale`
+  model). A real Prisma limitation is documented plainly in the schema:
+  there's no supported way to split one database's schema across
+  multiple independently-migrated `schema.prisma` files, so a module's
+  tables still live in the one shared schema file even though its *code*
+  never touches core.
+- `POST /restaurant/tables/:tableId/sales` is the module calling into
+  core exactly as intended: it resolves the table, calls
+  `SalesService.create()` directly (getting idempotency, discount/loyalty
+  handling, inventory decrement, and audit logging for free, with zero
+  duplicated logic), then creates the `RestaurantSaleTable` link and
+  marks the table `NEEDS_CLEANING`. Not atomic across all three steps -
+  documented as an accepted gap in the same "never lose a sale, reconcile
+  after the fact" spirit as DESIGN.md §6's offline-sync philosophy: the
+  sale itself is never at risk, only its cheap-to-reconcile table link.
+- **A genuinely useful architectural finding surfaced by actually
+  building and testing the hook, not just wiring it**: the first version
+  of the `sale.afterComplete` hook tried to look up its own
+  `RestaurantSaleTable` link to decide whether a given sale was
+  restaurant-relevant - and always found nothing, because
+  `RestaurantSalesService` creates that link *after* `SalesService.create()`
+  (and its `afterComplete` emit) already returns. A hook cannot see
+  synchronous extension data its own caller hasn't written yet. Fixed by
+  having the hook not attempt that filtering at all - the lesson,
+  documented in code: a module needing extension data to exist atomically
+  alongside a sale has to write it directly as the caller (exactly what
+  `RestaurantSalesService` already does), not lean on an `afterComplete`
+  hook for it.
+- **Verified live, end-to-end, against the real database**: created a
+  table (`AVAILABLE` by default), confirmed a duplicate label at the same
+  branch was rejected with 409; placed a real order via
+  `POST /restaurant/tables/:id/sales` and confirmed the sale completed
+  correctly, the table link was created, and the table flipped to
+  `NEEDS_CLEANING`; confirmed the hook fired with the correct sale ID and
+  wrote its own independent audit-log row (`restaurant.sale_hook_fired`)
+  - proving a module-registered listener genuinely receives a real core
+  event; confirmed the hook **also fires for a plain sale placed through
+  the ordinary core `/sales` endpoint**, with no table involved at all -
+  proving the mechanism is truly system-wide and core has zero awareness
+  the restaurant module exists; confirmed an idempotent replay (same
+  `clientId` submitted twice) produces exactly one hook fire, not two;
+  confirmed RBAC (cashier blocked from creating tables, allowed to read
+  the floor and place orders); and confirmed RLS holds on both new
+  tables.
+- **A methodology finding along the way, not an application bug**: an
+  RLS check briefly appeared to fail (rows visible with no tenant
+  context set) - tracked down to an earlier ad-hoc diagnostic script in
+  this same session having used `set_config(..., false)` (session-level,
+  not transaction-local), which leaked into a *different* script's
+  connection via Neon's pooled-connection reuse. The real application
+  code was never at risk (`TenantScopedPrismaService.run()` always uses
+  `true`/transaction-local), but this cost real debugging time before
+  being ruled out - documented in `apps/api/prisma/README.md` so a future
+  ad-hoc check doesn't hit the same false alarm. Once ruled out, RLS was
+  reconfirmed clean on both tables.
+- Applying `rls.sql`'s two new policies for this phase used the plain
+  `prisma db execute --file prisma/rls.sql` command directly against the
+  live, already-provisioned database - no hand-rolled temp-file
+  workaround needed, the first real payoff of the idempotency fix made
+  during the DR-runbook work earlier in Phase 3.
+- `pnpm typecheck`, `pnpm build`, `pnpm test`, and `pnpm lint` all pass
+  clean for `apps/api`.
+
+Still to do for this vertical: order-to-KDS routing, course timing, and
+tips/service charge (DESIGN.md's remaining Phase 4 scope) - table/floor
+management was deliberately scoped as the first slice, the same
+incremental-build discipline used for every phase before this one.
+
 ## Getting started
 
 ```

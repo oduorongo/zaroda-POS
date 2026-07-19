@@ -50,6 +50,7 @@ model Organization {
   lowStockAlerts LowStockAlert[]
   customers      Customer[]
   layaways       Layaway[]
+  restaurantTables RestaurantTable[]
 
   @@map("organizations")
 }
@@ -73,6 +74,7 @@ model Branch {
   transfersIn          StockTransfer[] @relation("TransferToBranch")
   lowStockAlerts       LowStockAlert[]
   layaways             Layaway[]
+  restaurantTables     RestaurantTable[]
 
   @@index([organizationId])
   @@map("branches")
@@ -511,6 +513,7 @@ model Sale {
   payments  SalePayment[]
   discounts Discount[]
   refunds   Refund[]
+  restaurantTable RestaurantSaleTable?
 
   @@index([organizationId])
   @@index([branchId])
@@ -709,4 +712,67 @@ model AuditLog {
   @@index([organizationId])
   @@index([entityType, entityId])
   @@map("audit_log")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Restaurant vertical module (Phase 4, packages/modules/restaurant) —
+// entityExtensions/transactionExtensions per DESIGN.md §3.
+//
+// A genuine limitation of this stack worth stating plainly rather than
+// glossing over: Prisma has no supported way to split one database's
+// schema across multiple independently-migrated schema.prisma files, so
+// a vertical module's own tables still have to be declared in this one
+// shared file even though the module's *code* (services, controllers,
+// the manifest) lives entirely under packages/modules/restaurant and is
+// never imported by core. "Zero changes to core packages" (DESIGN.md's
+// Phase 4 success criterion) means zero changes to core's TypeScript
+// business logic - SalesService, InventoryTransactionsService, etc. were
+// not touched to add this vertical, only extended via the emit() calls
+// already wired for the module contract in general, not for restaurant
+// specifically. The schema file is shared infrastructure every module
+// extends into, the same way every module shares one Postgres instance.
+// ─────────────────────────────────────────────────────────────────────────
+
+enum RestaurantTableStatus {
+  AVAILABLE
+  OCCUPIED
+  RESERVED
+  NEEDS_CLEANING
+}
+
+model RestaurantTable {
+  id             String                @id @default(uuid())
+  organizationId String
+  branchId       String
+  label          String // e.g. "Table 4", "Patio 2" - free text, not a seat map (out of scope for this slice)
+  seats          Int
+  status         RestaurantTableStatus @default(AVAILABLE)
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+
+  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  branch       Branch              @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  saleLinks    RestaurantSaleTable[]
+
+  @@unique([branchId, label])
+  @@index([organizationId])
+  @@map("restaurant_tables")
+}
+
+// The transactionExtensions pattern from DESIGN.md §3: a dedicated 1:1
+// extension table linking a core Sale to a module-owned entity, rather
+// than a JSONB blob on Sale itself or (worse) a nullable tableId column
+// added directly to the core sales table. Core's Sale model was not
+// touched to add this - the restaurant module's own controller creates
+// this row itself, in the same request that calls core's
+// SalesService.create(), immediately after the sale is returned.
+model RestaurantSaleTable {
+  id      String @id @default(uuid())
+  saleId  String @unique
+  tableId String
+
+  sale  Sale            @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  table RestaurantTable @relation(fields: [tableId], references: [id])
+
+  @@map("restaurant_sale_tables")
 }

@@ -292,6 +292,26 @@ CREATE POLICY tenant_isolation ON layaway_payments
   WITH CHECK (EXISTS (SELECT 1 FROM layaways l WHERE l.id = layaway_payments."layawayId"
                  AND l."organizationId" = current_setting('app.current_tenant', true)));
 
+-- ── Restaurant module (Phase 4, packages/modules/restaurant) ──────────────
+
+ALTER TABLE restaurant_tables ENABLE ROW LEVEL SECURITY;
+ALTER TABLE restaurant_tables FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON restaurant_tables;
+CREATE POLICY tenant_isolation ON restaurant_tables
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+-- ── Scoped via saleId -> sales."organizationId" ────────────────────────────
+
+ALTER TABLE restaurant_sale_tables ENABLE ROW LEVEL SECURITY;
+ALTER TABLE restaurant_sale_tables FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON restaurant_sale_tables;
+CREATE POLICY tenant_isolation ON restaurant_sale_tables
+  USING (EXISTS (SELECT 1 FROM sales s WHERE s.id = restaurant_sale_tables."saleId"
+                 AND s."organizationId" = current_setting('app.current_tenant', true)))
+  WITH CHECK (EXISTS (SELECT 1 FROM sales s WHERE s.id = restaurant_sale_tables."saleId"
+                 AND s."organizationId" = current_setting('app.current_tenant', true)));
+
 -- ── organizations itself ─────────────────────────────────────────────────
 -- A tenant may only ever see its own organization row (not a child table,
 -- so it filters on id directly rather than organizationId). Same pre-auth

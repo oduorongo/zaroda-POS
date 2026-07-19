@@ -4,6 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import {
   DiscountType,
   InventoryTxnType,
@@ -49,6 +50,7 @@ export class SalesService {
     private readonly inventoryTransactions: InventoryTransactionsService,
     private readonly customers: CustomersService,
     private readonly auditLog: AuditLogService,
+    private readonly events: EventEmitter2,
   ) {}
 
   /**
@@ -69,7 +71,18 @@ export class SalesService {
     }
 
     try {
-      return await this.createInner(dto);
+      const { sale, isNew } = await this.createInner(dto);
+      // Fired after the transaction has committed (not from inside it) so
+      // a slow/misbehaving hook (DESIGN.md §3 - e.g. a future restaurant
+      // module routing an order to a KDS) can't hold the sale's own DB
+      // transaction open while it runs. Never fired for an idempotent
+      // replay - a hook that prints a receipt or fires a KDS ticket must
+      // not re-fire just because a network retry re-submitted the same
+      // clientId.
+      if (isNew) {
+        await this.events.emitAsync('sale.afterComplete', sale);
+      }
+      return sale;
     } catch (e) {
       // The findUnique-then-create idempotency check below isn't atomic
       // against a *concurrent* identical submission (two requests can both
@@ -107,7 +120,7 @@ export class SalesService {
         where: { clientId: dto.clientId },
         include: SALE_INCLUDE,
       });
-      if (existing) return existing;
+      if (existing) return { sale: existing, isNew: false };
 
       const [branch, terminal, cashierSession] = await Promise.all([
         tx.branch.findUnique({ where: { id: dto.branchId } }),
@@ -242,6 +255,21 @@ export class SalesService {
         ? Math.floor(finalTotal / LOYALTY_EARN_RATE)
         : 0;
 
+      // Fired inside the transaction, before the sale row exists, so a
+      // listener that throws (DESIGN.md §3 - e.g. a future restaurant
+      // module rejecting a sale for a table that's already closed out)
+      // aborts the whole transaction naturally rather than needing its
+      // own rollback logic. Awaited (emitAsync, not emit) specifically so
+      // a throw actually propagates - fire-and-forget emit() would let
+      // the sale complete regardless of what a hook decided.
+      await this.events.emitAsync('sale.beforeComplete', {
+        branchId: dto.branchId,
+        terminalId: dto.terminalId,
+        customerId: dto.customerId,
+        lineItems: dto.lineItems,
+        total: finalTotal,
+      });
+
       const { organizationId } = getTenantStore();
       const sale = await tx.sale.create({
         data: {
@@ -325,7 +353,7 @@ export class SalesService {
         terminalId: dto.terminalId,
       });
 
-      return sale;
+      return { sale, isNew: true };
     });
   }
 

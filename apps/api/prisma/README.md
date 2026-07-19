@@ -53,3 +53,22 @@ const rows = await prisma.$queryRaw`SELECT id FROM <tenant_owned_table>`;
 // Expect 0 rows with no tenant context established - if you see rows here,
 // something (wrong role, missing FORCE, wrong column name) is wrong.
 ```
+
+**A second, different way to get a false alarm here** (discovered during
+Phase 4, cost real debugging time before being ruled out): if any earlier
+ad-hoc script against this same database used
+`set_config('app.current_tenant', '<id>', false)` - `false`, meaning
+session-level, not transaction-local - that setting can leak into a
+*different* script's connection if Neon's pooler (PgBouncer, transaction-
+pooling mode) reuses the same physical backend connection without
+resetting session state between logical clients. A brand-new
+`PrismaClient` that never itself calls `set_config` can still see a
+stale tenant from a previous script's leftover session state, making a
+"0 rows expected" check show real rows and look like an RLS bypass that
+isn't actually there. The real application code is never at risk of this
+- `TenantScopedPrismaService.run()` always uses `set_config(..., true)`
+(transaction-local, always reset when the transaction ends regardless of
+connection reuse) - but **any ad-hoc verification script must do the
+same**: use `true`, never `false`, or explicitly `RESET app.current_tenant`
+before checking. If a "0 rows expected" check ever shows unexpected rows,
+try that reset before concluding RLS is actually broken.

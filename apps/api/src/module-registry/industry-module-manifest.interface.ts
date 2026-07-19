@@ -51,6 +51,16 @@ export interface IndustryModuleManifest {
   }[];
 }
 
+// All four were declared here from the start (Phase 0), but until a
+// Phase 3 hardening pass, core never actually called emit() for any of
+// them - the whole hook mechanism was registered but non-functional.
+// sale.beforeComplete/afterComplete (SalesService.create()) and
+// inventory.beforeDecrement (InventoryTransactionsService.recordInTx)
+// are now genuinely wired and emitAsync-awaited so a hook can veto by
+// throwing. refund.afterApproved is still NOT wireable - there is no
+// RefundsService/controller at all yet (only the Refund Prisma model
+// exists, with no API to create one), so there is nowhere in core to
+// put the emit() call until that module exists.
 export type CoreDomainEvent =
   | 'sale.beforeComplete'
   | 'sale.afterComplete'

@@ -3,6 +3,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { LowStockAlertStatus } from '@prisma/client';
 import {
   TenantScopedPrismaService,
@@ -13,7 +14,10 @@ import { CreateInventoryTransactionDto } from './dto/create-inventory-transactio
 
 @Injectable()
 export class InventoryTransactionsService {
-  constructor(private readonly tenantPrisma: TenantScopedPrismaService) {}
+  constructor(
+    private readonly tenantPrisma: TenantScopedPrismaService,
+    private readonly events: EventEmitter2,
+  ) {}
 
   private async assertBranchAndVariantExist(
     branchId: string,
@@ -51,6 +55,22 @@ export class InventoryTransactionsService {
           'This batch belongs to a different product variant',
         );
       }
+    }
+
+    // Only fired for actual decrements, not receipts/adjustments-upward -
+    // "beforeDecrement" is specifically the point a module might want to
+    // veto (DESIGN.md §3 - e.g. a future pharmacy module blocking a sale
+    // of an expired batch). Awaited so a throw here aborts the whole
+    // caller's transaction (e.g. SalesService.create()'s per-line-item
+    // loop) rather than the veto being silently ignored.
+    if (dto.quantityDelta < 0) {
+      await this.events.emitAsync('inventory.beforeDecrement', {
+        branchId: dto.branchId,
+        variantId: dto.variantId,
+        quantityDelta: dto.quantityDelta,
+        type: dto.type,
+        batchId: dto.batchId,
+      });
     }
 
     const transaction = await tx.inventoryTransaction.create({
