@@ -1,0 +1,478 @@
+// ZARODA POS — core schema.
+// See ../../../DESIGN.md for the full design rationale (§4 entity model, §5 ERD).
+//
+// Row-Level Security: every tenant-owned table below carries organizationId.
+// Prisma has no RLS DSL, so the actual `CREATE POLICY` statements live in
+// prisma/rls.sql and are applied separately (see prisma/README.md) after
+// `prisma migrate dev`. Do not treat this schema file as the full security
+// boundary — the RLS policies are what actually enforce tenant isolation.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Identity / tenancy
+// ─────────────────────────────────────────────────────────────────────────
+
+enum Role {
+  CASHIER
+  SUPERVISOR
+  MANAGER
+  OWNER
+  AUDITOR
+}
+
+model Organization {
+  id            String   @id @default(uuid())
+  name          String
+  industryType  String // "RETAIL" | "RESTAURANT" | "PHARMACY" | "SALON" | ...
+  country       String   @default("KE")
+  baseCurrency  String   @default("KES") // ISO 4217 — see DESIGN.md §9
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  branches   Branch[]
+  orgUsers   OrgUser[]
+  categories Category[]
+  products   Product[]
+  taxClasses TaxClass[]
+  sales      Sale[]
+  auditLogs  AuditLog[]
+
+  @@map("organizations")
+}
+
+model Branch {
+  id             String   @id @default(uuid())
+  organizationId String
+  name           String
+  county         String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization    Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  terminals       Terminal[]
+  inventoryItems  InventoryItem[]
+  shifts          Shift[]
+  sales           Sale[]
+
+  @@index([organizationId])
+  @@map("branches")
+}
+
+model Terminal {
+  id          String    @id @default(uuid())
+  branchId    String
+  deviceLabel String
+  appVersion  String?
+  lastSyncAt  DateTime?
+  createdAt   DateTime  @default(now())
+
+  branch          Branch           @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  shifts          Shift[]
+  sales           Sale[]
+  cashierSessions CashierSession[]
+  syncOutboxItems SyncOutbox[]
+
+  @@index([branchId])
+  @@map("terminals")
+}
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String
+  // PIN is for terminal quick-login, hashed separately from the account
+  // password - short PINs are only ever compared within an org+terminal
+  // scope, never used to look a user up account-wide.
+  pinHash      String?
+  fullName     String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  orgUsers OrgUser[]
+
+  @@map("users")
+}
+
+// A user's membership in an organization, with an optional branch scope
+// (null = access to all branches) and a role. One user can belong to
+// multiple organizations (e.g. an accountant contracted to several shops).
+model OrgUser {
+  id             String   @id @default(uuid())
+  organizationId String
+  userId         String
+  branchId       String? // null = all branches in the org
+  role           Role
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  shiftsOpened    Shift[]          @relation("ShiftOpenedBy")
+  salesCashier    Sale[]           @relation("SaleCashier")
+  discounts       Discount[]       @relation("DiscountApprovedBy")
+  refunds         Refund[]         @relation("RefundApprovedBy")
+  auditActions    AuditLog[]       @relation("AuditActor")
+  cashierSessions CashierSession[]
+
+  @@unique([organizationId, userId])
+  @@index([organizationId])
+  @@map("org_users")
+}
+
+// Shared-terminal PIN switching (DESIGN.md §9): a terminal is authenticated
+// at the device level, but each sale is attributed to whichever cashier is
+// currently "swiped in" here, not to the device session.
+model CashierSession {
+  id            String    @id @default(uuid())
+  terminalId    String
+  orgUserId     String
+  pinStartedAt  DateTime  @default(now())
+  pinEndedAt    DateTime?
+
+  terminal Terminal @relation(fields: [terminalId], references: [id], onDelete: Cascade)
+  orgUser  OrgUser  @relation(fields: [orgUserId], references: [id], onDelete: Cascade)
+  sales    Sale[]
+
+  @@index([terminalId])
+  @@index([orgUserId])
+  @@map("cashier_sessions")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Catalog
+// ─────────────────────────────────────────────────────────────────────────
+
+model Category {
+  id             String   @id @default(uuid())
+  organizationId String
+  name           String
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  products     Product[]
+
+  @@index([organizationId])
+  @@map("categories")
+}
+
+model TaxClass {
+  id             String  @id @default(uuid())
+  organizationId String
+  name           String
+  rate           Decimal @db.Decimal(6, 4) // e.g. 0.1600 for 16% VAT
+  isExempt       Boolean @default(false)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  products     Product[]
+
+  @@index([organizationId])
+  @@map("tax_classes")
+}
+
+model Product {
+  id             String   @id @default(uuid())
+  organizationId String
+  categoryId     String?
+  taxClassId     String?
+  name           String
+  baseUnit       String   @default("each")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  category     Category?         @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  taxClass     TaxClass?         @relation(fields: [taxClassId], references: [id], onDelete: SetNull)
+  variants     ProductVariant[]
+
+  @@index([organizationId])
+  @@map("products")
+}
+
+model ProductVariant {
+  id        String   @id @default(uuid())
+  productId String
+  sku       String
+  barcode   String?
+  price     Decimal  @db.Decimal(12, 2)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  product              Product               @relation(fields: [productId], references: [id], onDelete: Cascade)
+  inventoryItems       InventoryItem[]
+  batches              Batch[]
+  inventoryTransactions InventoryTransaction[]
+  saleLineItems        SaleLineItem[]
+
+  @@unique([productId, sku])
+  @@index([barcode])
+  @@map("product_variants")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Inventory — append-only ledger is the source of truth (DESIGN.md §4).
+// InventoryItem.quantity is derived/maintained from InventoryTransaction
+// rows, never written to directly by application code outside that
+// maintenance path.
+// ─────────────────────────────────────────────────────────────────────────
+
+model InventoryItem {
+  id                String   @id @default(uuid())
+  branchId          String
+  variantId         String
+  quantity          Int      @default(0) // derived - see note above
+  lowStockThreshold Int      @default(0)
+  updatedAt         DateTime @updatedAt
+
+  branch  Branch         @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  variant ProductVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+
+  @@unique([branchId, variantId])
+  @@map("inventory_items")
+}
+
+enum InventoryTxnType {
+  SALE
+  TRANSFER
+  ADJUSTMENT
+  STOCKTAKE
+  RETURN
+}
+
+model InventoryTransaction {
+  id            String            @id @default(uuid())
+  branchId      String
+  variantId     String
+  batchId       String?
+  type          InventoryTxnType
+  quantityDelta Int // signed
+  referenceId   String? // sale_id / transfer_id / stocktake_id, loosely typed by design
+  createdAt     DateTime          @default(now())
+
+  variant ProductVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  batch   Batch?         @relation(fields: [batchId], references: [id], onDelete: SetNull)
+
+  @@index([branchId, variantId])
+  @@map("inventory_transactions")
+}
+
+// Batch/expiry tracking — a core capability (perishable retail stock needs
+// it too), not pharmacy-exclusive. The pharmacy module adds *enforcement*
+// (block sale of an expired/controlled batch) on top of this core table.
+model Batch {
+  id                String    @id @default(uuid())
+  variantId         String
+  batchNumber       String
+  expiryDate        DateTime?
+  quantityReceived  Int
+  createdAt         DateTime  @default(now())
+
+  variant               ProductVariant          @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  inventoryTransactions InventoryTransaction[]
+
+  @@index([variantId])
+  @@map("batches")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Shifts / cash reconciliation
+// ─────────────────────────────────────────────────────────────────────────
+
+model Shift {
+  id            String    @id @default(uuid())
+  branchId      String
+  terminalId    String
+  openedById    String
+  openingFloat  Decimal   @db.Decimal(12, 2) @default(0)
+  countedCash   Decimal?  @db.Decimal(12, 2)
+  variance      Decimal?  @db.Decimal(12, 2)
+  openedAt      DateTime  @default(now())
+  closedAt      DateTime?
+
+  branch   Branch   @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  terminal Terminal @relation(fields: [terminalId], references: [id], onDelete: Cascade)
+  openedBy OrgUser  @relation("ShiftOpenedBy", fields: [openedById], references: [id])
+  sales    Sale[]
+
+  @@index([branchId])
+  @@index([terminalId])
+  @@map("shifts")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Sales
+// ─────────────────────────────────────────────────────────────────────────
+
+enum SaleStatus {
+  PENDING_SYNC
+  COMPLETED
+  VOIDED
+}
+
+model Sale {
+  id                 String     @id @default(uuid())
+  organizationId     String
+  branchId           String
+  terminalId         String
+  shiftId            String?
+  cashierSessionId   String
+  // Client-generated UUID from the offline terminal - the idempotency key
+  // for sync replay (DESIGN.md §6). Distinct from `id` so the server is
+  // free to also assign its own id without colliding with client state.
+  clientId           String     @unique
+  status             SaleStatus @default(PENDING_SYNC)
+  total              Decimal    @db.Decimal(12, 2)
+  priceDriftFlagged  Boolean    @default(false)
+  createdAt          DateTime   @default(now())
+
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  branch         Branch          @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  terminal       Terminal        @relation(fields: [terminalId], references: [id], onDelete: Cascade)
+  shift          Shift?          @relation(fields: [shiftId], references: [id], onDelete: SetNull)
+  cashierSession CashierSession  @relation(fields: [cashierSessionId], references: [id])
+  cashier        OrgUser?        @relation("SaleCashier", fields: [cashierOrgUserId], references: [id])
+  cashierOrgUserId String?
+
+  lineItems SaleLineItem[]
+  payments  SalePayment[]
+  discounts Discount[]
+  refunds   Refund[]
+
+  @@index([organizationId])
+  @@index([branchId])
+  @@map("sales")
+}
+
+model SaleLineItem {
+  id         String  @id @default(uuid())
+  saleId     String
+  variantId  String
+  quantity   Int
+  unitPrice  Decimal @db.Decimal(12, 2)
+  taxAmount  Decimal @db.Decimal(12, 2) @default(0)
+
+  sale    Sale           @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  variant ProductVariant @relation(fields: [variantId], references: [id])
+
+  @@index([saleId])
+  @@map("sale_line_items")
+}
+
+enum PaymentMethod {
+  CASH
+  MPESA
+  CARD
+  WALLET
+}
+
+model SalePayment {
+  id                  String        @id @default(uuid())
+  saleId              String
+  method              PaymentMethod
+  amount              Decimal       @db.Decimal(12, 2) // in org.baseCurrency
+  providerReference   String?
+  // M-Pesa always settles in KES regardless of org.baseCurrency - see
+  // DESIGN.md §9. Both null for cash/card-in-base-currency payments.
+  settlementCurrency  String?
+  settlementAmount    Decimal?      @db.Decimal(12, 2)
+  createdAt           DateTime      @default(now())
+
+  sale Sale @relation(fields: [saleId], references: [id], onDelete: Cascade)
+
+  @@index([saleId])
+  @@map("sale_payments")
+}
+
+enum DiscountType {
+  PERCENT
+  FIXED
+}
+
+model Discount {
+  id         String       @id @default(uuid())
+  saleId     String
+  type       DiscountType
+  value      Decimal      @db.Decimal(12, 2)
+  approvedById String
+
+  sale       Sale    @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  approvedBy OrgUser @relation("DiscountApprovedBy", fields: [approvedById], references: [id])
+
+  @@index([saleId])
+  @@map("discounts")
+}
+
+model Refund {
+  id           String   @id @default(uuid())
+  saleId       String
+  amount       Decimal  @db.Decimal(12, 2)
+  reason       String
+  approvedById String
+  createdAt    DateTime @default(now())
+
+  sale       Sale    @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  approvedBy OrgUser @relation("RefundApprovedBy", fields: [approvedById], references: [id])
+
+  @@index([saleId])
+  @@map("refunds")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Offline sync (DESIGN.md §6)
+// ─────────────────────────────────────────────────────────────────────────
+
+enum SyncStatus {
+  PENDING
+  APPLIED
+  FAILED
+}
+
+model SyncOutbox {
+  id         String     @id @default(uuid())
+  terminalId String
+  eventType  String
+  payload    Json
+  // The idempotency key - matches the client-generated id on the record the
+  // event creates/mutates (e.g. Sale.clientId). Replays are safe no-ops.
+  clientId   String     @unique
+  status     SyncStatus @default(PENDING)
+  createdAt  DateTime   @default(now())
+  appliedAt  DateTime?
+
+  terminal Terminal @relation(fields: [terminalId], references: [id], onDelete: Cascade)
+
+  @@index([terminalId, status])
+  @@map("sync_outbox")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Audit log — append-only. Nothing in this table is ever updated/deleted by
+// application code.
+// ─────────────────────────────────────────────────────────────────────────
+
+model AuditLog {
+  id             String   @id @default(uuid())
+  organizationId String
+  actorId        String?
+  action         String
+  entityType     String
+  entityId       String
+  before         Json?
+  after          Json?
+  terminalId     String?
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  actor        OrgUser?     @relation("AuditActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([entityType, entityId])
+  @@map("audit_log")
+}
