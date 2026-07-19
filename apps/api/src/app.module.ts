@@ -11,6 +11,7 @@ import { JwtAuthGuard } from './auth/jwt-auth.guard';
 import { RolesGuard } from './auth/roles.guard';
 import { ModuleRegistryModule } from './module-registry/module-registry.module';
 import { CatalogModule } from './catalog/catalog.module';
+import { InventoryModule } from './inventory/inventory.module';
 
 // Phase 1+ will import vertical module packages here and register their
 // manifests on ModuleRegistryService at bootstrap (see DESIGN.md §3) - none
@@ -24,6 +25,7 @@ import { CatalogModule } from './catalog/catalog.module';
     ModuleRegistryModule,
     AuthModule,
     CatalogModule,
+    InventoryModule,
   ],
   controllers: [AppController],
   providers: [

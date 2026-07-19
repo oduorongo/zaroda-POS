@@ -47,7 +47,28 @@ strategy) and the build roadmap.
   `product_variants`, whose policy is an `EXISTS` through `products` rather
   than a direct `organizationId` column.
 
-Still to do in Phase 1: inventory ledger, sales pipeline (cash + M-Pesa STK
+Inventory module also done and verified live:
+
+- `InventoryTransaction` (the append-only ledger, source of truth) and
+  `InventoryItem.quantity` (the derived stock count) are kept in sync via
+  an atomic `increment` inside the same tenant-scoped transaction as the
+  ledger insert — not a read-then-write, so concurrent movements against
+  the same branch+variant can't race each other into an inconsistent
+  count. Verified live: +100 then -3 correctly derives 97, and the ledger
+  shows both entries in order.
+- Found and fixed a real schema gap while building this:
+  `InventoryTransaction.branchId` had no foreign key to `branches` (unlike
+  `InventoryItem`, which did) — added via a migration before writing the
+  service, so an invalid branch id fails as a clean validation error
+  instead of surfacing as a raw RLS policy violation.
+- RBAC: stock levels readable by any authenticated role (a cashier needs
+  to know if something's in stock); the ledger itself and recording
+  movements are restricted to `SUPERVISOR`/`MANAGER`/`OWNER` (ledger reads
+  also open to `AUDITOR`). Verified live with a `CASHIER` token.
+- RLS re-verified for `inventory_items` and `inventory_transactions` (0
+  rows visible with no tenant set).
+
+Still to do in Phase 1: sales pipeline (cash + M-Pesa STK
 push), shifts/X-Z reports, core reporting, terminal PWA.
 
 ## Getting started
