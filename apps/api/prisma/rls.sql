@@ -194,6 +194,30 @@ CREATE POLICY tenant_isolation ON refunds
   WITH CHECK (EXISTS (SELECT 1 FROM sales s WHERE s.id = refunds."saleId"
                  AND s."organizationId" = current_setting('app.current_tenant', true)));
 
+-- ── Direct organizationId (Phase 2: stock transfers/takes) ────────────────
+
+ALTER TABLE stock_transfers ENABLE ROW LEVEL SECURITY;
+ALTER TABLE stock_transfers FORCE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON stock_transfers
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+ALTER TABLE stock_takes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE stock_takes FORCE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON stock_takes
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+-- ── Scoped via stockTakeId -> stock_takes."organizationId" ────────────────
+
+ALTER TABLE stock_take_lines ENABLE ROW LEVEL SECURITY;
+ALTER TABLE stock_take_lines FORCE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON stock_take_lines
+  USING (EXISTS (SELECT 1 FROM stock_takes st WHERE st.id = stock_take_lines."stockTakeId"
+                 AND st."organizationId" = current_setting('app.current_tenant', true)))
+  WITH CHECK (EXISTS (SELECT 1 FROM stock_takes st WHERE st.id = stock_take_lines."stockTakeId"
+                 AND st."organizationId" = current_setting('app.current_tenant', true)));
+
 -- ── organizations itself ─────────────────────────────────────────────────
 -- A tenant may only ever see its own organization row (not a child table,
 -- so it filters on id directly rather than organizationId). Same pre-auth

@@ -217,10 +217,62 @@ DESIGN.md §6, now scaffolded and built:
   install.
 
 Still to do in Phase 1 beyond that: nothing - catalog, inventory, sales,
-shifts, reporting, and the terminal PWA are all built. Phase 2
-(promotions/loyalty/layaway, receipt printer + barcode scanner
-integration, stock transfers/takes) and Phase 3 (non-functional hardening)
-are next per the roadmap in DESIGN.md.
+shifts, reporting, and the terminal PWA are all built.
+
+**Phase 2 — Stock transfers and stock takes: done and verified end-to-end
+against a live database.**
+
+- **Stock transfers** (`POST /stock-transfers`, `GET /stock-transfers`,
+  role-gated to supervisor/manager/owner): moves stock between two
+  branches for the same organization as a single logical operation - one
+  `StockTransfer` record plus two ledger entries (a negative
+  `InventoryTransaction` at the source, a positive one at the destination,
+  both `type: TRANSFER` sharing the transfer's id as `referenceId`) written
+  in the same database transaction, so a transfer can never leave stock
+  "in transit and unaccounted for." Same-branch transfers
+  (`fromBranchId === toBranchId`) are rejected with 400.
+- **Stock takes** (`POST /stock-takes` opens one, snapshotting every
+  `InventoryItem` at the branch into a `StockTakeLine` with a fixed
+  `systemQuantity` so a count that takes hours isn't compared against a
+  quantity that keeps moving from concurrent sales; `PATCH
+  /stock-takes/:id/lines/:lineId` records a counted quantity and computes
+  `variance`; `PATCH /stock-takes/:id/complete` reconciles every non-zero
+  variance into the ledger as a `STOCKTAKE` inventory transaction and
+  marks the take `COMPLETED`). Lines nobody got around to counting are
+  left alone, not treated as "counted zero." A completed stock take
+  rejects further count edits or a second completion with 400.
+- Both features reuse the existing `InventoryTransactionsService
+  .recordInTx(tx, dto)` composable core (no duplicated stock-adjustment
+  logic) and log to the audit trail (`stock_transfer.created`,
+  `stock_take.opened`, `stock_take.completed`).
+- New tables (`stock_transfers`, `stock_takes`, `stock_take_lines`) needed
+  their own RLS policies (`stock_take_lines` has no direct
+  `organizationId` column, so its policy scopes through
+  `stock_take_lines.stockTakeId -> stock_takes.organizationId` via
+  `EXISTS`) - applied to the live database and confirmed the
+  already-provisioned `zaroda_app` role's default privileges extended
+  automatically to the new tables with no manual grant needed.
+- **Verified live** against the real Neon database and a running API
+  process, not just typechecked: a transfer of 20 units Main → Westlands
+  correctly moved stock (95→75 at Main, 0→20 at Westlands); a stock take
+  opened at Main correctly snapshotted `systemQuantity: 75`; recording a
+  count of 72 computed `variance: -3`; completing the take reconciled
+  Main's stock to 72 and wrote a `STOCKTAKE` ledger entry with
+  `quantityDelta: -3`; re-completing or editing counts on the now-
+  `COMPLETED` take both correctly returned 400; a cashier token got 403 on
+  every endpoint on both controllers (role gate confirmed); and a raw
+  script querying `stock_transfers`, `stock_takes`, and `stock_take_lines`
+  with no tenant context set confirmed 0 rows visible on all three (RLS
+  confirmed, same pattern as every other table in this project).
+  `pnpm typecheck`, `pnpm build`, `pnpm test`, and `pnpm lint` all pass
+  clean for `apps/api`.
+
+Still to do in Phase 2: promotions/discount engine, loyalty points,
+layaway, ESC/POS receipt printer integration, barcode scanner integration,
+and proactive low-stock alerting (Redis/BullMQ + Africa's Talking SMS -
+today's `lowStockOnly` filter on `GET /inventory/items` is pull-based
+only, not a push notification). Phase 3 (non-functional hardening) is
+after that, per the roadmap in DESIGN.md.
 
 ## Getting started
 
