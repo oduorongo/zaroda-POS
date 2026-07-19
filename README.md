@@ -704,13 +704,57 @@ real database.**
   TypeScript touched, but the full suite was still run to confirm
   nothing else was disturbed).
 
-Still to do in Phase 3: re-run `scripts/load-test-stock-decrement.mjs`'s
-raw-throughput test (Test 1) once Neon's baseline latency returns to
-normal, to get a real number rather than one dominated by this session's
-network conditions; a full end-to-end DR fire drill on a disposable Neon
-project (per the "honestly not drilled" note above); and a sync-conflict
-dashboard for supervisors (which can now lean on the correlation ids
-added in the structured-logging increment).
+**Phase 3 — Sync-conflict dashboard: done and verified end-to-end
+against a live database.** Scoped deliberately as an API endpoint, not a
+UI: no back-office frontend exists yet at all (only `apps/api` and
+`apps/terminal-pwa`) - DESIGN.md marks a back-office app "Phase 2+" but
+it was never scaffolded, and starting one is a much bigger scope increase
+than this increment warrants. A future back-office app would consume
+this endpoint once one exists.
+
+- **Investigating the schema first found something worth knowing before
+  building anything**: the two fields that look purpose-built for exactly
+  this feature - `SyncOutbox` (a whole model: `PENDING`/`APPLIED`/`FAILED`)
+  and `Sale.priceDriftFlagged` - are **completely dead**. Confirmed via
+  grep across `apps/api/src`: nothing anywhere ever reads or writes
+  either one. They were scaffolded early in the project but never wired
+  up as the actual sync architecture took shape (the terminal PWA's own
+  client-side Dexie outbox plus idempotent `POST /sales`, per DESIGN.md
+  §6, turned out not to need a server-side mirror of sync state). Worth
+  knowing before anyone builds on the assumption those fields are live.
+- **What "sync conflict" concretely means here**, per DESIGN.md §6's
+  stated philosophy ("never lose a sale, resolve stock conflicts after
+  the fact"): a sale is always accepted even if it takes
+  `InventoryItem.quantity` negative, rather than being rejected or
+  blocking an offline terminal's sync. Negative quantity **is** the
+  durable, queryable trace that a conflict happened and still needs a
+  supervisor's manual reconciliation - so that's what the new endpoint
+  surfaces, rather than inventing a new concept.
+- New `GET /inventory/conflicts` (supervisor/manager/owner/auditor, same
+  tier as the alert feed and ledger) returns every `InventoryItem` with
+  negative quantity, each with its 10 most recent ledger entries inlined
+  - a supervisor can see exactly what ran the count negative (concurrent
+  sales at two terminals, a late-arriving offline sync, a bad manual
+  adjustment) without a separate query per item.
+- **Verified live**: with no conflicts present, the endpoint correctly
+  returned an empty list; a real oversell was created (a manual `SALE`-
+  type ledger entry taking quantity from 63 to -7, the same code path a
+  genuine concurrent/offline oversell would hit) and the endpoint
+  correctly surfaced it with the right quantity and 10 correctly-ordered
+  recent transactions; reconciling it with a delivery-style `ADJUSTMENT`
+  (-7 → 3) made it correctly disappear from the list, confirming the
+  feed is live/self-resolving the same way the low-stock alert feed is; a
+  cashier token got 403; and a raw query with no tenant context set
+  confirmed 0 negative-quantity rows visible even while a real conflict
+  existed at the time of the check (not just when the table was empty -
+  RLS actually exercised under a non-trivial condition). `pnpm
+  typecheck`, `pnpm build`, `pnpm test`, and `pnpm lint` all pass clean
+  for `apps/api`.
+
+That closes out every remaining Phase 3 item except the two explicitly
+left open above: re-running `scripts/load-test-stock-decrement.mjs`'s
+raw-throughput test once Neon's baseline latency returns to normal, and a
+full end-to-end DR fire drill on a disposable Neon project.
 
 ## Getting started
 

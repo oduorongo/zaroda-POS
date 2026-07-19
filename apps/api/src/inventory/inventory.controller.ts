@@ -14,6 +14,7 @@ import { InventoryItemsService } from './inventory-items.service';
 import { InventoryTransactionsService } from './inventory-transactions.service';
 import { CreateInventoryTransactionDto } from './dto/create-inventory-transaction.dto';
 import {
+  ListConflictsDto,
   ListInventoryItemsDto,
   ListInventoryTransactionsDto,
   ListLowStockAlertsDto,
@@ -69,6 +70,17 @@ export class InventoryController {
       branchId: query.branchId,
       includeResolved: query.includeResolved === 'true',
     });
+  }
+
+  // "Conflicts" = stock oversells (negative InventoryItem.quantity) - the
+  // durable trace of DESIGN.md §6's "never lose a sale, resolve stock
+  // conflicts after the fact" offline-sync philosophy. Same audience as
+  // the alert feed above: a supervisor deciding whether to write off a
+  // shortfall, cut a delivery, or adjust via a stock take.
+  @Roles(Role.SUPERVISOR, Role.MANAGER, Role.OWNER, Role.AUDITOR)
+  @Get('conflicts')
+  findConflicts(@Query() query: ListConflictsDto) {
+    return this.items.findConflicts({ branchId: query.branchId });
   }
 
   // The ledger itself (who moved what stock, when, why) is a

@@ -44,3 +44,9 @@ export class ListLowStockAlertsDto {
   @IsOptional()
   includeResolved?: string;
 }
+
+export class ListConflictsDto {
+  @IsUUID()
+  @IsOptional()
+  branchId?: string;
+}

@@ -88,4 +88,42 @@ export class InventoryItemsService {
       }),
     );
   }
+
+  /**
+   * "Sync conflict" here means a stock oversell: DESIGN.md §6's offline
+   * strategy is "never lose a sale, resolve stock conflicts after the
+   * fact" - a sale is always accepted even if it takes InventoryItem
+   * .quantity negative (rather than rejecting the sale or blocking an
+   * offline terminal from syncing), and negative quantity is the durable,
+   * queryable trace that a conflict happened and still needs a
+   * supervisor's manual reconciliation (a delivery, a stock take
+   * adjustment, or writing off the difference). Each conflict includes
+   * its most recent ledger entries so a supervisor can see what actually
+   * happened (concurrent sales at two terminals, a late-arriving offline
+   * sync, etc.) without needing to separately query the transactions
+   * endpoint per item.
+   */
+  async findConflicts(filters: { branchId?: string }) {
+    const items = await this.tenantPrisma.run((tx) =>
+      tx.inventoryItem.findMany({
+        where: { branchId: filters.branchId, quantity: { lt: 0 } },
+        include: { variant: { include: { product: true } }, branch: true },
+        orderBy: { quantity: 'asc' },
+        take: 200,
+      }),
+    );
+
+    return this.tenantPrisma.run((tx) =>
+      Promise.all(
+        items.map(async (item) => ({
+          ...item,
+          recentTransactions: await tx.inventoryTransaction.findMany({
+            where: { branchId: item.branchId, variantId: item.variantId },
+            orderBy: { createdAt: 'desc' },
+            take: 10,
+          }),
+        })),
+      ),
+    );
+  }
 }
