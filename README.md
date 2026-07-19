@@ -101,7 +101,34 @@ Sales pipeline (cash) also done and verified live:
   actor, and RLS still denying `sales`/`sale_line_items`/`sale_payments`
   with no tenant set.
 
-Still to do in Phase 1: shifts/X-Z reports, core reporting, terminal PWA.
+Shifts (X/Z-report cash reconciliation) also done and verified live:
+
+- `POST /shifts`: opens a shift with an opening cash float. Only one open
+  shift per terminal at a time - opening a second is rejected with a
+  clear conflict error rather than silently allowing two concurrent
+  drawers on one till.
+- `GET /shifts/:id/report` (X-report): a live, non-mutating snapshot -
+  sale count, total sales, payments broken down by method, and expected
+  cash (`openingFloat + cash sales`). Works whether the shift is open or
+  already closed.
+- `PATCH /shifts/:id/close` (Z-report): records what the cashier actually
+  counted against the same expected-cash figure, persists the variance,
+  and closes the shift (never re-closeable). A mismatch doesn't block the
+  close - it's informational, reconciled by a manager afterwards, same as
+  a real till count.
+- Found and fixed a float-precision cosmetic bug while testing: plain JS
+  subtraction for variance (e.g. `680 - 685.6`) produced results like
+  `-5.600000000000023` in the JSON report (the underlying `Decimal`
+  column stored it exactly regardless) - rounded to the cent everywhere
+  the report computes a money figure.
+- Verified live: opening float correctly seeds expected cash, two sales
+  against the shift correctly roll into the X-report totals and
+  payment-method breakdown, closing with a short count produces a clean
+  `-5.6` variance (not a float artifact), double-close and
+  double-open-on-one-terminal are both rejected, and RLS still denies
+  `shifts` with no tenant set.
+
+Still to do in Phase 1: core reporting, terminal PWA.
 
 ## Getting started
 
