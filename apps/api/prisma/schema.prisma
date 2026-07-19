@@ -204,6 +204,11 @@ model ProductVariant {
   sku       String
   barcode   String?
   price     Decimal  @db.Decimal(12, 2)
+  // Unit cost - optional (not every tenant tracks it), used only for the
+  // COGS/margin report. Null cost means that report just omits margin for
+  // this variant rather than treating cost as zero (a zero cost would
+  // silently overstate margin).
+  cost      Decimal? @db.Decimal(12, 2)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

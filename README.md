@@ -128,7 +128,35 @@ Shifts (X/Z-report cash reconciliation) also done and verified live:
   double-open-on-one-terminal are both rejected, and RLS still denies
   `shifts` with no tenant set.
 
-Still to do in Phase 1: core reporting, terminal PWA.
+Core reporting also done and verified live - the last API-only piece of
+Phase 1:
+
+- `GET /reports/sales-by-product`, `sales-by-branch`, `sales-by-cashier`,
+  `sales-by-hour` - all filterable by `branchId`/`from`/`to`, all counting
+  only `COMPLETED` sales (a voided sale's revenue never happened, and this
+  was verified live: an earlier voided sale from the sales-pipeline test
+  correctly doesn't appear in any report).
+- COGS/margin needed a schema addition: `ProductVariant.cost` (nullable -
+  not every tenant tracks cost, and a missing cost is never treated as
+  zero, which would silently overstate margin).
+- Found and fixed a correctness bug, not just cosmetic this time:
+  hour-of-day bucketing using `Date.getHours()` would silently bucket by
+  the *server's* local timezone (UTC in production) rather than Kenya's
+  (EAT, UTC+3, no DST) - every sale's reported hour would have been off
+  by 3. Fixed to convert explicitly from UTC rather than trust the
+  server's local clock.
+- Reports are restricted to `SUPERVISOR`/`MANAGER`/`OWNER`/`AUDITOR` (they
+  reveal financial data across the whole branch, unlike a cashier's own
+  shift report) - verified live with a `CASHIER` token getting 403.
+- Verified live: margin computed correctly against a set cost
+  (185.60 revenue - 110 cost = 75.60 margin on 2 units), branch/cashier
+  aggregates matched expected totals, and the voided sale from the sales
+  pipeline test was correctly excluded everywhere.
+
+Still to do in Phase 1: the terminal PWA (offline-first, IndexedDB sync -
+DESIGN.md §6). Everything above this point has been an API-only slice of
+Phase 1; the terminal is a different kind of piece (a separate Next.js/PWA
+app) and is next.
 
 ## Getting started
 

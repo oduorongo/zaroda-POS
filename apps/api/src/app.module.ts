@@ -16,6 +16,7 @@ import { InventoryModule } from './inventory/inventory.module';
 import { PaymentsModule } from './payments/payments.module';
 import { SalesModule } from './sales/sales.module';
 import { ShiftsModule } from './shifts/shifts.module';
+import { ReportsModule } from './reports/reports.module';
 
 // Phase 1+ will import vertical module packages here and register their
 // manifests on ModuleRegistryService at bootstrap (see DESIGN.md §3) - none
@@ -34,6 +35,7 @@ import { ShiftsModule } from './shifts/shifts.module';
     PaymentsModule,
     SalesModule,
     ShiftsModule,
+    ReportsModule,
   ],
   controllers: [AppController],
   providers: [

@@ -22,6 +22,12 @@ export class CreateProductVariantDto {
   @IsNumber()
   @Min(0)
   price!: number;
+
+  /** Unit cost - optional, used only by the COGS/margin report (reports/reports.service.ts). */
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  cost?: number;
 }
 
 export class UpdateProductVariantDto extends PartialType(
