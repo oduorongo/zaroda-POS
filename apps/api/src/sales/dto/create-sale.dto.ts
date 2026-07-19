@@ -12,7 +12,7 @@ import {
   Min,
   ValidateNested,
 } from 'class-validator';
-import { PaymentMethod } from '@prisma/client';
+import { DiscountType, PaymentMethod } from '@prisma/client';
 
 export class SaleLineItemInputDto {
   @IsUUID()
@@ -37,6 +37,26 @@ export class SalePaymentInputDto {
   @IsString()
   @IsOptional()
   phoneNumber?: string;
+}
+
+export class DiscountInputDto {
+  @IsIn(['PERCENT', 'FIXED'] satisfies DiscountType[])
+  type!: DiscountType;
+
+  // PERCENT is a 0-100 rate (upper bound checked in SalesService, since the
+  // valid range depends on `type`); FIXED is an absolute amount in
+  // org.baseCurrency, checked there against the sale total - a fixed
+  // discount larger than the ticket is rejected, not clamped silently.
+  @IsNumber()
+  @Min(0.01)
+  value!: number;
+
+  // The OrgUser who authorized this discount - must independently hold
+  // SUPERVISOR/MANAGER/OWNER in this org (verified server-side against the
+  // database, never trusted from the client) so a cashier can't grant
+  // their own discount by simply passing their own id.
+  @IsUUID()
+  approvedById!: string;
 }
 
 export class CreateSaleDto {
@@ -68,4 +88,9 @@ export class CreateSaleDto {
   @ValidateNested({ each: true })
   @Type(() => SalePaymentInputDto)
   payments!: SalePaymentInputDto[];
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => DiscountInputDto)
+  discount?: DiscountInputDto;
 }

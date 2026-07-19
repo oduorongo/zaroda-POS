@@ -4,7 +4,12 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { InventoryTxnType, SaleStatus } from '@prisma/client';
+import {
+  DiscountType,
+  InventoryTxnType,
+  Role,
+  SaleStatus,
+} from '@prisma/client';
 import {
   TenantScopedPrismaService,
   TenantTx,
@@ -15,7 +20,17 @@ import { InventoryTransactionsService } from '../inventory/inventory-transaction
 import { CreateSaleDto } from './dto/create-sale.dto';
 import { VoidSaleDto } from './dto/void-sale.dto';
 
-const SALE_INCLUDE = { lineItems: true, payments: true } as const;
+const SALE_INCLUDE = {
+  lineItems: true,
+  payments: true,
+  discounts: true,
+} as const;
+const DISCOUNT_APPROVER_ROLES: Role[] = [
+  Role.SUPERVISOR,
+  Role.MANAGER,
+  Role.OWNER,
+];
+const round2 = (n: number) => Math.round(n * 100) / 100;
 
 @Injectable()
 export class SalesService {
@@ -100,10 +115,48 @@ export class SalesService {
         };
       });
 
+      // Discounts apply to the post-tax ticket total (the amount actually
+      // charged), not to the pre-tax subtotal - simplest and matches how a
+      // cashier physically keys "10% off the whole ticket" at the register.
+      // The approver is re-verified against the database on every sale: the
+      // client sends approvedById, but a cashier could otherwise pass their
+      // own id and grant themselves a discount, so trusting the client's
+      // claim of who authorized it would defeat the whole point of requiring
+      // approval.
+      let discountAmount = 0;
+      if (dto.discount) {
+        const approver = await tx.orgUser.findUnique({
+          where: { id: dto.discount.approvedById },
+        });
+        if (!approver || !DISCOUNT_APPROVER_ROLES.includes(approver.role)) {
+          throw new BadRequestException(
+            'Discount approver must be a supervisor, manager, or owner in this organization',
+          );
+        }
+
+        if (dto.discount.type === DiscountType.PERCENT) {
+          if (dto.discount.value > 100) {
+            throw new BadRequestException(
+              'A percent discount cannot exceed 100',
+            );
+          }
+          discountAmount = round2(total * (dto.discount.value / 100));
+        } else {
+          discountAmount = round2(dto.discount.value);
+        }
+
+        if (discountAmount > total) {
+          throw new BadRequestException(
+            `Discount amount ${discountAmount.toFixed(2)} cannot exceed the sale total ${total.toFixed(2)}`,
+          );
+        }
+      }
+
+      const finalTotal = round2(total - discountAmount);
       const paymentsTotal = dto.payments.reduce((sum, p) => sum + p.amount, 0);
-      if (Math.abs(paymentsTotal - total) > 0.01) {
+      if (Math.abs(paymentsTotal - finalTotal) > 0.01) {
         throw new BadRequestException(
-          `Payments total ${paymentsTotal.toFixed(2)} does not match sale total ${total.toFixed(2)}`,
+          `Payments total ${paymentsTotal.toFixed(2)} does not match sale total ${finalTotal.toFixed(2)}`,
         );
       }
 
@@ -118,7 +171,7 @@ export class SalesService {
           cashierOrgUserId: cashierSession.orgUserId,
           clientId: dto.clientId,
           status: SaleStatus.COMPLETED,
-          total,
+          total: finalTotal,
           lineItems: { create: lineItemRows },
           payments: {
             create: dto.payments.map((p) => ({
@@ -126,6 +179,15 @@ export class SalesService {
               amount: p.amount,
             })),
           },
+          discounts: dto.discount
+            ? {
+                create: {
+                  type: dto.discount.type,
+                  value: dto.discount.value,
+                  approvedById: dto.discount.approvedById,
+                },
+              }
+            : undefined,
         },
         include: SALE_INCLUDE,
       });
@@ -144,7 +206,20 @@ export class SalesService {
         action: 'sale.created',
         entityType: 'Sale',
         entityId: sale.id,
-        after: { total, lineItemCount: lineItemRows.length },
+        after: {
+          total: finalTotal,
+          lineItemCount: lineItemRows.length,
+          ...(dto.discount
+            ? {
+                discount: {
+                  type: dto.discount.type,
+                  value: dto.discount.value,
+                  amount: discountAmount,
+                  approvedById: dto.discount.approvedById,
+                },
+              }
+            : {}),
+        },
         terminalId: dto.terminalId,
       });
 

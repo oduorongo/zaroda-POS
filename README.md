@@ -267,12 +267,47 @@ against a live database.**
   `pnpm typecheck`, `pnpm build`, `pnpm test`, and `pnpm lint` all pass
   clean for `apps/api`.
 
-Still to do in Phase 2: promotions/discount engine, loyalty points,
-layaway, ESC/POS receipt printer integration, barcode scanner integration,
-and proactive low-stock alerting (Redis/BullMQ + Africa's Talking SMS -
-today's `lowStockOnly` filter on `GET /inventory/items` is pull-based
-only, not a push notification). Phase 3 (non-functional hardening) is
-after that, per the roadmap in DESIGN.md.
+**Phase 2 — Sale-level discounts: done and verified end-to-end against a
+live database.**
+
+- `POST /sales` now accepts an optional `discount: { type: PERCENT|FIXED,
+  value, approvedById }`. The schema's `Discount` model already existed
+  from Phase 0 (`saleId`, `type`, `value`, `approvedById`) but was never
+  wired into the sale-creation flow until now.
+- Applied to the post-tax ticket total (the amount actually charged), not
+  the pre-tax subtotal - matches how a cashier physically keys "10% off
+  the whole ticket" at the register, and avoids re-deriving per-line tax
+  on a discounted subtotal for a case this small a pilot doesn't need.
+- The approver is **re-verified against the database on every sale**, not
+  trusted from the client: `approvedById` must resolve to a real `OrgUser`
+  in the tenant holding SUPERVISOR/MANAGER/OWNER - a cashier passing their
+  own id (or any id that doesn't hold one of those roles) is rejected with
+  400, so self-approval isn't possible just by shaping the request body.
+  `PERCENT` is capped at 100; either discount type is rejected with 400 if
+  it would exceed the sale's total.
+- The sale's persisted `total` is the post-discount amount actually
+  collected (matches what shift cash-reconciliation and reporting already
+  sum); the `Discount` row retains the original type/value so the
+  pre-discount amount is always derivable. The audit log
+  (`sale.created`) records the computed discount amount and approver
+  alongside the total.
+- **Verified live**: a 10%-off sale on an 80 KES item with 16% tax
+  (92.80 → 83.52) computed and persisted correctly, decremented inventory
+  exactly once, and the audit log captured the right discount breakdown;
+  a cashier-id approver, a nonexistent-id approver, a FIXED discount
+  larger than the ticket, and a PERCENT above 100 were each independently
+  rejected with 400 without ever touching inventory or creating a sale; a
+  raw query with no tenant context set confirmed 0 rows visible on
+  `discounts` (RLS, inherited from the existing tenant-isolation policy on
+  that table). `pnpm typecheck`, `pnpm build`, `pnpm test`, and `pnpm
+  lint` all pass clean for `apps/api`.
+
+Still to do in Phase 2: loyalty points, layaway, ESC/POS receipt printer
+integration, barcode scanner integration, and proactive low-stock
+alerting (Redis/BullMQ + Africa's Talking SMS - today's `lowStockOnly`
+filter on `GET /inventory/items` is pull-based only, not a push
+notification). Phase 3 (non-functional hardening) is after that, per the
+roadmap in DESIGN.md.
 
 ## Getting started
 
