@@ -47,6 +47,7 @@ model Organization {
   auditLogs      AuditLog[]
   stockTransfers StockTransfer[]
   stockTakes     StockTake[]
+  lowStockAlerts LowStockAlert[]
 
   @@map("organizations")
 }
@@ -68,6 +69,7 @@ model Branch {
   stockTakes           StockTake[]
   transfersOut         StockTransfer[] @relation("TransferFromBranch")
   transfersIn          StockTransfer[] @relation("TransferToBranch")
+  lowStockAlerts       LowStockAlert[]
 
   @@index([organizationId])
   @@map("branches")
@@ -226,6 +228,7 @@ model ProductVariant {
   saleLineItems        SaleLineItem[]
   stockTransfers       StockTransfer[]
   stockTakeLines       StockTakeLine[]
+  lowStockAlerts       LowStockAlert[]
 
   @@unique([productId, sku])
   @@index([barcode])
@@ -252,6 +255,42 @@ model InventoryItem {
 
   @@unique([branchId, variantId])
   @@map("inventory_items")
+}
+
+enum LowStockAlertStatus {
+  OPEN
+  RESOLVED
+}
+
+// Detected synchronously whenever InventoryTransactionsService.recordInTx
+// moves a branch+variant's quantity across its lowStockThreshold (see that
+// service) - no polling/cron needed since every quantity change already
+// goes through one place. There is at most one OPEN alert per
+// branch+variant at a time (re-crossing below the threshold while already
+// OPEN does not create a duplicate); it auto-resolves the moment the
+// quantity rises back above the threshold. This is the durable record a
+// future SMS/notification worker (DESIGN.md Phase 2 roadmap - deferred
+// until Redis/BullMQ and Africa's Talking credentials are provisioned)
+// would consume, same pattern as how sale_payments already models M-Pesa
+// fields ahead of the integration being wired up.
+model LowStockAlert {
+  id             String               @id @default(uuid())
+  organizationId String
+  branchId       String
+  variantId      String
+  quantity       Int // snapshot at the moment the alert opened
+  threshold      Int // snapshot of InventoryItem.lowStockThreshold at that moment
+  status         LowStockAlertStatus  @default(OPEN)
+  createdAt      DateTime             @default(now())
+  resolvedAt     DateTime?
+
+  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  branch       Branch         @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  variant      ProductVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([branchId, variantId, status])
+  @@map("low_stock_alerts")
 }
 
 enum InventoryTxnType {

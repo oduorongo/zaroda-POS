@@ -3,10 +3,12 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { LowStockAlertStatus } from '@prisma/client';
 import {
   TenantScopedPrismaService,
   TenantTx,
 } from '../common/prisma/tenant-scoped-prisma.service';
+import { getTenantStore } from '../common/tenant/tenant-context';
 import { CreateInventoryTransactionDto } from './dto/create-inventory-transaction.dto';
 
 @Injectable()
@@ -66,7 +68,7 @@ export class InventoryTransactionsService {
     // row-lock level, so concurrent transactions against the same
     // branch+variant can't race each other into an inconsistent derived
     // count without needing application-level locking (DESIGN.md §4/§7).
-    await tx.inventoryItem.upsert({
+    const item = await tx.inventoryItem.upsert({
       where: {
         branchId_variantId: {
           branchId: dto.branchId,
@@ -81,7 +83,60 @@ export class InventoryTransactionsService {
       update: { quantity: { increment: dto.quantityDelta } },
     });
 
+    await this.syncLowStockAlert(tx, item);
+
     return transaction;
+  }
+
+  /**
+   * Every quantity change funnels through recordInTx, so this is the one
+   * place a low-stock crossing can be detected - no separate poll/cron
+   * needed. A threshold of 0 means the tenant hasn't set one for this item
+   * (opted out), so it's never alerted on. At most one OPEN alert exists
+   * per branch+variant: re-crossing below the threshold while already OPEN
+   * doesn't create a duplicate, and rising back above it auto-resolves the
+   * existing alert. This table is the durable record a future SMS/
+   * notification worker would consume once Redis/BullMQ and Africa's
+   * Talking credentials are provisioned (DESIGN.md Phase 2 roadmap) - not
+   * built yet, same as M-Pesa was scaffolded ahead of real credentials.
+   */
+  private async syncLowStockAlert(
+    tx: TenantTx,
+    item: {
+      branchId: string;
+      variantId: string;
+      quantity: number;
+      lowStockThreshold: number;
+    },
+  ) {
+    if (item.lowStockThreshold <= 0) return;
+
+    const openAlert = await tx.lowStockAlert.findFirst({
+      where: {
+        branchId: item.branchId,
+        variantId: item.variantId,
+        status: LowStockAlertStatus.OPEN,
+      },
+    });
+
+    if (item.quantity <= item.lowStockThreshold) {
+      if (openAlert) return;
+      const { organizationId } = getTenantStore();
+      await tx.lowStockAlert.create({
+        data: {
+          organizationId,
+          branchId: item.branchId,
+          variantId: item.variantId,
+          quantity: item.quantity,
+          threshold: item.lowStockThreshold,
+        },
+      });
+    } else if (openAlert) {
+      await tx.lowStockAlert.update({
+        where: { id: openAlert.id },
+        data: { status: LowStockAlertStatus.RESOLVED, resolvedAt: new Date() },
+      });
+    }
   }
 
   /** Standalone entry point (e.g. the /inventory/transactions endpoint) - opens its own transaction. */

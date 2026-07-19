@@ -4,6 +4,7 @@ import {
   Get,
   Param,
   ParseUUIDPipe,
+  Patch,
   Post,
   Query,
 } from '@nestjs/common';
@@ -15,6 +16,8 @@ import { CreateInventoryTransactionDto } from './dto/create-inventory-transactio
 import {
   ListInventoryItemsDto,
   ListInventoryTransactionsDto,
+  ListLowStockAlertsDto,
+  SetLowStockThresholdDto,
 } from './dto/list-inventory.dto';
 
 // JwtAuthGuard and RolesGuard are both global (see app.module.ts).
@@ -41,6 +44,31 @@ export class InventoryController {
     @Param('variantId', ParseUUIDPipe) variantId: string,
   ) {
     return this.items.findOne(branchId, variantId);
+  }
+
+  @Roles(Role.SUPERVISOR, Role.MANAGER, Role.OWNER)
+  @Patch('items/:branchId/:variantId/threshold')
+  setLowStockThreshold(
+    @Param('branchId', ParseUUIDPipe) branchId: string,
+    @Param('variantId', ParseUUIDPipe) variantId: string,
+    @Body() dto: SetLowStockThresholdDto,
+  ) {
+    return this.items.setLowStockThreshold(
+      branchId,
+      variantId,
+      dto.lowStockThreshold,
+    );
+  }
+
+  // Management-facing, like the ledger below - a cashier doesn't need the
+  // alert feed, just the lowStockOnly filter on items above.
+  @Roles(Role.SUPERVISOR, Role.MANAGER, Role.OWNER, Role.AUDITOR)
+  @Get('alerts')
+  findLowStockAlerts(@Query() query: ListLowStockAlertsDto) {
+    return this.items.findLowStockAlerts({
+      branchId: query.branchId,
+      includeResolved: query.includeResolved === 'true',
+    });
   }
 
   // The ledger itself (who moved what stock, when, why) is a

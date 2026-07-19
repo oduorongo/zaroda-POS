@@ -1,4 +1,10 @@
-import { IsBooleanString, IsOptional, IsUUID } from 'class-validator';
+import {
+  IsBooleanString,
+  IsInt,
+  IsOptional,
+  IsUUID,
+  Min,
+} from 'class-validator';
 
 export class ListInventoryItemsDto {
   @IsUUID()
@@ -18,4 +24,23 @@ export class ListInventoryTransactionsDto {
   @IsUUID()
   @IsOptional()
   variantId?: string;
+}
+
+export class SetLowStockThresholdDto {
+  // 0 means "not tracked" - see InventoryTransactionsService.syncLowStockAlert.
+  @IsInt()
+  @Min(0)
+  lowStockThreshold!: number;
+}
+
+export class ListLowStockAlertsDto {
+  @IsUUID()
+  @IsOptional()
+  branchId?: string;
+
+  // Defaults to OPEN-only in the service - pass "false" to include resolved
+  // alerts in the history view.
+  @IsBooleanString()
+  @IsOptional()
+  includeResolved?: string;
 }

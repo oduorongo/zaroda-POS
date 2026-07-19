@@ -302,11 +302,49 @@ live database.**
   that table). `pnpm typecheck`, `pnpm build`, `pnpm test`, and `pnpm
   lint` all pass clean for `apps/api`.
 
+**Phase 2 — Low-stock alerts: done and verified end-to-end against a live
+database.** Scoped deliberately: the original spec called for Redis/
+BullMQ + Africa's Talking SMS, but neither is provisioned yet (same
+situation M-Pesa was in - see the sales-pipeline decision above). Rather
+than stand up new infra nobody could verify against real credentials,
+this increment builds the durable, fully-testable half now and leaves SMS
+delivery as a thin future consumer of it, exactly how M-Pesa was
+scaffolded-but-not-wired.
+
+- New `LowStockAlert` model + `PATCH /inventory/items/:branchId/:variantId
+  /threshold` (manager+ only - `InventoryItem.lowStockThreshold` existed
+  in the schema since Phase 0 but had no API to actually set it until
+  now) and `GET /inventory/alerts` (manager+/auditor, `branchId` filter,
+  `includeResolved` to see history).
+- Detection is synchronous and lives in
+  `InventoryTransactionsService.recordInTx` - the single place every
+  quantity change already funnels through (sales, transfers, stock takes,
+  manual adjustments) - so no cron/poller was needed and every existing
+  caller got alerting for free with zero changes to `SalesService`,
+  `StockTransfersService`, or `StockTakesService`. A threshold of 0 (the
+  default) means "not tracked," so untouched items never alert. At most
+  one OPEN alert exists per branch+variant - re-crossing below the
+  threshold while already OPEN does not create a duplicate - and it
+  auto-resolves the moment quantity rises back above the threshold.
+- **Verified live**: setting a threshold above current stock created no
+  alert; a manual `ADJUSTMENT` crossing below it opened exactly one alert
+  with the correct quantity/threshold snapshot; a second adjustment while
+  still below threshold did not create a duplicate (confirmed count stayed
+  at 1); restocking above the threshold auto-resolved it (confirmed via
+  `includeResolved=true`); a real sale crossing the threshold triggered
+  the exact same alert path with no sales-module-specific code, proving
+  the shared `recordInTx` hook actually is shared; a cashier token got 403
+  on both new endpoints while `GET /inventory/items` stayed open to them;
+  and a raw query with no tenant context set confirmed 0 rows visible on
+  `low_stock_alerts` (RLS). `pnpm typecheck`, `pnpm build`, `pnpm test`,
+  and `pnpm lint` all pass clean for `apps/api`.
+
 Still to do in Phase 2: loyalty points, layaway, ESC/POS receipt printer
-integration, barcode scanner integration, and proactive low-stock
-alerting (Redis/BullMQ + Africa's Talking SMS - today's `lowStockOnly`
-filter on `GET /inventory/items` is pull-based only, not a push
-notification). Phase 3 (non-functional hardening) is after that, per the
+integration, and barcode scanner integration - all need physical hardware
+to verify live, so they're the natural next candidates to scope carefully
+before starting. The SMS delivery half of low-stock alerts (Redis/BullMQ
++ Africa's Talking) remains deferred until real credentials exist, same
+as M-Pesa. Phase 3 (non-functional hardening) is after that, per the
 roadmap in DESIGN.md.
 
 ## Getting started

@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { LowStockAlertStatus } from '@prisma/client';
 import { TenantScopedPrismaService } from '../common/prisma/tenant-scoped-prisma.service';
 
 @Injectable()
@@ -41,5 +42,50 @@ export class InventoryItemsService {
         'No inventory record for this branch/variant - it may just never have had a stock movement yet',
       );
     return item;
+  }
+
+  /**
+   * Upserts because a branch+variant may not have an InventoryItem row yet
+   * (one is only created on the first stock movement) - a manager should
+   * still be able to set a threshold ahead of the first delivery.
+   */
+  async setLowStockThreshold(
+    branchId: string,
+    variantId: string,
+    lowStockThreshold: number,
+  ) {
+    return this.tenantPrisma.run(async (tx) => {
+      const [branch, variant] = await Promise.all([
+        tx.branch.findUnique({ where: { id: branchId } }),
+        tx.productVariant.findUnique({ where: { id: variantId } }),
+      ]);
+      if (!branch) throw new NotFoundException('Branch not found');
+      if (!variant) throw new NotFoundException('Product variant not found');
+
+      return tx.inventoryItem.upsert({
+        where: { branchId_variantId: { branchId, variantId } },
+        create: { branchId, variantId, lowStockThreshold },
+        update: { lowStockThreshold },
+      });
+    });
+  }
+
+  findLowStockAlerts(filters: {
+    branchId?: string;
+    includeResolved?: boolean;
+  }) {
+    return this.tenantPrisma.run((tx) =>
+      tx.lowStockAlert.findMany({
+        where: {
+          branchId: filters.branchId,
+          status: filters.includeResolved
+            ? undefined
+            : LowStockAlertStatus.OPEN,
+        },
+        include: { variant: { include: { product: true } }, branch: true },
+        orderBy: { createdAt: 'desc' },
+        take: 200,
+      }),
+    );
   }
 }

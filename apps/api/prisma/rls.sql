@@ -218,6 +218,12 @@ CREATE POLICY tenant_isolation ON stock_take_lines
   WITH CHECK (EXISTS (SELECT 1 FROM stock_takes st WHERE st.id = stock_take_lines."stockTakeId"
                  AND st."organizationId" = current_setting('app.current_tenant', true)));
 
+ALTER TABLE low_stock_alerts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE low_stock_alerts FORCE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON low_stock_alerts
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
 -- ── organizations itself ─────────────────────────────────────────────────
 -- A tenant may only ever see its own organization row (not a child table,
 -- so it filters on id directly rather than organizationId). Same pre-auth
