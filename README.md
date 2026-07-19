@@ -512,24 +512,55 @@ verified live, blocked on a Neon outage.**
   `.env.example` (this is very likely the root cause of most of the
   `P1001`/timeout flakiness logged throughout every earlier phase of this
   build - a cold-start latency issue, not an actual outage each time).
-- **Still pending**: the load test itself (concurrency correctness,
-  latency percentiles) and a live re-verification of the `pinLogin` fix
-  have **not yet run to completion** - the database went from
-  intermittently slow to consistently unreachable (`Timed out fetching a
-  new connection from the connection pool` on both the pooled and direct
-  URLs, with no local stray processes holding connections) partway
-  through this investigation, and stayed down through multiple retries
-  and backoff waits. This is now genuinely blocked on Neon's side
-  clearing up, not something more retrying from here resolves. Both code
-  fixes are typecheck/build/test/lint-clean and one already has a live
-  proof-of-concept (the successful 12s connect above), but the load test
-  itself needs to be re-run once the database is reachable again.
+- **Update after the outage cleared**: the database came back reachable,
+  but required a *third* timeout fix beyond the two already documented -
+  Prisma's `pool_timeout` (default 10s, distinct from `connect_timeout`)
+  is what the exact "Timed out fetching a new connection from the
+  connection pool" error was actually about, not `connect_timeout` alone.
+  Confirmed by raising both together and watching a query that had failed
+  at exactly 5000ms/10000ms every time finally succeed at 10-16s. Added
+  `pool_timeout=30` alongside `connect_timeout=30` to both `DATABASE_URL`
+  and `DIRECT_URL`.
+- Running the actual load test with the DB reachable again surfaced a
+  **fourth** real finding: all 50 concurrent sales failed with
+  `PrismaClientKnownRequestError: Unable to start a transaction in the
+  given time` - Prisma's client-side connection pool size was left at its
+  implicit default (`num_cpus*2+1` = 9 on this machine), and every write
+  in this app is an interactive transaction that holds a pool connection
+  for its full duration (`TenantScopedPrismaService.run()`), so 50
+  concurrent writes queue for a connection and time out rather than
+  erroring cleanly or gracefully backing off. **Fixed** by adding an
+  explicit `connection_limit=10` (sized for this pilot's stated scale -
+  DESIGN.md's "<10 terminals" - with headroom; documented in
+  `.env.example` as something to raise, alongside Neon's own per-role
+  connection cap, if the target scale grows).
+- **What's honestly still unverified**: a clean, fully-passing 50-way
+  concurrent load-test run. Immediately after applying the
+  `connection_limit` fix, this session's network path to Neon degraded
+  further still - a single unrelated `GET` request took over 30 seconds -
+  making any load-test result gathered at that moment reflect this
+  session's network conditions, not the application's real behavior.
+  Rather than report a misleading pass/fail number, this is being
+  recorded honestly as **inconclusive, pending a re-run under normal
+  network conditions** in a later session. What *is* independently
+  confirmed real and fixed, regardless of that inconclusive run: the
+  `pinLogin` transaction timeout, the connect/pool timeout
+  under-configuration, and the connection pool sizing gap - all four are
+  genuine defects a load-testing exercise is supposed to catch, and all
+  four were caught and fixed, even though the capstone "run 50 concurrent
+  sales cleanly" number itself is still pending.
+- The load-test script itself was hardened during this exercise too - its
+  `get()` helper was silently turning a failed request into `undefined`/
+  `NaN` deep inside a later PASS/FAIL comparison instead of failing
+  loudly, which is exactly the kind of gap that turns "the test result is
+  confusing" into "the test result is wrong."
 
-Still to do in Phase 3: finish running the load test above (blocked on DB
-availability), a PCI review of the cash/M-Pesa payment flow, a drilled DR
-runbook, and a sync-conflict dashboard for supervisors (the last of these
-can now lean on the correlation ids added in the structured-logging
-increment).
+Still to do in Phase 3: re-run `scripts/load-test-stock-decrement.mjs`
+under normal (non-degraded) network conditions to get a real pass/fail
+signal on the fixes above; a PCI review of the cash/M-Pesa payment flow;
+a drilled DR runbook; and a sync-conflict dashboard for supervisors (the
+last of these can now lean on the correlation ids added in the
+structured-logging increment).
 
 ## Getting started
 

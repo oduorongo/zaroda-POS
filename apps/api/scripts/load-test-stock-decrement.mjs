@@ -53,7 +53,14 @@ async function get(path, token) {
   const res = await fetch(`${API_BASE}${path}`, {
     headers: token ? { Authorization: `Bearer ${token}` } : {},
   });
-  return res.json();
+  const json = await res.json().catch(() => null);
+  // Fail loudly rather than letting a network/DB hiccup silently turn
+  // into `undefined`/`NaN` deep in a later PASS/FAIL comparison - a real
+  // run against a severely latent database surfaced exactly this gap.
+  if (!res.ok || json === null) {
+    throw new Error(`GET ${path} failed: ${res.status} ${JSON.stringify(json)}`);
+  }
+  return json;
 }
 
 async function main() {
