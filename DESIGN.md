@@ -37,6 +37,13 @@ A NestJS request-scoped interceptor reads `organization_id` from the authenticat
 
 `SUPER_ADMIN`-only operations (platform ops, not tenant staff) run under a separate connection role that bypasses RLS explicitly (`BYPASSRLS`), used only by internal admin tooling, never by tenant-facing request paths.
 
+**Two things that will silently defeat this on a real database, learned the hard way while provisioning Phase 0's Neon instance** (both fixed, see `apps/api/prisma/rls.sql` and `create-app-role.sql`):
+
+1. **The app's connection role must not be the table owner** (or must have `FORCE ROW LEVEL SECURITY` on every table — but on Neon specifically, the default owner role is also granted `BYPASSRLS`, which `FORCE` cannot override; Postgres skips RLS for a `BYPASSRLS` role no matter what). The app runtime connects as a dedicated least-privilege role (`zaroda_app`) created by `create-app-role.sql`; migrations still run as the owner. Get this wrong and every query "just works" and looks correct — there's no error, RLS just silently doesn't apply.
+2. **`current_setting('app.current_tenant', true)` returns `''` (empty string), not `NULL`, when the setting was never established in that connection.** The pre-auth login exception (§ below) originally checked `... IS NULL`, which never matched — fixed to `NULLIF(current_setting(...), '') IS NULL`. Any future policy with a similar "allow when no tenant is set yet" branch needs the same guard.
+
+Both are exactly the class of bug this design is meant to make impossible — worth stating plainly rather than only fixing quietly.
+
 ---
 
 ## 3. Module contract (the part that keeps verticals from forking the core)

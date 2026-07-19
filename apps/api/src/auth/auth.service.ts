@@ -70,6 +70,8 @@ export class AuthService {
    * module in Phase 1 - this only handles "who is the current cashier".
    */
   async pinLogin(dto: PinLoginDto) {
+    // org_users has a pre-auth SELECT exception (prisma/rls.sql), so this
+    // lookup works before any tenant is established.
     const orgUser = await this.prisma.orgUser.findUnique({
       where: { id: dto.orgUserId },
       include: { user: true },
@@ -81,13 +83,21 @@ export class AuthService {
       throw new UnauthorizedException('Invalid PIN');
     }
 
-    const terminal = await this.prisma.terminal.findUnique({
-      where: { id: dto.terminalId },
-    });
-    if (!terminal) throw new UnauthorizedException('Unknown terminal');
+    // Everything from here on touches tables with no pre-auth exception
+    // (terminals, cashier_sessions) - now that orgUser resolves the tenant,
+    // establish it for the rest of this unit of work so FORCE ROW LEVEL
+    // SECURITY doesn't hide/reject these operations.
+    const { terminal, session } = await this.prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT set_config('app.current_tenant', ${orgUser.organizationId}, true)`;
 
-    const session = await this.prisma.cashierSession.create({
-      data: { terminalId: dto.terminalId, orgUserId: orgUser.id },
+      const terminal = await tx.terminal.findUnique({ where: { id: dto.terminalId } });
+      if (!terminal) throw new UnauthorizedException('Unknown terminal');
+
+      const session = await tx.cashierSession.create({
+        data: { terminalId: dto.terminalId, orgUserId: orgUser.id },
+      });
+
+      return { terminal, session };
     });
 
     const token = this.issueToken({
