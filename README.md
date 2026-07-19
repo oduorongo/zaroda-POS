@@ -68,8 +68,40 @@ Inventory module also done and verified live:
 - RLS re-verified for `inventory_items` and `inventory_transactions` (0
   rows visible with no tenant set).
 
-Still to do in Phase 1: sales pipeline (cash + M-Pesa STK
-push), shifts/X-Z reports, core reporting, terminal PWA.
+Sales pipeline (cash) also done and verified live:
+
+- `POST /sales`: line items priced from the current variant price, tax
+  computed per line from the product's tax class, payments validated to
+  sum to the total, inventory decremented per line item, and an audit log
+  entry written - all inside one tenant-scoped transaction (sale
+  creation + inventory ledger write + audit log commit or roll back
+  together, never partially). Idempotent on `clientId`: a retried
+  submission returns the original sale rather than double-selling.
+- `PATCH /sales/:id/void`: reverses the inventory decrement (a `RETURN`
+  ledger entry per line), marks the sale `VOIDED` (never deleted), and
+  audit-logs the reason. Voiding an already-voided sale is rejected.
+- **M-Pesa is deliberately not wired in yet.** `PaymentProcessor` is a real
+  interface with `CashPaymentProcessor` (used) and `MpesaPaymentProcessor`
+  (STK push implemented against the Daraja API spec, but unverified - no
+  sandbox credentials in this environment). A sale submitted with a
+  non-cash payment method is rejected with a clear error, not silently
+  mishandled. Wiring M-Pesa into sale completion needs an async
+  pending-payment status and a callback webhook, deferred until there are
+  real credentials to design and test that against.
+- Found and fixed a real issue while load-testing this against Neon:
+  Prisma's default 5s interactive-transaction timeout was too tight for a
+  sale's multiple round-trips over the connection's latency - raised to
+  15s in `TenantScopedPrismaService`.
+- Verified live end-to-end: a full sale (2 items, VAT-inclusive total
+  computed correctly), inventory decrementing correctly, idempotent retry
+  (no double-decrement), rejected mismatched payment totals, rejected
+  M-Pesa attempts, a `CASHIER` ringing up a sale but getting 403 on void,
+  an `OWNER` voiding successfully with inventory reversed and the audit
+  log showing both `sale.created` and `sale.voided` with the correct
+  actor, and RLS still denying `sales`/`sale_line_items`/`sale_payments`
+  with no tenant set.
+
+Still to do in Phase 1: shifts/X-Z reports, core reporting, terminal PWA.
 
 ## Getting started
 

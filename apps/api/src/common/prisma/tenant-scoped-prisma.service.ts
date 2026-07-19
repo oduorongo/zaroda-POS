@@ -21,9 +21,19 @@ export class TenantScopedPrismaService {
 
   async run<T>(fn: (tx: TenantTx) => Promise<T>): Promise<T> {
     const { organizationId } = getTenantStore();
-    return this.prisma.$transaction(async (tx) => {
-      await tx.$executeRaw`SELECT set_config('app.current_tenant', ${organizationId}, true)`;
-      return fn(tx);
-    });
+    return this.prisma.$transaction(
+      async (tx) => {
+        await tx.$executeRaw`SELECT set_config('app.current_tenant', ${organizationId}, true)`;
+        return fn(tx);
+      },
+      // Prisma's default interactive-transaction timeout is 5s, which a
+      // multi-step unit of work (e.g. SalesService.create: several lookups,
+      // line items, an inventory ledger write per line, an audit log entry)
+      // can exceed over a remote connection's round-trip latency - raised
+      // rather than trimming the transaction's work, since correctness
+      // (everything committing/rolling back together) matters more here
+      // than shaving milliseconds off a POS sale.
+      { timeout: 15_000 },
+    );
   }
 }

@@ -5,6 +5,7 @@ import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { PrismaModule } from './common/prisma/prisma.module';
+import { AuditLogModule } from './common/audit/audit-log.module';
 import { TenantContextInterceptor } from './common/tenant/tenant-context.interceptor';
 import { AuthModule } from './auth/auth.module';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
@@ -12,6 +13,8 @@ import { RolesGuard } from './auth/roles.guard';
 import { ModuleRegistryModule } from './module-registry/module-registry.module';
 import { CatalogModule } from './catalog/catalog.module';
 import { InventoryModule } from './inventory/inventory.module';
+import { PaymentsModule } from './payments/payments.module';
+import { SalesModule } from './sales/sales.module';
 
 // Phase 1+ will import vertical module packages here and register their
 // manifests on ModuleRegistryService at bootstrap (see DESIGN.md §3) - none
@@ -22,10 +25,13 @@ import { InventoryModule } from './inventory/inventory.module';
     ConfigModule.forRoot({ isGlobal: true }),
     EventEmitterModule.forRoot(),
     PrismaModule,
+    AuditLogModule,
     ModuleRegistryModule,
     AuthModule,
     CatalogModule,
     InventoryModule,
+    PaymentsModule,
+    SalesModule,
   ],
   controllers: [AppController],
   providers: [

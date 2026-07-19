@@ -1,0 +1,128 @@
+import { Injectable, InternalServerErrorException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import {
+  PaymentInitiationResult,
+  PaymentProcessor,
+} from './payment-processor.interface';
+
+/**
+ * Safaricom Daraja STK Push (Lipa Na M-Pesa Online). Implemented against the
+ * published API spec but NOT YET LIVE-TESTED - this environment has no
+ * sandbox credentials (see DESIGN.md and the Phase 1 sales-pipeline
+ * decision: cash was built and verified first; wiring this into
+ * SalesService, and the /payments/mpesa/callback webhook that completes the
+ * async settlement, is deferred until credentials are available to design
+ * and test that flow properly rather than guess at it).
+ *
+ * Required env: MPESA_CONSUMER_KEY, MPESA_CONSUMER_SECRET, MPESA_SHORTCODE,
+ * MPESA_PASSKEY, MPESA_CALLBACK_URL. MPESA_ENV=production switches off the
+ * sandbox host; defaults to sandbox.
+ */
+@Injectable()
+export class MpesaPaymentProcessor implements PaymentProcessor {
+  constructor(private readonly config: ConfigService) {}
+
+  private get baseUrl(): string {
+    return this.config.get<string>('MPESA_ENV') === 'production'
+      ? 'https://api.safaricom.co.ke'
+      : 'https://sandbox.safaricom.co.ke';
+  }
+
+  private requireConfig(key: string): string {
+    const value = this.config.get<string>(key);
+    if (!value) {
+      throw new InternalServerErrorException(
+        `M-Pesa is not configured (${key} missing) - STK push cannot be initiated until Daraja credentials are set.`,
+      );
+    }
+    return value;
+  }
+
+  private async getAccessToken(): Promise<string> {
+    const consumerKey = this.requireConfig('MPESA_CONSUMER_KEY');
+    const consumerSecret = this.requireConfig('MPESA_CONSUMER_SECRET');
+    const credentials = Buffer.from(
+      `${consumerKey}:${consumerSecret}`,
+    ).toString('base64');
+
+    const response = await fetch(
+      `${this.baseUrl}/oauth/v1/generate?grant_type=client_credentials`,
+      {
+        headers: { Authorization: `Basic ${credentials}` },
+      },
+    );
+    if (!response.ok) {
+      throw new InternalServerErrorException(
+        `M-Pesa OAuth failed: ${response.status} ${await response.text()}`,
+      );
+    }
+    const body = (await response.json()) as { access_token: string };
+    return body.access_token;
+  }
+
+  /** YYYYMMDDHHmmss, as Daraja requires for both the password hash and the request timestamp. */
+  private timestamp(): string {
+    const now = new Date();
+    const pad = (n: number) => n.toString().padStart(2, '0');
+    return `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+  }
+
+  async initiate(input: {
+    amountKes: number;
+    reference: string;
+    phoneNumber?: string;
+  }): Promise<PaymentInitiationResult> {
+    if (!input.phoneNumber) {
+      throw new InternalServerErrorException(
+        'phoneNumber is required to initiate an M-Pesa STK push',
+      );
+    }
+
+    const shortcode = this.requireConfig('MPESA_SHORTCODE');
+    const passkey = this.requireConfig('MPESA_PASSKEY');
+    const callbackUrl = this.requireConfig('MPESA_CALLBACK_URL');
+    const accessToken = await this.getAccessToken();
+    const timestamp = this.timestamp();
+    const password = Buffer.from(`${shortcode}${passkey}${timestamp}`).toString(
+      'base64',
+    );
+
+    const response = await fetch(
+      `${this.baseUrl}/mpesa/stkpush/v1/processrequest`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          BusinessShortCode: shortcode,
+          Password: password,
+          Timestamp: timestamp,
+          TransactionType: 'CustomerPayBillOnline',
+          Amount: Math.round(input.amountKes),
+          PartyA: input.phoneNumber,
+          PartyB: shortcode,
+          PhoneNumber: input.phoneNumber,
+          CallBackURL: callbackUrl,
+          AccountReference: input.reference,
+          TransactionDesc: `ZARODA POS sale ${input.reference}`,
+        }),
+      },
+    );
+    if (!response.ok) {
+      throw new InternalServerErrorException(
+        `M-Pesa STK push failed: ${response.status} ${await response.text()}`,
+      );
+    }
+    const body = (await response.json()) as { CheckoutRequestID: string };
+
+    // Not settled yet - the customer still has to approve the prompt on
+    // their phone. The callback webhook (not yet built - see class comment)
+    // is what will eventually mark this payment/sale complete.
+    return {
+      settledImmediately: false,
+      providerReference: body.CheckoutRequestID,
+    };
+  }
+}
