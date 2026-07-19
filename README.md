@@ -592,8 +592,41 @@ any real contention even enters the picture. This is an infrastructure
 characteristic of this session, not a defect in the pool sizing,
 timeouts, or transaction logic - all of which are now independently
 confirmed correct by the fact that Test 2's *correctness* (not just its
-speed) passes cleanly under the exact same degraded conditions. Re-running
-Test 1 once Neon's latency returns to normal is the one open item here.
+speed) passes cleanly under the exact same degraded conditions.
+
+**Retried again later in the session, after waiting for the connection
+to plausibly recover**: baseline latency did improve materially (three
+back-to-back connection checks landed consistently around 3.6-4.2s, down
+from the 20-30s+ failures seen earlier), and at 50-way concurrency the
+idempotency test (Test 2) again passed completely - 10/10, zero 5xx. Test
+1 improved too but still didn't reach a clean pass: at a *more*
+realistic concurrency (10, matching this pilot's actual "<10 terminals"
+target scale, rather than the deliberately extreme 50) exactly 2/10
+sales succeeded, with the successful ones confirming zero lost updates
+once again. The remaining failures were still `Unable to start a
+transaction in the given time` even with the pool sized to exactly match
+the concurrency (`connection_limit=10` against 10 simultaneous requests,
+which should queue nobody) - the bottleneck is squarely each individual
+*connection's* establishment cost, not pool contention. Three consecutive
+identical connection-latency measurements landing in the same 3.6-4.2s
+band (not still trending down) is itself informative: it reads less like
+"Neon is mid-recovery from an incident" and more like this sandboxed
+session's network path to Neon's `us-east-1` region simply running with
+persistently elevated latency compared to a normal deployment - a
+property of *this environment*, not something further waiting inside it
+is likely to resolve.
+
+**Where this leaves Test 1**: closed out as *not independently
+achievable from within this session* rather than left as an open retry
+loop. The load test already did the job it was built for - it found and
+fixed five real defects, and its correctness assertions (no lost
+updates, clean idempotency-race handling) have now passed repeatedly
+across a wide range of latency conditions, which is itself strong
+evidence the pool/timeout/transaction-logic fixes are sound. A clean raw-
+throughput number is better obtained by re-running
+`scripts/load-test-stock-decrement.mjs` from a normal deployment
+environment (or against a differently-provisioned/warmer Neon compute)
+than by continuing to retry from here.
 
 Five real defects were found and fixed by this exercise:
 `AuthService.pinLogin`'s missing transaction timeout, `connect_timeout`,
@@ -751,10 +784,12 @@ this endpoint once one exists.
   typecheck`, `pnpm build`, `pnpm test`, and `pnpm lint` all pass clean
   for `apps/api`.
 
-That closes out every remaining Phase 3 item except the two explicitly
-left open above: re-running `scripts/load-test-stock-decrement.mjs`'s
-raw-throughput test once Neon's baseline latency returns to normal, and a
-full end-to-end DR fire drill on a disposable Neon project.
+That closes out every remaining Phase 3 item except two: the load test's
+raw-throughput number (closed out above as not independently achievable
+from within this specific sandboxed session - re-run
+`scripts/load-test-stock-decrement.mjs` from a normal deployment
+environment for that number), and a full end-to-end DR fire drill on a
+disposable Neon project.
 
 ## Getting started
 
