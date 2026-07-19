@@ -381,13 +381,54 @@ against a live database.**
   confirmed 0 rows visible on `customers` (RLS). `pnpm typecheck`, `pnpm
   build`, `pnpm test`, and `pnpm lint` all pass clean for `apps/api`.
 
-Still to do in Phase 2: layaway, ESC/POS receipt printer integration, and
-barcode scanner integration - the latter two need physical hardware to
-verify live, so they're the natural next candidates to scope carefully
-before starting. The SMS delivery half of low-stock alerts (Redis/BullMQ
-+ Africa's Talking) remains deferred until real credentials exist, same
-as M-Pesa. Phase 3 (non-functional hardening) is after that, per the
-roadmap in DESIGN.md.
+**Phase 2 — Layaway: done and verified end-to-end against a live
+database.**
+
+- New `Layaway`/`LayawayLineItem`/`LayawayPayment` models. A layaway
+  requires a `Customer` (unlike a sale, where one is optional) since the
+  whole point is tracking a specific person's balance over time. Prices
+  and tax are snapshotted into the line items at creation, same as a sale,
+  so a later price change doesn't retroactively change what the customer
+  agreed to pay.
+- Deliberately does **not** touch inventory at creation - modeling a
+  non-committal "hold" would need a new inventory-transaction type just to
+  represent stock that isn't actually sold yet, and this pilot's existing
+  stock-conflict philosophy is already "never block, reconcile after the
+  fact" (DESIGN.md §6). Stock is only decremented at `PATCH
+  /layaways/:id/complete` (pickup), via the exact same
+  `InventoryTransactionsService.recordInTx` a sale uses, with `type:
+  SALE`.
+- `POST /layaways/:id/payments` records a deposit/installment (cash-only,
+  same reasoning as sales) any number of times while `OPEN`, rejecting
+  anything that would overpay the balance. `complete` requires the balance
+  fully paid first. `cancel` is restricted to supervisor+ (same tier as
+  void-sale) and is deliberately just a status change - it does not
+  auto-generate a cash refund for any deposit already paid, since
+  refund-vs-forfeit-vs-store-credit is a store-policy call this pilot
+  doesn't make on the tenant's behalf; the audit log records the deposit
+  amount at cancellation time so that decision can be handled manually.
+- **Verified live**: creating a 5-unit layaway (464.00) left stock
+  completely untouched; a partial deposit correctly updated the balance;
+  completing before the balance was fully paid was rejected with 400
+  (showing the exact remaining amount); a payment that would overpay the
+  balance was rejected with 400; paying the exact remainder and completing
+  correctly decremented stock by 5 (70 → 65) at that moment, not earlier;
+  re-completing or paying an already-completed layaway were both rejected
+  with 400; a cashier was correctly blocked (403) from cancelling while
+  the owner could; and a cancelled layaway left stock untouched (nothing
+  to reverse, since nothing was ever decremented) while a raw
+  no-tenant-context query confirmed 0 rows visible across `layaways`,
+  `layaway_line_items`, and `layaway_payments` (RLS). `pnpm typecheck`,
+  `pnpm build`, `pnpm test`, and `pnpm lint` all pass clean for
+  `apps/api`.
+
+That closes out every software-only item in the Phase 2 roadmap. What's
+left - ESC/POS receipt printer integration and barcode scanner
+integration - needs physical hardware to verify live the same way
+everything above was verified, so those (and the SMS delivery half of
+low-stock alerts, deferred until real Africa's Talking credentials exist)
+are the natural point to pause and decide how to proceed. Phase 3
+(non-functional hardening) is next per the roadmap in DESIGN.md.
 
 ## Getting started
 

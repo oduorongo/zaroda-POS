@@ -230,6 +230,30 @@ CREATE POLICY tenant_isolation ON customers
   USING ("organizationId" = current_setting('app.current_tenant', true))
   WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
 
+ALTER TABLE layaways ENABLE ROW LEVEL SECURITY;
+ALTER TABLE layaways FORCE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON layaways
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+-- ── Scoped via layawayId -> layaways."organizationId" ──────────────────────
+
+ALTER TABLE layaway_line_items ENABLE ROW LEVEL SECURITY;
+ALTER TABLE layaway_line_items FORCE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON layaway_line_items
+  USING (EXISTS (SELECT 1 FROM layaways l WHERE l.id = layaway_line_items."layawayId"
+                 AND l."organizationId" = current_setting('app.current_tenant', true)))
+  WITH CHECK (EXISTS (SELECT 1 FROM layaways l WHERE l.id = layaway_line_items."layawayId"
+                 AND l."organizationId" = current_setting('app.current_tenant', true)));
+
+ALTER TABLE layaway_payments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE layaway_payments FORCE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON layaway_payments
+  USING (EXISTS (SELECT 1 FROM layaways l WHERE l.id = layaway_payments."layawayId"
+                 AND l."organizationId" = current_setting('app.current_tenant', true)))
+  WITH CHECK (EXISTS (SELECT 1 FROM layaways l WHERE l.id = layaway_payments."layawayId"
+                 AND l."organizationId" = current_setting('app.current_tenant', true)));
+
 -- ── organizations itself ─────────────────────────────────────────────────
 -- A tenant may only ever see its own organization row (not a child table,
 -- so it filters on id directly rather than organizationId). Same pre-auth
