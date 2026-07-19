@@ -17,6 +17,7 @@ import {
 import { getTenantStore } from '../common/tenant/tenant-context';
 import { AuditLogService } from '../common/audit/audit-log.service';
 import { InventoryTransactionsService } from '../inventory/inventory-transactions.service';
+import { CustomersService } from '../customers/customers.service';
 import { CreateSaleDto } from './dto/create-sale.dto';
 import { VoidSaleDto } from './dto/void-sale.dto';
 
@@ -32,11 +33,20 @@ const DISCOUNT_APPROVER_ROLES: Role[] = [
 ];
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
+// Loyalty rates are hardcoded org-wide for the pilot rather than a
+// per-org config table - a real config screen is a natural Phase 3+
+// follow-up once there's a back-office UI to put it in, same deferral
+// pattern as the M-Pesa credentials. 1 point earned per 100 (base
+// currency) spent, floored; each redeemed point is worth 1 unit of value.
+const LOYALTY_EARN_RATE = 100;
+const LOYALTY_REDEEM_VALUE = 1;
+
 @Injectable()
 export class SalesService {
   constructor(
     private readonly tenantPrisma: TenantScopedPrismaService,
     private readonly inventoryTransactions: InventoryTransactionsService,
+    private readonly customers: CustomersService,
     private readonly auditLog: AuditLogService,
   ) {}
 
@@ -152,13 +162,54 @@ export class SalesService {
         }
       }
 
-      const finalTotal = round2(total - discountAmount);
+      const discountedTotal = round2(total - discountAmount);
+
+      // A customer is optional (most sales are anonymous walk-ins), but
+      // redeeming points requires one - and the customer must actually
+      // belong to this tenant and have enough points, both re-verified
+      // against the database rather than trusted from the client (same
+      // reasoning as the discount approver check above).
+      const customer = dto.customerId
+        ? await this.customers.findByIdInTx(tx, dto.customerId)
+        : null;
+      if (dto.customerId && !customer) {
+        throw new NotFoundException('Customer not found');
+      }
+      if (dto.redeemPoints && !dto.customerId) {
+        throw new BadRequestException(
+          'Redeeming loyalty points requires customerId',
+        );
+      }
+
+      let redemptionValue = 0;
+      if (dto.redeemPoints) {
+        if (customer!.loyaltyPoints < dto.redeemPoints) {
+          throw new BadRequestException(
+            `Customer only has ${customer!.loyaltyPoints} loyalty points, cannot redeem ${dto.redeemPoints}`,
+          );
+        }
+        redemptionValue = round2(dto.redeemPoints * LOYALTY_REDEEM_VALUE);
+        if (redemptionValue > discountedTotal) {
+          throw new BadRequestException(
+            `Redemption value ${redemptionValue.toFixed(2)} cannot exceed the sale total ${discountedTotal.toFixed(2)}`,
+          );
+        }
+      }
+
+      const finalTotal = round2(discountedTotal - redemptionValue);
       const paymentsTotal = dto.payments.reduce((sum, p) => sum + p.amount, 0);
       if (Math.abs(paymentsTotal - finalTotal) > 0.01) {
         throw new BadRequestException(
           `Payments total ${paymentsTotal.toFixed(2)} does not match sale total ${finalTotal.toFixed(2)}`,
         );
       }
+
+      // Earned on the amount actually paid (post-discount, post-redemption)
+      // - spending points to earn points back would let a customer cycle
+      // an ever-larger balance out of nothing.
+      const pointsEarned = customer
+        ? Math.floor(finalTotal / LOYALTY_EARN_RATE)
+        : 0;
 
       const { organizationId } = getTenantStore();
       const sale = await tx.sale.create({
@@ -172,6 +223,9 @@ export class SalesService {
           clientId: dto.clientId,
           status: SaleStatus.COMPLETED,
           total: finalTotal,
+          customerId: dto.customerId,
+          pointsEarned,
+          pointsRedeemed: dto.redeemPoints ?? 0,
           lineItems: { create: lineItemRows },
           payments: {
             create: dto.payments.map((p) => ({
@@ -202,6 +256,13 @@ export class SalesService {
         });
       }
 
+      if (customer) {
+        const netPoints = pointsEarned - (dto.redeemPoints ?? 0);
+        if (netPoints !== 0) {
+          await this.customers.adjustPointsInTx(tx, customer.id, netPoints);
+        }
+      }
+
       await this.auditLog.logInTx(tx, {
         action: 'sale.created',
         entityType: 'Sale',
@@ -216,6 +277,16 @@ export class SalesService {
                   value: dto.discount.value,
                   amount: discountAmount,
                   approvedById: dto.discount.approvedById,
+                },
+              }
+            : {}),
+          ...(customer
+            ? {
+                loyalty: {
+                  customerId: customer.id,
+                  pointsEarned,
+                  pointsRedeemed: dto.redeemPoints ?? 0,
+                  redemptionValue,
                 },
               }
             : {}),
@@ -271,6 +342,23 @@ export class SalesService {
           quantityDelta: line.quantity,
           referenceId: sale.id,
         });
+      }
+
+      // Reverse the loyalty effect this sale had: give back any points it
+      // redeemed, take back any it earned. If the customer has since spent
+      // the earned points elsewhere, this can put their balance below zero
+      // - accepted here the same way oversells are accepted elsewhere in
+      // this system (DESIGN.md's "never lose a sale, reconcile after the
+      // fact" principle), rather than blocking the void.
+      if (sale.customerId) {
+        const netPoints = sale.pointsEarned - sale.pointsRedeemed;
+        if (netPoints !== 0) {
+          await this.customers.adjustPointsInTx(
+            tx,
+            sale.customerId,
+            -netPoints,
+          );
+        }
       }
 
       const updated = await tx.sale.update({

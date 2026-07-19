@@ -48,6 +48,7 @@ model Organization {
   stockTransfers StockTransfer[]
   stockTakes     StockTake[]
   lowStockAlerts LowStockAlert[]
+  customers      Customer[]
 
   @@map("organizations")
 }
@@ -447,6 +448,29 @@ enum SaleStatus {
   VOIDED
 }
 
+// A tenant's repeat customer, tracked for loyalty points. Attaching a
+// customer to a sale is always optional - most POS sales are anonymous
+// walk-ins - so every FK to Customer is nullable.
+model Customer {
+  id            String   @id @default(uuid())
+  organizationId String
+  name          String
+  // Not globally unique (a customer might share a phone or have none on
+  // file), but unique per-org so lookup-by-phone at the register is
+  // unambiguous within a tenant.
+  phone         String?
+  loyaltyPoints Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  sales        Sale[]
+
+  @@unique([organizationId, phone])
+  @@index([organizationId])
+  @@map("customers")
+}
+
 model Sale {
   id                 String     @id @default(uuid())
   organizationId     String
@@ -454,12 +478,19 @@ model Sale {
   terminalId         String
   shiftId            String?
   cashierSessionId   String
+  customerId         String?
   // Client-generated UUID from the offline terminal - the idempotency key
   // for sync replay (DESIGN.md §6). Distinct from `id` so the server is
   // free to also assign its own id without colliding with client state.
   clientId           String     @unique
   status             SaleStatus @default(PENDING_SYNC)
   total              Decimal    @db.Decimal(12, 2)
+  // Loyalty points earned/redeemed on this specific sale - denormalized
+  // onto the sale (rather than only mutating Customer.loyaltyPoints) so
+  // the sale receipt/history can always show what happened on that ticket
+  // even after the customer's running balance has since moved on.
+  pointsEarned       Int        @default(0)
+  pointsRedeemed     Int        @default(0)
   priceDriftFlagged  Boolean    @default(false)
   createdAt          DateTime   @default(now())
 
@@ -470,6 +501,7 @@ model Sale {
   cashierSession CashierSession  @relation(fields: [cashierSessionId], references: [id])
   cashier        OrgUser?        @relation("SaleCashier", fields: [cashierOrgUserId], references: [id])
   cashierOrgUserId String?
+  customer       Customer?       @relation(fields: [customerId], references: [id])
 
   lineItems SaleLineItem[]
   payments  SalePayment[]

@@ -339,9 +339,51 @@ scaffolded-but-not-wired.
   `low_stock_alerts` (RLS). `pnpm typecheck`, `pnpm build`, `pnpm test`,
   and `pnpm lint` all pass clean for `apps/api`.
 
-Still to do in Phase 2: loyalty points, layaway, ESC/POS receipt printer
-integration, and barcode scanner integration - all need physical hardware
-to verify live, so they're the natural next candidates to scope carefully
+**Phase 2 — Customers and loyalty points: done and verified end-to-end
+against a live database.**
+
+- New `Customer` model (`name`, `phone` unique-per-org, `loyaltyPoints`)
+  and `POST/GET /customers`, `GET /customers/:id` - open to any
+  authenticated role including cashier, since looking up or registering a
+  customer happens at the register itself, not in a back-office. `Sale`
+  gained an optional `customerId` plus `pointsEarned`/`pointsRedeemed`
+  columns (denormalized onto the sale so a receipt/history always shows
+  what happened on that specific ticket, independent of the customer's
+  current running balance).
+- `POST /sales` now accepts optional `customerId` and `redeemPoints`.
+  Rates are hardcoded org-wide for the pilot rather than a per-org config
+  table (1 point earned per 100 currency spent, floored; each redeemed
+  point worth 1 currency unit) - a real config screen is a natural
+  follow-up once there's a back-office UI to put it in, same deferral
+  pattern used for M-Pesa credentials.
+- Redemption requires `customerId`; the customer's points balance is
+  re-verified against the database on every sale (never trusted from the
+  client) before allowing a redemption, and a redemption that would exceed
+  the sale's total is rejected with 400. Points are earned on the amount
+  actually paid (post-discount, post-redemption) - earning points from
+  redeemed points would let a balance grow out of nothing.
+- Voiding a sale reverses its loyalty effect (gives back redeemed points,
+  takes back earned points). If the customer has since spent the earned
+  points elsewhere, this can take their balance negative - accepted
+  deliberately, the same "never block, reconcile after the fact"
+  principle already applied to offline stock conflicts (DESIGN.md §6),
+  rather than blocking the void.
+- **Verified live**: a 3-unit sale (278.40) earned exactly 2 points
+  (floor(278.40/100)); a customer's balance correctly accumulated across
+  sales; redeeming 5 of 11 points correctly reduced a 92.80 ticket to
+  87.80 and left a balance of 6; over-redeeming (100 points against a
+  balance of 6) and redeeming without a `customerId` were both rejected
+  with 400 without creating a sale; voiding a 9-point-earning sale
+  correctly reversed the balance (6 → -3, confirming the negative-balance
+  behavior is intentional, not a bug); a duplicate phone number on
+  customer creation was rejected with 409; a cashier could create/list
+  customers (by design) while a raw query with no tenant context set
+  confirmed 0 rows visible on `customers` (RLS). `pnpm typecheck`, `pnpm
+  build`, `pnpm test`, and `pnpm lint` all pass clean for `apps/api`.
+
+Still to do in Phase 2: layaway, ESC/POS receipt printer integration, and
+barcode scanner integration - the latter two need physical hardware to
+verify live, so they're the natural next candidates to scope carefully
 before starting. The SMS delivery half of low-stock alerts (Redis/BullMQ
 + Africa's Talking) remains deferred until real credentials exist, same
 as M-Pesa. Phase 3 (non-functional hardening) is after that, per the

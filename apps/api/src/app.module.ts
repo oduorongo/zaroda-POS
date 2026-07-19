@@ -20,6 +20,7 @@ import { ReportsModule } from './reports/reports.module';
 import { OrgUsersModule } from './org-users/org-users.module';
 import { StockTransfersModule } from './stock-transfers/stock-transfers.module';
 import { StockTakesModule } from './stock-takes/stock-takes.module';
+import { CustomersModule } from './customers/customers.module';
 
 // Phase 1+ will import vertical module packages here and register their
 // manifests on ModuleRegistryService at bootstrap (see DESIGN.md §3) - none
@@ -42,6 +43,7 @@ import { StockTakesModule } from './stock-takes/stock-takes.module';
     OrgUsersModule,
     StockTransfersModule,
     StockTakesModule,
+    CustomersModule,
   ],
   controllers: [AppController],
   providers: [

@@ -93,4 +93,16 @@ export class CreateSaleDto {
   @ValidateNested()
   @Type(() => DiscountInputDto)
   discount?: DiscountInputDto;
+
+  @IsUUID()
+  @IsOptional()
+  customerId?: string;
+
+  // Points to redeem toward this sale - requires customerId, checked in
+  // SalesService rather than here since class-validator's cross-field
+  // rules would obscure this simple a check.
+  @IsInt()
+  @IsPositive()
+  @IsOptional()
+  redeemPoints?: number;
 }

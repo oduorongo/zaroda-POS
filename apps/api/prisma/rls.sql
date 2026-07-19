@@ -224,6 +224,12 @@ CREATE POLICY tenant_isolation ON low_stock_alerts
   USING ("organizationId" = current_setting('app.current_tenant', true))
   WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
 
+ALTER TABLE customers ENABLE ROW LEVEL SECURITY;
+ALTER TABLE customers FORCE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON customers
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
 -- ── organizations itself ─────────────────────────────────────────────────
 -- A tenant may only ever see its own organization row (not a child table,
 -- so it filters on id directly rather than organizationId). Same pre-auth
