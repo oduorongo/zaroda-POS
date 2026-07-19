@@ -59,11 +59,29 @@ export class RestaurantSalesService {
       const existingLink = await tx.restaurantSaleTable.findUnique({
         where: { saleId: sale.id },
       });
-      if (existingLink) return { sale, tableLink: existingLink };
+      if (existingLink) {
+        const existingTip = await tx.restaurantSaleTip.findUnique({
+          where: { saleId: sale.id },
+        });
+        return { sale, tableLink: existingLink, tip: existingTip };
+      }
 
       const tableLink = await tx.restaurantSaleTable.create({
         data: { saleId: sale.id, tableId },
       });
+
+      // Tracked separately from the sale itself (see the schema comment
+      // on RestaurantSaleTip) - only creates a row when there's actually
+      // a nonzero tip/service charge, so a plain order doesn't leave a
+      // pointless all-zero extension row behind.
+      const tipAmount = dto.tipAmount ?? 0;
+      const serviceChargeAmount = dto.serviceChargeAmount ?? 0;
+      const tip =
+        tipAmount > 0 || serviceChargeAmount > 0
+          ? await tx.restaurantSaleTip.create({
+              data: { saleId: sale.id, tipAmount, serviceChargeAmount },
+            })
+          : null;
 
       // A dine-in table needs bussing after the check is paid - staff
       // explicitly mark it AVAILABLE again once cleared, rather than this
@@ -73,7 +91,7 @@ export class RestaurantSalesService {
         data: { status: RestaurantTableStatus.NEEDS_CLEANING },
       });
 
-      return { sale, tableLink };
+      return { sale, tableLink, tip };
     });
   }
 }

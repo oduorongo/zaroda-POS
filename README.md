@@ -921,10 +921,47 @@ Fixed before writing any restaurant code:
 - `pnpm typecheck`, `pnpm build`, `pnpm test`, and `pnpm lint` all pass
   clean for `apps/api`.
 
-Still to do for this vertical: order-to-KDS routing, course timing, and
-tips/service charge (DESIGN.md's remaining Phase 4 scope) - table/floor
-management was deliberately scoped as the first slice, the same
-incremental-build discipline used for every phase before this one.
+### Tips / service charge
+
+**Done and verified live.** The second restaurant slice, chosen as the
+simplest remaining piece since it only extends the existing order flow
+rather than needing any new infrastructure like a KDS.
+
+- New `RestaurantSaleTip` (another `transactionExtensions`-style 1:1
+  link, per the same pattern as `RestaurantSaleTable`): `tipAmount`,
+  `serviceChargeAmount`. Deliberately **not** folded into core's
+  `Sale.total` or `SalePayment.amount` - core's total is what loyalty
+  points are earned on (`SalesService.create()`'s
+  `LOYALTY_EARN_RATE` math) and what shift cash-reconciliation sums
+  (`ShiftsService`); mixing tip money into either would silently inflate
+  both. A tip is collected as extra cash alongside the sale's own
+  exact-total payment and tracked as parallel revenue the restaurant
+  module reports on independently.
+- `POST /restaurant/tables/:tableId/sales` now accepts optional
+  `tipAmount`/`serviceChargeAmount`. Only creates a `RestaurantSaleTip`
+  row when at least one is actually nonzero, so a plain order doesn't
+  leave a pointless all-zero extension row behind. Idempotent the same
+  way the table link already was: a retried submission with the same
+  `clientId` returns the existing tip row rather than erroring or
+  double-recording it.
+- **Verified live**: an order with a 15 tip + 5 service charge on an
+  80 KES item (92.80 with tax) correctly persisted both values on a
+  separate `RestaurantSaleTip` row while `Sale.total` stayed exactly
+  92.80, unaffected; a plain order with no tip correctly created no tip
+  row at all (`tip: null` in the response); a negative `tipAmount` was
+  rejected with 400 before ever touching the database; and a raw query
+  with no tenant context set confirmed 0 rows visible on
+  `restaurant_sale_tips` (RLS, applied via the plain `rls.sql` file
+  directly again - no temp-file workaround needed). `pnpm typecheck`,
+  `pnpm build`, `pnpm test`, and `pnpm lint` all pass clean for
+  `apps/api`.
+
+Still to do for this vertical: order-to-KDS routing and course timing
+(DESIGN.md's remaining Phase 4 scope) - both are meaningfully larger
+(a kitchen-facing ticket/display concept that doesn't exist anywhere in
+this system yet) and were deliberately left for a dedicated increment
+rather than folded into this one, the same incremental-build discipline
+used for every phase before this one.
 
 ## Getting started
 

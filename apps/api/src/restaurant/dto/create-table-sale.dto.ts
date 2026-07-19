@@ -3,9 +3,11 @@ import {
   ArrayMinSize,
   IsArray,
   IsInt,
+  IsNumber,
   IsOptional,
   IsPositive,
   IsUUID,
+  Min,
   ValidateNested,
 } from 'class-validator';
 import {
@@ -61,4 +63,17 @@ export class CreateTableSaleDto {
   @IsPositive()
   @IsOptional()
   redeemPoints?: number;
+
+  // Collected as extra cash alongside the sale's own exact-total
+  // payment, never folded into it - see the RestaurantSaleTip schema
+  // comment for why.
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  tipAmount?: number;
+
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  serviceChargeAmount?: number;
 }

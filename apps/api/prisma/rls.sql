@@ -312,6 +312,15 @@ CREATE POLICY tenant_isolation ON restaurant_sale_tables
   WITH CHECK (EXISTS (SELECT 1 FROM sales s WHERE s.id = restaurant_sale_tables."saleId"
                  AND s."organizationId" = current_setting('app.current_tenant', true)));
 
+ALTER TABLE restaurant_sale_tips ENABLE ROW LEVEL SECURITY;
+ALTER TABLE restaurant_sale_tips FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON restaurant_sale_tips;
+CREATE POLICY tenant_isolation ON restaurant_sale_tips
+  USING (EXISTS (SELECT 1 FROM sales s WHERE s.id = restaurant_sale_tips."saleId"
+                 AND s."organizationId" = current_setting('app.current_tenant', true)))
+  WITH CHECK (EXISTS (SELECT 1 FROM sales s WHERE s.id = restaurant_sale_tips."saleId"
+                 AND s."organizationId" = current_setting('app.current_tenant', true)));
+
 -- ── organizations itself ─────────────────────────────────────────────────
 -- A tenant may only ever see its own organization row (not a child table,
 -- so it filters on id directly rather than organizationId). Same pre-auth
