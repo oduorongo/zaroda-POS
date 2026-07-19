@@ -18,7 +18,12 @@ export class ProductsService {
     return this.tenantPrisma.run((tx) =>
       tx.product.findMany({
         orderBy: { name: 'asc' },
-        include: { variants: true, category: true },
+        // taxClass included (not just categorized) because the terminal
+        // PWA caches this response to compute an offline sale's total
+        // before it's ever synced - it needs to show the cashier an
+        // accurate figure to collect cash for right now, not just after
+        // the server recomputes it at sync time.
+        include: { variants: true, category: true, taxClass: true },
       }),
     );
   }
@@ -27,7 +32,12 @@ export class ProductsService {
     const product = await this.tenantPrisma.run((tx) =>
       tx.product.findUnique({
         where: { id },
-        include: { variants: true, category: true },
+        // taxClass included (not just categorized) because the terminal
+        // PWA caches this response to compute an offline sale's total
+        // before it's ever synced - it needs to show the cashier an
+        // accurate figure to collect cash for right now, not just after
+        // the server recomputes it at sync time.
+        include: { variants: true, category: true, taxClass: true },
       }),
     );
     if (!product) throw new NotFoundException('Product not found');

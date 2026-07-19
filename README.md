@@ -153,10 +153,74 @@ Phase 1:
   aggregates matched expected totals, and the voided sale from the sales
   pipeline test was correctly excluded everywhere.
 
-Still to do in Phase 1: the terminal PWA (offline-first, IndexedDB sync -
-DESIGN.md §6). Everything above this point has been an API-only slice of
-Phase 1; the terminal is a different kind of piece (a separate Next.js/PWA
-app) and is next.
+Terminal PWA (`apps/terminal-pwa`) - the offline-first sync design from
+DESIGN.md §6, now scaffolded and built:
+
+- **Backend additions this required**: `GET /org-users` (nothing let a
+  client discover which cashiers exist to build a PIN picker from - a real
+  gap found while designing this screen) and `GET /products` now includes
+  `taxClass` (the terminal needs to compute an accurate total offline,
+  before a sale is ever synced, not just after the server recomputes it).
+- **Found and fixed a real bug that only a browser would have caught**:
+  the backend had no CORS configuration at all. `curl`/server-to-server
+  calls don't enforce CORS, so this would have looked fine in every test
+  so far and then silently blocked *every single request* the terminal's
+  browser `fetch()` calls actually make. Added `app.enableCors()` with a
+  `CORS_ORIGIN` allowlist, and verified the actual preflight + request
+  cycle with an `Origin` header set to the terminal's dev origin.
+- **Setup flow** (`/setup`): one-time device provisioning - branch/terminal
+  id (typed in; there's no backoffice provisioning UI yet to generate
+  these, an acknowledged gap) plus a one-time manager email/password login
+  used only to fetch and cache the cashier list and catalog snapshot into
+  IndexedDB (Dexie). The manager's credentials aren't kept - the terminal
+  switches to PIN-based cashier login from here on (DESIGN.md §9).
+- **Login flow** (`/login`): a tappable cashier picker (from the cached
+  list) + PIN pad, calling the existing `POST /auth/pin-login`.
+  Deliberately requires connectivity (PIN validation is server-side) -
+  the offline guarantee is about *selling*, not about a cashier's very
+  first clock-in with no network at all.
+- **POS flow** (`/pos`): catalog search/browse from the cached snapshot, a
+  cart with live tax-inclusive totals computed from cached prices/rates, a
+  cash-tendered/change-due checkout. Completing a sale always writes to
+  a local Dexie `outbox` first (status `pending`, a client-generated
+  `clientId`) - it does not wait on the network - then immediately
+  attempts a sync in the background.
+- **Sync engine** (`lib/sync.ts` + `hooks/use-sync-engine.ts`): drains the
+  outbox in creation order against `POST /sales`, which is idempotent on
+  `clientId` (a sale already accepted by the server is never
+  re-submitted/duplicated even if the sync is interrupted and retried).
+  Runs on mount, on the browser's `online` event, and on a 30s fallback
+  poll (a device can report `navigator.onLine = true` while requests still
+  fail on a flaky connection, which is exactly why sync treats a failed
+  request as "still offline, retry later" rather than trusting that event
+  alone).
+- A hand-written service worker (`public/sw.js`) caches the app shell only
+  (cache-first with a network fallback) - API responses are deliberately
+  never cached by the browser's HTTP cache, since IndexedDB + the sync
+  engine above is a correctness-aware cache (idempotent, ledger-based) and
+  a generic HTTP cache has no idea a sale must never be silently
+  duplicated or served stale.
+- **Verified**: typecheck, lint, and production build all pass for the new
+  app; every route returns 200 with correct server-rendered content; the
+  full `/auth/login` → `/org-users` → `/products` chain the setup screen
+  depends on was exercised live in earlier phases and re-verified here
+  with the `Origin` header the browser will actually send. **Not yet
+  verified**: the actual client-side IndexedDB read/write flows and
+  full click-through UX in a real browser - no browser-automation tool
+  is available in this environment. The next session with real device/
+  browser access should exercise: setup → PIN login → ring up a sale
+  offline (dev tools "offline" throttling) → reconnect → confirm it syncs
+  exactly once.
+- Icons referenced in `public/manifest.json` (`icon-192.png`,
+  `icon-512.png`) don't exist yet - a cosmetic gap (install-prompt polish
+  only, doesn't affect functionality) worth filling before a real device
+  install.
+
+Still to do in Phase 1 beyond that: nothing - catalog, inventory, sales,
+shifts, reporting, and the terminal PWA are all built. Phase 2
+(promotions/loyalty/layaway, receipt printer + barcode scanner
+integration, stock transfers/takes) and Phase 3 (non-functional hardening)
+are next per the roadmap in DESIGN.md.
 
 ## Getting started
 
@@ -173,14 +237,29 @@ seed) — the app-role step is not optional, see the Status section above.
 pnpm --filter api start:dev
 ```
 
+Then the terminal PWA (separate terminal, needs the API already running -
+set `CORS_ORIGIN` to include `http://localhost:3002` in `apps/api/.env`,
+or leave it unset for local dev):
+
+```
+pnpm --filter terminal-pwa dev
+```
+
+Open http://localhost:3002, and on first run it'll redirect to `/setup` -
+you'll need a branch id and terminal id (query them from the database, or
+use the ones the seed script prints - see `apps/api/prisma/seed.ts`) and a
+manager login (the seeded demo owner: `owner@demo.zaroda.pos` /
+`password123`).
+
 ## Repo layout
 
 ```
 apps/
   api/              NestJS core (modular monolith)
-  backoffice/        Next.js back-office UI          [Phase 1]
-  terminal-pwa/       Offline-capable POS terminal    [Phase 1]
+  backoffice/        Next.js back-office UI          [Phase 2+]
+  terminal-pwa/       Offline-capable POS terminal (Dexie/IndexedDB,
+                      service worker, sync engine - DESIGN.md §6)
 packages/
   modules/
-    retail/          First vertical module            [Phase 1]
+    retail/          First vertical module            [Phase 2]
 ```
