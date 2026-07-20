@@ -1532,6 +1532,48 @@ course 1" had no terminal UI.
   verified via the exact API round trip above plus static analysis,
   stated plainly rather than claimed.
 
+### Pharmacy vertical: batch/expiry picker on the cart
+
+**Done and verified live.** Closes the other gap the pharmacy slice
+explicitly left open - `SaleLineItemInputDto.batchId` and the pharmacy
+hook that blocks an expired batch were both live-verified on the
+backend, but the terminal cart had no way to pick a batch at all.
+
+- `app/pos/page.tsx`: when `device.industryType === "PHARMACY"`, each
+  cart line gets a batch dropdown, lazily fetched on first focus via
+  `GET /inventory/batches?variantId=...` and cached per variant (no bulk
+  "batches for these N variants" endpoint exists, only a per-variant
+  one). Expired batches are shown in the list, visibly labeled
+  `(EXPIRED)`, rather than filtered out - the pharmacy
+  `inventory.beforeDecrement` hook is the actual enforcement boundary,
+  and hiding an expired batch as if it never existed would be less
+  honest than showing it and letting the server reject it. Selecting one
+  is optional, matching the DTO.
+- **Verified live** against the real database: created a fresh and an
+  expired `Batch` via `POST /inventory/batches`, confirmed both appear
+  through the exact `GET /inventory/batches?variantId=...` call
+  `loadBatchesFor()` makes; submitted a pharmacy sale with the fresh
+  batch's id using the exact shape the cart now sends and confirmed the
+  sale completed with `batchId` correctly on the line item. **Did not
+  re-verify the expiry rejection itself in this pass** - the demo org
+  used for convenience throughout this session's live testing is
+  `industryType: RETAIL`, and the pharmacy hook that blocks an expired
+  batch is deliberately scoped to `PHARMACY`-industry orgs only (already
+  verified against a true pharmacy org in an earlier session); submitting
+  the expired batch's id against this RETAIL org correctly completed
+  rather than rejecting, exactly as that scoping intends - noted plainly
+  so this isn't mistaken for a fresh verification of the rejection path
+  itself. `pnpm typecheck` and `pnpm lint` pass clean for
+  `apps/terminal-pwa`.
+- **Not independently verified this session**: rendering/interaction in
+  an actual browser - no browser automation was available, so this was
+  verified via the exact API round trips above plus static analysis,
+  stated plainly rather than claimed.
+
+This closes both gaps the pharmacy and restaurant terminal slices left
+open. The one remaining documented gap from the vertical-UI work is
+linking a `Customer` to a salon booking.
+
 ## Getting started
 
 ```

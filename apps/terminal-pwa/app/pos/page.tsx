@@ -28,6 +28,13 @@ interface Customer {
   loyaltyPoints: number;
 }
 
+interface Batch {
+  id: string;
+  variantId: string;
+  batchNumber: string;
+  expiryDate: string | null;
+}
+
 // Roles allowed to approve a discount server-side (SalesService's
 // SUPERVISOR_OR_ABOVE check) - mirrored here only to filter who shows up
 // as a candidate approver. The server independently re-verifies the
@@ -80,6 +87,19 @@ export default function PosPage() {
   const [issuedDate, setIssuedDate] = useState("");
   const [pharmacyBusy, setPharmacyBusy] = useState(false);
   const [pharmacyError, setPharmacyError] = useState<string | null>(null);
+
+  // Pharmacy-only batch/expiry picking per cart line - optional
+  // (SaleLineItemInputDto.batchId), and only meaningful when the org
+  // actually tracks batches for a variant. Fetched lazily per variant
+  // (no bulk "batches for these N variants" endpoint exists, only
+  // GET /inventory/batches?variantId=) and cached so re-expanding a line
+  // doesn't refetch. An expired batch isn't filtered out here - the
+  // pharmacy inventory.beforeDecrement hook is the actual enforcement
+  // boundary; showing it (visibly flagged) and letting the server reject
+  // it is more honest than silently hiding it as if it never existed.
+  const [lineBatches, setLineBatches] = useState<Map<string, string>>(new Map());
+  const [batchOptions, setBatchOptions] = useState<Map<string, Batch[]>>(new Map());
+  const [batchesLoading, setBatchesLoading] = useState<Set<string>>(new Set());
 
   const sync = useSyncEngine();
 
@@ -169,6 +189,41 @@ export default function PosPage() {
       else next.set(variantId, quantity);
       return next;
     });
+    if (quantity <= 0) {
+      setLineBatches((prev) => {
+        if (!prev.has(variantId)) return prev;
+        const next = new Map(prev);
+        next.delete(variantId);
+        return next;
+      });
+    }
+  }
+
+  async function loadBatchesFor(variantId: string) {
+    if (!session || batchOptions.has(variantId) || batchesLoading.has(variantId)) return;
+    setBatchesLoading((prev) => new Set(prev).add(variantId));
+    try {
+      const batches = await apiGet<Batch[]>(`/inventory/batches?variantId=${variantId}`, session.accessToken);
+      setBatchOptions((prev) => new Map(prev).set(variantId, batches));
+    } catch {
+      // Leave unset - the batch selector just falls back to "no batches
+      // found" rather than blocking the sale; a batch is optional.
+    } finally {
+      setBatchesLoading((prev) => {
+        const next = new Set(prev);
+        next.delete(variantId);
+        return next;
+      });
+    }
+  }
+
+  function setLineBatch(variantId: string, batchId: string) {
+    setLineBatches((prev) => {
+      const next = new Map(prev);
+      if (batchId) next.set(variantId, batchId);
+      else next.delete(variantId);
+      return next;
+    });
   }
 
   async function completeSale() {
@@ -233,7 +288,11 @@ export default function PosPage() {
           branchId: device.branchId,
           terminalId: device.terminalId,
           cashierSessionId: session.cashierSessionId,
-          lineItems: cartEntries.map((e) => ({ variantId: e.variant.id, quantity: e.quantity })),
+          lineItems: cartEntries.map((e) => ({
+            variantId: e.variant.id,
+            quantity: e.quantity,
+            batchId: lineBatches.get(e.variant.id) || undefined,
+          })),
           payments: [{ method: "CASH", amount: totals.total }],
           discount: discount ?? undefined,
           customerId: customer?.id ?? undefined,
@@ -246,6 +305,7 @@ export default function PosPage() {
         session.accessToken,
       );
       setCart(new Map());
+      setLineBatches(new Map());
       setCheckoutOpen(false);
       setTendered("");
       setCustomer(null);
@@ -471,6 +531,27 @@ export default function PosPage() {
                   </div>
                   <span className="font-mono">KES {(variant.price * quantity).toFixed(2)}</span>
                 </div>
+                {device.industryType === "PHARMACY" && (
+                  <select
+                    value={lineBatches.get(variant.id) ?? ""}
+                    onFocus={() => void loadBatchesFor(variant.id)}
+                    onChange={(e) => setLineBatch(variant.id, e.target.value)}
+                    className="mt-2 w-full rounded-md border border-slate-700 bg-slate-900 p-1.5 text-xs"
+                  >
+                    <option value="">No batch selected</option>
+                    {(batchOptions.get(variant.id) ?? []).map((b) => {
+                      const expired = b.expiryDate ? new Date(b.expiryDate) < new Date() : false;
+                      return (
+                        <option key={b.id} value={b.id}>
+                          {b.batchNumber}
+                          {b.expiryDate ? ` - exp ${new Date(b.expiryDate).toLocaleDateString()}` : ""}
+                          {expired ? " (EXPIRED)" : ""}
+                        </option>
+                      );
+                    })}
+                    {batchesLoading.has(variant.id) && <option disabled>Loading...</option>}
+                  </select>
+                )}
               </div>
             ))}
             {cartEntries.length === 0 && <p className="text-sm text-slate-500">Cart is empty.</p>}
