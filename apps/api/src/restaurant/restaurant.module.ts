@@ -75,6 +75,10 @@ export class RestaurantModule implements OnModuleInit {
           event: 'sale.afterComplete',
           handler: this.hooks.onSaleAfterComplete.bind(this.hooks),
         },
+        {
+          event: 'refund.afterApproved',
+          handler: this.hooks.onRefundAfterApproved.bind(this.hooks),
+        },
       ],
     });
   }

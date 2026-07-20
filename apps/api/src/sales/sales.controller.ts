@@ -13,6 +13,7 @@ import { Roles } from '../auth/roles.decorator';
 import { SalesService } from './sales.service';
 import { CreateSaleDto } from './dto/create-sale.dto';
 import { VoidSaleDto } from './dto/void-sale.dto';
+import { CreateRefundDto } from './dto/create-refund.dto';
 
 // JwtAuthGuard and RolesGuard are both global (see app.module.ts).
 @Controller('sales')
@@ -44,5 +45,15 @@ export class SalesController {
   @Patch(':id/void')
   voidSale(@Param('id', ParseUUIDPipe) id: string, @Body() dto: VoidSaleDto) {
     return this.sales.void(id, dto);
+  }
+
+  // Not role-gated at the endpoint level - the approver identity carried
+  // in the body is re-verified against the database inside
+  // SalesService.refund() (same pattern as a sale's discount approver),
+  // so a cashier can submit the request but the refund is only actually
+  // created if the named approver genuinely holds supervisor+.
+  @Post(':id/refunds')
+  refund(@Param('id', ParseUUIDPipe) id: string, @Body() dto: CreateRefundDto) {
+    return this.sales.refund(id, dto);
   }
 }

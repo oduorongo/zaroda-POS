@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { Sale } from '@prisma/client';
+import { Refund, Sale } from '@prisma/client';
 import { TenantScopedPrismaService } from '../common/prisma/tenant-scoped-prisma.service';
 import { AuditLogService } from '../common/audit/audit-log.service';
 
@@ -51,6 +51,30 @@ export class RestaurantHooksService {
         entityType: 'Sale',
         entityId: sale.id,
         after: { total: sale.total },
+      }),
+    );
+  }
+
+  /**
+   * The fourth core domain event (see industry-module-manifest.interface
+   * .ts), wired here as the second real subscriber - a genuinely
+   * plausible restaurant use (flagging a refunded ticket for the kitchen
+   * to know an item was comped/returned), and a live way to verify
+   * SalesService.refund() actually fires this event the same way
+   * sale.afterComplete does, not just an assumption because the code
+   * looks the same.
+   */
+  async onRefundAfterApproved(payload: unknown): Promise<void> {
+    const refund = payload as Refund;
+    this.logger.log(
+      `refund.afterApproved hook fired for refund ${refund.id} (sale ${refund.saleId})`,
+    );
+    await this.tenantPrisma.run((tx) =>
+      this.auditLog.logInTx(tx, {
+        action: 'restaurant.refund_hook_fired',
+        entityType: 'Refund',
+        entityId: refund.id,
+        after: { saleId: refund.saleId, amount: refund.amount },
       }),
     );
   }

@@ -22,17 +22,15 @@ import { InventoryTransactionsService } from '../inventory/inventory-transaction
 import { CustomersService } from '../customers/customers.service';
 import { CreateSaleDto } from './dto/create-sale.dto';
 import { VoidSaleDto } from './dto/void-sale.dto';
+import { CreateRefundDto } from './dto/create-refund.dto';
 
 const SALE_INCLUDE = {
   lineItems: true,
   payments: true,
   discounts: true,
+  refunds: true,
 } as const;
-const DISCOUNT_APPROVER_ROLES: Role[] = [
-  Role.SUPERVISOR,
-  Role.MANAGER,
-  Role.OWNER,
-];
+const SUPERVISOR_OR_ABOVE: Role[] = [Role.SUPERVISOR, Role.MANAGER, Role.OWNER];
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
 // Loyalty rates are hardcoded org-wide for the pilot rather than a
@@ -182,7 +180,7 @@ export class SalesService {
         const approver = await tx.orgUser.findUnique({
           where: { id: dto.discount.approvedById },
         });
-        if (!approver || !DISCOUNT_APPROVER_ROLES.includes(approver.role)) {
+        if (!approver || !SUPERVISOR_OR_ABOVE.includes(approver.role)) {
           throw new BadRequestException(
             'Discount approver must be a supervisor, manager, or owner in this organization',
           );
@@ -436,5 +434,82 @@ export class SalesService {
 
       return updated;
     });
+  }
+
+  /**
+   * A partial or full MONETARY refund against a completed sale -
+   * deliberately not a goods return: the Refund model has no line-item
+   * reference (unlike void(), which reverses every line's inventory), so
+   * this is scoped to what it actually models - "we gave the customer
+   * money back" (a pricing mistake, a complaint, a goodwill gesture),
+   * distinct from void's "this whole sale never happened, take the stock
+   * back." A refund that also needs to return goods should void the sale
+   * instead; this endpoint intentionally does not touch inventory.
+   *
+   * Multiple partial refunds against the same sale are allowed, capped
+   * at the sale's total combined across all of them - the approver is
+   * re-verified against the database on every refund, never trusted from
+   * the client, same reasoning as a sale's discount approver.
+   */
+  async refund(saleId: string, dto: CreateRefundDto) {
+    const refund = await this.tenantPrisma.run(async (tx) => {
+      const sale = await tx.sale.findUnique({
+        where: { id: saleId },
+        include: { refunds: true },
+      });
+      if (!sale) throw new NotFoundException('Sale not found');
+      if (sale.status === SaleStatus.VOIDED) {
+        throw new BadRequestException('Cannot refund a voided sale');
+      }
+
+      const approver = await tx.orgUser.findUnique({
+        where: { id: dto.approvedById },
+      });
+      if (!approver || !SUPERVISOR_OR_ABOVE.includes(approver.role)) {
+        throw new BadRequestException(
+          'Refund approver must be a supervisor, manager, or owner in this organization',
+        );
+      }
+
+      const alreadyRefunded = round2(
+        sale.refunds.reduce((sum, r) => sum + Number(r.amount), 0),
+      );
+      const remaining = round2(Number(sale.total) - alreadyRefunded);
+      const amount = round2(dto.amount);
+      if (amount > remaining) {
+        throw new BadRequestException(
+          `Refund amount ${amount.toFixed(2)} exceeds the remaining refundable balance of ${remaining.toFixed(2)} (${alreadyRefunded.toFixed(2)} already refunded on this sale)`,
+        );
+      }
+
+      const created = await tx.refund.create({
+        data: {
+          saleId,
+          amount,
+          reason: dto.reason,
+          approvedById: dto.approvedById,
+        },
+      });
+
+      await this.auditLog.logInTx(tx, {
+        action: 'sale.refunded',
+        entityType: 'Sale',
+        entityId: saleId,
+        after: { amount, reason: dto.reason, approvedById: dto.approvedById },
+      });
+
+      return created;
+    });
+
+    // The fourth core domain event (industry-module-manifest.interface.ts)
+    // - unwireable until now because nothing in core ever created a
+    // Refund row to fire it from. Fired after the transaction commits,
+    // same reasoning as sale.afterComplete: a slow/misbehaving hook
+    // shouldn't hold this transaction open.
+    await this.events.emitAsync('refund.afterApproved', refund);
+
+    return this.tenantPrisma.run((tx) =>
+      tx.sale.findUnique({ where: { id: saleId }, include: SALE_INCLUDE }),
+    );
   }
 }

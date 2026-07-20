@@ -1026,6 +1026,58 @@ This closes out DESIGN.md's full Phase 4 restaurant scope: table/floor
 management, tips/service charge, and order-to-KDS routing with course
 timing.
 
+## Core: refunds (completing the module contract's fourth event)
+
+**Done and verified live.** With Phase 4 finished, picked up a loose end
+noted since the Phase 3 event-hook hardening: `refund.afterApproved` -
+the fourth core domain event declared in the manifest since Phase 0 -
+was still unwireable because no `RefundsService` existed anywhere; only
+the `Refund` Prisma model sat unused, the same "dead schema" pattern
+already found and fixed for `SyncOutbox`/`priceDriftFlagged` (Phase 4's
+restaurant write-up) and `InventoryItem.lowStockThreshold` (Phase 2).
+
+- `SalesService.refund()` + `POST /sales/:id/refunds`. Deliberately a
+  **monetary-only** refund, not a goods return: the `Refund` model has no
+  line-item reference (unlike `void()`, which reverses every line's
+  inventory), so this is scoped to what it actually models - money given
+  back for a pricing mistake, a complaint, or a goodwill gesture, kept
+  distinct from `void`'s "this sale never happened, take the stock back."
+  A refund that also needs goods returned should void the sale instead;
+  this endpoint intentionally never touches inventory.
+- Multiple partial refunds against the same sale are allowed, capped at
+  the sale's total combined across all of them. The approver is
+  re-verified against the database on every refund, never trusted from
+  the client - same reasoning, and the same `SUPERVISOR_OR_ABOVE` role
+  check, as a sale's discount approver. The endpoint itself isn't
+  role-gated at the controller level (a cashier can submit the request);
+  it's the named approver's actual role that's checked, so the request
+  reaching the endpoint proves nothing on its own.
+- `refund.afterApproved` fires after the transaction commits, same
+  reasoning as `sale.afterComplete` (a slow hook shouldn't hold the
+  transaction open). Wired a second real subscriber in
+  `RestaurantHooksService` (a plausible restaurant use - flagging a
+  comped/returned item) specifically to prove live, not just assume,
+  that this event fires the same way the others do.
+- **Verified live** against the real database: a refund approved by a
+  cashier's own id was rejected with 400 before touching the database; a
+  refund exceeding the sale's total was rejected with the exact remaining
+  balance shown; a 100 partial refund against a 185.60 sale left `total`
+  correctly unchanged at 185.60 (refunds don't edit the sale, they record
+  against it); a second refund correctly computed the remaining balance
+  (85.60) and rejected an over-limit attempt with the precise numbers; the
+  exact remaining balance succeeded, fully exhausting it; a third refund
+  attempt on the now-fully-refunded sale was rejected; refunding an
+  already-voided sale was rejected; the inventory ledger for the refunded
+  sale showed no additional movement beyond the original `SALE` entry,
+  confirming the refund never touched stock; the hook fired for both real
+  refunds with the correct refund/sale IDs; a cashier-submitted request
+  correctly returned a balance-based 400 (not a 403), confirming the
+  endpoint itself isn't role-gated; and a raw no-tenant-context query
+  confirmed 0 rows visible on `refunds` even with real refund rows now
+  present (RLS, already in place since Phase 0 - `refunds` had simply
+  never been exercised before). `pnpm typecheck`, `pnpm build`, `pnpm
+  test`, and `pnpm lint` all pass clean for `apps/api`.
+
 ## Getting started
 
 ```
