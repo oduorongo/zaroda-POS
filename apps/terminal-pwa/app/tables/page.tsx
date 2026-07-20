@@ -61,6 +61,16 @@ export default function TablesPage() {
   const [tendered, setTendered] = useState("");
   const [toast, setToast] = useState<string | null>(null);
 
+  // Held (course > 1) items aren't sent to the kitchen until explicitly
+  // fired (POST /sales/:saleId/courses/:courseNumber/fire) - tracked
+  // in-memory only, keyed by table, since there's no "which sales still
+  // have unfired courses" list endpoint to reconstruct this from after a
+  // page reload. Consistent with the rest of this vertical being
+  // online-only: losing this state on reload just means falling back to
+  // firing the course from a raw API call, not losing the order itself.
+  const [pendingCourses, setPendingCourses] = useState<Map<string, { saleId: string; courses: number[] }>>(new Map());
+  const [firingKey, setFiringKey] = useState<string | null>(null);
+
   useEffect(() => {
     void (async () => {
       const config = await getDeviceConfig();
@@ -150,7 +160,7 @@ export default function TablesPage() {
     setSubmitting(true);
     setSubmitError(null);
     try {
-      await apiPost(
+      const result = await apiPost<{ sale: { id: string } }>(
         `/restaurant/tables/${activeTable.id}/sales`,
         {
           clientId: crypto.randomUUID(),
@@ -166,6 +176,12 @@ export default function TablesPage() {
         },
         session.accessToken,
       );
+
+      const heldCourses = Array.from(new Set(order.filter((l) => l.courseNumber > 1).map((l) => l.courseNumber))).sort();
+      if (heldCourses.length > 0) {
+        setPendingCourses((prev) => new Map(prev).set(activeTable.id, { saleId: result.sale.id, courses: heldCourses }));
+      }
+
       setToast(`Order sent to the kitchen - change due: ${Math.max(0, amount - totals.total).toFixed(2)}`);
       setTimeout(() => setToast(null), 4000);
       setActiveTable(null);
@@ -190,6 +206,28 @@ export default function TablesPage() {
     if (!session) return;
     await apiPatch(`/restaurant/tables/${table.id}/status`, { status: "AVAILABLE" }, session.accessToken);
     if (device && session) await refresh(device, session);
+  }
+
+  async function fireCourse(tableId: string, saleId: string, course: number) {
+    if (!session) return;
+    const key = `${saleId}::${course}`;
+    setFiringKey(key);
+    try {
+      await apiPost(`/restaurant/sales/${saleId}/courses/${course}/fire`, {}, session.accessToken);
+      setPendingCourses((prev) => {
+        const next = new Map(prev);
+        const entry = next.get(tableId);
+        if (!entry) return next;
+        const remaining = entry.courses.filter((c) => c !== course);
+        if (remaining.length === 0) next.delete(tableId);
+        else next.set(tableId, { ...entry, courses: remaining });
+        return next;
+      });
+    } catch {
+      setLoadError(`Could not fire course ${course} - try again.`);
+    } finally {
+      setFiringKey(null);
+    }
   }
 
   if (!device || !session) {
@@ -371,6 +409,20 @@ export default function TablesPage() {
                 Mark clean
               </button>
             )}
+            {pendingCourses.get(table.id)?.courses.map((course) => {
+              const entry = pendingCourses.get(table.id)!;
+              const key = `${entry.saleId}::${course}`;
+              return (
+                <button
+                  key={course}
+                  onClick={() => void fireCourse(table.id, entry.saleId, course)}
+                  disabled={firingKey === key}
+                  className="mt-1 rounded bg-amber-700 px-2 py-1 text-xs hover:bg-amber-600 disabled:opacity-40"
+                >
+                  {firingKey === key ? "Firing..." : `Fire course ${course}`}
+                </button>
+              );
+            })}
           </div>
         ))}
         {tables.length === 0 && !loadError && <p className="col-span-full text-center text-slate-400">No tables set up for this branch yet.</p>}

@@ -1495,6 +1495,43 @@ This closes out the terminal-PWA catch-up: every module named across
 DESIGN.md's Phase 4/5 scope now has both a live-verified backend and a
 terminal UI actually driving it.
 
+### Restaurant vertical: firing held courses from the floor view
+
+**Done and verified live.** Closes one of the gaps the restaurant slice
+above explicitly left open: course timing beyond "everything fires as
+course 1" had no terminal UI.
+
+- `app/tables/page.tsx`: after an order with a course > 1 is sent, the
+  held course numbers are tracked in-memory per table (no "which sales
+  still have unfired courses" list endpoint exists to reconstruct this
+  after a page reload - documented as a known limit of this being
+  in-memory rather than persisted, consistent with the rest of this
+  vertical being online-only). The floor grid shows a "Fire course N"
+  button per table with something still held; tapping it calls `POST
+  /restaurant/sales/:saleId/courses/:courseNumber/fire` and removes that
+  course from the pending set on success.
+- **A real bug caught by live-testing, not by typecheck/lint**: the
+  first version of `fireCourse()` posted to `/sales/:saleId/courses/...`
+  - core's URL shape - but `KitchenTicketsController` is actually mounted
+  at `@Controller('restaurant')`, so the real route is
+  `/restaurant/sales/:saleId/courses/:courseNumber/fire`. TypeScript
+  can't catch a wrong string literal in a fetch path, and the button
+  would have silently 404'd for every user until caught here - exactly
+  the class of bug this project's "verify live before calling it done"
+  discipline exists to catch.
+- **Verified live** against the real database: submitted a two-course
+  table order with the exact shape `submitOrder()` sends and confirmed
+  course 1 came back `QUEUED` while course 2 came back `HELD`; called
+  the fire endpoint with the corrected route and confirmed course 2
+  flipped to `QUEUED` with `firedAt` set; retried the identical fire call
+  and confirmed it returned an empty array (already-fired courses are a
+  no-op, not an error) rather than re-firing or erroring. `pnpm
+  typecheck` and `pnpm lint` pass clean for `apps/terminal-pwa`.
+- **Not independently verified this session**: rendering/interaction in
+  an actual browser - no browser automation was available, so this was
+  verified via the exact API round trip above plus static analysis,
+  stated plainly rather than claimed.
+
 ## Getting started
 
 ```
