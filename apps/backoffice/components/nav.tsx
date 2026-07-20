@@ -10,6 +10,7 @@ const LINKS = [
   { href: "/reports", label: "Reports" },
   { href: "/shifts", label: "Shifts" },
   { href: "/inventory", label: "Inventory" },
+  { href: "/layaways", label: "Layaways" },
 ];
 
 export function Nav({ session }: { session: Session }) {

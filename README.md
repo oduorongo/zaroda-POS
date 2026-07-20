@@ -1891,9 +1891,48 @@ one screen with tabs.
   rather than claimed, consistent with every other slice in this
   document.
 
-That leaves layaways and org-user/role management (the latter needing
-new backend endpoints first, not just a UI slice) as the remaining
-`apps/backoffice` gaps from the original scope-out.
+### `apps/backoffice`: Layaways
+
+**Done and verified live.** Fifth slice - full layaway lifecycle:
+create, list/filter by status, view a detail page, record payments,
+complete (pickup, decrements inventory), and cancel.
+
+- The "New layaway" form reuses the customer search picker pattern from
+  the terminal PWA and the same `branchId`-as-text-input gap as the
+  Inventory screen (still no branch-listing endpoint anywhere), plus a
+  live `GET /products` catalog fetch (not cached like the terminal's
+  Dexie catalog - this app has no offline requirement to justify that)
+  for picking line items and previewing an estimated total client-side
+  (the server computes and snapshots the authoritative total/tax at
+  creation).
+- The detail page's balance-remaining logic gates the "Complete
+  (pickup)" button - disabled until `depositPaid >= total`, matching
+  `LayawaysService.complete()`'s own server-side check, so a manager
+  can't even attempt to complete an underpaid layaway from this screen
+  (though the server would reject it either way).
+- Cancellation (`SUPERVISOR`/`MANAGER`/`OWNER`-gated server-side,
+  unrestricted client-side per this app's consistent principle) requires
+  typing a reason, matching `CancelLayawayDto`.
+- **Verified live** against the real database, driving the full
+  lifecycle end to end: created a layaway for 3 units with the exact
+  shape `createLayaway()` sends and confirmed the server-computed total
+  (KES 278.40, tax included) matched; confirmed it appeared in the
+  default `status=OPEN` list filter; recorded two payments (KES 100 then
+  the remaining KES 178.40) with the exact shape `recordPayment()` sends
+  and confirmed `depositPaid` reached the total exactly; called complete
+  and confirmed the branch's stock correctly decremented by 3 (124 →
+  121) - the only point in a layaway's life stock actually moves, per
+  `LayawaysService.complete()`'s own design. `pnpm typecheck` and `pnpm
+  lint` pass clean for `apps/backoffice`.
+- **Not independently verified this session**: rendering/interaction in
+  an actual browser (no browser automation available), stated plainly
+  rather than claimed, consistent with every other slice in this
+  document.
+
+That leaves org-user/role management as the one remaining
+`apps/backoffice` gap from the original scope-out - and it needs new
+backend endpoints first (create/invite staff, change a role, set a PIN),
+not just a UI slice, since none of those exist server-side yet.
 
 ## Getting started
 
