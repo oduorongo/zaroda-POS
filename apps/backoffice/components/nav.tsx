@@ -7,6 +7,7 @@ import { clearSession, type Session } from "../lib/auth";
 const LINKS = [
   { href: "/sales", label: "Sales" },
   { href: "/products", label: "Products" },
+  { href: "/reports", label: "Reports" },
 ];
 
 export function Nav({ session }: { session: Session }) {

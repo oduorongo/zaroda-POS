@@ -1776,6 +1776,40 @@ different kind of app, not a mode bolted onto the terminal.
   Not an issue for the single-org demo account; a real multi-org owner
   login would need that follow-up.
 
+### `apps/backoffice`: reports screen
+
+**Done and verified live.** Second slice - a `Reports` page covering all
+four of `ReportsController`'s endpoints (`sales-by-product`,
+`sales-by-branch`, `sales-by-cashier`, `sales-by-hour`), tabbed, with a
+from/to date-range filter.
+
+- **No branch filter** - unlike the date range, there's genuinely no
+  `GET /branches` (or any branch-listing) endpoint anywhere in the API to
+  populate a dropdown from. Rather than hardcode branch IDs or fake a
+  picker with a free-text field, this is left out and documented as a
+  real gap - `ReportFiltersDto.branchId` exists and works server-side,
+  the UI just can't offer it yet.
+- `sales-by-hour`'s zero-count hours are filtered out client-side before
+  rendering (the endpoint always returns all 24) so an owner sees actual
+  activity, not a mostly-empty 24-row table.
+- These endpoints are restricted server-side to
+  `SUPERVISOR`/`MANAGER`/`OWNER`/`AUDITOR` - a plain `CASHIER` login
+  would get a 403 from the API, same "server is the real boundary"
+  principle as the rest of this app; not independently re-verified this
+  session since that role gate is pre-existing backend code this slice
+  didn't touch.
+- **Verified live** against the real database: called all four endpoints
+  with the exact date-range query shape the page constructs and
+  confirmed each response matches its TypeScript interface field-for-
+  field (including `sales-by-product`'s `margin: null` handling for
+  variants with no recorded cost, and `sales-by-hour`'s EAT-bucketed,
+  non-zero hours). `pnpm typecheck` and `pnpm lint` pass clean for
+  `apps/backoffice`.
+- **Not independently verified this session**: rendering/interaction in
+  an actual browser (no browser automation available), stated plainly
+  rather than claimed, consistent with every other slice in this
+  document.
+
 ## Getting started
 
 ```
