@@ -1611,6 +1611,65 @@ That closes out every documented gap from the terminal-PWA catch-up
 work: core gaps, all three verticals' primary flows, plus course-firing,
 batch/expiry picking, and customer-linking as follow-ups.
 
+## Codebase-wide consistency/quality audit
+
+Ran a targeted audit across both `apps/api` and `apps/terminal-pwa`,
+looking specifically for the classes of bug this project has already hit
+once (inconsistent error handling, wrong route strings, missing
+`@Roles()` justification, nested-transaction risk, `set_config(...,
+false)` regressions) rather than a generic style pass. Findings and
+disposition:
+
+- **`apps/api`**: no real bugs found. `set_config(..., false)` doesn't
+  appear anywhere (the earlier RLS false-alarm lesson stuck).
+  `app.module.ts`'s import list matches `apps/api/src/*/` exactly. Every
+  vertical module's "calls into core outside its own transaction" pattern
+  (restaurant/pharmacy/salon sales services) is the intentional,
+  documented tradeoff from Phase 4/5, not an accidental nested-transaction
+  bug. The one real gap: `RestaurantSalesController`
+  (`apps/api/src/restaurant/restaurant-sales.controller.ts`) was the only
+  unrestricted-access controller missing the `// No @Roles() - ...`
+  justification comment every sibling controller
+  (`pharmacy-sales.controller.ts`, `salon-appointments.controller.ts`,
+  `customers.controller.ts`, `organizations.controller.ts`) carries -
+  fixed by adding one; not a behavior change, since the endpoint was
+  already correctly open to any authenticated cashier.
+- **`apps/terminal-pwa`**: three real, fixed inconsistencies, all in
+  error-handling coverage that had drifted between sibling functions in
+  the same file:
+  - `app/tables/page.tsx`'s `markAvailable` had **no error handling at
+    all** - if offline or rejected, the "Mark clean" button silently did
+    nothing with zero cashier feedback, unlike every other mutating call
+    in the same file. Fixed to match `submitOrder`'s
+    `OfflineError`/`ApiError`/generic pattern.
+  - `app/tables/page.tsx`'s `fireCourse` and `app/kds/page.tsx`'s
+    `advance` both used a bare `catch {}` with one hardcoded message,
+    never distinguishing offline from a real server rejection, while
+    sibling functions in the same files (`submitOrder`, `refreshTickets`)
+    did. Fixed both to match.
+  - `app/kds/page.tsx`'s initial station-load `catch` didn't check
+    `OfflineError` even though `refreshTickets` two functions later in
+    the same file does. Fixed to match.
+  - Route strings, Dexie schema shape, and industryType-gating redirects
+    were all spot-checked and found consistent - no drift.
+- **Documented but not fixed in this pass**: `app/salon/page.tsx`'s
+  checkout has no discount concept at all (`checkoutTotals` and
+  `submitCheckout`'s payload only carry subtotal/tax/redemption), while
+  the plain POS screen and the restaurant table order builder both
+  support a supervisor-approved discount. This may be intentional product
+  scope for a first salon slice, but it's a real functional gap, not a
+  cosmetic one - a salon business that wants to offer a promotional
+  discount at checkout currently can't, on this screen alone. Left open
+  as a real, sizeable follow-up (needs the same discount modal +
+  approver-picker UI the POS screen has) rather than bolted on inside an
+  audit pass.
+- **Verification**: `pnpm typecheck`, `pnpm lint`, and `pnpm test` all
+  pass clean for `apps/api`; `pnpm typecheck` and `pnpm lint` pass clean
+  for `apps/terminal-pwa`. These were pure client-side error-message
+  branching changes with no new endpoints, so there was nothing new to
+  live-test against the database - stated plainly rather than claiming a
+  live-test pass that wouldn't have exercised anything different.
+
 ## Getting started
 
 ```

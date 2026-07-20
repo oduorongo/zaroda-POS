@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getActiveSession, getDeviceConfig, type CashierSession, type DeviceConfig } from "../../lib/db";
-import { apiGet, apiPatch, OfflineError } from "../../lib/api";
+import { apiGet, apiPatch, ApiError, OfflineError } from "../../lib/api";
 
 interface KitchenStation {
   id: string;
@@ -76,8 +76,8 @@ export default function KdsPage() {
         const stationList = await apiGet<KitchenStation[]>(`/restaurant/stations?branchId=${config.branchId}`, activeSession.accessToken);
         setStations(stationList);
         setStationId(stationList[0]?.id ?? "");
-      } catch {
-        setError("Could not load stations.");
+      } catch (err) {
+        setError(err instanceof OfflineError ? "Offline - the kitchen display needs a connection." : "Could not load stations.");
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -115,8 +115,10 @@ export default function KdsPage() {
     try {
       await apiPatch(`/restaurant/kitchen-tickets/${ticket.id}/advance`, {}, session.accessToken);
       await refreshTickets(session, stationId);
-    } catch {
-      setError("Could not advance ticket - try again.");
+    } catch (err) {
+      setError(
+        err instanceof OfflineError ? "Offline - could not advance the ticket." : err instanceof ApiError ? err.message : "Could not advance ticket - try again.",
+      );
     } finally {
       setBusyId(null);
     }

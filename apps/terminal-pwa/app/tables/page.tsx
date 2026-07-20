@@ -203,9 +203,15 @@ export default function TablesPage() {
   }
 
   async function markAvailable(table: RestaurantTable) {
-    if (!session) return;
-    await apiPatch(`/restaurant/tables/${table.id}/status`, { status: "AVAILABLE" }, session.accessToken);
-    if (device && session) await refresh(device, session);
+    if (!device || !session) return;
+    try {
+      await apiPatch(`/restaurant/tables/${table.id}/status`, { status: "AVAILABLE" }, session.accessToken);
+      await refresh(device, session);
+    } catch (err) {
+      setLoadError(
+        err instanceof OfflineError ? "Offline - could not mark the table clean." : err instanceof ApiError ? err.message : "Could not mark the table clean - try again.",
+      );
+    }
   }
 
   async function fireCourse(tableId: string, saleId: string, course: number) {
@@ -223,8 +229,14 @@ export default function TablesPage() {
         else next.set(tableId, { ...entry, courses: remaining });
         return next;
       });
-    } catch {
-      setLoadError(`Could not fire course ${course} - try again.`);
+    } catch (err) {
+      setLoadError(
+        err instanceof OfflineError
+          ? `Offline - could not fire course ${course}.`
+          : err instanceof ApiError
+            ? err.message
+            : `Could not fire course ${course} - try again.`,
+      );
     } finally {
       setFiringKey(null);
     }
