@@ -1810,6 +1810,46 @@ from/to date-range filter.
   rather than claimed, consistent with every other slice in this
   document.
 
+### `apps/backoffice`: shifts (read-only cash reconciliation)
+
+**Done and verified live.** Third slice. Before this, an owner had no
+way to review a shift's cash reconciliation except by calling
+`GET /shifts/:id/report` directly.
+
+- **Deliberately read-only** - opening/closing a shift stays the
+  cashier's own self-service action at the terminal (per
+  `shifts.controller.ts`'s own comment: "not a management-only view"),
+  and the terminal PWA doesn't have that UI yet either, a separate, real
+  gap not addressed here. This screen is for reviewing what already
+  happened, not performing the open/close itself.
+- `/shifts` lists shifts (with an "open only" filter) and links each to
+  `/shifts/:id`, which shows the same report shape as an X-report (shift
+  still open, a live snapshot) or Z-report (closed, with the
+  counted-cash variance) depending on `closedAt` - same endpoint either
+  way, `GET /shifts/:id/report`, since the backend already computes it
+  identically regardless of open/closed state.
+- Investigated an org-user/role-management screen first (a natural
+  follow-up an owner would want) and found it's **not actually buildable
+  right now** - `org-users.controller.ts` only exposes a read-only
+  `GET /org-users` (needed for the terminal's cashier picker); there is
+  no endpoint anywhere to create staff, change a role, or set a PIN.
+  That's real backend work, not a UI gap, so it wasn't attempted here -
+  noted rather than silently skipped.
+- **Verified live** against the real database: opened a real shift with
+  a KES 500 float, rang up a KES 92.80 cash sale attributed to it,
+  confirmed the X-report while still open matched exactly (`expectedCash:
+  592.8`), closed it with `countedCash: 590` and confirmed the resulting
+  `variance: -2.8` was computed and persisted correctly, then re-fetched
+  `GET /shifts/:id/report` standalone (the exact call the detail page
+  makes) and confirmed it reflects the closed state with the same
+  variance - the page's X-report/Z-report branching on `closedAt` will
+  correctly show Z-report now. `pnpm typecheck` and `pnpm lint` pass
+  clean for `apps/backoffice`.
+- **Not independently verified this session**: rendering/interaction in
+  an actual browser (no browser automation available), stated plainly
+  rather than claimed, consistent with every other slice in this
+  document.
+
 ## Getting started
 
 ```
