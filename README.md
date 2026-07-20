@@ -1934,6 +1934,84 @@ That leaves org-user/role management as the one remaining
 backend endpoints first (create/invite staff, change a role, set a PIN),
 not just a UI slice, since none of those exist server-side yet.
 
+## Org-user/role management: new backend endpoints + `apps/backoffice` Staff screen
+
+**Done and verified live.** Closes the one remaining gap from the
+`apps/backoffice` scope-out - this needed real backend work first, not
+just a UI slice, since `org-users.controller.ts` only exposed a
+read-only `GET /org-users` before this.
+
+- **New endpoints** (`apps/api/src/org-users/`), all `MANAGER`/`OWNER`-
+  gated except the pre-existing `findAll`:
+  - `POST /org-users` - adds a membership to the caller's org. If the
+    email already has a `User` account (e.g. an accountant contracted to
+    several shops - the `User` model's own comment), it just gets a new
+    membership; `fullName`/`password` are ignored rather than silently
+    overwriting an account used elsewhere. A genuinely new email requires
+    both, validated in the service (not class-validator) since the
+    conditional rule - "required only if no account exists yet" - would
+    be awkward to express as decorators.
+  - `PATCH /org-users/:id` - role and/or branch-scope reassignment.
+    `branchId: null` explicitly clears the scope (access to all
+    branches) versus an omitted field leaving it unchanged - collapsing
+    those with `??` would have lost the distinction.
+  - `PATCH /org-users/:id/pin` - resets a `User.pinHash`. Looks the
+    `OrgUser` up through the tenant-scoped `tx` first specifically so
+    the write never trusts a bare `userId` from the client, only an
+    `orgUserId` already proven to belong to the caller's own org.
+  - `users` is deliberately outside RLS/tenant scoping (see `rls.sql`'s
+    own comment on why - a `User` can belong to multiple orgs), so
+    `POST /org-users`'s email lookup uses the raw `PrismaService`
+    directly, the same pattern `AuthService.login` already established
+    for the same reason.
+  - **One deliberately non-atomic write, documented rather than hidden**:
+    `setPin`'s `pinHash` update and its audit log entry aren't atomic
+    with each other, unlike every other audited write in this codebase -
+    `User` sits outside the tenant-scoped transaction the audit log
+    needs, by construction, so there's a narrow gap where a crash could
+    lose the audit trail entry while the PIN change itself still lands.
+    Accepted deliberately, the same class of tradeoff already documented
+    for the vertical modules' "sale commits before its own metadata
+    does."
+- **A bug caught and fixed before this was called done**: the first
+  draft of `create()`'s audit log call used a *second*,
+  separate `tenantPrisma.run()` after the one that created the
+  `OrgUser` row - breaking this codebase's own rule that an audit entry
+  must commit atomically with the action it records (`AuditLogService`'s
+  own docstring is explicit about this). Fixed by moving the audit call
+  inside the same transaction as the `orgUser.create()` call.
+- **`apps/backoffice/app/staff/page.tsx`** (new): add a person (new
+  account or existing-account membership), edit role/branch scope
+  inline, set a PIN - the first UI for any of this, anywhere in the
+  project.
+- **Verified live** against the real database, driving every path: added
+  a brand-new staff member and confirmed they could log in with the
+  password just set; confirmed they appear correctly in `GET
+  /org-users`; set a PIN and confirmed `POST /auth/pin-login` actually
+  accepts it - the real end-to-end proof this isn't just writing a hash
+  nobody can use; promoted them to `SUPERVISOR` with a branch scope and
+  confirmed it applied; attempted a duplicate membership for the same
+  email and confirmed the 409; attempted a genuinely new email with no
+  `fullName`/`password` and confirmed the exact validation message;
+  cleared the branch scope back to all-branches with `branchId: null`
+  and confirmed it took. `pnpm typecheck`, `pnpm lint`, and `pnpm test`
+  all pass clean for `apps/api`; `pnpm typecheck` and `pnpm lint` pass
+  clean for `apps/backoffice`.
+- **Not independently verified this session**: the Staff page's
+  rendering/interaction in an actual browser (no browser automation
+  available) - verified via the exact API round trips above plus static
+  analysis instead, stated plainly rather than claimed.
+- **Deliberately not in this slice**: deactivating/removing a membership
+  - there's no `isActive`-style field on `OrgUser` in the schema, and an
+  outright `DELETE` risks foreign-key conflicts with everything an
+  `OrgUser` is referenced by (sales, discounts, refunds, audit log
+  actors...). A real follow-up, needs a schema decision first, not
+  attempted here.
+
+This closes every `apps/backoffice` gap identified across this session's
+work: Sales/Refunds, Products, Reports, Shifts, Inventory, Layaways, and
+now Staff.
+
 ## Getting started
 
 ```
