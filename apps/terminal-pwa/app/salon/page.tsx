@@ -2,7 +2,16 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { db, getActiveSession, getDeviceConfig, type CachedVariant, type CashierSession, type DeviceConfig } from "../../lib/db";
+import {
+  db,
+  getActiveSession,
+  getDeviceConfig,
+  type CachedOrgUser,
+  type CachedVariant,
+  type CashierSession,
+  type DeviceConfig,
+  type OutboxDiscount,
+} from "../../lib/db";
 import { apiGet, apiPatch, apiPost, ApiError, OfflineError } from "../../lib/api";
 
 type AppointmentStatus = "SCHEDULED" | "CONFIRMED" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED" | "NO_SHOW";
@@ -44,6 +53,11 @@ interface Customer {
 // the real value.
 const LOYALTY_REDEEM_VALUE = 1;
 
+// Same convenience list as the plain POS screen's discount modal - who
+// shows up as a candidate approver. The server independently re-verifies
+// the chosen approver's role, never trusted from the client.
+const APPROVER_ROLES = ["SUPERVISOR", "MANAGER", "OWNER"];
+
 // Mirrors SalonAppointmentsService's ALLOWED_TRANSITIONS - a UX guide for
 // which buttons to show, not the authorization boundary. The server
 // re-checks every transition independently; a stale client showing a
@@ -81,6 +95,7 @@ export default function SalonPage() {
   const [resources, setResources] = useState<SalonResource[]>([]);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [variants, setVariants] = useState<CachedVariant[]>([]);
+  const [orgUsers, setOrgUsers] = useState<CachedOrgUser[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const [newOpen, setNewOpen] = useState(false);
@@ -99,6 +114,11 @@ export default function SalonPage() {
   const [checkoutSearch, setCheckoutSearch] = useState("");
   const [checkoutCustomer, setCheckoutCustomer] = useState<Customer | null>(null);
   const [checkoutRedeemPoints, setCheckoutRedeemPoints] = useState("");
+  const [checkoutDiscount, setCheckoutDiscount] = useState<OutboxDiscount | null>(null);
+  const [discountModalOpen, setDiscountModalOpen] = useState(false);
+  const [discountType, setDiscountType] = useState<"PERCENT" | "FIXED">("PERCENT");
+  const [discountValue, setDiscountValue] = useState("");
+  const [discountApproverId, setDiscountApproverId] = useState("");
   const [tendered, setTendered] = useState("");
   const [checkoutBusy, setCheckoutBusy] = useState(false);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
@@ -123,6 +143,7 @@ export default function SalonPage() {
       setDevice(config);
       setSession(activeSession);
       setVariants(await db.variants.toArray());
+      setOrgUsers(await db.orgUsers.toArray());
       await refresh(config, activeSession);
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -155,6 +176,8 @@ export default function SalonPage() {
     [appointments],
   );
 
+  const approvers = useMemo(() => orgUsers.filter((u) => APPROVER_ROLES.includes(u.role)), [orgUsers]);
+
   const filteredVariants = useMemo(() => {
     const q = checkoutSearch.trim().toLowerCase();
     if (!q) return variants;
@@ -169,16 +192,23 @@ export default function SalonPage() {
       subtotal += lineSubtotal;
       tax += lineSubtotal * variant.taxRate;
     }
-    const preRedemptionTotal = subtotal + tax;
+    const preDiscountTotal = subtotal + tax;
+
+    let discountAmount = 0;
+    if (checkoutDiscount) {
+      discountAmount =
+        checkoutDiscount.type === "PERCENT" ? preDiscountTotal * (checkoutDiscount.value / 100) : checkoutDiscount.value;
+      discountAmount = Math.min(discountAmount, preDiscountTotal);
+    }
 
     const points = Number(checkoutRedeemPoints);
     const maxRedeemable = checkoutCustomer ? checkoutCustomer.loyaltyPoints : 0;
     const redemptionValue =
       Number.isFinite(points) && points > 0 ? Math.min(points, maxRedeemable) * LOYALTY_REDEEM_VALUE : 0;
 
-    const total = Math.max(0, preRedemptionTotal - redemptionValue);
-    return { subtotal, tax, redemptionValue, total };
-  }, [checkoutLines, checkoutRedeemPoints, checkoutCustomer]);
+    const total = Math.max(0, preDiscountTotal - discountAmount - redemptionValue);
+    return { subtotal, tax, discountAmount, redemptionValue, total };
+  }, [checkoutLines, checkoutRedeemPoints, checkoutCustomer, checkoutDiscount]);
 
   async function createAppointment() {
     if (!device || !session || !newResourceId || !newServiceName.trim() || !newStart || !newEnd) return;
@@ -229,8 +259,18 @@ export default function SalonPage() {
     setCheckoutSearch("");
     setCheckoutCustomer(null);
     setCheckoutRedeemPoints("");
+    setCheckoutDiscount(null);
     setTendered("");
     setCheckoutError(null);
+  }
+
+  function applyDiscount() {
+    const value = Number(discountValue);
+    if (!Number.isFinite(value) || value <= 0 || !discountApproverId) return;
+    setCheckoutDiscount({ type: discountType, value, approvedById: discountApproverId });
+    setDiscountModalOpen(false);
+    setDiscountValue("");
+    setDiscountApproverId("");
   }
 
   function openCustomerPicker(target: "new" | "checkout") {
@@ -320,6 +360,7 @@ export default function SalonPage() {
             checkoutCustomer && Number.isFinite(Number(checkoutRedeemPoints)) && Number(checkoutRedeemPoints) > 0
               ? Math.min(Number(checkoutRedeemPoints), checkoutCustomer.loyaltyPoints)
               : undefined,
+          discount: checkoutDiscount ?? undefined,
         },
         session.accessToken,
       );
@@ -329,6 +370,7 @@ export default function SalonPage() {
       setCheckoutLines([]);
       setCheckoutCustomer(null);
       setCheckoutRedeemPoints("");
+      setCheckoutDiscount(null);
       setTendered("");
       await refresh(device, session);
     } catch (err) {
@@ -418,6 +460,25 @@ export default function SalonPage() {
                   className="w-full rounded-md border border-slate-700 bg-slate-800 p-2 text-sm"
                 />
               )}
+
+              {checkoutDiscount ? (
+                <div className="flex items-center justify-between rounded-md bg-slate-800 p-2 text-sm">
+                  <span>
+                    Discount: {checkoutDiscount.type === "PERCENT" ? `${checkoutDiscount.value}%` : `KES ${checkoutDiscount.value.toFixed(2)}`}
+                  </span>
+                  <button onClick={() => setCheckoutDiscount(null)} className="text-xs text-red-400">
+                    Remove
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => setDiscountModalOpen(true)}
+                  disabled={approvers.length === 0}
+                  className="w-full rounded-md border border-dashed border-slate-700 p-2 text-sm text-slate-400 hover:border-slate-500 disabled:opacity-40"
+                >
+                  + Apply discount
+                </button>
+              )}
             </div>
 
             <div className="mt-2 flex-1 space-y-2 overflow-y-auto">
@@ -450,6 +511,12 @@ export default function SalonPage() {
                 <span>Tax</span>
                 <span>KES {checkoutTotals.tax.toFixed(2)}</span>
               </div>
+              {checkoutTotals.discountAmount > 0 && (
+                <div className="flex justify-between text-amber-400">
+                  <span>Discount</span>
+                  <span>-KES {checkoutTotals.discountAmount.toFixed(2)}</span>
+                </div>
+              )}
               {checkoutTotals.redemptionValue > 0 && (
                 <div className="flex justify-between text-amber-400">
                   <span>Points redeemed</span>
@@ -481,6 +548,66 @@ export default function SalonPage() {
             </button>
           </div>
         </div>
+
+        {discountModalOpen && (
+          <div className="fixed inset-0 flex items-center justify-center bg-black/70 p-4">
+            <div className="w-full max-w-sm rounded-xl bg-slate-800 p-6">
+              <h2 className="text-xl font-bold">Apply discount</h2>
+              <div className="mt-4 flex gap-2">
+                <button
+                  onClick={() => setDiscountType("PERCENT")}
+                  className={`flex-1 rounded-md p-2 ${discountType === "PERCENT" ? "bg-blue-600" : "bg-slate-700"}`}
+                >
+                  Percent
+                </button>
+                <button
+                  onClick={() => setDiscountType("FIXED")}
+                  className={`flex-1 rounded-md p-2 ${discountType === "FIXED" ? "bg-blue-600" : "bg-slate-700"}`}
+                >
+                  Fixed (KES)
+                </button>
+              </div>
+              <input
+                type="number"
+                className="mt-3 w-full rounded-md border border-slate-600 bg-slate-900 p-3"
+                placeholder={discountType === "PERCENT" ? "e.g. 10" : "e.g. 200"}
+                value={discountValue}
+                onChange={(e) => setDiscountValue(e.target.value)}
+              />
+              <p className="mt-4 text-sm text-slate-400">Approved by (supervisor+):</p>
+              <div className="mt-2 max-h-40 space-y-1 overflow-y-auto">
+                {approvers.map((a) => (
+                  <button
+                    key={a.id}
+                    onClick={() => setDiscountApproverId(a.id)}
+                    className={`w-full rounded-md p-2 text-left ${discountApproverId === a.id ? "bg-blue-600" : "bg-slate-900 hover:bg-slate-700"}`}
+                  >
+                    {a.fullName} <span className="text-xs text-slate-400">({a.role})</span>
+                  </button>
+                ))}
+              </div>
+              <div className="mt-4 flex gap-3">
+                <button
+                  onClick={() => {
+                    setDiscountModalOpen(false);
+                    setDiscountValue("");
+                    setDiscountApproverId("");
+                  }}
+                  className="flex-1 rounded-md bg-slate-700 p-3"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={applyDiscount}
+                  disabled={!Number.isFinite(Number(discountValue)) || Number(discountValue) <= 0 || !discountApproverId}
+                  className="flex-1 rounded-md bg-blue-600 p-3 font-semibold disabled:opacity-40"
+                >
+                  Apply
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   }

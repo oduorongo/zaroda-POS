@@ -1652,23 +1652,44 @@ disposition:
     the same file does. Fixed to match.
   - Route strings, Dexie schema shape, and industryType-gating redirects
     were all spot-checked and found consistent - no drift.
-- **Documented but not fixed in this pass**: `app/salon/page.tsx`'s
-  checkout has no discount concept at all (`checkoutTotals` and
-  `submitCheckout`'s payload only carry subtotal/tax/redemption), while
-  the plain POS screen and the restaurant table order builder both
-  support a supervisor-approved discount. This may be intentional product
-  scope for a first salon slice, but it's a real functional gap, not a
-  cosmetic one - a salon business that wants to offer a promotional
-  discount at checkout currently can't, on this screen alone. Left open
-  as a real, sizeable follow-up (needs the same discount modal +
-  approver-picker UI the POS screen has) rather than bolted on inside an
-  audit pass.
 - **Verification**: `pnpm typecheck`, `pnpm lint`, and `pnpm test` all
   pass clean for `apps/api`; `pnpm typecheck` and `pnpm lint` pass clean
   for `apps/terminal-pwa`. These were pure client-side error-message
   branching changes with no new endpoints, so there was nothing new to
   live-test against the database - stated plainly rather than claiming a
   live-test pass that wouldn't have exercised anything different.
+
+### Salon vertical: discount support on checkout
+
+**Done and verified live.** Closes the one real functional gap the
+audit above found - `app/salon/page.tsx`'s checkout had no discount
+concept at all, unlike the plain POS screen and the restaurant table
+order builder.
+
+- Reuses the same PERCENT/FIXED discount modal pattern the POS screen
+  has: cached supervisor+ org users (`db.orgUsers`, fetched at page load
+  alongside the catalog) as candidate approvers - a UX convenience only,
+  the server independently re-verifies the chosen approver's role.
+  `checkoutTotals` now computes `discountAmount` the same way the POS
+  screen's `totals` does (percent-of-pre-discount-total or a flat
+  amount, capped at the pre-discount total either way), and
+  `submitCheckout()`'s payload carries it through to
+  `POST /salon/appointments/:id/checkout`'s existing `discount` field -
+  the backend already supported this, only the UI was missing.
+- **Verified live** against the real database: booked and advanced a
+  fresh appointment to `IN_PROGRESS`, checked it out with the exact
+  request shape `submitCheckout()` now sends (a 10% discount approved by
+  the demo owner), and confirmed the sale's total came back correctly
+  discounted (KES 92.80 → 83.52) with the `Discount` record attached and
+  linked to the right approver. `pnpm typecheck` and `pnpm lint` pass
+  clean for `apps/terminal-pwa`.
+- **Not independently verified this session**: rendering/interaction in
+  an actual browser (no browser automation available), stated plainly
+  rather than claimed, consistent with every other slice in this
+  document.
+
+That closes every finding from the consistency audit - no known gaps
+remain open in the terminal PWA.
 
 ## Getting started
 
