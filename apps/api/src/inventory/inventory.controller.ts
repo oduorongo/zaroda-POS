@@ -12,7 +12,9 @@ import { Role } from '@prisma/client';
 import { Roles } from '../auth/roles.decorator';
 import { InventoryItemsService } from './inventory-items.service';
 import { InventoryTransactionsService } from './inventory-transactions.service';
+import { BatchesService } from './batches.service';
 import { CreateInventoryTransactionDto } from './dto/create-inventory-transaction.dto';
+import { CreateBatchDto } from './dto/create-batch.dto';
 import {
   ListConflictsDto,
   ListInventoryItemsDto,
@@ -27,6 +29,7 @@ export class InventoryController {
   constructor(
     private readonly items: InventoryItemsService,
     private readonly transactions: InventoryTransactionsService,
+    private readonly batches: BatchesService,
   ) {}
 
   // Stock levels: any authenticated role can read (a cashier needs to know
@@ -99,5 +102,19 @@ export class InventoryController {
   @Post('transactions')
   recordTransaction(@Body() dto: CreateInventoryTransactionDto) {
     return this.transactions.record(dto);
+  }
+
+  // Batch/expiry tracking is a core capability (see schema.prisma's Batch
+  // comment) - receiving a batch is a stock-movement operation, same tier
+  // as recording any other transaction.
+  @Roles(Role.SUPERVISOR, Role.MANAGER, Role.OWNER)
+  @Post('batches')
+  createBatch(@Body() dto: CreateBatchDto) {
+    return this.batches.create(dto);
+  }
+
+  @Get('batches')
+  findBatches(@Query('variantId') variantId?: string) {
+    return this.batches.findAll({ variantId });
   }
 }

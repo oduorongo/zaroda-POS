@@ -1078,6 +1078,60 @@ restaurant write-up) and `InventoryItem.lowStockThreshold` (Phase 2).
   never been exercised before). `pnpm typecheck`, `pnpm build`, `pnpm
   test`, and `pnpm lint` all pass clean for `apps/api`.
 
+## Phase 5 — Third vertical (pharmacy)
+
+**First slice done and verified live: batch/expiry enforcement.**
+Deliberately scoped tight, per DESIGN.md's own framing of Phase 5
+("batches table already exists in core — pharmacy module adds
+enforcement rules + prescription linkage on top") - this slice is the
+enforcement half only; prescription linkage and controlled-substance
+flags are left for a later increment, the same one-slice-at-a-time
+discipline used throughout every phase before this one.
+
+- **Two core completions first**, since batch/expiry tracking is
+  explicitly "a core capability... not pharmacy-exclusive" per the
+  `Batch` model's own schema comment (dating to Phase 1), but it had no
+  API surface at all: `POST/GET /inventory/batches` (receiving a batch
+  always creates its corresponding inventory increment in the same
+  operation, through the same `recordInTx` ledger path every other stock
+  movement uses - a batch record with no matching stock movement would be
+  a paper trail for goods never actually added), and a new
+  `SaleLineItem.batchId` column (nullable) so a sale can record which
+  batch a line was actually drawn from - previously only the ledger
+  (`InventoryTransaction.batchId`) captured this, not the sale's own line
+  items.
+- `PharmacyModule` (`apps/api/src/pharmacy/`) has no schema of its own
+  for this slice - its entire job is a `inventory.beforeDecrement` hook
+  (the same veto mechanism proven in Phase 4's restaurant hooks) that
+  blocks dispensing from an expired batch. Deliberately scoped to
+  `PHARMACY`-industryType organizations only, not "any org with an
+  expired batch": a retail tenant selling near-expiry cosmetics at a
+  discount is a legitimate call this module has no business overriding -
+  DESIGN.md frames this as pharmacy *policy* layered on generic core
+  data, not a universal rule core itself should enforce.
+- **Verified live** against the real database: created a batch expiring
+  30 days out and one that already expired 30 days ago, both correctly
+  incrementing stock by their received quantity; sold from the expired
+  batch while the demo org's `industryType` was still `RETAIL` and
+  confirmed it succeeded (proving the enforcement really is
+  pharmacy-scoped, not universal) with the sale's line item correctly
+  recording the `batchId`; switched the org to `PHARMACY` (via a raw
+  script, reverted back to `RETAIL` afterward to keep the rest of the
+  demo data consistent with every earlier phase) and confirmed the
+  identical sale was now blocked with a precise message naming the batch
+  and its expiry date; confirmed stock stayed completely untouched by the
+  blocked attempt (the whole sale transaction rolled back cleanly, not a
+  partial write); confirmed a non-expired batch and a plain batchless
+  sale both still succeeded under `PHARMACY`; RBAC (cashier blocked from
+  creating batches, allowed to view them); and RLS confirmed clean on
+  both `batches` and `sale_line_items`. `pnpm typecheck`, `pnpm build`,
+  `pnpm test`, and `pnpm lint` all pass clean for `apps/api`.
+
+Still to do for this vertical: prescription linkage and
+controlled-substance flags (DESIGN.md's remaining Phase 5 pharmacy
+scope), and salon (appointment/resource scheduling) hasn't been started
+at all yet.
+
 ## Getting started
 
 ```

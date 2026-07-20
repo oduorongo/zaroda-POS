@@ -164,6 +164,7 @@ export class SalesService {
           quantity: li.quantity,
           unitPrice,
           taxAmount,
+          batchId: li.batchId,
         };
       });
 
@@ -310,6 +311,7 @@ export class SalesService {
           type: InventoryTxnType.SALE,
           quantityDelta: -line.quantity,
           referenceId: sale.id,
+          batchId: line.batchId,
         });
       }
 

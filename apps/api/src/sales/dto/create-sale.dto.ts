@@ -21,6 +21,19 @@ export class SaleLineItemInputDto {
   @IsInt()
   @IsPositive()
   quantity!: number;
+
+  // Which batch this line was drawn from - core capability (batch/expiry
+  // tracking isn't pharmacy-exclusive, see schema.prisma's Batch model
+  // comment), optional since most retail sales don't track batches at
+  // all. Validated to exist and belong to this variant in
+  // InventoryTransactionsService.recordInTx, same as every other batchId
+  // use in this codebase. A vertical module (e.g. pharmacy) can subscribe
+  // to inventory.beforeDecrement to enforce rules against the batch this
+  // carries (expiry, controlled-substance flags) without core needing to
+  // know what those rules are.
+  @IsUUID()
+  @IsOptional()
+  batchId?: string;
 }
 
 export class SalePaymentInputDto {

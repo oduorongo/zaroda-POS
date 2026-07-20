@@ -27,6 +27,7 @@ import { CustomersModule } from './customers/customers.module';
 import { LayawaysModule } from './layaways/layaways.module';
 import { AllExceptionsFilter } from './common/logging/all-exceptions.filter';
 import { RestaurantModule } from './restaurant/restaurant.module';
+import { PharmacyModule } from './pharmacy/pharmacy.module';
 
 // Phase 1+ will import vertical module packages here and register their
 // manifests on ModuleRegistryService at bootstrap (see DESIGN.md §3) - none
@@ -93,6 +94,7 @@ import { RestaurantModule } from './restaurant/restaurant.module';
     CustomersModule,
     LayawaysModule,
     RestaurantModule,
+    PharmacyModule,
   ],
   controllers: [AppController],
   providers: [
