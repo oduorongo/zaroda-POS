@@ -1438,6 +1438,63 @@ when a controlled substance is involved.
   need one, follow-up not started); salon booking/checkout remains
   unstarted, per the agreed ordering.
 
+### Salon vertical: booking book + checkout on the terminal
+
+**Done and verified live.** Third and final vertical-specific terminal
+slice named in DESIGN.md's Phase 4/5 scope, following restaurant and
+pharmacy. Closes out the terminal-PWA catch-up work started with the
+core-gaps slice (customer/discount).
+
+- `app/salon/page.tsx` (new): a same-day booking book (`GET
+  /salon/appointments` filtered to today's `from`/`to` range), a "+ New"
+  form to book a resource/service/time slot, status-transition buttons
+  driven by a client-side mirror of `SalonAppointmentsService`'s
+  `ALLOWED_TRANSITIONS` map (a UX guide only - the server independently
+  re-validates every transition, so a stale button just surfaces a 400,
+  same as everywhere else in this app), and a checkout flow for any
+  `IN_PROGRESS`/`COMPLETED` appointment that reuses the catalog cache to
+  build a cart and posts to `POST /salon/appointments/:id/checkout`.
+  `/pos`'s header gains a "Bookings" link, shown only when
+  `device.industryType === "SALON"`.
+- **Deliberately online-only**, the same reasoning as the restaurant
+  floor view rather than the pharmacy screen's compliance reasoning: a
+  booking that hasn't actually reached the server isn't preventing a
+  real double-booking, so there's no useful offline-queued version of
+  this screen.
+- **Verified live** against the real database: created a new
+  `SalonResource` and booked an appointment against it with the exact
+  request shape the "+ New" form sends, confirmed it appeared correctly
+  in the same `from`/`to`-scoped list query the page issues on load;
+  advanced it `SCHEDULED → CONFIRMED → IN_PROGRESS` via the same
+  status-button calls the page makes; checked it out with the exact
+  shape `submitCheckout()` sends and confirmed the sale completed and
+  linked to the appointment; retried the identical checkout call and
+  confirmed it resolved to the same sale rather than double-charging
+  (the appointment-keyed idempotency already verified on the backend in
+  Phase 5+, now confirmed reachable through the exact call this screen
+  makes). The test resource/appointment were left in the demo org
+  afterward rather than deleted - no delete endpoint exists for either,
+  consistent with the restaurant module's own live-test fixtures being
+  left in place rather than cleaned up. `pnpm typecheck` and `pnpm lint`
+  pass clean for `apps/terminal-pwa`.
+- **Not independently verified this session**: the page's
+  rendering/interaction in an actual browser - no browser automation was
+  available, so verification was the exact API round trip above plus
+  static analysis, stated plainly, consistent with every other slice in
+  this section.
+- **Deliberately not in this slice**: linking a booking to a real
+  `Customer` (the "+ New" form doesn't collect one, even though
+  `CreateAppointmentDto.customerId` and the checkout DTO's own
+  `customerId`/`redeemPoints` both support it - the plain POS screen's
+  customer-attach modal isn't wired into this flow yet); resource
+  creation/management (still SUPERVISOR+-only via a back-office path,
+  matching the restaurant module's tables/stations, not exposed on this
+  screen).
+
+This closes out the terminal-PWA catch-up: every module named across
+DESIGN.md's Phase 4/5 scope now has both a live-verified backend and a
+terminal UI actually driving it.
+
 ## Getting started
 
 ```

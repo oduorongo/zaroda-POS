@@ -363,6 +363,11 @@ export default function PosPage() {
               </button>
             </>
           )}
+          {device.industryType === "SALON" && (
+            <button onClick={() => router.push("/salon")} className="rounded-md bg-slate-800 px-3 py-2 text-sm hover:bg-slate-700">
+              Bookings
+            </button>
+          )}
           <button onClick={switchCashier} className="rounded-md bg-slate-800 px-3 py-2 text-sm hover:bg-slate-700">
             Switch cashier
           </button>
