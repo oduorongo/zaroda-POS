@@ -527,6 +527,7 @@ model Sale {
   restaurantTip   RestaurantSaleTip?
   kitchenTickets  KitchenTicket[]
   pharmacyPrescription PharmacySalePrescription?
+  salonAppointmentSale SalonAppointmentSale?
 
   @@index([organizationId])
   @@index([branchId])
@@ -996,8 +997,31 @@ model SalonAppointment {
   branch       Branch        @relation(fields: [branchId], references: [id], onDelete: Cascade)
   resource     SalonResource @relation(fields: [resourceId], references: [id])
   customer     Customer?     @relation(fields: [customerId], references: [id])
+  sale         SalonAppointmentSale?
 
   @@index([resourceId, startTime])
   @@index([organizationId])
   @@map("salon_appointments")
+}
+
+// transactionExtensions pattern, same as RestaurantSaleTable/
+// PharmacySalePrescription: a dedicated 1:1 link between a core Sale and
+// this module's own entity, created by SalonAppointmentsService as the
+// direct caller of SalesService.create() (POST
+// /salon/appointments/:id/checkout), not via a hook - the same reasoning
+// already documented twice: a hook can't see extension data its own
+// caller hasn't written yet, and can't retroactively undo a sale that
+// already committed. Core's line items still reference real
+// ProductVariants (checkout needs an actual catalog price to charge),
+// unlike SalonAppointment.serviceName which stays free text - a deeper
+// service-catalog integration is a further follow-up, not this slice.
+model SalonAppointmentSale {
+  id            String @id @default(uuid())
+  appointmentId String @unique
+  saleId        String @unique
+
+  appointment SalonAppointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  sale        Sale             @relation(fields: [saleId], references: [id], onDelete: Cascade)
+
+  @@map("salon_appointment_sales")
 }

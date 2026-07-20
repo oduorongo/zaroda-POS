@@ -1212,11 +1212,49 @@ with double-booking prevention.**
   tables. `pnpm typecheck`, `pnpm build`, `pnpm test`, and `pnpm lint`
   all pass clean for `apps/api`.
 
-Still to do for this vertical: linking a completed appointment to a
-checkout sale (the same "module calls into core" pattern already proven
-twice, in restaurant and pharmacy) - DESIGN.md's Phase 5+ scope doesn't
+### Appointment checkout
+
+**Done and verified live.** DESIGN.md's Phase 5+ scope for salon doesn't
 call for anything beyond scheduling itself, but a service business
-realistically wants the appointment's price to become the checkout total.
+realistically wants the appointment's price to become the checkout
+total - the third module to use the "module calls into core" pattern
+(restaurant, pharmacy, now salon).
+
+- New `SalonAppointmentSale` (`transactionExtensions`, same 1:1 link
+  pattern as `RestaurantSaleTable`/`PharmacySalePrescription`) plus
+  `POST /salon/appointments/:id/checkout`. Core's line items still
+  reference real `ProductVariant`s (checkout needs an actual catalog
+  price to charge) - `SalonAppointment.serviceName` stays free text, a
+  deeper service-catalog integration would be a further follow-up.
+- Only an `IN_PROGRESS` or `COMPLETED` appointment can be checked out -
+  validated before `SalesService.create()` is ever called, the same
+  lesson applied a third time now: a service that hasn't happened yet
+  shouldn't be charged for. Checking out an `IN_PROGRESS` appointment
+  also marks it `COMPLETED` - checkout is the natural point a service
+  visit actually finishes.
+- **Idempotency is keyed on the appointment itself**, not just the
+  sale's `clientId` - once an appointment has a linked sale, checking it
+  out again resolves to that same sale regardless of what `clientId` (or
+  even cashier session) the retry sends, rather than only catching an
+  exact-duplicate submission. A stronger guarantee than core's own
+  idempotency alone provides, appropriate here since "this appointment
+  already has a sale" is unambiguous in a way "this exact request body
+  was already submitted" isn't.
+- **Verified live** against the real database: checking out a still-
+  `SCHEDULED` appointment was rejected with 400 before touching core;
+  advancing it to `IN_PROGRESS` and checking out succeeded, with the sale
+  correctly linked and the appointment automatically flipped to
+  `COMPLETED`; checking out the same appointment again - with a
+  different `clientId` and a garbage `cashierSessionId` - correctly
+  returned the original sale unchanged, with stock confirmed genuinely
+  untouched by the repeat call (no second decrement); RBAC (a cashier
+  could book, advance, and would be able to check out - a routine
+  front-desk flow); and RLS confirmed clean on the new table. `pnpm
+  typecheck`, `pnpm build`, `pnpm test`, and `pnpm lint` all pass clean
+  for `apps/api`.
+
+This closes out every module named across DESIGN.md's Phase 4/5 scope:
+retail (core), restaurant, pharmacy, and salon.
 
 ## Getting started
 

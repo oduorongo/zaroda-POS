@@ -388,6 +388,17 @@ CREATE POLICY tenant_isolation ON salon_appointments
   USING ("organizationId" = current_setting('app.current_tenant', true))
   WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
 
+-- ── Scoped via saleId -> sales."organizationId" ────────────────────────────
+
+ALTER TABLE salon_appointment_sales ENABLE ROW LEVEL SECURITY;
+ALTER TABLE salon_appointment_sales FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON salon_appointment_sales;
+CREATE POLICY tenant_isolation ON salon_appointment_sales
+  USING (EXISTS (SELECT 1 FROM sales s WHERE s.id = salon_appointment_sales."saleId"
+                 AND s."organizationId" = current_setting('app.current_tenant', true)))
+  WITH CHECK (EXISTS (SELECT 1 FROM sales s WHERE s.id = salon_appointment_sales."saleId"
+                 AND s."organizationId" = current_setting('app.current_tenant', true)));
+
 -- ── organizations itself ─────────────────────────────────────────────────
 -- A tenant may only ever see its own organization row (not a child table,
 -- so it filters on id directly rather than organizationId). Same pre-auth
