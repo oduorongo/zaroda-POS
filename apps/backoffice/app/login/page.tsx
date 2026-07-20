@@ -74,6 +74,13 @@ export default function LoginPage() {
         >
           {busy ? "Signing in..." : "Sign in"}
         </button>
+        <button
+          type="button"
+          onClick={() => router.push("/register")}
+          className="w-full text-center text-sm text-blue-400 hover:underline"
+        >
+          New here? Set up your organization
+        </button>
       </form>
     </div>
   );

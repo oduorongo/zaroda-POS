@@ -1,14 +1,19 @@
+import { randomUUID } from 'crypto';
 import {
   ConflictException,
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import { Prisma, Role } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '../common/prisma/prisma.service';
 import { LoginDto } from './dto/login.dto';
 import { PinLoginDto } from './dto/pin-login.dto';
+import { RegisterOrganizationDto } from './dto/register-organization.dto';
 import { JwtPayload } from './jwt.strategy';
+
+const SALT_ROUNDS = 10;
 
 @Injectable()
 export class AuthService {
@@ -132,6 +137,119 @@ export class AuthService {
     });
 
     return { ...token, cashierSessionId: session.id };
+  }
+
+  /**
+   * The tenant-onboarding entry point - creates a brand new Organization,
+   * its first (OWNER) User/OrgUser, a first Branch, and a first Terminal,
+   * all in one go so a new tenant walks away with everything the terminal
+   * PWA and back office both need to actually be used.
+   *
+   * A genuinely new kind of transaction for this codebase: every other
+   * tenant-scoped write goes through TenantScopedPrismaService.run()
+   * against an ALREADY-EXISTING organizationId. Here the organization
+   * doesn't exist yet, so the id is generated client-side (not left to
+   * Postgres's default) specifically so it can be passed to
+   * set_config('app.current_tenant', ...) before the very first insert -
+   * every tenant-scoped table's WITH CHECK policy requires the row's
+   * organizationId to already equal the current tenant, so without this
+   * the Organization insert itself would violate its own RLS policy.
+   * Same raw-transaction-with-set_config pattern pinLogin() already uses
+   * for the same reason (no tenant exists yet at the start of the unit of
+   * work).
+   *
+   * Deliberately always creates a brand-new `User` rather than reusing an
+   * existing account by email (unlike OrgUsersService.create(), which
+   * intentionally does reuse one) - this is a public, unauthenticated
+   * endpoint, so silently attaching an existing account (with its
+   * existing password) to a new organization the request's caller
+   * doesn't yet control is a materially different trust situation than
+   * an already-authenticated MANAGER/OWNER inviting someone by email.
+   * An email already in use here means "log in and use the org-users
+   * invite flow instead," not "reuse that account."
+   */
+  async register(dto: RegisterOrganizationDto) {
+    const organizationId = randomUUID();
+
+    let result: {
+      orgUser: {
+        id: string;
+        userId: string;
+        role: Role;
+        branchId: string | null;
+      };
+      branch: { id: string };
+      terminal: { id: string };
+    };
+    try {
+      result = await this.prisma.$transaction(
+        async (tx) => {
+          await tx.$executeRaw`SELECT set_config('app.current_tenant', ${organizationId}, true)`;
+
+          await tx.organization.create({
+            data: {
+              id: organizationId,
+              name: dto.organizationName,
+              industryType: dto.industryType,
+              country: dto.country ?? 'KE',
+            },
+          });
+
+          const user = await tx.user.create({
+            data: {
+              email: dto.ownerEmail,
+              fullName: dto.ownerFullName,
+              passwordHash: await bcrypt.hash(dto.ownerPassword, SALT_ROUNDS),
+            },
+          });
+
+          const orgUser = await tx.orgUser.create({
+            data: { organizationId, userId: user.id, role: Role.OWNER },
+          });
+
+          const branch = await tx.branch.create({
+            data: { organizationId, name: dto.branchName },
+          });
+
+          const terminal = await tx.terminal.create({
+            data: {
+              branchId: branch.id,
+              deviceLabel: dto.terminalLabel ?? 'Register 1',
+            },
+          });
+
+          return { orgUser, branch, terminal };
+        },
+        { timeout: 15_000, maxWait: 15_000 },
+      );
+    } catch (e) {
+      if (
+        e instanceof Prisma.PrismaClientKnownRequestError &&
+        e.code === 'P2002'
+      ) {
+        throw new ConflictException(
+          'An account already exists for this email - log in and invite yourself to a new organization from there instead',
+        );
+      }
+      throw e;
+    }
+
+    const { orgUser, branch, terminal } = result;
+    const token = this.issueToken({
+      sub: orgUser.userId,
+      organizationId,
+      orgUserId: orgUser.id,
+      role: orgUser.role,
+      branchId: orgUser.branchId,
+    });
+
+    return {
+      ...token,
+      organizationId,
+      orgUserId: orgUser.id,
+      branchId: branch.id,
+      terminalId: terminal.id,
+    };
   }
 
   private issueToken(payload: JwtPayload) {

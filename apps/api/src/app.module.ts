@@ -25,6 +25,8 @@ import { StockTransfersModule } from './stock-transfers/stock-transfers.module';
 import { StockTakesModule } from './stock-takes/stock-takes.module';
 import { CustomersModule } from './customers/customers.module';
 import { OrganizationsModule } from './organizations/organizations.module';
+import { BranchesModule } from './branches/branches.module';
+import { TerminalsModule } from './terminals/terminals.module';
 import { LayawaysModule } from './layaways/layaways.module';
 import { AllExceptionsFilter } from './common/logging/all-exceptions.filter';
 import { RestaurantModule } from './restaurant/restaurant.module';
@@ -95,6 +97,8 @@ import { SalonModule } from './salon/salon.module';
     StockTakesModule,
     CustomersModule,
     OrganizationsModule,
+    BranchesModule,
+    TerminalsModule,
     LayawaysModule,
     RestaurantModule,
     PharmacyModule,

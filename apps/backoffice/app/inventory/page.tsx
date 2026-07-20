@@ -42,19 +42,19 @@ interface Conflict extends InventoryItem {
   recentTransactions: InventoryTransaction[];
 }
 
+interface Branch {
+  id: string;
+  name: string;
+}
+
 type Tab = "items" | "alerts" | "conflicts";
 
 const ADJUSTMENT_TYPES = ["ADJUSTMENT", "TRANSFER", "STOCKTAKE", "RETURN"];
 
-/**
- * Requires a branchId typed in directly, same as the Reports page's
- * missing branch filter - no GET /branches (or any branch-listing
- * endpoint) exists anywhere in the API. Documented as a real gap rather
- * than hardcoding the demo org's branch id as if that generalized.
- */
 export default function InventoryPage() {
   const router = useRouter();
   const [session, setSessionState] = useState<Session | null>(null);
+  const [branches, setBranches] = useState<Branch[]>([]);
   const [branchId, setBranchId] = useState("");
   const [tab, setTab] = useState<Tab>("items");
 
@@ -79,6 +79,16 @@ export default function InventoryPage() {
       return;
     }
     setSessionState(s);
+    void (async () => {
+      try {
+        const result = await apiGet<Branch[]>("/branches");
+        setBranches(result);
+        setBranchId((prev) => prev || result[0]?.id || "");
+      } catch {
+        // Left blank - the branch select just stays empty rather than
+        // blocking this page over a failed branch list load.
+      }
+    })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router]);
 
@@ -140,19 +150,23 @@ export default function InventoryPage() {
         <h1 className="mb-4 text-xl font-bold">Inventory</h1>
 
         <div className="mb-4">
-          <label className="block text-xs text-slate-400">
-            Branch ID (no branch picker exists yet - paste it directly)
-          </label>
-          <input
+          <label className="block text-xs text-slate-400">Branch</label>
+          <select
             value={branchId}
             onChange={(e) => setBranchId(e.target.value)}
-            placeholder="Branch UUID"
             className="mt-1 w-full max-w-md rounded-md border border-slate-700 bg-slate-800 p-2 text-sm"
-          />
+          >
+            {branches.length === 0 && <option value="">No branches found</option>}
+            {branches.map((b) => (
+              <option key={b.id} value={b.id}>
+                {b.name}
+              </option>
+            ))}
+          </select>
         </div>
 
         {!branchId.trim() ? (
-          <p className="text-slate-400">Enter a branch ID to load inventory data.</p>
+          <p className="text-slate-400">No branch selected.</p>
         ) : (
           <>
             <div className="mb-4 flex items-center justify-between">

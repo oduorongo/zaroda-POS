@@ -3,6 +3,7 @@ import { Throttle } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 import { PinLoginDto } from './dto/pin-login.dto';
+import { RegisterOrganizationDto } from './dto/register-organization.dto';
 import { Public } from './public.decorator';
 
 // Stricter than the app-wide default (100/min - see app.module.ts): these
@@ -28,5 +29,15 @@ export class AuthController {
   @Post('pin-login')
   pinLogin(@Body() dto: PinLoginDto) {
     return this.auth.pinLogin(dto);
+  }
+
+  // Same throttle as login/pin-login - an unauthenticated endpoint that
+  // writes (creates an org + user) is at least as worth rate-limiting as
+  // one that only reads.
+  @Public()
+  @Throttle(AUTH_THROTTLE)
+  @Post('register')
+  register(@Body() dto: RegisterOrganizationDto) {
+    return this.auth.register(dto);
   }
 }

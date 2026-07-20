@@ -17,15 +17,19 @@ export class OfflineError extends Error {
   }
 }
 
-async function resolveBaseUrl(): Promise<string> {
+async function resolveBaseUrl(override?: string): Promise<string> {
+  if (override) return override.replace(/\/+$/, "");
   const config = await getDeviceConfig();
   if (!config) throw new Error("This terminal hasn't been set up yet");
   return config.apiBaseUrl.replace(/\/+$/, "");
 }
 
-export async function apiFetch<T>(path: string, options: (RequestInit & { token?: string }) = {}): Promise<T> {
-  const { token, ...init } = options;
-  const baseUrl = await resolveBaseUrl();
+export async function apiFetch<T>(
+  path: string,
+  options: (RequestInit & { token?: string; baseUrl?: string }) = {},
+): Promise<T> {
+  const { token, baseUrl: baseUrlOverride, ...init } = options;
+  const baseUrl = await resolveBaseUrl(baseUrlOverride);
 
   let response: Response;
   try {
@@ -54,8 +58,11 @@ export async function apiFetch<T>(path: string, options: (RequestInit & { token?
   return json as T;
 }
 
-export const apiGet = <T>(path: string, token?: string) => apiFetch<T>(path, { method: "GET", token });
-export const apiPost = <T>(path: string, body: unknown, token?: string) =>
-  apiFetch<T>(path, { method: "POST", body: JSON.stringify(body), token });
-export const apiPatch = <T>(path: string, body: unknown, token?: string) =>
-  apiFetch<T>(path, { method: "PATCH", body: JSON.stringify(body), token });
+// `baseUrl` is only ever passed during first-run setup (app/setup/page.tsx),
+// before db.deviceConfig exists yet to resolve it from automatically -
+// every other caller in the app omits it and gets the cached device's URL.
+export const apiGet = <T>(path: string, token?: string, baseUrl?: string) => apiFetch<T>(path, { method: "GET", token, baseUrl });
+export const apiPost = <T>(path: string, body: unknown, token?: string, baseUrl?: string) =>
+  apiFetch<T>(path, { method: "POST", body: JSON.stringify(body), token, baseUrl });
+export const apiPatch = <T>(path: string, body: unknown, token?: string, baseUrl?: string) =>
+  apiFetch<T>(path, { method: "PATCH", body: JSON.stringify(body), token, baseUrl });

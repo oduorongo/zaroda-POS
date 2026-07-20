@@ -2065,6 +2065,103 @@ work, with no remaining deferred items: Sales/Refunds, Products,
 Reports, Shifts, Inventory, Layaways, and Staff (including
 deactivate/reactivate).
 
+## Tenant onboarding: self-service registration + branches/terminals CRUD
+
+**Done and verified live.** Multi-tenancy itself (RLS-enforced isolation)
+has been the load-bearing architecture since Phase 0, but *onboarding* a
+new tenant was bare-bones: no self-service way to create an organization
+at all (seeded/created directly in the database), and no
+`GET /branches`/`GET /terminals` anywhere in the API - a gap that had
+forced three separate back-office screens (Reports, Inventory,
+Layaways) into "paste a branch UUID into a text field" as a documented
+workaround. This closes both.
+
+- **New `POST /auth/register`** (`AuthService.register`, public,
+  throttled the same as `/auth/login`/`/auth/pin-login`): creates a
+  brand new `Organization`, its first `OWNER` `User`/`OrgUser`, a first
+  `Branch`, and a first `Terminal`, all in one transaction, and returns a
+  working access token plus every id the terminal PWA and back office
+  need.
+- **A genuinely new transaction shape for this codebase**: every other
+  tenant-scoped write goes through `TenantScopedPrismaService.run()`
+  against an *already-existing* `organizationId`. Here the organization
+  doesn't exist yet, so its id is generated client-side
+  (`randomUUID()`, not left to Postgres's column default) specifically
+  so it can be passed to `set_config('app.current_tenant', ...)` before
+  the very first insert - every tenant-scoped table's `WITH CHECK`
+  policy requires a row's `organizationId` to already equal the current
+  tenant, so without this the `Organization` insert itself would violate
+  its own RLS policy. Same raw-transaction-with-`set_config` pattern
+  `pinLogin()` already established for the same reason.
+- **Deliberately always creates a brand-new `User`**, never reusing an
+  existing account by email the way `OrgUsersService.create()`
+  intentionally does - this is a public, unauthenticated endpoint, so
+  silently attaching an existing account (with its existing password) to
+  a new organization the caller doesn't yet control is a materially
+  different trust situation than an already-authenticated MANAGER/OWNER
+  inviting someone by email. An email already in use here means "log in
+  and use the org-users invite flow instead," surfaced as a 409, not
+  silent reuse.
+- **A check-then-act email race caught and fixed before this was called
+  done**: the first draft checked for an existing email with a plain
+  `findUnique` before the transaction, then created the `User` inside
+  it - two concurrent registrations for the same email could both pass
+  the check. Fixed to catch the resulting `P2002` from the transaction
+  itself instead, the same pattern already established in
+  `SalesService`/`CustomersService` for exactly this class of race.
+- **New `apps/api/src/branches/` and `apps/api/src/terminals/`
+  modules** - standard CRUD (`GET`/`POST`/`PATCH`, reads open to any
+  authenticated role, writes `MANAGER`/`OWNER`-gated), following the
+  same shape as `categories`/`tax-classes`. **Deliberately no `DELETE`
+  on either** - a `Branch` cascades onto everything it owns (sales,
+  inventory, shifts...) via the schema's `onDelete: Cascade`, and a
+  mistaken delete would be catastrophic and unrecoverable; this pilot
+  doesn't expose one at all rather than build an "are you sure" flow
+  around something this destructive.
+- **`apps/backoffice/app/register/page.tsx`** (new): the self-service
+  registration form, linked from `/login`. **`apps/backoffice/app/branches/page.tsx`**
+  (new): list branches, add a branch, add a terminal to a branch.
+- **Retrofitted the "paste a branch UUID" gap** in `apps/backoffice`'s
+  Inventory and Layaways screens - both now fetch `GET /branches` and
+  render a real `<select>`, exactly the workaround their own earlier
+  sessions' commits had explicitly flagged as a documented limitation
+  pending this endpoint's existence.
+- **`apps/terminal-pwa/app/setup/page.tsx` reworked into two steps**:
+  step 1 is the one-time manager login (unchanged in spirit); step 2 now
+  shows real branch/terminal dropdowns fed by the new endpoints instead
+  of asking an installer to paste two raw UUIDs copied from API/seed
+  output, which is what every terminal setup before this commit
+  required. `lib/api.ts` gained an optional `baseUrl` override
+  parameter on `apiGet`/`apiPost`/`apiPatch` to support this - the only
+  place in the app that needs to hit the API before `db.deviceConfig`
+  exists to resolve a base URL from automatically; every other call site
+  is unaffected (the parameter is optional and defaults to the existing
+  Dexie-resolved behavior).
+- **Verified live** against the real database: registered two entirely
+  new organizations end-to-end via the exact request shape the
+  back-office form sends, and confirmed each came back with a working
+  access token and real branch/terminal ids; confirmed `GET
+  /organizations/me` on the second new org returned its own
+  `industryType` (`RESTAURANT`) correctly, not the demo org's; confirmed
+  **RLS isolation on brand-new tenant data, not just seeded data** -
+  `GET /branches`, `GET /terminals`, and `GET /products` against the new
+  org's token returned only its own rows (one branch, one terminal, zero
+  products - a fresh org's catalog is genuinely empty); hit the duplicate-
+  email 409 by re-registering the same owner email; created a second
+  branch and a terminal on it via `POST /branches`/`POST /terminals` and
+  confirmed both list endpoints and the `branchId` filter reflected them
+  correctly. `pnpm typecheck`, `pnpm lint`, and `pnpm test` all pass
+  clean for `apps/api`; `pnpm typecheck` and `pnpm lint` pass clean for
+  both `apps/backoffice` and `apps/terminal-pwa`.
+- **Not independently verified this session**: rendering/interaction of
+  any of the three new/reworked UI screens in an actual browser (no
+  browser automation available) - verified via the exact API round trips
+  above plus static analysis instead, stated plainly rather than
+  claimed, consistent with every other slice in this document. `pnpm
+  build` was skipped for both frontend apps since their dev servers were
+  already running locally (a concurrent build is known to corrupt a
+  running dev server's `.next` cache).
+
 ## Getting started
 
 ```

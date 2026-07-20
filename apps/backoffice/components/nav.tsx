@@ -12,6 +12,7 @@ const LINKS = [
   { href: "/inventory", label: "Inventory" },
   { href: "/layaways", label: "Layaways" },
   { href: "/staff", label: "Staff" },
+  { href: "/branches", label: "Branches" },
 ];
 
 export function Nav({ session }: { session: Session }) {

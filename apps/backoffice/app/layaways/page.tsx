@@ -44,6 +44,11 @@ interface NewLine {
   quantity: number;
 }
 
+interface Branch {
+  id: string;
+  name: string;
+}
+
 const STATUS_COLOR: Record<LayawayStatus, string> = {
   OPEN: "text-amber-400",
   COMPLETED: "text-green-400",
@@ -60,6 +65,7 @@ export default function LayawaysPage() {
 
   const [newOpen, setNewOpen] = useState(false);
   const [products, setProducts] = useState<Product[]>([]);
+  const [branches, setBranches] = useState<Branch[]>([]);
   const [branchId, setBranchId] = useState("");
   const [customerSearch, setCustomerSearch] = useState("");
   const [customerResults, setCustomerResults] = useState<Customer[]>([]);
@@ -100,7 +106,13 @@ export default function LayawaysPage() {
     setNewOpen(true);
     setCreateError(null);
     try {
-      setProducts(await apiGet<Product[]>("/products"));
+      const [productsResult, branchesResult] = await Promise.all([
+        apiGet<Product[]>("/products"),
+        apiGet<Branch[]>("/branches"),
+      ]);
+      setProducts(productsResult);
+      setBranches(branchesResult);
+      setBranchId((prev) => prev || branchesResult[0]?.id || "");
     } catch (err) {
       setCreateError(err instanceof ApiError ? err.message : "Could not load the catalog.");
     }
@@ -184,13 +196,19 @@ export default function LayawaysPage() {
         {newOpen && (
           <div className="mb-6 rounded-lg border border-slate-800 p-4">
             <h2 className="mb-3 font-semibold">New layaway</h2>
-            <label className="block text-xs text-slate-400">Branch ID (no branch picker exists yet)</label>
-            <input
+            <label className="block text-xs text-slate-400">Branch</label>
+            <select
               value={branchId}
               onChange={(e) => setBranchId(e.target.value)}
-              placeholder="Branch UUID"
               className="mt-1 mb-3 w-full max-w-md rounded-md border border-slate-700 bg-slate-900 p-2 text-sm"
-            />
+            >
+              {branches.length === 0 && <option value="">No branches found</option>}
+              {branches.map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.name}
+                </option>
+              ))}
+            </select>
 
             {selectedCustomer ? (
               <div className="mb-3 flex items-center justify-between rounded-md bg-slate-900 p-2 text-sm">
