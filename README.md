@@ -1127,9 +1127,44 @@ discipline used throughout every phase before this one.
   both `batches` and `sale_line_items`. `pnpm typecheck`, `pnpm build`,
   `pnpm test`, and `pnpm lint` all pass clean for `apps/api`.
 
-Still to do for this vertical: prescription linkage and
-controlled-substance flags (DESIGN.md's remaining Phase 5 pharmacy
-scope), and salon (appointment/resource scheduling) hasn't been started
+### Controlled-substance flags and prescription linkage
+
+**Done and verified live - this closes out DESIGN.md's full Phase 5
+pharmacy scope** (batch/expiry enforcement + these two).
+
+- New `PharmacyProductFlag` (`isControlledSubstance`, a free-text
+  `schedule` classification) - unlike `Batch`, this is a genuinely
+  pharmacy-owned `entityExtensions` table, not a core capability: whether
+  a product is a controlled substance is pharmacy-specific policy core's
+  catalog has no business knowing about. `PATCH/GET
+  /pharmacy/products/:productId/controlled-substance` (supervisor+ to
+  set, any role to read - same tier as the restaurant module's
+  table/station management).
+- New `PharmacySalePrescription` (`transactionExtensions`, the same 1:1
+  link pattern as `RestaurantSaleTable`/`RestaurantSaleTip`) plus `POST
+  /pharmacy/sales`. **Applied Phase 4's own lesson directly**: a
+  controlled-substance line's prescription requirement is validated
+  *before* `SalesService.create()` is ever called, not checked
+  afterward via a hook - a hook can't retroactively stop a sale that's
+  already committed, and (per the restaurant module's documented
+  finding) can't reliably see this module's own extension data at fire
+  time either. Same fix shape as the restaurant module's station
+  validation bug from Phase 4, applied proactively this time instead of
+  needing to be caught by testing the failure path first.
+- **Verified live** against the real database: flagged the demo product
+  as a controlled substance; a sale of it with no prescription was
+  correctly rejected with 400 (naming the product) *before* touching
+  core, and stock was confirmed completely untouched by the blocked
+  attempt; the identical sale with a valid prescription succeeded, with
+  the prescription correctly linked to the new sale; unflagging the
+  product (upsert, not a duplicate row) let the same item sell with no
+  prescription required; RBAC (cashier blocked from setting the flag,
+  allowed to read it); and RLS confirmed clean on both new tables. `pnpm
+  typecheck`, `pnpm build`, `pnpm test`, and `pnpm lint` all pass clean
+  for `apps/api`.
+
+That's the full Phase 5 pharmacy vertical. Salon (appointment/resource
+scheduling, DESIGN.md's remaining Phase 5+ vertical) hasn't been started
 at all yet.
 
 ## Getting started

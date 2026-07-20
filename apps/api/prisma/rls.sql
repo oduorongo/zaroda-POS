@@ -352,6 +352,28 @@ CREATE POLICY tenant_isolation ON kitchen_ticket_lines
                  WHERE kt.id = kitchen_ticket_lines."ticketId"
                  AND s."organizationId" = current_setting('app.current_tenant', true)));
 
+-- ── Scoped via productId -> products."organizationId" ──────────────────────
+
+ALTER TABLE pharmacy_product_flags ENABLE ROW LEVEL SECURITY;
+ALTER TABLE pharmacy_product_flags FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON pharmacy_product_flags;
+CREATE POLICY tenant_isolation ON pharmacy_product_flags
+  USING (EXISTS (SELECT 1 FROM products p WHERE p.id = pharmacy_product_flags."productId"
+                 AND p."organizationId" = current_setting('app.current_tenant', true)))
+  WITH CHECK (EXISTS (SELECT 1 FROM products p WHERE p.id = pharmacy_product_flags."productId"
+                 AND p."organizationId" = current_setting('app.current_tenant', true)));
+
+-- ── Scoped via saleId -> sales."organizationId" ────────────────────────────
+
+ALTER TABLE pharmacy_sale_prescriptions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE pharmacy_sale_prescriptions FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON pharmacy_sale_prescriptions;
+CREATE POLICY tenant_isolation ON pharmacy_sale_prescriptions
+  USING (EXISTS (SELECT 1 FROM sales s WHERE s.id = pharmacy_sale_prescriptions."saleId"
+                 AND s."organizationId" = current_setting('app.current_tenant', true)))
+  WITH CHECK (EXISTS (SELECT 1 FROM sales s WHERE s.id = pharmacy_sale_prescriptions."saleId"
+                 AND s."organizationId" = current_setting('app.current_tenant', true)));
+
 -- ── organizations itself ─────────────────────────────────────────────────
 -- A tenant may only ever see its own organization row (not a child table,
 -- so it filters on id directly rather than organizationId). Same pre-auth

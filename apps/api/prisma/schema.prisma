@@ -209,6 +209,7 @@ model Product {
   category     Category?         @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   taxClass     TaxClass?         @relation(fields: [taxClassId], references: [id], onDelete: SetNull)
   variants     ProductVariant[]
+  pharmacyFlag PharmacyProductFlag?
 
   @@index([organizationId])
   @@map("products")
@@ -520,6 +521,7 @@ model Sale {
   restaurantTable RestaurantSaleTable?
   restaurantTip   RestaurantSaleTip?
   kitchenTickets  KitchenTicket[]
+  pharmacyPrescription PharmacySalePrescription?
 
   @@index([organizationId])
   @@index([branchId])
@@ -875,4 +877,53 @@ model KitchenTicketLine {
 
   @@index([ticketId])
   @@map("kitchen_ticket_lines")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Pharmacy vertical module (Phase 5, apps/api/src/pharmacy) — batch/expiry
+// enforcement (already built) plus these two: controlled-substance flags
+// and prescription linkage.
+//
+// Unlike Batch (explicitly core - see that model's comment), whether a
+// product is a controlled substance is pharmacy-specific policy, not
+// something core's catalog needs to know about - kept as a pharmacy-owned
+// extension table (entityExtensions per DESIGN.md §3) rather than a
+// column added to core's Product model.
+// ─────────────────────────────────────────────────────────────────────────
+
+model PharmacyProductFlag {
+  id                    String   @id @default(uuid())
+  productId             String   @unique
+  isControlledSubstance Boolean  @default(false)
+  // Free-text classification (e.g. a Schedule/class designation) - not an
+  // enum, since these vary by jurisdiction and this pilot doesn't need to
+  // encode any particular regulatory scheme's exact categories.
+  schedule              String?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@map("pharmacy_product_flags")
+}
+
+// transactionExtensions pattern, same as RestaurantSaleTable/
+// RestaurantSaleTip: a dedicated 1:1 link rather than JSONB on Sale or a
+// column added to it. Deliberately created by PharmacySalesService as the
+// direct caller of SalesService.create() (POST /pharmacy/sales), not via
+// an afterComplete hook - Phase 4's restaurant work already found and
+// documented why a hook can't see extension data its own caller hasn't
+// written yet, so a controlled-substance sale's prescription requirement
+// is validated BEFORE core is ever called, not after the fact.
+model PharmacySalePrescription {
+  id                 String   @id @default(uuid())
+  saleId             String   @unique
+  prescriptionNumber String
+  prescriberName     String
+  issuedDate         DateTime
+  createdAt          DateTime @default(now())
+
+  sale Sale @relation(fields: [saleId], references: [id], onDelete: Cascade)
+
+  @@map("pharmacy_sale_prescriptions")
 }

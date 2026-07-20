@@ -1,22 +1,28 @@
 import { Module, OnModuleInit } from '@nestjs/common';
+import { SalesModule } from '../sales/sales.module';
 import { ModuleRegistryModule } from '../module-registry/module-registry.module';
 import { ModuleRegistryService } from '../module-registry/module-registry.service';
 import { PharmacyHooksService } from './pharmacy-hooks.service';
+import { PharmacyProductFlagsService } from './pharmacy-product-flags.service';
+import { PharmacySalesService } from './pharmacy-sales.service';
+import { PharmacyProductsController } from './pharmacy-products.controller';
+import { PharmacySalesController } from './pharmacy-sales.controller';
 
 /**
- * Phase 5's first slice (DESIGN.md's Phase 5+ scope): batch/expiry
- * ENFORCEMENT only, deliberately not prescription linkage or
- * controlled-substance flags yet - the same one-bounded-slice-at-a-time
- * discipline used throughout this project. No new entities or schema of
- * its own for this slice: batch/expiry tracking already existed as a
- * core capability (Batch, SaleLineItem.batchId - see schema.prisma), so
- * this module's entire job is layering a pharmacy-specific POLICY
- * (block dispensing an expired batch) on top of data core already
- * collects, via the same hook mechanism proven in Phase 4.
+ * Phase 5's full pharmacy vertical: batch/expiry enforcement (first
+ * slice) plus controlled-substance flags and prescription linkage (this
+ * slice). This module imports SalesService directly
+ * (PharmacySalesService calls it to complete a sale, exactly like
+ * RestaurantSalesService does) - core imports nothing from here.
  */
 @Module({
-  imports: [ModuleRegistryModule],
-  providers: [PharmacyHooksService],
+  imports: [SalesModule, ModuleRegistryModule],
+  controllers: [PharmacyProductsController, PharmacySalesController],
+  providers: [
+    PharmacyHooksService,
+    PharmacyProductFlagsService,
+    PharmacySalesService,
+  ],
 })
 export class PharmacyModule implements OnModuleInit {
   constructor(
@@ -27,6 +33,16 @@ export class PharmacyModule implements OnModuleInit {
   onModuleInit() {
     this.registry.register({
       industryType: 'PHARMACY',
+      entityExtensions: [
+        {
+          tableName: 'pharmacy_product_flags',
+          description: 'Controlled-substance flag/classification for a product',
+        },
+        {
+          tableName: 'pharmacy_sale_prescriptions',
+          description: 'Prescription details linked to a sale',
+        },
+      ],
       hooks: [
         {
           event: 'inventory.beforeDecrement',
