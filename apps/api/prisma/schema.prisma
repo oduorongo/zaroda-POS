@@ -52,6 +52,8 @@ model Organization {
   layaways       Layaway[]
   restaurantTables RestaurantTable[]
   kitchenStations  KitchenStation[]
+  salonResources   SalonResource[]
+  salonAppointments SalonAppointment[]
 
   @@map("organizations")
 }
@@ -77,6 +79,8 @@ model Branch {
   layaways             Layaway[]
   restaurantTables     RestaurantTable[]
   kitchenStations      KitchenStation[]
+  salonResources       SalonResource[]
+  salonAppointments    SalonAppointment[]
 
   @@index([organizationId])
   @@map("branches")
@@ -476,6 +480,7 @@ model Customer {
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   sales        Sale[]
   layaways     Layaway[]
+  salonAppointments SalonAppointment[]
 
   @@unique([organizationId, phone])
   @@index([organizationId])
@@ -926,4 +931,73 @@ model PharmacySalePrescription {
   sale Sale @relation(fields: [saleId], references: [id], onDelete: Cascade)
 
   @@map("pharmacy_sale_prescriptions")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Salon vertical module (Phase 5+, apps/api/src/salon) — appointment/
+// resource scheduling, DESIGN.md's remaining Phase 5+ vertical.
+//
+// Deliberately no transactionExtensions/hooks into core in this first
+// slice - unlike restaurant/pharmacy, booking an appointment doesn't need
+// to touch SalesService at all. Linking a completed appointment to a
+// checkout sale (the same "module calls into core" pattern proven twice
+// already) is a natural follow-up slice, not folded into this one.
+// ─────────────────────────────────────────────────────────────────────────
+
+model SalonResource {
+  id             String   @id @default(uuid())
+  organizationId String
+  branchId       String
+  // e.g. "Stylist: Jane", "Chair 2" - a resource is whatever the branch
+  // actually needs to schedule against (a person, a chair, a room), not
+  // modeled as separate staff/room entities since a pilot-scale salon's
+  // real constraint is usually "how many of X can we book at once."
+  name           String
+  createdAt      DateTime @default(now())
+
+  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  branch       Branch             @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  appointments SalonAppointment[]
+
+  @@unique([branchId, name])
+  @@index([organizationId])
+  @@map("salon_resources")
+}
+
+enum SalonAppointmentStatus {
+  SCHEDULED
+  CONFIRMED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+}
+
+model SalonAppointment {
+  id             String                 @id @default(uuid())
+  organizationId String
+  branchId       String
+  resourceId     String
+  customerId     String?
+  // Free text for this slice ("Haircut", "Manicure") rather than linked
+  // to a core Product - a real service-catalog integration (with
+  // pricing feeding into a checkout sale) is exactly the kind of
+  // follow-up slice noted above, not needed for scheduling itself to be
+  // useful on its own.
+  serviceName    String
+  startTime      DateTime
+  endTime        DateTime
+  status         SalonAppointmentStatus @default(SCHEDULED)
+  notes          String?
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  branch       Branch        @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  resource     SalonResource @relation(fields: [resourceId], references: [id])
+  customer     Customer?     @relation(fields: [customerId], references: [id])
+
+  @@index([resourceId, startTime])
+  @@index([organizationId])
+  @@map("salon_appointments")
 }

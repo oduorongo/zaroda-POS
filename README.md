@@ -1163,9 +1163,60 @@ pharmacy scope** (batch/expiry enforcement + these two).
   typecheck`, `pnpm build`, `pnpm test`, and `pnpm lint` all pass clean
   for `apps/api`.
 
-That's the full Phase 5 pharmacy vertical. Salon (appointment/resource
-scheduling, DESIGN.md's remaining Phase 5+ vertical) hasn't been started
-at all yet.
+That's the full Phase 5 pharmacy vertical.
+
+## Phase 5+ — Fourth vertical (salon)
+
+**First slice done and verified live: appointment/resource scheduling
+with double-booking prevention.**
+
+- New `SalonResource` (a bookable resource - a stylist, a chair, a room;
+  whatever the branch actually needs to schedule against) and
+  `SalonAppointment` (`serviceName` as free text for this slice rather
+  than linked to a core `Product` - a real service-catalog integration
+  feeding pricing into a checkout sale is the natural next slice, not
+  folded into this one). Deliberately **no** `transactionExtensions` or
+  hooks into core for this slice: unlike restaurant/pharmacy, booking an
+  appointment doesn't need to touch `SalesService` at all - linking a
+  completed appointment to checkout is the follow-up, the same
+  incremental discipline used throughout every phase before this one.
+- The actual "resource scheduling" value this module exists for: two
+  appointments for the same resource with overlapping time ranges are
+  rejected outright (`startTime < existing.endTime AND endTime >
+  existing.startTime`, the standard interval-overlap test), not left for
+  a human to notice at checkout. A cancelled or no-show appointment
+  doesn't block the slot it was going to occupy - the resource is
+  genuinely free again once an appointment is no longer actually
+  happening.
+- Status lifecycle is a branching state machine, not the restaurant
+  module's strict single-path sequence: `SCHEDULED`/`CONFIRMED` can each
+  move to `CANCELLED` or `NO_SHOW` in addition to advancing forward
+  (`SCHEDULED → CONFIRMED → IN_PROGRESS → COMPLETED`); `COMPLETED`,
+  `CANCELLED`, and `NO_SHOW` are all terminal.
+- **Verified live** against the real database: created a resource,
+  confirmed a duplicate name at the same branch was rejected with 409;
+  booked a 10:00-11:00 appointment, confirmed an overlapping 10:30-11:30
+  attempt was rejected with a precise message naming the resource and its
+  existing booking window; confirmed a genuinely adjacent 11:00-12:00
+  booking succeeded (back-to-back is fine, only actual overlap is
+  rejected); confirmed `endTime <= startTime` was rejected before
+  touching the database; walked an appointment through
+  `SCHEDULED → CONFIRMED → IN_PROGRESS → COMPLETED` with each step
+  correctly accepted, confirmed skipping straight to `COMPLETED` from
+  `SCHEDULED` was rejected, and confirmed no transition out of the
+  now-`COMPLETED` appointment was allowed; booked and then cancelled a
+  separate appointment, then confirmed the identical slot could be
+  rebooked (cancelled genuinely frees the resource); RBAC (cashier
+  blocked from creating resources, allowed to book/manage appointments -
+  a routine front-desk operation); and RLS confirmed clean on both new
+  tables. `pnpm typecheck`, `pnpm build`, `pnpm test`, and `pnpm lint`
+  all pass clean for `apps/api`.
+
+Still to do for this vertical: linking a completed appointment to a
+checkout sale (the same "module calls into core" pattern already proven
+twice, in restaurant and pharmacy) - DESIGN.md's Phase 5+ scope doesn't
+call for anything beyond scheduling itself, but a service business
+realistically wants the appointment's price to become the checkout total.
 
 ## Getting started
 
