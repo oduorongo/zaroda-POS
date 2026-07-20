@@ -1571,8 +1571,45 @@ backend, but the terminal cart had no way to pick a batch at all.
   stated plainly rather than claimed.
 
 This closes both gaps the pharmacy and restaurant terminal slices left
-open. The one remaining documented gap from the vertical-UI work is
-linking a `Customer` to a salon booking.
+open.
+
+### Salon vertical: linking a customer to a booking
+
+**Done and verified live.** Closes the last documented gap from the
+vertical-UI work - `CreateAppointmentDto.customerId` and the checkout
+DTO's own `customerId`/`redeemPoints` were both already supported by the
+backend, but the "+ New" booking form and checkout screen never
+collected one.
+
+- `app/salon/page.tsx` gains the same customer search/quick-create
+  picker the plain POS screen has (`GET /customers?search=`, `POST
+  /customers`), reused for two different targets via a single
+  `customerPickerFor: "new" | "checkout"` state rather than two
+  duplicated modals. The "+ New" form can optionally attach a customer
+  before booking; checkout can independently attach one (not
+  necessarily the same customer the booking was made under - the walk-in
+  case where whoever pays isn't who booked) plus redeem their loyalty
+  points, capped client-side at their cached balance the same way the
+  plain POS screen does.
+- **Verified live** against the real database: created a customer via
+  the exact `POST /customers` shape the picker's quick-create sends;
+  booked an appointment with `customerId` set using the exact shape
+  `createAppointment()` now sends and confirmed the response's
+  `customer.name` came back correctly linked; advanced it to
+  `IN_PROGRESS` and checked it out with `customerId` using the exact
+  shape `submitCheckout()` now sends, confirming the resulting sale's
+  `customerId` was set and `pointsEarned` was computed. `pnpm typecheck`
+  and `pnpm lint` pass clean for `apps/terminal-pwa`.
+- **Not independently verified this session**: the redemption path
+  itself (no customer with a positive loyalty balance was readily
+  available in the demo org's existing data, and core's redemption
+  arithmetic was already live-verified elsewhere in this document) or
+  rendering/interaction in an actual browser (no browser automation
+  available) - both stated plainly rather than claimed.
+
+That closes out every documented gap from the terminal-PWA catch-up
+work: core gaps, all three verticals' primary flows, plus course-firing,
+batch/expiry picking, and customer-linking as follow-ups.
 
 ## Getting started
 

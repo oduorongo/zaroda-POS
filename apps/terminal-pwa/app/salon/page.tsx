@@ -31,6 +31,19 @@ interface CheckoutLine {
   quantity: number;
 }
 
+interface Customer {
+  id: string;
+  name: string;
+  phone: string | null;
+  loyaltyPoints: number;
+}
+
+// 1 loyalty point = KES 1 off (SalesService.LOYALTY_REDEEM_VALUE) - no
+// endpoint exposes this rate, mirrored here for the redemption preview
+// only, same as the plain POS screen. The server computes and enforces
+// the real value.
+const LOYALTY_REDEEM_VALUE = 1;
+
 // Mirrors SalonAppointmentsService's ALLOWED_TRANSITIONS - a UX guide for
 // which buttons to show, not the authorization boundary. The server
 // re-checks every transition independently; a stale client showing a
@@ -75,6 +88,7 @@ export default function SalonPage() {
   const [newServiceName, setNewServiceName] = useState("");
   const [newStart, setNewStart] = useState("");
   const [newEnd, setNewEnd] = useState("");
+  const [newCustomer, setNewCustomer] = useState<Customer | null>(null);
   const [newBusy, setNewBusy] = useState(false);
   const [newError, setNewError] = useState<string | null>(null);
 
@@ -83,10 +97,21 @@ export default function SalonPage() {
   const [checkoutTarget, setCheckoutTarget] = useState<Appointment | null>(null);
   const [checkoutLines, setCheckoutLines] = useState<CheckoutLine[]>([]);
   const [checkoutSearch, setCheckoutSearch] = useState("");
+  const [checkoutCustomer, setCheckoutCustomer] = useState<Customer | null>(null);
+  const [checkoutRedeemPoints, setCheckoutRedeemPoints] = useState("");
   const [tendered, setTendered] = useState("");
   const [checkoutBusy, setCheckoutBusy] = useState(false);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+
+  // Shared customer-search picker, reused for both the New-booking form
+  // and checkout - customerPickerFor says which one the result gets
+  // assigned to, the same modal either way.
+  const [customerPickerFor, setCustomerPickerFor] = useState<"new" | "checkout" | null>(null);
+  const [customerSearch, setCustomerSearch] = useState("");
+  const [customerResults, setCustomerResults] = useState<Customer[]>([]);
+  const [customerBusy, setCustomerBusy] = useState(false);
+  const [customerError, setCustomerError] = useState<string | null>(null);
 
   useEffect(() => {
     void (async () => {
@@ -144,8 +169,16 @@ export default function SalonPage() {
       subtotal += lineSubtotal;
       tax += lineSubtotal * variant.taxRate;
     }
-    return { subtotal, tax, total: subtotal + tax };
-  }, [checkoutLines]);
+    const preRedemptionTotal = subtotal + tax;
+
+    const points = Number(checkoutRedeemPoints);
+    const maxRedeemable = checkoutCustomer ? checkoutCustomer.loyaltyPoints : 0;
+    const redemptionValue =
+      Number.isFinite(points) && points > 0 ? Math.min(points, maxRedeemable) * LOYALTY_REDEEM_VALUE : 0;
+
+    const total = Math.max(0, preRedemptionTotal - redemptionValue);
+    return { subtotal, tax, redemptionValue, total };
+  }, [checkoutLines, checkoutRedeemPoints, checkoutCustomer]);
 
   async function createAppointment() {
     if (!device || !session || !newResourceId || !newServiceName.trim() || !newStart || !newEnd) return;
@@ -157,6 +190,7 @@ export default function SalonPage() {
         {
           branchId: device.branchId,
           resourceId: newResourceId,
+          customerId: newCustomer?.id,
           serviceName: newServiceName.trim(),
           startTime: new Date(newStart).toISOString(),
           endTime: new Date(newEnd).toISOString(),
@@ -167,6 +201,7 @@ export default function SalonPage() {
       setNewServiceName("");
       setNewStart("");
       setNewEnd("");
+      setNewCustomer(null);
       await refresh(device, session);
     } catch (err) {
       setNewError(err instanceof ApiError ? err.message : err instanceof OfflineError ? "Offline." : "Could not book appointment.");
@@ -192,8 +227,55 @@ export default function SalonPage() {
     setCheckoutTarget(appointment);
     setCheckoutLines([]);
     setCheckoutSearch("");
+    setCheckoutCustomer(null);
+    setCheckoutRedeemPoints("");
     setTendered("");
     setCheckoutError(null);
+  }
+
+  function openCustomerPicker(target: "new" | "checkout") {
+    setCustomerPickerFor(target);
+    setCustomerSearch("");
+    setCustomerResults([]);
+    setCustomerError(null);
+  }
+
+  async function searchCustomers(q: string) {
+    setCustomerSearch(q);
+    if (!session) return;
+    setCustomerBusy(true);
+    setCustomerError(null);
+    try {
+      const results = await apiGet<Customer[]>(`/customers?search=${encodeURIComponent(q)}`, session.accessToken);
+      setCustomerResults(results);
+    } catch (err) {
+      setCustomerError(err instanceof OfflineError ? "Offline - customer lookup needs a connection." : "Search failed.");
+      setCustomerResults([]);
+    } finally {
+      setCustomerBusy(false);
+    }
+  }
+
+  async function createCustomer(name: string, phone: string) {
+    if (!session || !name.trim()) return;
+    setCustomerBusy(true);
+    setCustomerError(null);
+    try {
+      const created = await apiPost<Customer>("/customers", { name: name.trim(), phone: phone.trim() || undefined }, session.accessToken);
+      selectCustomer(created);
+    } catch (err) {
+      setCustomerError(err instanceof ApiError ? err.message : "Could not create customer.");
+    } finally {
+      setCustomerBusy(false);
+    }
+  }
+
+  function selectCustomer(c: Customer) {
+    if (customerPickerFor === "new") setNewCustomer(c);
+    else if (customerPickerFor === "checkout") setCheckoutCustomer(c);
+    setCustomerPickerFor(null);
+    setCustomerSearch("");
+    setCustomerResults([]);
   }
 
   function addCheckoutLine(variant: CachedVariant) {
@@ -233,6 +315,11 @@ export default function SalonPage() {
           cashierSessionId: session.cashierSessionId,
           lineItems: checkoutLines.map((l) => ({ variantId: l.variant.id, quantity: l.quantity })),
           payments: [{ method: "CASH", amount: checkoutTotals.total }],
+          customerId: checkoutCustomer?.id,
+          redeemPoints:
+            checkoutCustomer && Number.isFinite(Number(checkoutRedeemPoints)) && Number(checkoutRedeemPoints) > 0
+              ? Math.min(Number(checkoutRedeemPoints), checkoutCustomer.loyaltyPoints)
+              : undefined,
         },
         session.accessToken,
       );
@@ -240,6 +327,8 @@ export default function SalonPage() {
       setTimeout(() => setToast(null), 4000);
       setCheckoutTarget(null);
       setCheckoutLines([]);
+      setCheckoutCustomer(null);
+      setCheckoutRedeemPoints("");
       setTendered("");
       await refresh(device, session);
     } catch (err) {
@@ -298,6 +387,39 @@ export default function SalonPage() {
 
           <div className="flex w-80 flex-col border-l border-slate-800 p-3">
             <h2 className="font-semibold">Checkout</h2>
+
+            <div className="mt-2 space-y-2">
+              {checkoutCustomer ? (
+                <div className="flex items-center justify-between rounded-md bg-slate-800 p-2 text-sm">
+                  <div>
+                    <p className="font-medium">{checkoutCustomer.name}</p>
+                    <p className="text-xs text-slate-400">{checkoutCustomer.loyaltyPoints} pts</p>
+                  </div>
+                  <button onClick={() => { setCheckoutCustomer(null); setCheckoutRedeemPoints(""); }} className="text-xs text-red-400">
+                    Remove
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => openCustomerPicker("checkout")}
+                  className="w-full rounded-md border border-dashed border-slate-700 p-2 text-sm text-slate-400 hover:border-slate-500"
+                >
+                  + Attach customer
+                </button>
+              )}
+              {checkoutCustomer && checkoutCustomer.loyaltyPoints > 0 && (
+                <input
+                  type="number"
+                  min={0}
+                  max={checkoutCustomer.loyaltyPoints}
+                  placeholder={`Redeem points (max ${checkoutCustomer.loyaltyPoints})`}
+                  value={checkoutRedeemPoints}
+                  onChange={(e) => setCheckoutRedeemPoints(e.target.value)}
+                  className="w-full rounded-md border border-slate-700 bg-slate-800 p-2 text-sm"
+                />
+              )}
+            </div>
+
             <div className="mt-2 flex-1 space-y-2 overflow-y-auto">
               {checkoutLines.map((line, i) => (
                 <div key={line.variant.id} className="rounded-md bg-slate-800 p-2">
@@ -328,6 +450,12 @@ export default function SalonPage() {
                 <span>Tax</span>
                 <span>KES {checkoutTotals.tax.toFixed(2)}</span>
               </div>
+              {checkoutTotals.redemptionValue > 0 && (
+                <div className="flex justify-between text-amber-400">
+                  <span>Points redeemed</span>
+                  <span>-KES {checkoutTotals.redemptionValue.toFixed(2)}</span>
+                </div>
+              )}
               <div className="flex justify-between text-lg font-bold">
                 <span>Total</span>
                 <span>KES {checkoutTotals.total.toFixed(2)}</span>
@@ -434,6 +562,21 @@ export default function SalonPage() {
               value={newServiceName}
               onChange={(e) => setNewServiceName(e.target.value)}
             />
+            {newCustomer ? (
+              <div className="mt-3 flex items-center justify-between rounded-md bg-slate-900 p-2 text-sm">
+                <span>{newCustomer.name}</span>
+                <button onClick={() => setNewCustomer(null)} className="text-xs text-red-400">
+                  Remove
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => openCustomerPicker("new")}
+                className="mt-3 w-full rounded-md border border-dashed border-slate-700 p-2 text-sm text-slate-400 hover:border-slate-500"
+              >
+                + Attach customer (optional)
+              </button>
+            )}
             <label className="mt-3 block text-xs text-slate-400">Start</label>
             <input
               type="datetime-local"
@@ -462,6 +605,54 @@ export default function SalonPage() {
                 {newBusy ? "Booking..." : "Book"}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {customerPickerFor && (
+        <div className="fixed inset-0 flex items-center justify-center bg-black/70 p-4">
+          <div className="w-full max-w-sm rounded-xl bg-slate-800 p-6">
+            <h2 className="text-xl font-bold">Attach customer</h2>
+            <input
+              autoFocus
+              className="mt-4 w-full rounded-md border border-slate-600 bg-slate-900 p-3"
+              placeholder="Search name or phone..."
+              value={customerSearch}
+              onChange={(e) => void searchCustomers(e.target.value)}
+            />
+            {customerError && <p className="mt-2 text-sm text-red-400">{customerError}</p>}
+            <div className="mt-3 max-h-48 space-y-1 overflow-y-auto">
+              {customerResults.map((c) => (
+                <button
+                  key={c.id}
+                  onClick={() => selectCustomer(c)}
+                  className="flex w-full items-center justify-between rounded-md bg-slate-900 p-2 text-left hover:bg-slate-700"
+                >
+                  <span>{c.name}</span>
+                  <span className="text-xs text-slate-400">{c.phone ?? "no phone"} · {c.loyaltyPoints} pts</span>
+                </button>
+              ))}
+              {customerBusy && <p className="text-sm text-slate-400">Searching...</p>}
+            </div>
+            {customerSearch.trim().length > 0 && customerResults.length === 0 && !customerBusy && (
+              <button
+                onClick={() => void createCustomer(customerSearch, "")}
+                className="mt-3 w-full rounded-md bg-blue-600 p-2 text-sm font-semibold"
+              >
+                + New customer &quot;{customerSearch.trim()}&quot;
+              </button>
+            )}
+            <button
+              onClick={() => {
+                setCustomerPickerFor(null);
+                setCustomerSearch("");
+                setCustomerResults([]);
+                setCustomerError(null);
+              }}
+              className="mt-4 w-full rounded-md bg-slate-700 p-3"
+            >
+              Close
+            </button>
           </div>
         </div>
       )}
