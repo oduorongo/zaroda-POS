@@ -1385,6 +1385,59 @@ kitchen station, or see what the kitchen owed a table.
   remain unstarted, per the agreed ordering (core gaps, then one
   vertical at a time).
 
+### Pharmacy vertical: prescription entry on the terminal
+
+**Done and verified live.** Second vertical-specific terminal slice.
+Unlike the restaurant module, this one doesn't need new screens - a
+pharmacy sale is the same cart/checkout UI as the plain POS screen, just
+submitted through a different endpoint with a reject-then-retry step
+when a controlled substance is involved.
+
+- `app/pos/page.tsx`: when `device.industryType === "PHARMACY"`,
+  `completeSale()` no longer queues to the outbox - it calls `POST
+  /pharmacy/sales` directly and synchronously. **Deliberately
+  online-only**, for a different reason than the restaurant screens'
+  "needs live coordination": the controlled-substance/prescription check
+  is a gating compliance rule that has to run *before* the sale
+  completes, and queuing it offline would let a cashier physically hand
+  over medication before the server ever validated that requirement -
+  a worse risk than a delayed kitchen ticket.
+- If the server rejects with 400 and a message matching `/prescription/i`
+  (`PharmacySalesService.createWithPrescription`'s exact wording, naming
+  the controlled product(s) by name), a prescription modal opens showing
+  that message plus number/prescriber/issued-date fields. Resubmitting
+  reuses the **same `clientId`** as the first attempt - not a new one -
+  so the retry resolves to the same idempotent sale rather than a second
+  one if it ever raced with anything else.
+- No bulk "which of these cached variants are flagged" endpoint exists
+  (`PharmacyProductFlagsService` only offers a per-product lookup), so
+  this doesn't try to warn the cashier before checkout - the server's
+  own rejection is the first signal, exactly as it already was for
+  `curl`-driven testing. A proactive catalog-level flag indicator would
+  need that bulk endpoint added first; left as a known gap rather than
+  worked around with N sequential lookups per cart.
+- **Verified live** against the real database: flagged the demo org's
+  one seeded product as a controlled substance via `PATCH
+  /pharmacy/products/:id/controlled-substance`; submitted the exact
+  request shape `submitPharmacySale()` sends with no prescription and
+  confirmed the 400 came back with the precise message the UI's regex
+  matches; resubmitted with the same `clientId` plus a prescription
+  attached and confirmed the sale completed and
+  `PharmacySalePrescription` was created correctly linked; unflagged the
+  product afterward to leave the demo org as found. `pnpm typecheck` and
+  `pnpm lint` pass clean for `apps/terminal-pwa`.
+- **Not independently verified this session**: the modal's
+  rendering/interaction in an actual browser - no browser automation was
+  available, so verification was the exact API round trip above plus
+  static analysis, stated plainly rather than claimed, consistent with
+  every other slice in this section.
+- **Deliberately not in this slice**: batch/expiry selection at checkout
+  (core's `SaleLineItemInputDto.batchId` and the pharmacy hook that
+  blocks an expired batch are both live-verified on the backend, but the
+  terminal cart has no batch picker - a real pharmacy terminal would
+  need one, follow-up not started); salon booking/checkout remains
+  unstarted, per the agreed ordering.
+
 ## Getting started
 
 ```

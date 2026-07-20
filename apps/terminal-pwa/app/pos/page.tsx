@@ -66,6 +66,21 @@ export default function PosPage() {
   const [discountValue, setDiscountValue] = useState("");
   const [discountApproverId, setDiscountApproverId] = useState("");
 
+  // Pharmacy-only: a controlled-substance line is rejected by POST
+  // /pharmacy/sales with a 400 naming the products, not caught client-
+  // side ahead of time (no bulk "which of these variants are flagged"
+  // endpoint exists yet - see PharmacyProductFlagsService, only a
+  // per-product lookup does). pendingClientId keeps the same idempotency
+  // key across the reject-then-retry-with-prescription round trip.
+  const [prescriptionModalOpen, setPrescriptionModalOpen] = useState(false);
+  const [prescriptionMessage, setPrescriptionMessage] = useState("");
+  const [pendingClientId, setPendingClientId] = useState<string | null>(null);
+  const [prescriptionNumber, setPrescriptionNumber] = useState("");
+  const [prescriberName, setPrescriberName] = useState("");
+  const [issuedDate, setIssuedDate] = useState("");
+  const [pharmacyBusy, setPharmacyBusy] = useState(false);
+  const [pharmacyError, setPharmacyError] = useState<string | null>(null);
+
   const sync = useSyncEngine();
 
   useEffect(() => {
@@ -161,6 +176,11 @@ export default function PosPage() {
     const amount = Number(tendered);
     if (!Number.isFinite(amount) || amount < totals.total - 0.01) return;
 
+    if (device.industryType === "PHARMACY") {
+      await submitPharmacySale(crypto.randomUUID(), amount, undefined);
+      return;
+    }
+
     const points = Number(redeemPoints);
     const redeemAmount = customer && Number.isFinite(points) && points > 0 ? Math.min(points, customer.loyaltyPoints) : null;
 
@@ -189,6 +209,83 @@ export default function PosPage() {
     setToast(`Sale queued - change due: ${Math.max(0, amount - totals.total).toFixed(2)}`);
     setTimeout(() => setToast(null), 4000);
     void sync.runSync();
+  }
+
+  /**
+   * Pharmacy sales bypass the outbox entirely (unlike the plain retail
+   * flow above) - not for the restaurant module's "needs live
+   * coordination" reason, but because the controlled-substance/
+   * prescription check is a gating business rule that has to run before
+   * the sale completes. Queuing it offline would mean a cashier could
+   * physically hand over medication before the server ever validated the
+   * prescription requirement - a worse compliance risk than a delayed
+   * kitchen ticket.
+   */
+  async function submitPharmacySale(clientId: string, amount: number, prescription: { prescriptionNumber: string; prescriberName: string; issuedDate: string } | undefined) {
+    if (!device || !session) return;
+    setPharmacyBusy(true);
+    setPharmacyError(null);
+    try {
+      await apiPost(
+        "/pharmacy/sales",
+        {
+          clientId,
+          branchId: device.branchId,
+          terminalId: device.terminalId,
+          cashierSessionId: session.cashierSessionId,
+          lineItems: cartEntries.map((e) => ({ variantId: e.variant.id, quantity: e.quantity })),
+          payments: [{ method: "CASH", amount: totals.total }],
+          discount: discount ?? undefined,
+          customerId: customer?.id ?? undefined,
+          redeemPoints:
+            customer && Number.isFinite(Number(redeemPoints)) && Number(redeemPoints) > 0
+              ? Math.min(Number(redeemPoints), customer.loyaltyPoints)
+              : undefined,
+          prescription,
+        },
+        session.accessToken,
+      );
+      setCart(new Map());
+      setCheckoutOpen(false);
+      setTendered("");
+      setCustomer(null);
+      setRedeemPoints("");
+      setDiscount(null);
+      setPrescriptionModalOpen(false);
+      setPendingClientId(null);
+      setPrescriptionNumber("");
+      setPrescriberName("");
+      setIssuedDate("");
+      setToast(`Sale complete - change due: ${Math.max(0, amount - totals.total).toFixed(2)}`);
+      setTimeout(() => setToast(null), 4000);
+    } catch (err) {
+      if (err instanceof OfflineError) {
+        setPharmacyError("Offline - a pharmacy sale needs a connection to validate against prescription rules.");
+        return;
+      }
+      if (err instanceof ApiError && err.status === 400 && /prescription/i.test(err.message)) {
+        // Keep the same clientId across the retry - resubmitting with the
+        // prescription attached must resolve to the same sale, not a
+        // second one, if this ever raced with a retry from elsewhere.
+        setPendingClientId(clientId);
+        setPrescriptionMessage(err.message);
+        setPrescriptionModalOpen(true);
+        return;
+      }
+      setPharmacyError(err instanceof ApiError ? err.message : "Sale failed.");
+    } finally {
+      setPharmacyBusy(false);
+    }
+  }
+
+  async function submitPrescriptionAndRetry() {
+    if (!pendingClientId || !prescriptionNumber.trim() || !prescriberName.trim() || !issuedDate) return;
+    const amount = Number(tendered);
+    await submitPharmacySale(pendingClientId, amount, {
+      prescriptionNumber: prescriptionNumber.trim(),
+      prescriberName: prescriberName.trim(),
+      issuedDate,
+    });
   }
 
   async function switchCashier() {
@@ -427,16 +524,64 @@ export default function PosPage() {
             {Number(tendered) >= totals.total && (
               <p className="mt-2 text-green-400">Change due: KES {(Number(tendered) - totals.total).toFixed(2)}</p>
             )}
+            {pharmacyError && <p className="mt-2 text-sm text-red-400">{pharmacyError}</p>}
             <div className="mt-4 flex gap-3">
               <button onClick={() => setCheckoutOpen(false)} className="flex-1 rounded-md bg-slate-700 p-3">
                 Cancel
               </button>
               <button
                 onClick={completeSale}
-                disabled={!Number.isFinite(Number(tendered)) || Number(tendered) < totals.total - 0.01}
+                disabled={pharmacyBusy || !Number.isFinite(Number(tendered)) || Number(tendered) < totals.total - 0.01}
                 className="flex-1 rounded-md bg-blue-600 p-3 font-semibold disabled:opacity-40"
               >
-                Confirm
+                {pharmacyBusy ? "..." : "Confirm"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {prescriptionModalOpen && (
+        <div className="fixed inset-0 flex items-center justify-center bg-black/70 p-4">
+          <div className="w-full max-w-sm rounded-xl bg-slate-800 p-6">
+            <h2 className="text-xl font-bold">Prescription required</h2>
+            <p className="mt-1 text-sm text-amber-400">{prescriptionMessage}</p>
+            <input
+              className="mt-4 w-full rounded-md border border-slate-600 bg-slate-900 p-3"
+              placeholder="Prescription number"
+              value={prescriptionNumber}
+              onChange={(e) => setPrescriptionNumber(e.target.value)}
+            />
+            <input
+              className="mt-3 w-full rounded-md border border-slate-600 bg-slate-900 p-3"
+              placeholder="Prescriber name"
+              value={prescriberName}
+              onChange={(e) => setPrescriberName(e.target.value)}
+            />
+            <input
+              type="date"
+              className="mt-3 w-full rounded-md border border-slate-600 bg-slate-900 p-3"
+              value={issuedDate}
+              onChange={(e) => setIssuedDate(e.target.value)}
+            />
+            {pharmacyError && <p className="mt-2 text-sm text-red-400">{pharmacyError}</p>}
+            <div className="mt-4 flex gap-3">
+              <button
+                onClick={() => {
+                  setPrescriptionModalOpen(false);
+                  setPendingClientId(null);
+                  setPharmacyError(null);
+                }}
+                className="flex-1 rounded-md bg-slate-700 p-3"
+              >
+                Cancel sale
+              </button>
+              <button
+                onClick={() => void submitPrescriptionAndRetry()}
+                disabled={pharmacyBusy || !prescriptionNumber.trim() || !prescriberName.trim() || !issuedDate}
+                className="flex-1 rounded-md bg-blue-600 p-3 font-semibold disabled:opacity-40"
+              >
+                {pharmacyBusy ? "..." : "Submit"}
               </button>
             </div>
           </div>
