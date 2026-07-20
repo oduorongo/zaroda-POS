@@ -1711,6 +1711,71 @@ order builder.
 That closes every finding from the consistency audit - no known gaps
 remain open in the terminal PWA.
 
+## New app: `apps/backoffice` — owner/manager admin console
+
+**First slice done and verified live.** Every screen so far in this
+project has been the terminal PWA (cashier-facing, offline-first,
+PIN-login). There was no way for an owner to see a sales report, issue a
+refund, or manage the catalog except by calling the API directly - a
+real, acknowledged gap. This starts closing it with a genuinely
+different kind of app, not a mode bolted onto the terminal.
+
+- **Why a separate app, not new terminal-pwa screens**: the terminal PWA
+  is built entirely around being offline-first (Dexie, service worker,
+  outbox sync) and PIN-based shift login - both wrong for an always-
+  online admin tool with full email/password login. `apps/backoffice` is
+  a plain Next.js 14 App Router app with **no Dexie, no service worker,
+  no offline queue** - just `localStorage` for the session
+  (`lib/auth.ts`) and a `fetch` wrapper (`lib/api.ts`) modeled on the
+  terminal PWA's `ApiError`/`OfflineError`-free equivalent (an admin
+  console failing hard when offline is correct, not a bug). Runs on port
+  3003 (terminal PWA is 3002, API is 3001) so all three can run side by
+  side.
+- **First slice scope, deliberately narrow rather than broad-and-thin**:
+  login, a sales list (`GET /sales`), a sale detail view with refund
+  issuance (`GET /sales/:id`, `POST /sales/:id/refunds` - reuses the
+  same approver-role convenience list and server-side re-verification
+  pattern as the terminal's discount/refund flows), and product/catalog
+  management (`GET/POST /products`, `/categories`, `/tax-classes`,
+  `POST /products/:id/variants`). Deliberately **not** included in this
+  slice: shifts, inventory/stock takes, reports, org-user/role
+  management, layaways - real gaps, left open rather than attempted
+  shallowly across the board.
+- **Role enforcement is entirely server-side, not duplicated client-side**:
+  the login screen doesn't restrict which roles may sign in, and the
+  products page doesn't hide the create/save controls from a
+  lower-privileged login - `products.controller.ts`'s existing
+  `@Roles(MANAGER, OWNER)` gates would simply 403 the request. This
+  matches the same principle already established throughout the terminal
+  PWA (e.g. the discount approver picker is a UX convenience, never the
+  actual authorization boundary) rather than introducing a second,
+  potentially-inconsistent copy of the authorization logic in the
+  frontend.
+- **Verified live** against the real database, driving the exact request
+  shapes each screen sends: `GET /categories` and `GET /tax-classes`
+  confirmed to match the `New product` form's selects; created a real
+  product with a category/tax-class and a variant via
+  `POST /products` + `POST /products/:id/variants`, then confirmed it
+  appeared correctly nested in the next `GET /products` list load;
+  loaded an existing sale's detail via `GET /sales/:id` and issued a
+  partial refund via `POST /sales/:id/refunds` with the exact payload
+  `submitRefund()` sends, confirming the response's `refunds` array
+  came back correctly populated (and `discounts` alongside it, both
+  rendered by the same page). `pnpm typecheck` and `pnpm lint` pass
+  clean for `apps/backoffice`.
+- **Not independently verified this session**: rendering/interaction in
+  an actual browser - no browser automation was available, so this was
+  verified via the exact API round trips above plus static analysis,
+  stated plainly rather than claimed, consistent with every other slice
+  in this document. The app was started and is reachable at
+  `http://localhost:3003`, but clicking through it live is unconfirmed.
+- **One login edge case knowingly unhandled**: `AuthService.login`
+  returns 409 with a list of organizations when an account belongs to
+  more than one org and no `organizationId` is specified - the login
+  form surfaces that as a plain error message rather than a picker UI.
+  Not an issue for the single-org demo account; a real multi-org owner
+  login would need that follow-up.
+
 ## Getting started
 
 ```
@@ -1745,9 +1810,10 @@ manager login (the seeded demo owner: `owner@demo.zaroda.pos` /
 ```
 apps/
   api/              NestJS core (modular monolith)
-  backoffice/        Next.js back-office UI          [Phase 2+]
-  terminal-pwa/       Offline-capable POS terminal (Dexie/IndexedDB,
-                      service worker, sync engine - DESIGN.md §6)
+  backoffice/       Next.js owner/manager admin console (always-online,
+                    email/password login - sales, refunds, catalog)
+  terminal-pwa/     Offline-capable POS terminal (Dexie/IndexedDB,
+                    service worker, sync engine - DESIGN.md §6)
 packages/
   modules/
     retail/          First vertical module            [Phase 2]
