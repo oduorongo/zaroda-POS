@@ -18,6 +18,13 @@ export interface DeviceConfig {
   terminalLabel: string;
   orgUsersCachedAt: string | null;
   catalogCachedAt: string | null;
+  /**
+   * From GET /organizations/me at setup time - which vertical UI (if any)
+   * to show alongside the always-available core POS screen. "RETAIL" (or
+   * anything not recognized by a vertical module) just gets the core POS
+   * screen with no extra nav.
+   */
+  industryType: string;
 }
 
 export interface CachedOrgUser {

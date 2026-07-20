@@ -35,6 +35,10 @@ interface ProductResponse {
   variants: VariantResponse[];
 }
 
+interface OrganizationResponse {
+  industryType: string;
+}
+
 /**
  * First-run device provisioning. There's no backoffice UI to generate a
  * terminal/branch id yet (DESIGN.md's admin-tooling gap), so an admin
@@ -71,9 +75,13 @@ export default function SetupPage() {
         terminalLabel: "",
         orgUsersCachedAt: null,
         catalogCachedAt: null,
+        industryType: "RETAIL",
       });
 
       const { accessToken } = await apiPost<LoginResponse>("/auth/login", { email, password });
+
+      const org = await apiGet<OrganizationResponse>("/organizations/me", accessToken);
+      await db.deviceConfig.update("device", { industryType: org.industryType });
 
       const orgUsers = await apiGet<OrgUserResponse[]>("/org-users", accessToken);
       await db.orgUsers.clear();

@@ -1320,6 +1320,71 @@ starting.
   "core gaps" slice), and refunds (a back-office concern more than a
   cashier one, revisit if that assumption turns out wrong).
 
+### Restaurant vertical: table floor view + kitchen display, on the terminal
+
+**Done and verified live.** First slice of vertical-specific terminal UI,
+following the core-gaps slice above - the restaurant module's backend
+(table/floor management, order-to-KDS routing, course timing) has been
+live-verified since Phase 4, but nothing on the terminal used it; a
+restaurant tenant's cashier had no way to open a table, route items to a
+kitchen station, or see what the kitchen owed a table.
+
+- **New backend endpoint, `GET /organizations/me`**: the terminal needs
+  to know its org's `industryType` to decide which vertical UI (if any)
+  to show, and nothing exposed that to an authenticated client before -
+  the JWT payload doesn't carry it, and no `OrganizationsController`
+  existed. Added a minimal one (`apps/api/src/organizations/`, no role
+  restriction, same tier as reading the product catalog) returning
+  `{id, name, industryType, country, baseCurrency}` scoped by RLS to the
+  caller's own org. `apps/terminal-pwa/app/setup/page.tsx` now calls it
+  once during provisioning and caches `industryType` on `DeviceConfig`.
+- `app/tables/page.tsx` (new): a floor view color-coded by
+  `RestaurantTable.status`, tapping a table opens an order builder built
+  on the same catalog cache the plain POS screen uses, plus a
+  station/course picker per item (mirroring `TableOrderLineItemDto`).
+  Submits to `POST /restaurant/tables/:id/sales` - **deliberately not
+  outbox-queued** like the plain cash sale is: a table order that hasn't
+  actually reached the kitchen isn't doing its job queued for a later
+  sync, so this screen requires connectivity and surfaces `OfflineError`
+  plainly rather than silently accepting an order it can't deliver.
+  Tables stuck in `NEEDS_CLEANING` can be marked available again inline.
+- `app/kds/page.tsx` (new): a kitchen display filtered to one station at
+  a time, polling `GET /restaurant/kitchen-tickets` every 10s (no
+  push/realtime infrastructure exists anywhere in this codebase yet, so
+  polling matches everything else) and advancing a ticket one stage at a
+  time via `PATCH /restaurant/kitchen-tickets/:id/advance` - `HELD`
+  (un-fired) tickets are excluded by construction, matching the
+  backend's own "advance can't reach a held course" rule.
+  `/pos`'s header gains "Tables"/"Kitchen" nav links, shown only when
+  `device.industryType === "RESTAURANT"`.
+- **Verified live** against the real database, using the existing
+  restaurant fixtures on the demo org (a `Table`, two `KitchenStation`s,
+  a real product/variant) left over from Phase 4's own live testing:
+  called `GET /organizations/me` and confirmed the real `industryType`
+  came back correctly scoped by RLS; submitted a table order through
+  `POST /restaurant/tables/:id/sales` with the exact request shape
+  `tables/page.tsx` sends (station + course per line item) and confirmed
+  the sale completed, the table linked, and a `QUEUED` kitchen ticket was
+  created; fetched `GET /restaurant/kitchen-tickets?stationId=...` with
+  the exact shape `kds/page.tsx` consumes and confirmed the new ticket
+  appeared; advanced it via `PATCH .../advance` and confirmed
+  `QUEUED → IN_PROGRESS` with `startedAt` set; reset the test table back
+  to `AVAILABLE` afterward. `pnpm typecheck`, `pnpm lint`, and `pnpm test`
+  all pass clean for `apps/api`; `pnpm typecheck` and `pnpm lint` pass
+  clean for `apps/terminal-pwa`.
+- **Not independently verified this session**: the two new pages'
+  rendering/interaction in an actual browser - no browser automation was
+  available, so this was verified by driving the exact API calls the
+  pages make (above) plus static analysis, not by clicking through the
+  UI. Stated plainly per this project's own standard rather than
+  claimed.
+- **Deliberately not in this slice**: firing a held course
+  (`POST /sales/:saleId/courses/:courseNumber/fire`) has no terminal UI
+  yet - course timing beyond "everything fires as course 1" needs a
+  follow-up; pharmacy prescription entry and salon booking/checkout
+  remain unstarted, per the agreed ordering (core gaps, then one
+  vertical at a time).
+
 ## Getting started
 
 ```

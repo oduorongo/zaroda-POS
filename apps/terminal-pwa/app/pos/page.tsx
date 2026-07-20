@@ -255,9 +255,21 @@ export default function PosPage() {
             {sync.isSyncing ? "Syncing..." : sync.pendingCount > 0 ? `${sync.pendingCount} sale(s) pending sync` : "All synced"}
           </p>
         </div>
-        <button onClick={switchCashier} className="rounded-md bg-slate-800 px-3 py-2 text-sm hover:bg-slate-700">
-          Switch cashier
-        </button>
+        <div className="flex items-center gap-2">
+          {device.industryType === "RESTAURANT" && (
+            <>
+              <button onClick={() => router.push("/tables")} className="rounded-md bg-slate-800 px-3 py-2 text-sm hover:bg-slate-700">
+                Tables
+              </button>
+              <button onClick={() => router.push("/kds")} className="rounded-md bg-slate-800 px-3 py-2 text-sm hover:bg-slate-700">
+                Kitchen
+              </button>
+            </>
+          )}
+          <button onClick={switchCashier} className="rounded-md bg-slate-800 px-3 py-2 text-sm hover:bg-slate-700">
+            Switch cashier
+          </button>
+        </div>
       </header>
 
       {toast && <div className="bg-green-800 p-2 text-center text-sm">{toast}</div>}
