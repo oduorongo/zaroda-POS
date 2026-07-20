@@ -956,12 +956,75 @@ rather than needing any new infrastructure like a KDS.
   `pnpm build`, `pnpm test`, and `pnpm lint` all pass clean for
   `apps/api`.
 
-Still to do for this vertical: order-to-KDS routing and course timing
-(DESIGN.md's remaining Phase 4 scope) - both are meaningfully larger
-(a kitchen-facing ticket/display concept that doesn't exist anywhere in
-this system yet) and were deliberately left for a dedicated increment
-rather than folded into this one, the same incremental-build discipline
-used for every phase before this one.
+### Order-to-KDS routing and course timing
+
+**Done and verified live - both remaining DESIGN.md Phase 4 items in one
+increment, since course timing has no meaning without KDS routing to
+attach it to.**
+
+- New `KitchenStation` (a prep area - "Grill", "Bar", "Cold";
+  `entityExtensions`, a first-class entity this module owns outright) and
+  `KitchenTicket`/`KitchenTicketLine` - one ticket per **(sale, station,
+  course)**, so the kitchen sees one focused ticket per prep area rather
+  than a single ticket spanning stations that don't coordinate (a grill
+  cook doesn't need to see the dessert line, and vice versa).
+- `TableOrderLineItemDto` (this module's own richer line-item shape -
+  `variantId`/`quantity` plus `stationId`/`courseNumber`/`notes`) is kept
+  deliberately separate from core's plain `SaleLineItemInputDto` rather
+  than adding these fields there - an ordinary retail sale has no
+  stations or courses, so core's DTO shouldn't carry fields only this
+  vertical uses. `RestaurantSalesService` derives core's plain
+  `lineItems` array from it before calling `SalesService.create()`.
+- **Course timing, concretely**: course 1 (or unspecified) tickets are
+  created `QUEUED` and reach the kitchen immediately; any higher course
+  is created `HELD` and stays invisible to a station's normal ticket
+  queue until `POST /restaurant/sales/:saleId/courses/:courseNumber/fire`
+  transitions every `HELD` ticket for that course to `QUEUED` at once -
+  e.g. firing dessert only once mains are cleared. Firing an
+  already-fired (or nonexistent) course is a no-op, not an error, the
+  same idempotent-by-default posture used for sale submission elsewhere.
+- **Ticket lifecycle is strictly forward-only**:
+  `QUEUED -> IN_PROGRESS -> READY -> SERVED` via
+  `PATCH /restaurant/kitchen-tickets/:id/advance`, one stage at a time -
+  no skipping ahead, no going back, and a `HELD` ticket cannot be
+  advanced directly at all (must be fired first). Each transition
+  stamps its own timestamp (`startedAt`/`readyAt`/`servedAt`).
+- **A real bug found and fixed by actually testing the failure path, not
+  just the happy path**: the first version validated `stationId`s only
+  while creating tickets, *after* `SalesService.create()` had already
+  committed - an order with a typo'd `stationId` produced a 404 to the
+  client while the sale had already completed, decremented stock, and
+  charged the customer, with **zero kitchen tickets ever created for
+  it**: a paid-for order that would never reach the kitchen. Live-tested
+  this exact scenario, confirmed stock had moved despite the "failed"
+  response, then fixed it by moving station validation to run *before*
+  `SalesService.create()` is ever called (`KitchenTicketsService
+  .assertStationsExist()`), re-tested the identical scenario, and
+  confirmed stock now correctly stays untouched when the request is
+  rejected.
+- **Verified live end-to-end** against the real database: two stations
+  created (duplicate name at the same branch correctly rejected with
+  409); a two-course order (2x Grill item on course 1, 1x Dessert item on
+  course 2) correctly produced one `QUEUED` ticket (with the line's
+  `notes` preserved) and one `HELD` ticket; the KDS queue filtered by
+  station+status correctly showed the Grill ticket under `QUEUED` and
+  correctly excluded the still-`HELD` Dessert ticket; attempting to
+  advance the `HELD` ticket directly was correctly rejected with a
+  message pointing at the fire-course endpoint instead; the Grill ticket
+  was walked through its full `QUEUED -> IN_PROGRESS -> READY -> SERVED`
+  lifecycle with each transition's timestamp correctly stamped, and a
+  further advance attempt on the now-`SERVED` ticket was correctly
+  rejected; firing course 2 correctly moved the Dessert ticket to
+  `QUEUED` (now visible in that station's queue) and firing it again was
+  a correct no-op; the unknown-station bug above was reproduced, fixed,
+  and re-verified live; RBAC (cashier blocked from creating stations,
+  allowed to view the KDS queue); and RLS confirmed clean on all three
+  new tables. `pnpm typecheck`, `pnpm build`, `pnpm test`, and `pnpm
+  lint` all pass clean for `apps/api`.
+
+This closes out DESIGN.md's full Phase 4 restaurant scope: table/floor
+management, tips/service charge, and order-to-KDS routing with course
+timing.
 
 ## Getting started
 

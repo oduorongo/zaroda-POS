@@ -4,8 +4,12 @@ import { ModuleRegistryModule } from '../module-registry/module-registry.module'
 import { ModuleRegistryService } from '../module-registry/module-registry.service';
 import { RestaurantTablesController } from './restaurant-tables.controller';
 import { RestaurantSalesController } from './restaurant-sales.controller';
+import { KitchenStationsController } from './kitchen-stations.controller';
+import { KitchenTicketsController } from './kitchen-tickets.controller';
 import { RestaurantTablesService } from './restaurant-tables.service';
 import { RestaurantSalesService } from './restaurant-sales.service';
+import { KitchenStationsService } from './kitchen-stations.service';
+import { KitchenTicketsService } from './kitchen-tickets.service';
 import { RestaurantHooksService } from './restaurant-hooks.service';
 
 /**
@@ -20,10 +24,17 @@ import { RestaurantHooksService } from './restaurant-hooks.service';
  */
 @Module({
   imports: [SalesModule, ModuleRegistryModule],
-  controllers: [RestaurantTablesController, RestaurantSalesController],
+  controllers: [
+    RestaurantTablesController,
+    RestaurantSalesController,
+    KitchenStationsController,
+    KitchenTicketsController,
+  ],
   providers: [
     RestaurantTablesService,
     RestaurantSalesService,
+    KitchenStationsService,
+    KitchenTicketsService,
     RestaurantHooksService,
   ],
 })
@@ -44,6 +55,19 @@ export class RestaurantModule implements OnModuleInit {
         {
           tableName: 'restaurant_sale_tables',
           description: 'Links a completed sale to the table it was ordered at',
+        },
+        {
+          tableName: 'restaurant_sale_tips',
+          description: 'Tip/service charge collected alongside a sale',
+        },
+        {
+          tableName: 'kitchen_stations',
+          description: 'Prep areas (Grill, Bar, Cold...) orders route to',
+        },
+        {
+          tableName: 'kitchen_tickets',
+          description:
+            'One ticket per (sale, station, course) - the KDS unit of work',
         },
       ],
       hooks: [

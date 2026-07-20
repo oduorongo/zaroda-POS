@@ -321,6 +321,37 @@ CREATE POLICY tenant_isolation ON restaurant_sale_tips
   WITH CHECK (EXISTS (SELECT 1 FROM sales s WHERE s.id = restaurant_sale_tips."saleId"
                  AND s."organizationId" = current_setting('app.current_tenant', true)));
 
+ALTER TABLE kitchen_stations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE kitchen_stations FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON kitchen_stations;
+CREATE POLICY tenant_isolation ON kitchen_stations
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+-- ── Scoped via saleId -> sales."organizationId" ────────────────────────────
+
+ALTER TABLE kitchen_tickets ENABLE ROW LEVEL SECURITY;
+ALTER TABLE kitchen_tickets FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON kitchen_tickets;
+CREATE POLICY tenant_isolation ON kitchen_tickets
+  USING (EXISTS (SELECT 1 FROM sales s WHERE s.id = kitchen_tickets."saleId"
+                 AND s."organizationId" = current_setting('app.current_tenant', true)))
+  WITH CHECK (EXISTS (SELECT 1 FROM sales s WHERE s.id = kitchen_tickets."saleId"
+                 AND s."organizationId" = current_setting('app.current_tenant', true)));
+
+-- ── Scoped via ticketId -> kitchen_tickets.saleId -> sales."organizationId" ─
+
+ALTER TABLE kitchen_ticket_lines ENABLE ROW LEVEL SECURITY;
+ALTER TABLE kitchen_ticket_lines FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON kitchen_ticket_lines;
+CREATE POLICY tenant_isolation ON kitchen_ticket_lines
+  USING (EXISTS (SELECT 1 FROM kitchen_tickets kt JOIN sales s ON s.id = kt."saleId"
+                 WHERE kt.id = kitchen_ticket_lines."ticketId"
+                 AND s."organizationId" = current_setting('app.current_tenant', true)))
+  WITH CHECK (EXISTS (SELECT 1 FROM kitchen_tickets kt JOIN sales s ON s.id = kt."saleId"
+                 WHERE kt.id = kitchen_ticket_lines."ticketId"
+                 AND s."organizationId" = current_setting('app.current_tenant', true)));
+
 -- ── organizations itself ─────────────────────────────────────────────────
 -- A tenant may only ever see its own organization row (not a child table,
 -- so it filters on id directly rather than organizationId). Same pre-auth

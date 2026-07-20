@@ -12,9 +12,9 @@ import {
 } from 'class-validator';
 import {
   DiscountInputDto,
-  SaleLineItemInputDto,
   SalePaymentInputDto,
 } from '../../sales/dto/create-sale.dto';
+import { TableOrderLineItemDto } from './table-order-line-item.dto';
 
 /**
  * Same shape as core's CreateSaleDto (reused directly - this module
@@ -22,7 +22,9 @@ import {
  * `branchId`: the table this order is for already implies the branch, so
  * asking the caller to also pass a matching branchId would just be
  * another way for a client bug to send a mismatched one - the service
- * derives it from the table instead.
+ * derives it from the table instead. `lineItems` uses this module's own
+ * richer TableOrderLineItemDto (station/course/notes) rather than core's
+ * plain SaleLineItemInputDto - see that file's comment.
  */
 export class CreateTableSaleDto {
   @IsUUID()
@@ -41,8 +43,8 @@ export class CreateTableSaleDto {
   @IsArray()
   @ArrayMinSize(1)
   @ValidateNested({ each: true })
-  @Type(() => SaleLineItemInputDto)
-  lineItems!: SaleLineItemInputDto[];
+  @Type(() => TableOrderLineItemDto)
+  lineItems!: TableOrderLineItemDto[];
 
   @IsArray()
   @ArrayMinSize(1)
