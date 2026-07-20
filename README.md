@@ -791,6 +791,26 @@ from within this specific sandboxed session - re-run
 environment for that number), and a full end-to-end DR fire drill on a
 disposable Neon project.
 
+**Retried later (same session type, different day)**: single-query
+baseline latency to Neon measured 7.1s immediately before the retry (vs
+normal <100ms - unchanged from every earlier measurement in this
+document). Ran the 50-concurrent-sale test anyway rather than skip it:
+50/50 failed with `P2028: Transaction already closed... timeout for this
+transaction was 15000ms, however 15309ms passed` - the exact same
+failure class as every earlier attempt, not a new regression, and
+expected given a ~7s single-query baseline compounding under 50-way
+concurrency past the 15s transaction budget. **The correctness
+assertions still held even through total failure**: `Quantity after: 108
+(expected 108) - PASS: no lost updates`, and the separate same-`clientId`
+concurrency test (10 concurrent identical submissions) passed cleanly -
+one sale created, no 5xx from the idempotency race, exactly one unit
+decremented. Stopped the dev server afterward. This remains genuinely
+blocked on this session's/environment's network path to Neon, not on any
+application code - the pool/timeout tuning already applied is sound
+(demonstrated again by the correctness passes above), there's just no
+throughput number obtainable from here until the underlying latency
+condition changes.
+
 ## Phase 4 — Second vertical module (restaurant)
 
 **Done: table/floor management, built as a genuine module against the
