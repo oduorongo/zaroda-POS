@@ -12,6 +12,7 @@ interface OrgUser {
   id: string;
   role: Role;
   branchId: string | null;
+  isActive: boolean;
   user: { fullName: string; email?: string };
 }
 
@@ -26,8 +27,10 @@ export default function StaffPage() {
   const router = useRouter();
   const [session, setSessionState] = useState<Session | null>(null);
   const [orgUsers, setOrgUsers] = useState<OrgUser[]>([]);
+  const [includeInactive, setIncludeInactive] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [statusBusyId, setStatusBusyId] = useState<string | null>(null);
 
   const [newOpen, setNewOpen] = useState(false);
   const [newEmail, setNewEmail] = useState("");
@@ -57,19 +60,37 @@ export default function StaffPage() {
       return;
     }
     setSessionState(s);
-    void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router]);
+
+  useEffect(() => {
+    if (!session) return;
+    void load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session, includeInactive]);
 
   async function load() {
     setLoading(true);
     setError(null);
     try {
-      setOrgUsers(await apiGet<OrgUser[]>("/org-users"));
+      setOrgUsers(await apiGet<OrgUser[]>(`/org-users${includeInactive ? "?includeInactive=true" : ""}`));
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not load staff.");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function toggleActive(u: OrgUser) {
+    setStatusBusyId(u.id);
+    setError(null);
+    try {
+      await apiPatch(`/org-users/${u.id}/${u.isActive ? "deactivate" : "reactivate"}`, {});
+      await load();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not update status.");
+    } finally {
+      setStatusBusyId(null);
     }
   }
 
@@ -154,6 +175,11 @@ export default function StaffPage() {
           </button>
         </div>
 
+        <label className="mb-4 flex items-center gap-2 text-sm text-slate-400">
+          <input type="checkbox" checked={includeInactive} onChange={(e) => setIncludeInactive(e.target.checked)} />
+          Show deactivated
+        </label>
+
         {newOpen && (
           <div className="mb-6 rounded-lg border border-slate-800 p-4">
             <h2 className="mb-3 font-semibold">Add person</h2>
@@ -216,10 +242,12 @@ export default function StaffPage() {
         {!loading && orgUsers.length > 0 && (
           <div className="space-y-2">
             {orgUsers.map((u) => (
-              <div key={u.id} className="rounded-lg border border-slate-800 p-3">
+              <div key={u.id} className={`rounded-lg border p-3 ${u.isActive ? "border-slate-800" : "border-red-900 opacity-70"}`}>
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="font-medium">{u.user.fullName}</p>
+                    <p className="font-medium">
+                      {u.user.fullName} {!u.isActive && <span className="text-xs font-normal text-red-400">(deactivated)</span>}
+                    </p>
                     <p className="text-xs text-slate-400">
                       {u.role} · {u.branchId ? `Branch ${u.branchId.slice(0, 8)}...` : "All branches"}
                     </p>
@@ -237,6 +265,13 @@ export default function StaffPage() {
                       className="rounded-md bg-slate-800 px-3 py-1.5 text-sm hover:bg-slate-700"
                     >
                       Set PIN
+                    </button>
+                    <button
+                      onClick={() => void toggleActive(u)}
+                      disabled={statusBusyId === u.id}
+                      className={`rounded-md px-3 py-1.5 text-sm disabled:opacity-40 ${u.isActive ? "bg-red-900 hover:bg-red-800" : "bg-green-800 hover:bg-green-700"}`}
+                    >
+                      {statusBusyId === u.id ? "..." : u.isActive ? "Deactivate" : "Reactivate"}
                     </button>
                   </div>
                 </div>

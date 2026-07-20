@@ -2008,9 +2008,62 @@ read-only `GET /org-users` before this.
   actors...). A real follow-up, needs a schema decision first, not
   attempted here.
 
+### Deactivate/reactivate staff (the schema decision from above, made)
+
+**Done and verified live.** Picked up the one item explicitly deferred
+above - added the schema field and the soft-delete this needed, rather
+than a row `DELETE`.
+
+- New migration `20260720152817_add_org_user_is_active` adds
+  `OrgUser.isActive` (default `true`). Deactivating just flips it to
+  `false` - no history is touched, since an `OrgUser` row is referenced
+  by everything it ever did (sales as cashier, discount/refund
+  approvals, audit actions...).
+- `AuthService.login` and `pinLogin` both now treat a deactivated
+  membership as if it doesn't exist, not a distinct error - filtered out
+  before the single-vs-multiple-org resolution in `login`, and folded
+  into the same generic "Invalid PIN" rejection in `pinLogin`. Same
+  "don't distinguish why" principle this codebase already applies
+  elsewhere in auth: a rejection shouldn't confirm to whoever's trying
+  that a specific account/PIN combination exists and is just switched
+  off.
+- `OrgUsersService.findAll()` excludes deactivated memberships by
+  default (a shared terminal's cashier picker shouldn't offer someone
+  who can no longer log in) with a new `includeInactive` query param for
+  the back office's own staff list, which needs to show - and
+  reactivate - them.
+- New `PATCH /org-users/:id/deactivate` and `.../reactivate`,
+  `MANAGER`/`OWNER`-gated like every other write on this controller.
+  Unlike `setPin`, this write is fully atomic with its audit log entry -
+  `isActive` lives on `OrgUser` itself, entirely inside the tenant-scoped
+  transaction, not split across the tenant/non-tenant boundary the way
+  `User.pinHash` is.
+- `apps/backoffice/app/staff/page.tsx` gains a "Show deactivated"
+  checkbox and a Deactivate/Reactivate button per person, with
+  deactivated rows visibly dimmed and labeled.
+- **Verified live** against the real database, the full cycle: confirmed
+  `isActive: true` now appears in `GET /org-users`; deactivated the
+  staff member created in the previous slice; confirmed **both**
+  password login and PIN login were actually rejected afterward (not
+  just that a flag flipped in the database) - password login fell back
+  to "no organization membership" (the same message an account with zero
+  memberships gets) and PIN login returned the same generic "Invalid
+  PIN" a wrong PIN would; confirmed they disappeared from the default
+  `GET /org-users` list and reappeared with `includeInactive=true`;
+  reactivated them and confirmed password login worked again. `pnpm
+  typecheck`, `pnpm lint`, and `pnpm test` all pass clean for `apps/api`;
+  `pnpm typecheck` and `pnpm lint` pass clean for `apps/backoffice`. The
+  new UI's own calls weren't separately re-tested beyond this, since
+  `toggleActive()` hits the exact same two endpoints already proven live
+  above with the exact same request shape.
+- **Not independently verified this session**: rendering/interaction in
+  an actual browser (no browser automation available), stated plainly
+  rather than claimed.
+
 This closes every `apps/backoffice` gap identified across this session's
-work: Sales/Refunds, Products, Reports, Shifts, Inventory, Layaways, and
-now Staff.
+work, with no remaining deferred items: Sales/Refunds, Products,
+Reports, Shifts, Inventory, Layaways, and Staff (including
+deactivate/reactivate).
 
 ## Getting started
 

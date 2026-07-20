@@ -28,14 +28,20 @@ export class OrgUsersService {
    * The cashier picker on a shared terminal (DESIGN.md §9) needs to list
    * "who can PIN in here" without exposing anything sensitive - name, role,
    * and the id pin-login needs, nothing else (no email, no PIN hash).
+   * Deactivated memberships are excluded by default - a shared terminal's
+   * picker shouldn't offer someone who can no longer actually log in;
+   * `includeInactive` is for the back office's own staff list, which
+   * needs to show (and reactivate) them.
    */
-  findAll() {
+  findAll(filters: { includeInactive?: boolean } = {}) {
     return this.tenantPrisma.run((tx) =>
       tx.orgUser.findMany({
+        where: filters.includeInactive ? undefined : { isActive: true },
         select: {
           id: true,
           role: true,
           branchId: true,
+          isActive: true,
           user: { select: { fullName: true } },
         },
         orderBy: { user: { fullName: 'asc' } },
@@ -203,5 +209,51 @@ export class OrgUsersService {
     );
 
     return { ok: true };
+  }
+
+  /**
+   * Soft-delete (see the schema comment on `OrgUser.isActive`) - blocks
+   * both password and PIN login (`AuthService`) and drops off the
+   * default `findAll()` cashier picker, without touching any of the
+   * history this membership is attached to (sales, discounts, refunds,
+   * audit actions). Unlike `setPin`, this only touches `OrgUser` itself,
+   * fully tenant-scoped, so the audit entry genuinely is atomic with it.
+   */
+  private async setActive(id: string, isActive: boolean) {
+    return this.tenantPrisma.run(async (tx) => {
+      const before = await tx.orgUser.findUnique({ where: { id } });
+      if (!before) throw new NotFoundException('Org user not found');
+      if (before.isActive === isActive) return before;
+
+      const updated = await tx.orgUser.update({
+        where: { id },
+        data: { isActive },
+        select: {
+          id: true,
+          role: true,
+          branchId: true,
+          isActive: true,
+          user: { select: { fullName: true, email: true } },
+        },
+      });
+
+      await this.auditLog.logInTx(tx, {
+        action: isActive ? 'org_user.reactivated' : 'org_user.deactivated',
+        entityType: 'OrgUser',
+        entityId: id,
+        before: { isActive: before.isActive },
+        after: { isActive },
+      });
+
+      return updated;
+    });
+  }
+
+  deactivate(id: string) {
+    return this.setActive(id, false);
+  }
+
+  reactivate(id: string) {
+    return this.setActive(id, true);
   }
 }

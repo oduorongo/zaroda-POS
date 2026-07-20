@@ -130,6 +130,14 @@ model OrgUser {
   userId         String
   branchId       String? // null = all branches in the org
   role           Role
+  // Soft-delete, not a row DELETE - an OrgUser is referenced by
+  // everything it ever did (sales as cashier, discount/refund approvals,
+  // audit log actions...), so removing the row outright would mean
+  // either cascading away real transaction history or hitting FK
+  // conflicts. Deactivating just blocks new login (both password and
+  // PIN) and drops off the terminal's cashier picker by default -
+  // history stays intact and queryable.
+  isActive       Boolean  @default(true)
   createdAt      DateTime @default(now())
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)

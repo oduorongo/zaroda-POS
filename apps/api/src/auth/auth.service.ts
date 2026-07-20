@@ -31,18 +31,25 @@ export class AuthService {
       throw new UnauthorizedException('Invalid email or password');
     }
 
+    // A deactivated membership doesn't get to participate in login at
+    // all - filtered out before the single-vs-multiple-org resolution
+    // below, same as if it didn't exist, rather than surfacing a
+    // distinct "deactivated" error that would confirm to whoever's
+    // trying that this email/org combination exists.
+    const activeOrgUsers = user.orgUsers.filter((ou) => ou.isActive);
+
     const membership = dto.organizationId
-      ? user.orgUsers.find((ou) => ou.organizationId === dto.organizationId)
-      : user.orgUsers.length === 1
-        ? user.orgUsers[0]
+      ? activeOrgUsers.find((ou) => ou.organizationId === dto.organizationId)
+      : activeOrgUsers.length === 1
+        ? activeOrgUsers[0]
         : undefined;
 
     if (!membership) {
-      if (user.orgUsers.length > 1) {
+      if (activeOrgUsers.length > 1) {
         throw new ConflictException({
           message:
             'This account belongs to multiple organizations - specify organizationId',
-          organizations: user.orgUsers.map((ou) => ({
+          organizations: activeOrgUsers.map((ou) => ({
             id: ou.organizationId,
             name: ou.organization.name,
           })),
@@ -76,8 +83,13 @@ export class AuthService {
       where: { id: dto.orgUserId },
       include: { user: true },
     });
+    // Same "don't distinguish why" principle as login() above - a
+    // deactivated membership fails PIN check the same generic way as a
+    // wrong PIN, not a separate message that would confirm this
+    // orgUserId exists and is just switched off.
     if (
-      !orgUser?.user.pinHash ||
+      !orgUser?.isActive ||
+      !orgUser.user.pinHash ||
       !(await bcrypt.compare(dto.pin, orgUser.user.pinHash))
     ) {
       throw new UnauthorizedException('Invalid PIN');
