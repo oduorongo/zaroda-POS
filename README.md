@@ -1850,6 +1850,51 @@ way to review a shift's cash reconciliation except by calling
   rather than claimed, consistent with every other slice in this
   document.
 
+### `apps/backoffice`: Inventory (stock levels, alerts, conflicts, adjustments)
+
+**Done and verified live.** Fourth slice - stock levels, low-stock
+alerts, sync conflicts (oversells), and manual stock adjustments, all in
+one screen with tabs.
+
+- **Same branch-id gap as Reports/Shifts, made explicit rather than
+  worked around**: `GET /inventory/items` requires a `branchId` (not
+  optional, unlike alerts/conflicts), and there's still no
+  branch-listing endpoint anywhere in the API. Rather than hardcode the
+  demo org's branch id as if that generalized, this screen has a plain
+  "paste the branch ID" text field with a label explaining why - the
+  same honest gap as the two screens before it, not hidden this time
+  either.
+- Stock levels rows below their own `lowStockThreshold` are highlighted;
+  a "Low stock only" checkbox filters to just those, matching the
+  `lowStockOnly` query param `InventoryItemsService.findAllForBranch`
+  already supports.
+- Conflicts (negative-quantity oversells - DESIGN.md §6's "never lose a
+  sale, resolve after the fact" trace) show each item's most recent
+  ledger entries inline, exactly as `findConflicts()` already returns
+  them, so a manager can see what actually happened (concurrent sales,
+  a late offline sync) without a second lookup.
+- "+ Record adjustment" posts to `POST /inventory/transactions` with a
+  type picker restricted to `ADJUSTMENT`/`TRANSFER`/`STOCKTAKE`/`RETURN`
+  (deliberately excluding `SALE` - that ledger entry type is core's own,
+  produced by an actual sale, not something to post manually from an
+  admin screen).
+- **Verified live** against the real database: loaded stock levels for
+  the demo branch and confirmed the shape matched exactly; confirmed
+  empty alerts/conflicts lists render their empty-state messages instead
+  of an empty table; posted a real `+20 STOCKTAKE` adjustment with the
+  exact payload `submitAdjustment()` sends and confirmed the branch's
+  stock quantity moved from 104 to 124 on the next items load - the
+  same reload path the page's own post-submit `loadTab()` call takes.
+  `pnpm typecheck` and `pnpm lint` pass clean for `apps/backoffice`.
+- **Not independently verified this session**: rendering/interaction in
+  an actual browser (no browser automation available), stated plainly
+  rather than claimed, consistent with every other slice in this
+  document.
+
+That leaves layaways and org-user/role management (the latter needing
+new backend endpoints first, not just a UI slice) as the remaining
+`apps/backoffice` gaps from the original scope-out.
+
 ## Getting started
 
 ```

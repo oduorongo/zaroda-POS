@@ -9,6 +9,7 @@ const LINKS = [
   { href: "/products", label: "Products" },
   { href: "/reports", label: "Reports" },
   { href: "/shifts", label: "Shifts" },
+  { href: "/inventory", label: "Inventory" },
 ];
 
 export function Nav({ session }: { session: Session }) {
