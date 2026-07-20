@@ -1256,6 +1256,70 @@ total - the third module to use the "module calls into core" pattern
 This closes out every module named across DESIGN.md's Phase 4/5 scope:
 retail (core), restaurant, pharmacy, and salon.
 
+## Terminal PWA: catching up on core backend capability
+
+**First slice done: customer lookup/attach with loyalty-point
+redemption, and discount entry, on the cash checkout screen.** Every
+vertical module built above is real and live-verified on the backend,
+but the terminal PWA had not moved past its Phase 1 cash-only,
+line-items-only cart - `POST /sales`'s `discount`, `customerId`, and
+`redeemPoints` fields existed only for `curl`/load-test scripts, not for
+an actual cashier. This starts closing that gap, deliberately scoped to
+the two genuinely universal core gaps (every tenant, every industry)
+before any vertical-specific UI (restaurant tables/KDS, pharmacy
+prescriptions, salon booking) - the ordering agreed with the user before
+starting.
+
+- `lib/db.ts`'s `OutboxSale` gained `discount` (`{type, value,
+  approvedById}` or `null`) and `customerId`/`redeemPoints` fields - no
+  Dexie version bump needed, since Dexie's `stores()` only declares
+  indexes (`clientId, status`), not the full field list, and neither
+  index changed.
+- `lib/sync.ts` now forwards `discount`/`customerId`/`redeemPoints`
+  through to `POST /sales` instead of silently dropping them.
+- `app/pos/page.tsx`: a customer can be searched (`GET
+  /customers?search=`) or quick-created (`POST /customers`) and attached
+  to the sale; once attached, a points-redemption input is capped
+  client-side at the customer's cached point balance (the server
+  re-validates independently). A discount can be applied as PERCENT or
+  FIXED, with the approver chosen from the terminal's already-cached
+  org-user list filtered to `SUPERVISOR`/`MANAGER`/`OWNER` roles - a UX
+  convenience only; the actual authorization boundary is
+  `SalesService`'s own server-side role re-check of `approvedById`,
+  exactly as it already was for the `curl`-driven testing earlier in
+  this document. The cart summary shows discount and redemption as
+  separate line items before the final total, and both are cleared after
+  a sale is queued.
+- **Known simplification, not yet closed**: picking an approver from the
+  cached list doesn't ask that person to re-enter their PIN at the
+  terminal - a cashier can currently select any cached supervisor+ name
+  without that person's live confirmation. The server-side role check is
+  still the real enforcement boundary (unchanged from before this
+  slice), so this isn't a new authorization hole, but it's weaker
+  physical-security UX than a manager keying in their own PIN to
+  approve. Closing it needs a new lightweight "verify this PIN without
+  starting a session" backend endpoint - `POST /auth/pin-login` isn't
+  the right tool since it creates a whole new `CashierSession` as a side
+  effect. Left open rather than bolted on for this slice.
+- **Verification done**: `pnpm typecheck` and `pnpm lint` both pass
+  clean for `apps/terminal-pwa`. `pnpm build` was **not** run - a
+  terminal-pwa dev server was already running locally
+  (`npm run dev`'s `.next` cache is known to get corrupted by a
+  concurrent `build`), and the API server was not running in this
+  session, so this slice was **not exercised live in a browser or
+  against a real backend** - stated plainly rather than claimed. The
+  underlying `POST /sales` behavior this UI now drives
+  (`discount`/`customerId`/`redeemPoints`) was already verified live
+  against the real database earlier in this document via direct API
+  calls; only the new frontend wiring itself is unverified beyond
+  static analysis.
+- **Deliberately not in this slice**: vertical-specific terminal UI
+  (restaurant table selection/KDS view, pharmacy prescription entry,
+  salon booking/checkout), tips (a restaurant/salon-specific concept via
+  `RestaurantSaleTip`, not a core `Sale` field, so out of scope for a
+  "core gaps" slice), and refunds (a back-office concern more than a
+  cashier one, revisit if that assumption turns out wrong).
+
 ## Getting started
 
 ```

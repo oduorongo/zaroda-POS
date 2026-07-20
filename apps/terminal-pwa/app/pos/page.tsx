@@ -2,7 +2,18 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { clearSession, db, getActiveSession, getDeviceConfig, type CachedVariant, type CashierSession, type DeviceConfig } from "../../lib/db";
+import {
+  clearSession,
+  db,
+  getActiveSession,
+  getDeviceConfig,
+  type CachedOrgUser,
+  type CachedVariant,
+  type CashierSession,
+  type DeviceConfig,
+  type OutboxDiscount,
+} from "../../lib/db";
+import { apiGet, apiPost, ApiError, OfflineError } from "../../lib/api";
 import { useSyncEngine } from "../../hooks/use-sync-engine";
 
 interface CartEntry {
@@ -10,16 +21,50 @@ interface CartEntry {
   quantity: number;
 }
 
+interface Customer {
+  id: string;
+  name: string;
+  phone: string | null;
+  loyaltyPoints: number;
+}
+
+// Roles allowed to approve a discount server-side (SalesService's
+// SUPERVISOR_OR_ABOVE check) - mirrored here only to filter who shows up
+// as a candidate approver. The server independently re-verifies the
+// chosen approver's role against the database; this list is a UX
+// convenience, never the actual authorization boundary.
+const APPROVER_ROLES = ["SUPERVISOR", "MANAGER", "OWNER"];
+
+// 1 loyalty point = KES 1 off (SalesService.LOYALTY_REDEEM_VALUE) - no
+// endpoint exposes this rate, so it's mirrored here for the redemption
+// preview only. The server computes and enforces the real value.
+const LOYALTY_REDEEM_VALUE = 1;
+
 export default function PosPage() {
   const router = useRouter();
   const [device, setDevice] = useState<DeviceConfig | null>(null);
   const [session, setSession] = useState<CashierSession | null>(null);
+  const [orgUsers, setOrgUsers] = useState<CachedOrgUser[]>([]);
   const [variants, setVariants] = useState<CachedVariant[]>([]);
   const [search, setSearch] = useState("");
   const [cart, setCart] = useState<Map<string, number>>(new Map());
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [tendered, setTendered] = useState("");
   const [toast, setToast] = useState<string | null>(null);
+
+  const [customer, setCustomer] = useState<Customer | null>(null);
+  const [customerModalOpen, setCustomerModalOpen] = useState(false);
+  const [customerSearch, setCustomerSearch] = useState("");
+  const [customerResults, setCustomerResults] = useState<Customer[]>([]);
+  const [customerBusy, setCustomerBusy] = useState(false);
+  const [customerError, setCustomerError] = useState<string | null>(null);
+  const [redeemPoints, setRedeemPoints] = useState("");
+
+  const [discount, setDiscount] = useState<OutboxDiscount | null>(null);
+  const [discountModalOpen, setDiscountModalOpen] = useState(false);
+  const [discountType, setDiscountType] = useState<"PERCENT" | "FIXED">("PERCENT");
+  const [discountValue, setDiscountValue] = useState("");
+  const [discountApproverId, setDiscountApproverId] = useState("");
 
   const sync = useSyncEngine();
 
@@ -38,8 +83,14 @@ export default function PosPage() {
       setDevice(config);
       setSession(activeSession);
       setVariants(await db.variants.toArray());
+      setOrgUsers(await db.orgUsers.toArray());
     })();
   }, [router]);
+
+  const approvers = useMemo(
+    () => orgUsers.filter((u) => APPROVER_ROLES.includes(u.role)),
+    [orgUsers],
+  );
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -68,8 +119,25 @@ export default function PosPage() {
       subtotal += lineSubtotal;
       tax += lineSubtotal * variant.taxRate;
     }
-    return { subtotal, tax, total: subtotal + tax };
-  }, [cartEntries]);
+    const preDiscountTotal = subtotal + tax;
+
+    let discountAmount = 0;
+    if (discount) {
+      discountAmount =
+        discount.type === "PERCENT" ? preDiscountTotal * (discount.value / 100) : discount.value;
+      discountAmount = Math.min(discountAmount, preDiscountTotal);
+    }
+
+    const points = Number(redeemPoints);
+    const maxRedeemable = customer ? customer.loyaltyPoints : 0;
+    const redemptionValue =
+      Number.isFinite(points) && points > 0
+        ? Math.min(points, maxRedeemable) * LOYALTY_REDEEM_VALUE
+        : 0;
+
+    const total = Math.max(0, preDiscountTotal - discountAmount - redemptionValue);
+    return { subtotal, tax, discountAmount, redemptionValue, total };
+  }, [cartEntries, discount, redeemPoints, customer]);
 
   function addToCart(variant: CachedVariant) {
     setCart((prev) => {
@@ -93,6 +161,9 @@ export default function PosPage() {
     const amount = Number(tendered);
     if (!Number.isFinite(amount) || amount < totals.total - 0.01) return;
 
+    const points = Number(redeemPoints);
+    const redeemAmount = customer && Number.isFinite(points) && points > 0 ? Math.min(points, customer.loyaltyPoints) : null;
+
     await db.outbox.add({
       clientId: crypto.randomUUID(),
       branchId: device.branchId,
@@ -100,6 +171,9 @@ export default function PosPage() {
       cashierSessionId: session.cashierSessionId,
       lineItems: cartEntries.map((e) => ({ variantId: e.variant.id, quantity: e.quantity })),
       paymentAmount: totals.total,
+      discount,
+      customerId: customer?.id ?? null,
+      redeemPoints: redeemAmount,
       createdAt: new Date().toISOString(),
       status: "pending",
       lastError: null,
@@ -109,6 +183,9 @@ export default function PosPage() {
     setCart(new Map());
     setCheckoutOpen(false);
     setTendered("");
+    setCustomer(null);
+    setRedeemPoints("");
+    setDiscount(null);
     setToast(`Sale queued - change due: ${Math.max(0, amount - totals.total).toFixed(2)}`);
     setTimeout(() => setToast(null), 4000);
     void sync.runSync();
@@ -117,6 +194,48 @@ export default function PosPage() {
   async function switchCashier() {
     await clearSession();
     router.replace("/login");
+  }
+
+  async function searchCustomers(q: string) {
+    setCustomerSearch(q);
+    if (!session) return;
+    setCustomerBusy(true);
+    setCustomerError(null);
+    try {
+      const results = await apiGet<Customer[]>(`/customers?search=${encodeURIComponent(q)}`, session.accessToken);
+      setCustomerResults(results);
+    } catch (err) {
+      setCustomerError(err instanceof OfflineError ? "Offline - customer lookup needs a connection." : "Search failed.");
+      setCustomerResults([]);
+    } finally {
+      setCustomerBusy(false);
+    }
+  }
+
+  async function createCustomer(name: string, phone: string) {
+    if (!session || !name.trim()) return;
+    setCustomerBusy(true);
+    setCustomerError(null);
+    try {
+      const created = await apiPost<Customer>("/customers", { name: name.trim(), phone: phone.trim() || undefined }, session.accessToken);
+      setCustomer(created);
+      setCustomerModalOpen(false);
+      setCustomerSearch("");
+      setCustomerResults([]);
+    } catch (err) {
+      setCustomerError(err instanceof ApiError ? err.message : "Could not create customer.");
+    } finally {
+      setCustomerBusy(false);
+    }
+  }
+
+  function applyDiscount() {
+    const value = Number(discountValue);
+    if (!Number.isFinite(value) || value <= 0 || !discountApproverId) return;
+    setDiscount({ type: discountType, value, approvedById: discountApproverId });
+    setDiscountModalOpen(false);
+    setDiscountValue("");
+    setDiscountApproverId("");
   }
 
   if (!device || !session) {
@@ -169,6 +288,59 @@ export default function PosPage() {
 
         <div className="flex w-80 flex-col border-l border-slate-800 p-3">
           <h2 className="font-semibold">Cart</h2>
+
+          <div className="mt-2 space-y-2">
+            {customer ? (
+              <div className="flex items-center justify-between rounded-md bg-slate-800 p-2 text-sm">
+                <div>
+                  <p className="font-medium">{customer.name}</p>
+                  <p className="text-xs text-slate-400">{customer.loyaltyPoints} pts</p>
+                </div>
+                <button onClick={() => { setCustomer(null); setRedeemPoints(""); }} className="text-xs text-red-400">
+                  Remove
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => setCustomerModalOpen(true)}
+                className="w-full rounded-md border border-dashed border-slate-700 p-2 text-sm text-slate-400 hover:border-slate-500"
+              >
+                + Attach customer
+              </button>
+            )}
+
+            {customer && customer.loyaltyPoints > 0 && (
+              <input
+                type="number"
+                min={0}
+                max={customer.loyaltyPoints}
+                placeholder={`Redeem points (max ${customer.loyaltyPoints})`}
+                value={redeemPoints}
+                onChange={(e) => setRedeemPoints(e.target.value)}
+                className="w-full rounded-md border border-slate-700 bg-slate-800 p-2 text-sm"
+              />
+            )}
+
+            {discount ? (
+              <div className="flex items-center justify-between rounded-md bg-slate-800 p-2 text-sm">
+                <span>
+                  Discount: {discount.type === "PERCENT" ? `${discount.value}%` : `KES ${discount.value.toFixed(2)}`}
+                </span>
+                <button onClick={() => setDiscount(null)} className="text-xs text-red-400">
+                  Remove
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => setDiscountModalOpen(true)}
+                disabled={approvers.length === 0}
+                className="w-full rounded-md border border-dashed border-slate-700 p-2 text-sm text-slate-400 hover:border-slate-500 disabled:opacity-40"
+              >
+                + Apply discount
+              </button>
+            )}
+          </div>
+
           <div className="mt-2 flex-1 space-y-2 overflow-y-auto">
             {cartEntries.map(({ variant, quantity }) => (
               <div key={variant.id} className="rounded-md bg-slate-800 p-2">
@@ -199,6 +371,18 @@ export default function PosPage() {
               <span>Tax</span>
               <span>KES {totals.tax.toFixed(2)}</span>
             </div>
+            {totals.discountAmount > 0 && (
+              <div className="flex justify-between text-amber-400">
+                <span>Discount</span>
+                <span>-KES {totals.discountAmount.toFixed(2)}</span>
+              </div>
+            )}
+            {totals.redemptionValue > 0 && (
+              <div className="flex justify-between text-amber-400">
+                <span>Points redeemed</span>
+                <span>-KES {totals.redemptionValue.toFixed(2)}</span>
+              </div>
+            )}
             <div className="flex justify-between text-lg font-bold">
               <span>Total</span>
               <span>KES {totals.total.toFixed(2)}</span>
@@ -241,6 +425,119 @@ export default function PosPage() {
                 className="flex-1 rounded-md bg-blue-600 p-3 font-semibold disabled:opacity-40"
               >
                 Confirm
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {customerModalOpen && (
+        <div className="fixed inset-0 flex items-center justify-center bg-black/70 p-4">
+          <div className="w-full max-w-sm rounded-xl bg-slate-800 p-6">
+            <h2 className="text-xl font-bold">Attach customer</h2>
+            <input
+              autoFocus
+              className="mt-4 w-full rounded-md border border-slate-600 bg-slate-900 p-3"
+              placeholder="Search name or phone..."
+              value={customerSearch}
+              onChange={(e) => void searchCustomers(e.target.value)}
+            />
+            {customerError && <p className="mt-2 text-sm text-red-400">{customerError}</p>}
+            <div className="mt-3 max-h-48 space-y-1 overflow-y-auto">
+              {customerResults.map((c) => (
+                <button
+                  key={c.id}
+                  onClick={() => {
+                    setCustomer(c);
+                    setCustomerModalOpen(false);
+                    setCustomerSearch("");
+                    setCustomerResults([]);
+                  }}
+                  className="flex w-full items-center justify-between rounded-md bg-slate-900 p-2 text-left hover:bg-slate-700"
+                >
+                  <span>{c.name}</span>
+                  <span className="text-xs text-slate-400">{c.phone ?? "no phone"} · {c.loyaltyPoints} pts</span>
+                </button>
+              ))}
+              {customerBusy && <p className="text-sm text-slate-400">Searching...</p>}
+            </div>
+            {customerSearch.trim().length > 0 && customerResults.length === 0 && !customerBusy && (
+              <button
+                onClick={() => void createCustomer(customerSearch, "")}
+                className="mt-3 w-full rounded-md bg-blue-600 p-2 text-sm font-semibold"
+              >
+                + New customer &quot;{customerSearch.trim()}&quot;
+              </button>
+            )}
+            <button
+              onClick={() => {
+                setCustomerModalOpen(false);
+                setCustomerSearch("");
+                setCustomerResults([]);
+                setCustomerError(null);
+              }}
+              className="mt-4 w-full rounded-md bg-slate-700 p-3"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
+
+      {discountModalOpen && (
+        <div className="fixed inset-0 flex items-center justify-center bg-black/70 p-4">
+          <div className="w-full max-w-sm rounded-xl bg-slate-800 p-6">
+            <h2 className="text-xl font-bold">Apply discount</h2>
+            <div className="mt-4 flex gap-2">
+              <button
+                onClick={() => setDiscountType("PERCENT")}
+                className={`flex-1 rounded-md p-2 ${discountType === "PERCENT" ? "bg-blue-600" : "bg-slate-700"}`}
+              >
+                Percent
+              </button>
+              <button
+                onClick={() => setDiscountType("FIXED")}
+                className={`flex-1 rounded-md p-2 ${discountType === "FIXED" ? "bg-blue-600" : "bg-slate-700"}`}
+              >
+                Fixed (KES)
+              </button>
+            </div>
+            <input
+              type="number"
+              className="mt-3 w-full rounded-md border border-slate-600 bg-slate-900 p-3"
+              placeholder={discountType === "PERCENT" ? "e.g. 10" : "e.g. 200"}
+              value={discountValue}
+              onChange={(e) => setDiscountValue(e.target.value)}
+            />
+            <p className="mt-4 text-sm text-slate-400">Approved by (supervisor+):</p>
+            <div className="mt-2 max-h-40 space-y-1 overflow-y-auto">
+              {approvers.map((a) => (
+                <button
+                  key={a.id}
+                  onClick={() => setDiscountApproverId(a.id)}
+                  className={`w-full rounded-md p-2 text-left ${discountApproverId === a.id ? "bg-blue-600" : "bg-slate-900 hover:bg-slate-700"}`}
+                >
+                  {a.fullName} <span className="text-xs text-slate-400">({a.role})</span>
+                </button>
+              ))}
+            </div>
+            <div className="mt-4 flex gap-3">
+              <button
+                onClick={() => {
+                  setDiscountModalOpen(false);
+                  setDiscountValue("");
+                  setDiscountApproverId("");
+                }}
+                className="flex-1 rounded-md bg-slate-700 p-3"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={applyDiscount}
+                disabled={!Number.isFinite(Number(discountValue)) || Number(discountValue) <= 0 || !discountApproverId}
+                className="flex-1 rounded-md bg-blue-600 p-3 font-semibold disabled:opacity-40"
+              >
+                Apply
               </button>
             </div>
           </div>

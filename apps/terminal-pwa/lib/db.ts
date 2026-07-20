@@ -52,6 +52,12 @@ export interface CartLine {
   quantity: number;
 }
 
+export interface OutboxDiscount {
+  type: "PERCENT" | "FIXED";
+  value: number;
+  approvedById: string;
+}
+
 export type OutboxStatus = "pending" | "syncing" | "synced" | "failed";
 
 export interface OutboxSale {
@@ -62,6 +68,9 @@ export interface OutboxSale {
   cashierSessionId: string;
   lineItems: CartLine[];
   paymentAmount: number;
+  discount: OutboxDiscount | null;
+  customerId: string | null;
+  redeemPoints: number | null;
   createdAt: string;
   status: OutboxStatus;
   lastError: string | null;

@@ -39,6 +39,9 @@ export async function syncOutbox(): Promise<{ synced: number; failed: number; st
           cashierSessionId: sale.cashierSessionId,
           lineItems: sale.lineItems.map((l) => ({ variantId: l.variantId, quantity: l.quantity })),
           payments: [{ method: "CASH", amount: sale.paymentAmount }],
+          discount: sale.discount ?? undefined,
+          customerId: sale.customerId ?? undefined,
+          redeemPoints: sale.redeemPoints ?? undefined,
         },
         session.accessToken,
       );
