@@ -54,3 +54,24 @@ export async function login(apiBaseUrl: string, email: string, password: string)
   }
   return json as { accessToken: string };
 }
+
+/**
+ * Same "no session yet" situation as login() above - called right after
+ * login() succeeds but before setSession() runs, to learn the org's
+ * industryType for gating vertical nav (components/nav.tsx) without a
+ * second round trip once the session exists.
+ */
+export async function getOrganization(apiBaseUrl: string, accessToken: string): Promise<{ industryType: string }> {
+  const response = await fetch(`${apiBaseUrl.replace(/\/+$/, "")}/organizations/me`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  const json: unknown = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const message =
+      typeof json === "object" && json && "message" in json && typeof (json as { message: unknown }).message === "string"
+        ? (json as { message: string }).message
+        : `Request failed (${response.status})`;
+    throw new ApiError(message, response.status);
+  }
+  return json as { industryType: string };
+}

@@ -15,6 +15,13 @@ import { SetProductFlagDto } from './dto/set-product-flag.dto';
 export class PharmacyProductsController {
   constructor(private readonly flags: PharmacyProductFlagsService) {}
 
+  // Whole-catalog view for the back office's Pharmacy screen - any
+  // authenticated role, same tier as GET /products itself.
+  @Get()
+  findAll() {
+    return this.flags.findAllWithProducts();
+  }
+
   // Flagging a product as a controlled substance is a catalog-level
   // policy change, same tier as adding/removing a kitchen station or a
   // restaurant table - routine floor operations don't touch it.

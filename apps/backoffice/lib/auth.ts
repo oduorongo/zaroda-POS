@@ -11,6 +11,8 @@ export interface Session {
   accessToken: string;
   role: string;
   email: string;
+  /** Fetched from GET /organizations/me at login - gates which vertical nav links/screens show (see components/nav.tsx). */
+  industryType: string;
 }
 
 const KEY = "zaroda-backoffice-session";

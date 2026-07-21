@@ -66,7 +66,7 @@ export default function RegisterPage() {
       const data = json as RegisterResponse;
       setResult(data);
       const role = decodeRole(data.accessToken) ?? "OWNER";
-      setSession({ apiBaseUrl: apiBaseUrl.trim(), accessToken: data.accessToken, role, email: ownerEmail.trim() });
+      setSession({ apiBaseUrl: apiBaseUrl.trim(), accessToken: data.accessToken, role, email: ownerEmail.trim(), industryType });
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Registration failed - check the API URL and try again");
     } finally {

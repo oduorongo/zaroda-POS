@@ -2293,6 +2293,68 @@ rather than new routes bolted onto `apps/backoffice`.
   document. The app was started and is reachable at
   `http://localhost:3004`.
 
+## `apps/backoffice` becomes industry-aware
+
+**Done and verified live.** A real user question surfaced a real gap:
+after creating a restaurant, a pharmacy, and a salon organization via
+`/register`, all three looked identical in the back office - because
+they were. Every screen built into `apps/backoffice` up to this point
+(Sales, Products, Reports, Shifts, Inventory, Layaways, Staff, Branches)
+is industry-agnostic by design; all the vertical-aware UI work this
+project had done so far went into the terminal PWA, not here. Checked
+the database directly first to rule out a data bug - each org's
+`industryType` was already stored correctly (`RESTAURANT`, `PHARMACY`,
+`SALON`); the gap was genuinely "no UI reads it," not "the data is
+wrong."
+
+- **`Session` gains `industryType`**, fetched via `GET /organizations/me`
+  right after login (and set directly from the form's own selection on
+  `/register`, which already knows it - no extra round trip needed
+  there). `components/nav.tsx` now shows an industry badge always, plus
+  one conditional vertical link, the same gating principle the terminal
+  PWA's own nav already uses (`device.industryType === "RESTAURANT"`
+  etc.) just against the back-office session instead of Dexie.
+- **Three new read-mostly overview screens**, one per vertical, each
+  redirecting to `/sales` if the session's `industryType` doesn't match
+  (the same guard pattern the terminal PWA's vertical pages use):
+  - `/restaurant` - the floor (tables + status) and kitchen queue across
+    all of a branch's stations at once. Deliberately not the working
+    screen (that's the terminal PWA's `app/tables`/`app/kds`) - this is
+    for a manager checking on things without walking to a terminal.
+  - `/bookings` - today's salon appointments across a branch.
+  - `/pharmacy` - controlled-substance flag management, built on a
+    **new `GET /pharmacy/products` endpoint** added alongside this page
+    (`PharmacyProductFlagsService.findAllWithProducts()`) - nothing
+    before this could list more than one product's flag per request,
+    only get/set one at a time. Deliberately does **not** attempt a
+    prescription-history view in this slice: no endpoint exists to list
+    `PharmacySalePrescription` rows at all (only per-sale creation), a
+    real gap left open rather than worked around with an ad-hoc query.
+- **Verified live** against the real database: registered fresh
+  `PHARMACY` and `SALON` test organizations (couldn't use the user's own
+  three - their passwords aren't something I have or should guess) and
+  reused the existing `RESTAURANT` test org from earlier session work;
+  confirmed `GET /organizations/me` returns the correct `industryType`
+  for each, exactly as the login page reads it; created a product and
+  confirmed `GET /pharmacy/products` initially shows it unflagged, then
+  confirmed flagging it via the exact `PATCH` shape `toggleControlled()`
+  sends correctly updates what the list endpoint returns; created a
+  salon resource and appointment and confirmed the exact
+  `branchId`+`from`+`to` query `/bookings` constructs returns it;
+  created a restaurant table and kitchen station and confirmed
+  `/restaurant`'s exact queries return both correctly. `pnpm typecheck`,
+  `pnpm lint`, and `pnpm test` all pass clean for `apps/api`; `pnpm
+  typecheck` and `pnpm lint` pass clean for `apps/backoffice`.
+- **Not independently verified this session**: rendering/interaction in
+  an actual browser (no browser automation available) - verified via the
+  exact API round trips above plus static analysis instead, stated
+  plainly rather than claimed.
+- **A note for anyone with a session already open**: `Session` gained a
+  required field - a browser tab that logged in before this change won't
+  have `industryType` in its stored session and will just see no
+  vertical link (safe default, not a crash), until logging out and back
+  in refetches it.
+
 ## Getting started
 
 ```

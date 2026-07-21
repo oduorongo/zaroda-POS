@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { login, ApiError } from "../../lib/api";
+import { login, getOrganization, ApiError } from "../../lib/api";
 import { setSession, decodeRole } from "../../lib/auth";
 
 export default function LoginPage() {
@@ -20,7 +20,8 @@ export default function LoginPage() {
     try {
       const { accessToken } = await login(apiBaseUrl.trim(), email.trim(), password);
       const role = decodeRole(accessToken) ?? "UNKNOWN";
-      setSession({ apiBaseUrl: apiBaseUrl.trim(), accessToken, role, email: email.trim() });
+      const { industryType } = await getOrganization(apiBaseUrl.trim(), accessToken);
+      setSession({ apiBaseUrl: apiBaseUrl.trim(), accessToken, role, email: email.trim(), industryType });
       router.replace("/sales");
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Login failed - check the API URL and try again");

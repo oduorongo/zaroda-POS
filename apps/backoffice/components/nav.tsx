@@ -15,9 +15,19 @@ const LINKS = [
   { href: "/branches", label: "Branches" },
 ];
 
+// Vertical-specific screens, gated the same way the terminal PWA gates
+// its own nav on device.industryType - a RETAIL (or any unrecognized)
+// org just sees the plain links above, nothing extra.
+const VERTICAL_LINKS: Record<string, { href: string; label: string }> = {
+  RESTAURANT: { href: "/restaurant", label: "Tables & Kitchen" },
+  PHARMACY: { href: "/pharmacy", label: "Pharmacy" },
+  SALON: { href: "/bookings", label: "Bookings" },
+};
+
 export function Nav({ session }: { session: Session }) {
   const pathname = usePathname();
   const router = useRouter();
+  const verticalLink = VERTICAL_LINKS[session.industryType];
 
   return (
     <header className="flex items-center justify-between border-b border-slate-800 bg-slate-900 px-4 py-3">
@@ -33,9 +43,20 @@ export function Nav({ session }: { session: Session }) {
               {link.label}
             </Link>
           ))}
+          {verticalLink && (
+            <Link
+              href={verticalLink.href}
+              className={pathname?.startsWith(verticalLink.href) ? "text-amber-400" : "text-amber-500/70 hover:text-amber-400"}
+            >
+              {verticalLink.label}
+            </Link>
+          )}
         </nav>
       </div>
       <div className="flex items-center gap-3 text-sm">
+        <span className="rounded bg-slate-800 px-2 py-0.5 text-xs uppercase tracking-wide text-slate-400">
+          {session.industryType || "?"}
+        </span>
         <span className="text-slate-400">
           {session.email} · {session.role}
         </span>

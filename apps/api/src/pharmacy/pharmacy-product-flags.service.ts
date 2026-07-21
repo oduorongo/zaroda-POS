@@ -35,6 +35,28 @@ export class PharmacyProductFlagsService {
     );
   }
 
+  /**
+   * Every product with its flag, if any (a product with no
+   * PharmacyProductFlag row is simply "not flagged" - not an error, most
+   * products in a pharmacy's catalog are plain over-the-counter items).
+   * Powers the back office's Pharmacy screen, which needed a way to see
+   * the whole catalog's controlled-substance status at once; nothing
+   * before this listed more than one product's flag per request.
+   */
+  async findAllWithProducts() {
+    return this.tenantPrisma.run(async (tx) => {
+      const [products, flags] = await Promise.all([
+        tx.product.findMany({ orderBy: { name: 'asc' } }),
+        tx.pharmacyProductFlag.findMany(),
+      ]);
+      const flagByProductId = new Map(flags.map((f) => [f.productId, f]));
+      return products.map((product) => ({
+        ...product,
+        pharmacyFlag: flagByProductId.get(product.id) ?? null,
+      }));
+    });
+  }
+
   /** For PharmacySalesService, which needs to check flags for several products within its own transaction. */
   findManyInTx(tx: TenantTx, productIds: string[]) {
     return tx.pharmacyProductFlag.findMany({
