@@ -998,6 +998,16 @@ model SalonAppointment {
   endTime        DateTime
   status         SalonAppointmentStatus @default(SCHEDULED)
   notes          String?
+  // A random, unguessable value generated at creation the same way `id`
+  // above already is (@default(uuid())) - the only "credential" a
+  // public, unauthenticated customer has to view/cancel their own
+  // booking later (public-booking module). Never returned by any
+  // staff-facing endpoint - staff already reach any appointment through
+  // their own authenticated session, they don't need this. Not a
+  // password (nothing to remember/type) - a capability token embedded in
+  // a link, the same shape as an unsubscribe link or a password-reset
+  // link elsewhere on the web.
+  cancelToken    String                 @unique @default(uuid())
   createdAt      DateTime               @default(now())
   updatedAt      DateTime               @updatedAt
 

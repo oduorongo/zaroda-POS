@@ -167,6 +167,101 @@ export class PublicBookingService {
           startTime,
           endTime,
         },
+        // cancelToken IS returned here, and only here - this is the one
+        // moment the customer who just created this booking legitimately
+        // learns it, the same way a password-reset flow shows a token
+        // exactly once, at generation. Every other read below requires
+        // the token as an input, never returns it again.
+        select: {
+          id: true,
+          serviceName: true,
+          startTime: true,
+          endTime: true,
+          status: true,
+          cancelToken: true,
+          resource: { select: { name: true } },
+        },
+      });
+    });
+  }
+
+  /**
+   * Both getBooking and cancelBooking below take the token as proof of
+   * ownership, not the appointment id alone - ids are sequential-ish
+   * UUIDs handed back in a URL, not secret; the token is the actual
+   * capability. A wrong or missing token is treated identically to "not
+   * found," the same "don't distinguish why" principle already applied
+   * to auth (a deactivated OrgUser fails login the same generic way a
+   * wrong password does) - this doesn't confirm whether the appointment
+   * id exists at all to a caller who doesn't already hold its token.
+   */
+  async getBooking(
+    organizationId: string,
+    branchId: string,
+    appointmentId: string,
+    token: string,
+  ) {
+    return this.runForBranch(organizationId, branchId, async (tx) => {
+      const appointment = await tx.salonAppointment.findUnique({
+        where: { id: appointmentId },
+        select: {
+          id: true,
+          branchId: true,
+          cancelToken: true,
+          serviceName: true,
+          startTime: true,
+          endTime: true,
+          status: true,
+          resource: { select: { name: true } },
+        },
+      });
+      if (
+        !appointment ||
+        appointment.branchId !== branchId ||
+        appointment.cancelToken !== token
+      ) {
+        throw new NotFoundException('Booking not found');
+      }
+      return {
+        id: appointment.id,
+        serviceName: appointment.serviceName,
+        startTime: appointment.startTime,
+        endTime: appointment.endTime,
+        status: appointment.status,
+        resource: appointment.resource,
+      };
+    });
+  }
+
+  async cancelBooking(
+    organizationId: string,
+    branchId: string,
+    appointmentId: string,
+    token: string,
+  ) {
+    return this.runForBranch(organizationId, branchId, async (tx) => {
+      const appointment = await tx.salonAppointment.findUnique({
+        where: { id: appointmentId },
+      });
+      if (
+        !appointment ||
+        appointment.branchId !== branchId ||
+        appointment.cancelToken !== token
+      ) {
+        throw new NotFoundException('Booking not found');
+      }
+      if (
+        appointment.status !== 'SCHEDULED' &&
+        appointment.status !== 'CONFIRMED'
+      ) {
+        throw new BadRequestException(
+          `This booking is ${appointment.status.toLowerCase()} and can no longer be cancelled online - contact the business directly`,
+        );
+      }
+
+      const updated = await tx.salonAppointment.update({
+        where: { id: appointmentId },
+        data: { status: 'CANCELLED' },
         select: {
           id: true,
           serviceName: true,
@@ -176,6 +271,7 @@ export class PublicBookingService {
           resource: { select: { name: true } },
         },
       });
+      return updated;
     });
   }
 }

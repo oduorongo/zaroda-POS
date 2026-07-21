@@ -1,8 +1,17 @@
-import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Query,
+} from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { Public } from '../auth/public.decorator';
 import { PublicBookingService } from './public-booking.service';
 import { PublicBookAppointmentDto } from './dto/public-book-appointment.dto';
+import { CancelBookingDto } from './dto/cancel-booking.dto';
 
 // Every route @Public() (skips the global JwtAuthGuard - see
 // app.module.ts) since this whole controller is deliberately reachable
@@ -52,5 +61,40 @@ export class PublicBookingController {
     @Body() dto: PublicBookAppointmentDto,
   ) {
     return this.booking.bookAppointment(organizationId, branchId, dto);
+  }
+
+  @Public()
+  @Get('appointments/:appointmentId')
+  getBooking(
+    @Param('organizationId') organizationId: string,
+    @Param('branchId') branchId: string,
+    @Param('appointmentId') appointmentId: string,
+    @Query('token') token: string,
+  ) {
+    return this.booking.getBooking(
+      organizationId,
+      branchId,
+      appointmentId,
+      token,
+    );
+  }
+
+  // Same throttle as booking creation - cancellation is a write too, and
+  // an unauthenticated one at that (token-guarded, not IP-restricted).
+  @Public()
+  @Throttle(BOOK_THROTTLE)
+  @Patch('appointments/:appointmentId/cancel')
+  cancelBooking(
+    @Param('organizationId') organizationId: string,
+    @Param('branchId') branchId: string,
+    @Param('appointmentId') appointmentId: string,
+    @Body() dto: CancelBookingDto,
+  ) {
+    return this.booking.cancelBooking(
+      organizationId,
+      branchId,
+      appointmentId,
+      dto.token,
+    );
   }
 }

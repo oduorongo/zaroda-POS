@@ -51,7 +51,14 @@ export default function PublicBookingPage() {
   const [customerPhone, setCustomerPhone] = useState("");
   const [submitBusy, setSubmitBusy] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
-  const [confirmed, setConfirmed] = useState<{ serviceName: string; startTime: string; endTime: string; resourceName: string } | null>(null);
+  const [confirmed, setConfirmed] = useState<{
+    id: string;
+    serviceName: string;
+    startTime: string;
+    endTime: string;
+    resourceName: string;
+    cancelToken: string;
+  } | null>(null);
 
   useEffect(() => {
     void (async () => {
@@ -117,10 +124,12 @@ export default function PublicBookingPage() {
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(typeof json.message === "string" ? json.message : "Booking failed");
       setConfirmed({
+        id: json.id,
         serviceName: json.serviceName,
         startTime: json.startTime,
         endTime: json.endTime,
         resourceName: json.resource?.name ?? "",
+        cancelToken: json.cancelToken,
       });
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : "Booking failed - try again");
@@ -130,6 +139,7 @@ export default function PublicBookingPage() {
   }
 
   if (confirmed) {
+    const manageHref = `/book/manage/${params.organizationId}/${params.branchId}/${confirmed.id}?token=${confirmed.cancelToken}`;
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-900 p-4 text-slate-100">
         <div className="w-full max-w-md space-y-3 rounded-xl bg-slate-800 p-6 text-center shadow-xl">
@@ -139,6 +149,15 @@ export default function PublicBookingPage() {
             {new Date(confirmed.startTime).toLocaleString()} - {new Date(confirmed.endTime).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
           </p>
           <p className="text-sm text-slate-500">{confirmed.resourceName}</p>
+          <div className="mt-4 rounded-md bg-slate-900 p-3 text-left">
+            <p className="text-xs text-slate-400">
+              Save this link to view or cancel your booking later - it isn&apos;t emailed or texted anywhere, this is
+              the only place it&apos;s shown:
+            </p>
+            <a href={manageHref} className="mt-1 block break-all text-xs text-blue-400 hover:underline">
+              {typeof window !== "undefined" ? `${window.location.origin}${manageHref}` : manageHref}
+            </a>
+          </div>
         </div>
       </div>
     );

@@ -2434,6 +2434,66 @@ capability, not a gap in something already built.
   reservation or pharmacy refill-request flow would each need their own
   design, not just a copy-paste of this one).
 
+## Customer self-service: view and cancel a booking
+
+**Done and verified live.** Picks up the item explicitly deferred above
+- a customer who books publicly now gets a way to view and cancel it
+themselves afterward, no staff or login involved either time.
+
+- New migration adds `SalonAppointment.cancelToken` (`@default(uuid())`,
+  unique) - **not** a Prisma-auto migration; the column had to be added
+  nullable first, backfilled for the 13 existing rows via
+  `gen_random_uuid()`, then tightened to `NOT NULL` + a unique index,
+  since `prisma migrate dev` refuses to add a required column with a
+  default straight onto a non-empty table. Written and applied by hand
+  (`prisma migrate deploy`, non-interactively - `migrate dev`'s own
+  `--create-only` flow needs a TTY this session doesn't have), then
+  confirmed with `prisma migrate status` that the database and schema
+  came back fully in sync, no drift.
+- `cancelToken` is the actual credential, not the appointment id in the
+  URL - ids are unremarkable UUIDs handed back openly, the token is what
+  proves "this is genuinely your booking." Returned by `POST
+  .../appointments` exactly once, at creation - the same "shown once, at
+  generation" shape as a password-reset link - and never again by any
+  other endpoint, including to staff (every staff-facing salon query
+  deliberately excludes it from its `select`).
+- Two new endpoints, both requiring the token: `GET
+  .../appointments/:appointmentId?token=` and `PATCH
+  .../appointments/:appointmentId/cancel`. A wrong or missing token 404s
+  exactly like a made-up appointment id would - the same "don't
+  distinguish why" principle already applied to `AuthService` (a
+  deactivated `OrgUser` fails login the same generic way a wrong
+  password does), so a caller without the token learns nothing about
+  whether the id is real.
+- Cancellation is only allowed from `SCHEDULED`/`CONFIRMED` - an
+  `IN_PROGRESS`, `COMPLETED`, or already-`CANCELLED` booking gets a
+  clear rejection ("contact the business directly") instead of silently
+  no-op'ing or erroring unhelpfully.
+- `apps/backoffice/app/book/[organizationId]/[branchId]/page.tsx`'s
+  confirmation screen now shows the manage link
+  (`/book/manage/<organizationId>/<branchId>/<appointmentId>?token=...`)
+  - "isn't emailed or texted anywhere, this is the only place it's
+  shown," stated plainly on the page itself, since this project has no
+  email/SMS infrastructure to deliver it any other way yet. New
+  `apps/backoffice/app/book/manage/.../page.tsx` reads the token from
+  the URL's query string and never imports `lib/auth.ts`/`lib/api.ts`,
+  same rule as the booking page itself.
+- **Verified live** against the real database, the full loop: booked a
+  fresh appointment and captured the one-time `cancelToken`; confirmed a
+  wrong token on the view endpoint 404s; confirmed the correct token
+  retrieves the booking with `cancelToken` itself absent from that
+  response; cancelled it with the correct token and confirmed the status
+  update; attempted to cancel the same booking again and confirmed the
+  exact "already cancelled" rejection; confirmed the cancelled slot no
+  longer appears in `GET .../availability`'s busy blocks, leaving only
+  the other three still-active bookings. `pnpm typecheck`, `pnpm lint`,
+  and `pnpm test` all pass clean for `apps/api`; `pnpm typecheck` and
+  `pnpm lint` pass clean for `apps/backoffice`.
+- **Not independently verified this session**: rendering/interaction in
+  an actual browser (no browser automation available) - verified via the
+  exact API round trips above plus static analysis instead, stated
+  plainly rather than claimed.
+
 ## Getting started
 
 ```
