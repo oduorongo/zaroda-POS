@@ -2253,6 +2253,46 @@ audited.
   kept from ever touching `apps/backoffice`'s tenant-scoped session
   storage.
 
+## New app: `apps/platform-admin` — the console for the identity above
+
+**Done and verified live.** The follow-up flagged in the slice above -
+a UI for the platform-admin backend, built as a genuinely separate app
+rather than new routes bolted onto `apps/backoffice`.
+
+- **Why a fourth app, not a mode inside `apps/backoffice`**: the whole
+  point of the backend work above was making a platform-admin token
+  structurally unable to touch tenant data or vice versa; putting both
+  session types in the same Next.js app's `localStorage` (even under
+  different keys) would have been the one place that separation could
+  quietly erode over time as the app grows. `apps/platform-admin` is its
+  own app on its own port (3004 - API is 3001, terminal PWA 3002,
+  back office 3003), with its own `localStorage` key
+  (`zaroda-platform-admin-session`, distinct from `apps/backoffice`'s
+  `zaroda-backoffice-session`) and its own visually distinct theme
+  (zinc/amber instead of the other two apps' slate/blue) - a human
+  operator with both consoles open in adjacent tabs should be able to
+  tell them apart at a glance, not just trust that the code is correct.
+- Three screens: `/login` (no "new here?" link, deliberately - there is
+  no self-registration path for a platform admin, matching the backend),
+  `/organizations` (every tenant with branch/staff/sale counts),
+  `/organizations/:id` (one tenant's branches and staff, deactivated
+  staff shown struck through).
+- **Verified live** against the real database, driving the exact calls
+  each screen makes: logged in as the seeded platform admin; called
+  `GET /platform-admin/organizations` and confirmed the response matches
+  the `Organization` interface field-for-field for all three real
+  organizations in the database; called the demo org's detail endpoint
+  and confirmed `branches`/`orgUsers` (including each user's `email`,
+  which only this screen - not any tenant-facing one - has any business
+  showing) matched the `OrganizationDetail` interface exactly. `pnpm
+  typecheck` and `pnpm lint` pass clean for `apps/platform-admin`.
+- **Not independently verified this session**: rendering/interaction in
+  an actual browser (no browser automation available) - verified via the
+  exact API round trips above plus static analysis instead, stated
+  plainly rather than claimed, consistent with every other slice in this
+  document. The app was started and is reachable at
+  `http://localhost:3004`.
+
 ## Getting started
 
 ```
@@ -2289,6 +2329,9 @@ apps/
   api/              NestJS core (modular monolith)
   backoffice/       Next.js owner/manager admin console (always-online,
                     email/password login - sales, refunds, catalog)
+  platform-admin/   Next.js cross-tenant super-admin console - a
+                    structurally separate identity/token/app from every
+                    tenant, never shares session storage with backoffice
   terminal-pwa/     Offline-capable POS terminal (Dexie/IndexedDB,
                     service worker, sync engine - DESIGN.md §6)
 packages/
