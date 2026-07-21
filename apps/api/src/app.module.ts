@@ -27,6 +27,7 @@ import { CustomersModule } from './customers/customers.module';
 import { OrganizationsModule } from './organizations/organizations.module';
 import { BranchesModule } from './branches/branches.module';
 import { TerminalsModule } from './terminals/terminals.module';
+import { PlatformAdminModule } from './platform-admin/platform-admin.module';
 import { LayawaysModule } from './layaways/layaways.module';
 import { AllExceptionsFilter } from './common/logging/all-exceptions.filter';
 import { RestaurantModule } from './restaurant/restaurant.module';
@@ -99,6 +100,7 @@ import { SalonModule } from './salon/salon.module';
     OrganizationsModule,
     BranchesModule,
     TerminalsModule,
+    PlatformAdminModule,
     LayawaysModule,
     RestaurantModule,
     PharmacyModule,

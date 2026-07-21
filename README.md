@@ -2162,6 +2162,97 @@ workaround. This closes both.
   already running locally (a concurrent build is known to corrupt a
   running dev server's `.next` cache).
 
+## Platform admin: a genuine super-admin identity, separate from every tenant
+
+**Done and verified live.** Before this, there was no cross-tenant
+identity in the system at all - `OWNER` is the top role, but entirely
+*within* one organization; the only way to look at data across tenants
+was `psql` with the Neon owner's raw credentials, with no audit trail.
+This adds a real `PlatformAdmin` identity, structurally incapable of
+being confused with a tenant token, with every action (including reads)
+audited.
+
+- **New `apps/api/src/platform-admin/` module**: `POST
+  /platform-admin/auth/login` (public, throttled like tenant login), `GET
+  /platform-admin/organizations` (list every tenant with branch/org-user/
+  sale counts), `GET /platform-admin/organizations/:id` (one tenant's
+  full branch and staff list).
+- **No self-registration, deliberately** - unlike `POST /auth/register`
+  for tenants, there is no HTTP path that creates a `PlatformAdmin` row.
+  The only way one exists is `pnpm --filter api seed:platform-admin`
+  (`prisma/seed-platform-admin.ts`), run manually against the database
+  directly, requiring `PLATFORM_ADMIN_EMAIL`/`PASSWORD`/`FULL_NAME` env
+  vars with no checked-in defaults (unlike the demo tenant's
+  intentionally-public `password123`) - a public "become a platform
+  admin" endpoint would be a severe vulnerability for an identity that
+  can see every tenant.
+- **Structurally separate token, not just a different role value**: a
+  `PlatformAdminJwtPayload` (`{sub, scope: 'platform-admin'}`) carries no
+  `organizationId`/`role`/`branchId` at all, is signed with its own
+  secret (`PLATFORM_ADMIN_JWT_SECRET`, deliberately never
+  `JWT_SECRET`), and is verified by a separately-named Passport strategy
+  (`'platform-admin-jwt'`, not the default `'jwt'`). Every
+  `/platform-admin/*` route is marked `@Public()` to skip the global
+  `JwtAuthGuard` entirely and instead requires `PlatformAdminAuthGuard`
+  explicitly - so a tenant JWT and a platform-admin JWT are mutually
+  unable to authenticate each other's routes on three independent axes
+  (payload shape, signing secret, guard wiring), not just one role check
+  that a bug could weaken.
+- **No new Postgres infrastructure needed** - the original plan sketched
+  a dedicated `BYPASSRLS` Postgres role for this, but building it turned
+  out not to require one: `organizations`' own pre-auth RLS exception
+  (`rls.sql`'s `OR NULLIF(current_setting(...), '') IS NULL` - the same
+  exception tenant `login()` already depends on to resolve which org an
+  email belongs to before a tenant exists) already makes every
+  organization row visible to a query that never calls `set_config` at
+  all. Per-tenant child data (branches, org users) is fetched by briefly
+  setting `app.current_tenant` to each org's id in turn, the exact same
+  mechanism `TenantScopedPrismaService.run()` uses for one tenant,
+  just looped sequentially across all of them here - avoiding a new
+  Postgres role, a new connection string, and touching the Neon project's
+  permissions at all for this first slice.
+- **Every action logged, including reads** - a new `PlatformAuditLog`
+  table (via `PlatformAuditLogService`), deliberately broader than the
+  tenant-scoped `AuditLog` (writes only): a platform admin *looking at* a
+  tenant's staff list is itself sensitive enough to record, not just
+  changing something.
+- **A real bug caught and fixed by live-testing, not by typecheck**: the
+  first version's cross-tenant queries used bare `this.prisma.$transaction(...)`
+  calls with none of the `{timeout: 15_000, maxWait: 15_000}` overrides
+  every other raw transaction in this codebase applies against Neon's
+  observed latency (`TenantScopedPrismaService.run()`,
+  `AuthService.pinLogin`/`register`) - `GET /platform-admin/organizations`
+  failed immediately with the exact `P2028 "Unable to start a
+  transaction in the given time"` this project has hit and fixed
+  several times before, freshly reintroduced by omission. Fixed by
+  applying the same overrides, and by changing the organization loop from
+  concurrent (`Promise.all`) to sequential - firing N concurrent
+  interactive transactions against Neon is the identical failure mode
+  the project's own load-testing history already documented exhausting
+  the connection pool.
+- **Verified live** against the real database: seeded a real platform
+  admin via the script and logged in, confirming the JWT payload has no
+  tenant fields at all; called `GET /platform-admin/organizations` and
+  confirmed it correctly listed **all three** organizations that exist
+  in the database (the demo org plus the two brand-new tenants created
+  in the onboarding work above) with accurate per-org branch/org-user/
+  sale counts; called the detail endpoint for the demo org and confirmed
+  its branches and staff (including a staff member created earlier in
+  this session's org-management testing) came back correctly; confirmed
+  the audit log actually recorded both calls by querying
+  `platform_audit_log` directly; confirmed the security boundary in
+  **both directions** - a real tenant JWT gets 401 against
+  `/platform-admin/organizations`, and a real platform-admin JWT gets
+  401 against `/sales`; confirmed a wrong password is rejected. `pnpm
+  typecheck`, `pnpm lint`, and `pnpm test` all pass clean for `apps/api`.
+- **Not independently verified this session**: no back-office UI was
+  built for this in this slice (deliberately, to keep the security-
+  critical backend correct and verified first) - a platform-admin
+  console screen is a natural, separate follow-up, likely its own
+  minimal app or route tree given how deliberately this token type is
+  kept from ever touching `apps/backoffice`'s tenant-scoped session
+  storage.
+
 ## Getting started
 
 ```

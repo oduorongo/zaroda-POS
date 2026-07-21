@@ -1033,3 +1033,45 @@ model SalonAppointmentSale {
 
   @@map("salon_appointment_sales")
 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// Platform admin — genuinely cross-tenant, not owned by any Organization.
+// No RLS policy in rls.sql for either table below, deliberately: RLS
+// exists to isolate tenant data from OTHER tenants, and neither of these
+// tables is tenant data in the first place. Isolating them from
+// tenant-facing requests is instead enforced at the application layer -
+// PlatformAdminAuthGuard is the only thing that can ever authenticate a
+// request against these tables (see platform-admin/ module), and no
+// tenant-facing controller ever queries them.
+
+model PlatformAdmin {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String
+  fullName     String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  auditLog PlatformAuditLog[]
+
+  @@map("platform_admins")
+}
+
+// A platform admin can see across every tenant - a materially more
+// sensitive capability than anything an OrgUser has, so every action
+// (including reads, unlike the tenant-scoped AuditLog which only logs
+// writes) gets a row here, not just mutations.
+model PlatformAuditLog {
+  id              String   @id @default(uuid())
+  platformAdminId String
+  action          String
+  entityType      String
+  entityId        String?
+  organizationId  String? // informational only - not an FK, since the referenced org may later be deleted and this log should outlive it
+  createdAt       DateTime @default(now())
+
+  platformAdmin PlatformAdmin @relation(fields: [platformAdminId], references: [id], onDelete: Cascade)
+
+  @@index([platformAdminId])
+  @@map("platform_audit_log")
+}
