@@ -3,8 +3,10 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../common/prisma/prisma.service';
 import { TenantTx } from '../common/prisma/tenant-scoped-prisma.service';
+import { AfricasTalkingSmsProvider } from '../notifications/africas-talking-sms.provider';
 import { assertNoOverlap } from '../salon/salon-overlap.util';
 import { PublicBookAppointmentDto } from './dto/public-book-appointment.dto';
 
@@ -31,7 +33,11 @@ const TX_OPTIONS = { timeout: 15_000, maxWait: 15_000 };
  */
 @Injectable()
 export class PublicBookingService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly sms: AfricasTalkingSmsProvider,
+    private readonly config: ConfigService,
+  ) {}
 
   /**
    * Establishes tenant context for one transaction the same
@@ -127,62 +133,90 @@ export class PublicBookingService {
       throw new BadRequestException('startTime must be in the future');
     }
 
-    return this.runForBranch(organizationId, branchId, async (tx) => {
-      const resource = await tx.salonResource.findUnique({
-        where: { id: dto.resourceId },
-      });
-      if (!resource || resource.branchId !== branchId) {
-        throw new NotFoundException('Resource not found at this branch');
-      }
+    const appointment = await this.runForBranch(
+      organizationId,
+      branchId,
+      async (tx) => {
+        const resource = await tx.salonResource.findUnique({
+          where: { id: dto.resourceId },
+        });
+        if (!resource || resource.branchId !== branchId) {
+          throw new NotFoundException('Resource not found at this branch');
+        }
 
-      await assertNoOverlap(
-        tx,
-        dto.resourceId,
-        resource.name,
-        startTime,
-        endTime,
-      );
-
-      const customer =
-        (await tx.customer.findUnique({
-          where: {
-            organizationId_phone: { organizationId, phone: dto.customerPhone },
-          },
-        })) ??
-        (await tx.customer.create({
-          data: {
-            organizationId,
-            name: dto.customerName,
-            phone: dto.customerPhone,
-          },
-        }));
-
-      return tx.salonAppointment.create({
-        data: {
-          organizationId,
-          branchId,
-          resourceId: dto.resourceId,
-          customerId: customer.id,
-          serviceName: dto.serviceName,
+        await assertNoOverlap(
+          tx,
+          dto.resourceId,
+          resource.name,
           startTime,
           endTime,
-        },
-        // cancelToken IS returned here, and only here - this is the one
-        // moment the customer who just created this booking legitimately
-        // learns it, the same way a password-reset flow shows a token
-        // exactly once, at generation. Every other read below requires
-        // the token as an input, never returns it again.
-        select: {
-          id: true,
-          serviceName: true,
-          startTime: true,
-          endTime: true,
-          status: true,
-          cancelToken: true,
-          resource: { select: { name: true } },
-        },
+        );
+
+        const customer =
+          (await tx.customer.findUnique({
+            where: {
+              organizationId_phone: {
+                organizationId,
+                phone: dto.customerPhone,
+              },
+            },
+          })) ??
+          (await tx.customer.create({
+            data: {
+              organizationId,
+              name: dto.customerName,
+              phone: dto.customerPhone,
+            },
+          }));
+
+        return tx.salonAppointment.create({
+          data: {
+            organizationId,
+            branchId,
+            resourceId: dto.resourceId,
+            customerId: customer.id,
+            serviceName: dto.serviceName,
+            startTime,
+            endTime,
+          },
+          // cancelToken IS returned here, and only here - this is the one
+          // moment the customer who just created this booking legitimately
+          // learns it, the same way a password-reset flow shows a token
+          // exactly once, at generation. Every other read below requires
+          // the token as an input, never returns it again.
+          select: {
+            id: true,
+            serviceName: true,
+            startTime: true,
+            endTime: true,
+            status: true,
+            cancelToken: true,
+            resource: { select: { name: true } },
+          },
+        });
+      },
+    );
+
+    // SMS is sent AFTER the transaction above has committed, never
+    // inside it - a network call held open inside a DB transaction is
+    // exactly the kind of thing this project's own load-testing history
+    // (see the README) already found compounds Neon's connection-pool
+    // pressure. A failed/unconfigured send never fails the booking
+    // itself (see SendSmsResult's own comment) - `notified` on the
+    // response just tells the frontend whether to also show the link on
+    // screen as the only copy, or mention it was texted too.
+    const manageBaseUrl = this.config.get<string>('PUBLIC_BOOKING_BASE_URL');
+    let notified = false;
+    if (manageBaseUrl) {
+      const manageUrl = `${manageBaseUrl.replace(/\/+$/, '')}/book/manage/${organizationId}/${branchId}/${appointment.id}?token=${appointment.cancelToken}`;
+      const result = await this.sms.sendSms({
+        to: dto.customerPhone,
+        message: `Your ${appointment.serviceName} booking at ${appointment.resource.name} is confirmed for ${appointment.startTime.toLocaleString()}. Manage it: ${manageUrl}`,
       });
-    });
+      notified = result.sent;
+    }
+
+    return { ...appointment, notified };
   }
 
   /**

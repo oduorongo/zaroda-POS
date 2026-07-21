@@ -29,6 +29,7 @@ import { BranchesModule } from './branches/branches.module';
 import { TerminalsModule } from './terminals/terminals.module';
 import { PlatformAdminModule } from './platform-admin/platform-admin.module';
 import { PublicBookingModule } from './public-booking/public-booking.module';
+import { NotificationsModule } from './notifications/notifications.module';
 import { LayawaysModule } from './layaways/layaways.module';
 import { AllExceptionsFilter } from './common/logging/all-exceptions.filter';
 import { RestaurantModule } from './restaurant/restaurant.module';
@@ -86,6 +87,7 @@ import { SalonModule } from './salon/salon.module';
     ThrottlerModule.forRoot([{ ttl: 60_000, limit: 100 }]),
     PrismaModule,
     AuditLogModule,
+    NotificationsModule,
     ModuleRegistryModule,
     AuthModule,
     CatalogModule,

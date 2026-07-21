@@ -58,6 +58,7 @@ export default function PublicBookingPage() {
     endTime: string;
     resourceName: string;
     cancelToken: string;
+    notified: boolean;
   } | null>(null);
 
   useEffect(() => {
@@ -130,6 +131,7 @@ export default function PublicBookingPage() {
         endTime: json.endTime,
         resourceName: json.resource?.name ?? "",
         cancelToken: json.cancelToken,
+        notified: json.notified === true,
       });
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : "Booking failed - try again");
@@ -151,8 +153,9 @@ export default function PublicBookingPage() {
           <p className="text-sm text-slate-500">{confirmed.resourceName}</p>
           <div className="mt-4 rounded-md bg-slate-900 p-3 text-left">
             <p className="text-xs text-slate-400">
-              Save this link to view or cancel your booking later - it isn&apos;t emailed or texted anywhere, this is
-              the only place it&apos;s shown:
+              {confirmed.notified
+                ? "We've also texted this link to your phone, but save it here too in case the message doesn't arrive:"
+                : "Save this link to view or cancel your booking later - we weren't able to text it to you, so this is the only place it's shown:"}
             </p>
             <a href={manageHref} className="mt-1 block break-all text-xs text-blue-400 hover:underline">
               {typeof window !== "undefined" ? `${window.location.origin}${manageHref}` : manageHref}

@@ -2494,6 +2494,69 @@ themselves afterward, no staff or login involved either time.
   exact API round trips above plus static analysis instead, stated
   plainly rather than claimed.
 
+## Delivery mechanism: texting the manage-booking link
+
+**Done and verified live (against the real database; SMS itself not yet
+live against a real provider - see below).** The section above shipped
+the manage/cancel capability but left it with no delivery mechanism - the
+link was shown once on-screen and nowhere else. This slice sends it by
+SMS via a new `NotificationProvider` abstraction, the same "provider
+behind an interface, callers never see credentials" shape
+`PaymentProcessor`/`MpesaPaymentProcessor` already established.
+
+- New `apps/api/src/notifications/`: `NotificationProvider`
+  interface (`sendSms(...)`) and a concrete
+  `AfricasTalkingSmsProvider`, wired app-wide via a `@Global()`
+  `NotificationsModule`. Implemented against Africa's Talking's
+  published API - **NOT YET LIVE-TESTED against the real provider**,
+  same "interface and call site are real, credentials are the deferred
+  piece" situation as `MpesaPaymentProcessor` and Daraja.
+- **Deliberately different failure handling from `PaymentProcessor`**:
+  `PaymentProcessor.initiate()` throws loudly if unconfigured, because a
+  payment silently "succeeding" without charging anyone would be a
+  critical bug. `sendSms()` never throws - a notification is a
+  best-effort side-channel on top of an already-completed booking, so an
+  unconfigured/failing provider must never fail or roll back the
+  caller's real work. Every failure mode (missing config, non-2xx
+  response, provider-rejected recipient, network/parse exception) is
+  uniformly converted to `{ sent: false }` inside a try/catch.
+- `PublicBookingService.bookAppointment()` sends the SMS **after** its
+  transaction commits, never inside it - holding a DB transaction open
+  across a network call is exactly the kind of thing this project's own
+  Phase 3 load-testing history (see `connection_limit`/`pool_timeout`
+  comments in `.env.example`) already found compounds Neon's
+  connection-pool pressure. The transaction now only creates and returns
+  the appointment; the SMS attempt is a separate step after, and its
+  result (`notified: boolean`) is appended to the response rather than
+  affecting it.
+- New env vars, both optional and both documented in `.env.example`:
+  `AFRICAS_TALKING_API_KEY`/`AFRICAS_TALKING_USERNAME`/
+  `AFRICAS_TALKING_ENV`, and `PUBLIC_BOOKING_BASE_URL` (the base URL used
+  to build the texted manage-link; unset simply skips the SMS attempt
+  entirely, booking creation is unaffected either way).
+- `apps/backoffice/app/book/[organizationId]/[branchId]/page.tsx`'s
+  confirmation screen now reads `notified` off the booking response and
+  changes its copy accordingly - "we've also texted this link" when
+  `notified` is true, vs. the prior "this is the only place it's shown"
+  wording kept (accurately) for when it isn't.
+- **Verified live** against the real database, both graceful-degradation
+  paths: (a) `PUBLIC_BOOKING_BASE_URL` unset - booking succeeds,
+  `notified: false`, no SMS attempted; (b) `PUBLIC_BOOKING_BASE_URL` set
+  but Africa's Talking credentials absent - booking succeeds, `notified:
+  false`, and the server's own log output confirmed
+  `AfricasTalkingSmsProvider.sendSms()` was genuinely entered and hit its
+  "not configured" branch, not skipped by an unrelated bug. `pnpm
+  typecheck`, `pnpm lint`, and `pnpm test` all pass clean for `apps/api`;
+  `pnpm typecheck` and `pnpm lint` pass clean for `apps/backoffice`.
+- **Not independently verified this session**: an actual SMS being sent
+  and received via Africa's Talking (no account/API key available in
+  this environment) - stated plainly rather than faked as working, same
+  as `MpesaPaymentProcessor`'s own STK push.
+- **Deferred, not built this session**: the equivalent public booking
+  flow (and therefore delivery mechanism) for the restaurant and
+  pharmacy verticals - each would need its own design, not a copy-paste
+  of the salon one.
+
 ## Getting started
 
 ```
