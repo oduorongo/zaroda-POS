@@ -9,6 +9,7 @@ import { getTenantStore } from '../common/tenant/tenant-context';
 import { CreateAppointmentDto } from './dto/create-appointment.dto';
 import { UpdateAppointmentStatusDto } from './dto/update-appointment-status.dto';
 import { ListAppointmentsDto } from './dto/list-appointments.dto';
+import { assertNoOverlap } from './salon-overlap.util';
 
 const APPOINTMENT_INCLUDE = { resource: true, customer: true } as const;
 
@@ -65,24 +66,13 @@ export class SalonAppointmentsService {
       if (!branch) throw new NotFoundException('Branch not found');
       if (!resource) throw new NotFoundException('Resource not found');
 
-      const overlapping = await tx.salonAppointment.findFirst({
-        where: {
-          resourceId: dto.resourceId,
-          status: {
-            notIn: [
-              SalonAppointmentStatus.CANCELLED,
-              SalonAppointmentStatus.NO_SHOW,
-            ],
-          },
-          startTime: { lt: endTime },
-          endTime: { gt: startTime },
-        },
-      });
-      if (overlapping) {
-        throw new BadRequestException(
-          `${resource.name} is already booked from ${overlapping.startTime.toISOString()} to ${overlapping.endTime.toISOString()}`,
-        );
-      }
+      await assertNoOverlap(
+        tx,
+        dto.resourceId,
+        resource.name,
+        startTime,
+        endTime,
+      );
 
       return tx.salonAppointment.create({
         data: {

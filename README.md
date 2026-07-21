@@ -2355,6 +2355,85 @@ wrong."
   vertical link (safe default, not a crash), until logging out and back
   in refetches it.
 
+## Public, unauthenticated salon booking - a real customer's self-service path
+
+**Done and verified live.** Directly answers a real question: how does
+an actual salon customer place a booking themselves? Before this,
+nowhere - `POST /salon/appointments` requires staff auth, and `Customer`
+has no login/account concept anywhere in this codebase. This is new
+capability, not a gap in something already built.
+
+- **New `apps/api/src/public-booking/` module** - the one place in this
+  API that accepts a tenant identity (`organizationId`, via the URL) 
+  directly from an unauthenticated caller, a genuinely different trust
+  model from everywhere else (organizationId always comes from a
+  validated token otherwise). Kept deliberately narrow because of that:
+  - `GET /public/salon/:organizationId/:branchId/resources` - names
+    only.
+  - `GET .../availability?resourceId=&date=` - **busy time blocks only,
+    never who booked or what service** - a public caller needs to know
+    when a resource is free, not another customer's name or business
+    details (that's exactly what the staff-only `GET
+    /salon/appointments` is for instead).
+  - `POST .../appointments` - the only write; no status changes, no
+    cancellation, nothing that could grief an existing booking.
+    Throttled (10/min/IP) the same "an unauthenticated write deserves at
+    least as much rate-limiting as reads" reasoning as
+    `auth.controller.ts`'s login/register.
+  - Tenant context is established via the same raw-transaction-plus-
+    `set_config` pattern `AuthService.pinLogin`/`register` already use
+    for the identical underlying reason (no JWT-derived tenant exists
+    yet) - then `branchId` is verified to actually belong to
+    `organizationId` before anything else runs, so a mismatched pair
+    404s cleanly rather than silently returning nothing.
+  - Finds-or-creates the `Customer` by phone within that org (same
+    pattern `OrgUsersService.create()` uses for finding-or-creating a
+    `User` by email) - a returning customer's bookings and loyalty
+    points stay on one `Customer` row.
+- **Double-booking prevention is shared, not duplicated**: the overlap
+  check was extracted out of `SalonAppointmentsService.create()` into
+  `salon/salon-overlap.util.ts` and both the staff-authenticated path
+  and this new public path call the exact same function - this is
+  business-critical enough (an actually double-booked chair) that a
+  second, separately-maintained copy would be a real risk, not just
+  duplicated code.
+- **`apps/backoffice/app/book/[organizationId]/[branchId]/page.tsx`**
+  (new): the actual customer-facing page - deliberately does **not**
+  import `lib/auth.ts` or `lib/api.ts` at all, so it can never touch the
+  staff session even by accident. A salon would share this link directly
+  (a QR code on a receipt, a bio link) - there's no directory or search
+  of organizations anywhere public, by design. First page in this
+  project needing a build-time API URL instead of an admin typing one
+  into a login form, via a new `NEXT_PUBLIC_API_BASE_URL` env var
+  (falls back to `http://localhost:3001` for local dev).
+- **Verified live** against the real database, with zero `Authorization`
+  header on any call: listed a salon's resources publicly; fetched
+  availability and confirmed it returned only start/end times for an
+  existing appointment, no customer/service details; booked a new
+  appointment fully unauthenticated and confirmed it appears correctly
+  to staff via `GET /salon/appointments` (customer name and phone
+  included, exactly as staff need); attempted to double-book the same
+  slot and confirmed the shared overlap check rejected it with the exact
+  message the staff path already produces; booked again with the same
+  phone number and confirmed no duplicate `Customer` was created (one
+  row, reused); confirmed a mismatched `organizationId`/`branchId` pair
+  404s cleanly rather than leaking data across the tenant boundary the
+  URL is supposed to establish; confirmed booking in the past is
+  rejected. `pnpm typecheck`, `pnpm lint`, and `pnpm test` all pass clean
+  for `apps/api`; `pnpm typecheck` and `pnpm lint` pass clean for
+  `apps/backoffice`.
+- **Not independently verified this session**: rendering/interaction in
+  an actual browser (no browser automation available) - verified via the
+  exact API round trips above plus static analysis instead, stated
+  plainly rather than claimed.
+- **Deliberately not in this slice**: booking-management for the
+  customer themselves (view/cancel/reschedule their own booking - would
+  need some lightweight way to prove "this is genuinely your booking,"
+  e.g. a link with an unguessable token, not built here), and the same
+  capability for the restaurant/pharmacy verticals (a public restaurant
+  reservation or pharmacy refill-request flow would each need their own
+  design, not just a copy-paste of this one).
+
 ## Getting started
 
 ```
