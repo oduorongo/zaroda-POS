@@ -502,6 +502,31 @@ CREATE POLICY tenant_isolation ON service_job_sales
   WITH CHECK (EXISTS (SELECT 1 FROM service_jobs sj WHERE sj.id = service_job_sales."jobId"
                  AND sj."organizationId" = current_setting('app.current_tenant', true)));
 
+ALTER TABLE payroll_profiles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE payroll_profiles FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON payroll_profiles;
+CREATE POLICY tenant_isolation ON payroll_profiles
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+ALTER TABLE payroll_runs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE payroll_runs FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON payroll_runs;
+CREATE POLICY tenant_isolation ON payroll_runs
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+-- ── Scoped via payrollRunId -> payroll_runs."organizationId" ───────────────
+
+ALTER TABLE payslips ENABLE ROW LEVEL SECURITY;
+ALTER TABLE payslips FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON payslips;
+CREATE POLICY tenant_isolation ON payslips
+  USING (EXISTS (SELECT 1 FROM payroll_runs pr WHERE pr.id = payslips."payrollRunId"
+                 AND pr."organizationId" = current_setting('app.current_tenant', true)))
+  WITH CHECK (EXISTS (SELECT 1 FROM payroll_runs pr WHERE pr.id = payslips."payrollRunId"
+                 AND pr."organizationId" = current_setting('app.current_tenant', true)));
+
 -- ── organizations itself ─────────────────────────────────────────────────
 -- A tenant may only ever see its own organization row (not a child table,
 -- so it filters on id directly rather than organizationId). Same pre-auth

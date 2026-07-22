@@ -37,6 +37,7 @@ import { PharmacyModule } from './pharmacy/pharmacy.module';
 import { SalonModule } from './salon/salon.module';
 import { ManufacturingModule } from './manufacturing/manufacturing.module';
 import { ServiceJobsModule } from './service-jobs/service-jobs.module';
+import { PayrollModule } from './payroll/payroll.module';
 import { PurchasingModule } from './purchasing/purchasing.module';
 import { RepackagingModule } from './repackaging/repackaging.module';
 import { RecipesModule } from './recipes/recipes.module';
@@ -103,6 +104,7 @@ import { WasteModule } from './waste/waste.module';
     ShiftsModule,
     ReportsModule,
     OrgUsersModule,
+    PayrollModule,
     StockTransfersModule,
     StockTakesModule,
     PurchasingModule,

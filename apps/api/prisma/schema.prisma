@@ -60,6 +60,8 @@ model Organization {
   wasteLogs        WasteLog[]
   productionOrders ProductionOrder[]
   serviceJobs      ServiceJob[]
+  payrollProfiles  PayrollProfile[]
+  payrollRuns      PayrollRun[]
 
   @@map("organizations")
 }
@@ -167,10 +169,110 @@ model OrgUser {
   wasteLogs       WasteLog[]
   productionOrders ProductionOrder[]
   serviceJobs      ServiceJob[]
+  payrollProfile   PayrollProfile?
+  payslips         Payslip[]
+  payrollRunsCreated  PayrollRun[] @relation("PayrollRunCreatedBy")
+  payrollRunsApproved PayrollRun[] @relation("PayrollRunApprovedBy")
 
   @@unique([organizationId, userId])
   @@index([organizationId])
   @@map("org_users")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Payroll — core, not industry-gated (every tenant has staff regardless of
+// vertical), but opt-in per employee: an OrgUser with no PayrollProfile
+// simply never appears in a generated PayrollRun, the same "absence means
+// plain behavior" convention as RecipeIngredient (no recipe = plain stocked
+// item). Statutory deduction math (PAYE, NSSF, SHIF, the Affordable
+// Housing Levy) is hardcoded for Kenya only, same deferral as the loyalty
+// earn/redeem rates above - a real config screen (and other countries'
+// rules) is a follow-up once there's a back-office screen to put it in,
+// not needed for a single-country pilot to be useful. See
+// common/payroll/kenya-statutory.util.ts for the actual bands/rates.
+enum PayType {
+  SALARY
+  HOURLY
+}
+
+model PayrollProfile {
+  id             String   @id @default(uuid())
+  organizationId String
+  orgUserId      String   @unique
+  payType        PayType
+  // For SALARY: the fixed monthly gross. For HOURLY: the rate multiplied
+  // by hours actually clocked (via CashierSession) within the pay period.
+  baseSalary     Decimal? @db.Decimal(12, 2)
+  hourlyRate     Decimal? @db.Decimal(12, 2)
+  kraPin         String?
+  nssfNumber     String?
+  shifNumber     String?
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  orgUser      OrgUser      @relation(fields: [orgUserId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@map("payroll_profiles")
+}
+
+enum PayrollRunStatus {
+  DRAFT
+  APPROVED
+  PAID
+}
+
+model PayrollRun {
+  id             String           @id @default(uuid())
+  organizationId String
+  periodStart    DateTime
+  periodEnd      DateTime
+  status         PayrollRunStatus @default(DRAFT)
+  createdById    String
+  approvedById   String?
+  approvedAt     DateTime?
+  paidAt         DateTime?
+  createdAt      DateTime         @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy    OrgUser      @relation("PayrollRunCreatedBy", fields: [createdById], references: [id])
+  approvedBy   OrgUser?     @relation("PayrollRunApprovedBy", fields: [approvedById], references: [id])
+  payslips     Payslip[]
+
+  @@index([organizationId])
+  @@map("payroll_runs")
+}
+
+// One row per employee per run - generated (not hand-entered) from that
+// employee's PayrollProfile plus, for HOURLY staff, their CashierSessions
+// within [periodStart, periodEnd). Deduction fields are snapshotted at
+// generation time, same "snapshot what was actually agreed/calculated,
+// don't trust it to still match today" reasoning as
+// SaleLineItemIngredient - re-running statutory rates later must not
+// silently change a payslip that's already been approved or paid.
+model Payslip {
+  id               String     @id @default(uuid())
+  payrollRunId     String
+  orgUserId        String
+  payType          PayType
+  hoursWorked      Decimal?   @db.Decimal(8, 2)
+  grossPay         Decimal    @db.Decimal(12, 2)
+  payeTax          Decimal    @db.Decimal(12, 2)
+  nssfDeduction    Decimal    @db.Decimal(12, 2)
+  shifDeduction    Decimal    @db.Decimal(12, 2)
+  housingLevy      Decimal    @db.Decimal(12, 2)
+  totalDeductions  Decimal    @db.Decimal(12, 2)
+  netPay           Decimal    @db.Decimal(12, 2)
+  createdAt        DateTime   @default(now())
+
+  payrollRun PayrollRun @relation(fields: [payrollRunId], references: [id], onDelete: Cascade)
+  orgUser    OrgUser    @relation(fields: [orgUserId], references: [id])
+
+  @@unique([payrollRunId, orgUserId])
+  @@index([payrollRunId])
+  @@map("payslips")
 }
 
 // Shared-terminal PIN switching (DESIGN.md §9): a terminal is authenticated
