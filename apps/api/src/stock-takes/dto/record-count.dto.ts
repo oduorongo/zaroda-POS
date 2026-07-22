@@ -1,7 +1,7 @@
-import { IsInt, Min } from 'class-validator';
+import { IsNumber, Min } from 'class-validator';
 
 export class RecordCountDto {
-  @IsInt()
+  @IsNumber({ maxDecimalPlaces: 3 })
   @Min(0)
   countedQuantity!: number;
 }

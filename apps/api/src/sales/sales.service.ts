@@ -18,14 +18,16 @@ import {
 } from '../common/prisma/tenant-scoped-prisma.service';
 import { getTenantStore } from '../common/tenant/tenant-context';
 import { AuditLogService } from '../common/audit/audit-log.service';
+import { assertQuantityMatchesMode } from '../common/inventory/quantity-mode.util';
 import { InventoryTransactionsService } from '../inventory/inventory-transactions.service';
 import { CustomersService } from '../customers/customers.service';
+import { RecipesService } from '../recipes/recipes.service';
 import { CreateSaleDto } from './dto/create-sale.dto';
 import { VoidSaleDto } from './dto/void-sale.dto';
 import { CreateRefundDto } from './dto/create-refund.dto';
 
 const SALE_INCLUDE = {
-  lineItems: true,
+  lineItems: { include: { ingredients: true } },
   payments: true,
   discounts: true,
   refunds: true,
@@ -47,6 +49,7 @@ export class SalesService {
     private readonly tenantPrisma: TenantScopedPrismaService,
     private readonly inventoryTransactions: InventoryTransactionsService,
     private readonly customers: CustomersService,
+    private readonly recipes: RecipesService,
     private readonly auditLog: AuditLogService,
     private readonly events: EventEmitter2,
   ) {}
@@ -148,9 +151,34 @@ export class SalesService {
         );
       }
 
+      // A variant with recipe rows is "made", not "resold as-is" (see the
+      // schema comment on RecipeIngredient) - its own stock never moves on
+      // sale, its ingredients' stock does, by (recipe quantity × line
+      // quantity). A variant absent from this map has no recipe and keeps
+      // the old plain-stock behavior untouched below.
+      const recipesByVariant = await this.recipes.loadRecipesInTx(
+        tx,
+        variantIds,
+      );
+
       let total = 0;
       const lineItemRows = dto.lineItems.map((li) => {
         const variant = variantById.get(li.variantId)!;
+        assertQuantityMatchesMode(
+          variant.quantityMode,
+          li.quantity,
+          `Quantity for ${variant.sku}`,
+        );
+        const recipe = recipesByVariant.get(li.variantId);
+        if (recipe) {
+          for (const ingredient of recipe) {
+            assertQuantityMatchesMode(
+              ingredient.ingredientVariant.quantityMode,
+              Number(ingredient.quantity) * li.quantity,
+              `Quantity for ${ingredient.ingredientVariant.sku} (ingredient of ${variant.sku})`,
+            );
+          }
+        }
         const unitPrice = Number(variant.price);
         const lineSubtotal = unitPrice * li.quantity;
         const taxClass = variant.product.taxClass;
@@ -304,15 +332,52 @@ export class SalesService {
         include: SALE_INCLUDE,
       });
 
+      // Persisted line ids, grouped by variantId, to pair each lineItemRow
+      // back to its real SaleLineItem.id below - `sale.lineItems` doesn't
+      // preserve dto.lineItems' order, but every line for the same variant
+      // shares the same recipe, so exact index correspondence within a
+      // variant's group doesn't matter, only the count does.
+      const persistedIdsByVariant = new Map<string, string[]>();
+      for (const persisted of sale.lineItems) {
+        const ids = persistedIdsByVariant.get(persisted.variantId) ?? [];
+        ids.push(persisted.id);
+        persistedIdsByVariant.set(persisted.variantId, ids);
+      }
+
       for (const line of lineItemRows) {
-        await this.inventoryTransactions.recordInTx(tx, {
-          branchId: dto.branchId,
-          variantId: line.variantId,
-          type: InventoryTxnType.SALE,
-          quantityDelta: -line.quantity,
-          referenceId: sale.id,
-          batchId: line.batchId,
-        });
+        const saleLineItemId = persistedIdsByVariant
+          .get(line.variantId)!
+          .shift()!;
+        const recipe = recipesByVariant.get(line.variantId);
+
+        if (recipe) {
+          for (const ingredient of recipe) {
+            const consumed = Number(ingredient.quantity) * line.quantity;
+            await this.inventoryTransactions.recordInTx(tx, {
+              branchId: dto.branchId,
+              variantId: ingredient.ingredientVariantId,
+              type: InventoryTxnType.SALE,
+              quantityDelta: -consumed,
+              referenceId: sale.id,
+            });
+            await tx.saleLineItemIngredient.create({
+              data: {
+                saleLineItemId,
+                ingredientVariantId: ingredient.ingredientVariantId,
+                quantity: consumed,
+              },
+            });
+          }
+        } else {
+          await this.inventoryTransactions.recordInTx(tx, {
+            branchId: dto.branchId,
+            variantId: line.variantId,
+            type: InventoryTxnType.SALE,
+            quantityDelta: -line.quantity,
+            referenceId: sale.id,
+            batchId: line.batchId,
+          });
+        }
       }
 
       if (customer) {
@@ -386,7 +451,7 @@ export class SalesService {
     return this.tenantPrisma.run(async (tx: TenantTx) => {
       const sale = await tx.sale.findUnique({
         where: { id },
-        include: { lineItems: true },
+        include: { lineItems: { include: { ingredients: true } } },
       });
       if (!sale) throw new NotFoundException('Sale not found');
       if (sale.status === SaleStatus.VOIDED) {
@@ -394,13 +459,30 @@ export class SalesService {
       }
 
       for (const line of sale.lineItems) {
-        await this.inventoryTransactions.recordInTx(tx, {
-          branchId: sale.branchId,
-          variantId: line.variantId,
-          type: InventoryTxnType.RETURN,
-          quantityDelta: line.quantity,
-          referenceId: sale.id,
-        });
+        if (line.ingredients.length > 0) {
+          // Recipe-tracked line: reverse exactly what was snapshotted as
+          // consumed at sale time (SaleLineItemIngredient), not whatever
+          // the recipe says today - see that model's schema comment. The
+          // line's own variant (the dish) never had its own stock moved,
+          // so nothing to reverse for it directly.
+          for (const ingredient of line.ingredients) {
+            await this.inventoryTransactions.recordInTx(tx, {
+              branchId: sale.branchId,
+              variantId: ingredient.ingredientVariantId,
+              type: InventoryTxnType.RETURN,
+              quantityDelta: Number(ingredient.quantity),
+              referenceId: sale.id,
+            });
+          }
+        } else {
+          await this.inventoryTransactions.recordInTx(tx, {
+            branchId: sale.branchId,
+            variantId: line.variantId,
+            type: InventoryTxnType.RETURN,
+            quantityDelta: Number(line.quantity),
+            referenceId: sale.id,
+          });
+        }
       }
 
       // Reverse the loyalty effect this sale had: give back any points it

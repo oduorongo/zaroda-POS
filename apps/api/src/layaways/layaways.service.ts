@@ -8,6 +8,7 @@ import { TenantScopedPrismaService } from '../common/prisma/tenant-scoped-prisma
 import { getTenantStore } from '../common/tenant/tenant-context';
 import { AuditLogService } from '../common/audit/audit-log.service';
 import { InventoryTransactionsService } from '../inventory/inventory-transactions.service';
+import { assertQuantityMatchesMode } from '../common/inventory/quantity-mode.util';
 import { CustomersService } from '../customers/customers.service';
 import { CreateLayawayDto } from './dto/create-layaway.dto';
 import { RecordLayawayPaymentDto } from './dto/record-layaway-payment.dto';
@@ -60,6 +61,11 @@ export class LayawaysService {
       let total = 0;
       const lineItemRows = dto.lineItems.map((li) => {
         const variant = variantById.get(li.variantId)!;
+        assertQuantityMatchesMode(
+          variant.quantityMode,
+          li.quantity,
+          `Quantity for ${variant.sku}`,
+        );
         const unitPrice = Number(variant.price);
         const lineSubtotal = unitPrice * li.quantity;
         const taxClass = variant.product.taxClass;
@@ -208,7 +214,7 @@ export class LayawaysService {
           branchId: layaway.branchId,
           variantId: line.variantId,
           type: InventoryTxnType.SALE,
-          quantityDelta: -line.quantity,
+          quantityDelta: -Number(line.quantity),
           referenceId: layaway.id,
         });
       }

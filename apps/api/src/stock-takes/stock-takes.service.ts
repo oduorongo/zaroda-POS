@@ -7,6 +7,7 @@ import { InventoryTxnType, StockTakeStatus } from '@prisma/client';
 import { TenantScopedPrismaService } from '../common/prisma/tenant-scoped-prisma.service';
 import { AuditLogService } from '../common/audit/audit-log.service';
 import { getTenantStore } from '../common/tenant/tenant-context';
+import { assertQuantityMatchesMode } from '../common/inventory/quantity-mode.util';
 import { InventoryTransactionsService } from '../inventory/inventory-transactions.service';
 import { CreateStockTakeDto } from './dto/create-stock-take.dto';
 import { RecordCountDto } from './dto/record-count.dto';
@@ -100,14 +101,20 @@ export class StockTakesService {
 
       const line = await tx.stockTakeLine.findFirst({
         where: { id: lineId, stockTakeId },
+        include: { variant: true },
       });
       if (!line) throw new NotFoundException('Stock take line not found');
+      assertQuantityMatchesMode(
+        line.variant.quantityMode,
+        dto.countedQuantity,
+        `Counted quantity for ${line.variant.sku}`,
+      );
 
       return tx.stockTakeLine.update({
         where: { id: lineId },
         data: {
           countedQuantity: dto.countedQuantity,
-          variance: dto.countedQuantity - line.systemQuantity,
+          variance: dto.countedQuantity - Number(line.systemQuantity),
         },
       });
     });
@@ -133,12 +140,14 @@ export class StockTakesService {
 
       let adjustedCount = 0;
       for (const line of stockTake.lines) {
-        if (line.countedQuantity === null || line.variance === 0) continue;
+        const variance = line.variance === null ? null : Number(line.variance);
+        if (line.countedQuantity === null || variance === null || variance === 0)
+          continue;
         await this.inventoryTransactions.recordInTx(tx, {
           branchId: stockTake.branchId,
           variantId: line.variantId,
           type: InventoryTxnType.STOCKTAKE,
-          quantityDelta: line.variance as number,
+          quantityDelta: variance,
           referenceId: stockTake.id,
         });
         adjustedCount++;

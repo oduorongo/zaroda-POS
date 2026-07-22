@@ -26,6 +26,7 @@ interface VariantResponse {
   sku: string;
   barcode: string | null;
   price: string;
+  quantityMode: "COUNT" | "WEIGHT";
 }
 
 interface ProductResponse {
@@ -136,6 +137,7 @@ export default function SetupPage() {
           barcode: variant.barcode,
           price: Number(variant.price),
           taxRate: product.taxClass && !product.taxClass.isExempt ? Number(product.taxClass.rate) : 0,
+          quantityMode: variant.quantityMode,
         })),
       );
       await db.variants.clear();

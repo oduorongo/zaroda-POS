@@ -54,6 +54,12 @@ model Organization {
   kitchenStations  KitchenStation[]
   salonResources   SalonResource[]
   salonAppointments SalonAppointment[]
+  suppliers        Supplier[]
+  purchaseOrders   PurchaseOrder[]
+  repackagings     Repackaging[]
+  wasteLogs        WasteLog[]
+  productionOrders ProductionOrder[]
+  serviceJobs      ServiceJob[]
 
   @@map("organizations")
 }
@@ -81,6 +87,11 @@ model Branch {
   kitchenStations      KitchenStation[]
   salonResources       SalonResource[]
   salonAppointments    SalonAppointment[]
+  purchaseOrders       PurchaseOrder[]
+  repackagings         Repackaging[]
+  wasteLogs            WasteLog[]
+  productionOrders     ProductionOrder[]
+  serviceJobs          ServiceJob[]
 
   @@index([organizationId])
   @@map("branches")
@@ -151,6 +162,11 @@ model OrgUser {
   cashierSessions CashierSession[]
   stockTransfers  StockTransfer[]
   stockTakes      StockTake[]
+  purchaseOrders  PurchaseOrder[]
+  repackagings    Repackaging[]
+  wasteLogs       WasteLog[]
+  productionOrders ProductionOrder[]
+  serviceJobs      ServiceJob[]
 
   @@unique([organizationId, userId])
   @@index([organizationId])
@@ -227,12 +243,29 @@ model Product {
   @@map("products")
 }
 
+// COUNT = sold/stocked in whole units (each, pack, box - the default).
+// WEIGHT = sold/stocked in fractional quantities of the variant's unit (kg,
+// litre, ...) - a scoop of loose rice or a ladle of cooking oil doesn't
+// come in fixed-size units, so quantity has to allow e.g. 0.35. Every
+// quantity-bearing column downstream (sale/inventory/batch/transfer/
+// purchase-order/repackaging) is Decimal(14,3) precisely so COUNT and
+// WEIGHT variants can share the same columns - COUNT just never produces a
+// fractional value, enforced in the service layer (see SalesService,
+// InventoryTransactionsService) rather than at the database level, since
+// Postgres has no per-row "this decimal must be an integer" constraint
+// that's cheap to express here.
+enum QuantityMode {
+  COUNT
+  WEIGHT
+}
+
 model ProductVariant {
-  id        String   @id @default(uuid())
-  productId String
-  sku       String
-  barcode   String?
-  price     Decimal  @db.Decimal(12, 2)
+  id           String       @id @default(uuid())
+  productId    String
+  sku          String
+  barcode      String?
+  price        Decimal      @db.Decimal(12, 2) // for WEIGHT variants, price per unit of quantity (e.g. per kg)
+  quantityMode QuantityMode @default(COUNT)
   // Unit cost - optional (not every tenant tracks it), used only for the
   // COGS/margin report. Null cost means that report just omits margin for
   // this variant rather than treating cost as zero (a zero cost would
@@ -251,10 +284,65 @@ model ProductVariant {
   lowStockAlerts       LowStockAlert[]
   layawayLineItems     LayawayLineItem[]
   kitchenTicketLines   KitchenTicketLine[]
+  purchaseOrderLineItems PurchaseOrderLineItem[]
+  repackagedFrom       Repackaging[]         @relation("RepackagingFrom")
+  repackagedInto       Repackaging[]         @relation("RepackagingTo")
+  recipeIngredients    RecipeIngredient[]    @relation("RecipeFor")
+  usedAsIngredientIn   RecipeIngredient[]    @relation("RecipeIngredientOf")
+  ingredientOfSaleLines SaleLineItemIngredient[]
+  wasteLogs            WasteLog[]
+  ingredientOfWaste    WasteIngredient[]
+  productionOrders     ProductionOrder[]
 
   @@unique([productId, sku])
   @@index([barcode])
   @@map("product_variants")
+}
+
+// A restaurant (or any processor) makes a sellable item out of raw
+// materials rather than reselling something it bought as-is - a Chicken
+// Biryani isn't received from a supplier, it's assembled from rice,
+// chicken, and oil at cook time. Optional per DESIGN.md discussion: a
+// ProductVariant with zero RecipeIngredient rows behaves exactly as it
+// always has (its own stock is received and decremented directly - the
+// right model for a resold-as-is item like a bottled drink); a variant
+// WITH rows here instead has each ingredient's stock decremented on sale
+// (see SalesService), and never carries its own InventoryItem - nothing
+// ever "receives" a finished dish. Quantity is consumed per 1 unit of the
+// parent variant sold, e.g. 0.2 (kg) rice per 1 Biryani.
+model RecipeIngredient {
+  id                  String   @id @default(uuid())
+  variantId           String // the sellable dish
+  ingredientVariantId String // the raw material consumed
+  quantity             Decimal @db.Decimal(14, 3)
+  createdAt            DateTime @default(now())
+
+  variant           ProductVariant @relation("RecipeFor", fields: [variantId], references: [id], onDelete: Cascade)
+  ingredientVariant ProductVariant @relation("RecipeIngredientOf", fields: [ingredientVariantId], references: [id], onDelete: Restrict)
+
+  @@unique([variantId, ingredientVariantId])
+  @@index([variantId])
+  @@map("recipe_ingredients")
+}
+
+// A snapshot of exactly what a recipe-tracked sale line actually consumed,
+// taken at sale time (see SalesService) - NOT a live re-derivation from
+// RecipeIngredient, because a recipe can change (a substituted ingredient,
+// an adjusted portion size) after the sale happened. Voiding a sale
+// reverses these rows, not whatever the recipe says today - the same
+// "snapshot what was actually agreed/consumed, don't trust it to still
+// match the current catalog" principle as SaleLineItem.unitPrice/taxAmount.
+model SaleLineItemIngredient {
+  id                  String  @id @default(uuid())
+  saleLineItemId      String
+  ingredientVariantId String
+  quantity             Decimal @db.Decimal(14, 3)
+
+  saleLineItem      SaleLineItem   @relation(fields: [saleLineItemId], references: [id], onDelete: Cascade)
+  ingredientVariant ProductVariant @relation(fields: [ingredientVariantId], references: [id], onDelete: Restrict)
+
+  @@index([saleLineItemId])
+  @@map("sale_line_item_ingredients")
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -268,8 +356,8 @@ model InventoryItem {
   id                String   @id @default(uuid())
   branchId          String
   variantId         String
-  quantity          Int      @default(0) // derived - see note above
-  lowStockThreshold Int      @default(0)
+  quantity          Decimal  @default(0) @db.Decimal(14, 3) // derived - see note above
+  lowStockThreshold Decimal  @default(0) @db.Decimal(14, 3)
   updatedAt         DateTime @updatedAt
 
   branch  Branch         @relation(fields: [branchId], references: [id], onDelete: Cascade)
@@ -300,8 +388,8 @@ model LowStockAlert {
   organizationId String
   branchId       String
   variantId      String
-  quantity       Int // snapshot at the moment the alert opened
-  threshold      Int // snapshot of InventoryItem.lowStockThreshold at that moment
+  quantity       Decimal              @db.Decimal(14, 3) // snapshot at the moment the alert opened
+  threshold      Decimal              @db.Decimal(14, 3) // snapshot of InventoryItem.lowStockThreshold at that moment
   status         LowStockAlertStatus  @default(OPEN)
   createdAt      DateTime             @default(now())
   resolvedAt     DateTime?
@@ -321,6 +409,9 @@ enum InventoryTxnType {
   ADJUSTMENT
   STOCKTAKE
   RETURN
+  REPACK
+  WASTE
+  PRODUCTION
 }
 
 model InventoryTransaction {
@@ -329,7 +420,7 @@ model InventoryTransaction {
   variantId     String
   batchId       String?
   type          InventoryTxnType
-  quantityDelta Int // signed
+  quantityDelta Decimal           @db.Decimal(14, 3) // signed
   referenceId   String? // sale_id / transfer_id / stocktake_id, loosely typed by design
   createdAt     DateTime          @default(now())
 
@@ -349,12 +440,13 @@ model Batch {
   variantId         String
   batchNumber       String
   expiryDate        DateTime?
-  quantityReceived  Int
+  quantityReceived  Decimal   @db.Decimal(14, 3)
   createdAt         DateTime  @default(now())
 
   variant               ProductVariant          @relation(fields: [variantId], references: [id], onDelete: Cascade)
   inventoryTransactions InventoryTransaction[]
   saleLineItems         SaleLineItem[]
+  wasteLogs             WasteLog[]
 
   @@index([variantId])
   @@map("batches")
@@ -372,7 +464,7 @@ model StockTransfer {
   fromBranchId   String
   toBranchId     String
   variantId      String
-  quantity       Int
+  quantity       Decimal  @db.Decimal(14, 3)
   notes          String?
   createdById    String
   createdAt      DateTime @default(now())
@@ -387,6 +479,147 @@ model StockTransfer {
   @@index([fromBranchId])
   @@index([toBranchId])
   @@map("stock_transfers")
+}
+
+// Breaking bulk stock into smaller resale units - buying a 20L jerrycan of
+// cooking oil or a 50kg bag of rice and selling it off in Ksh 30-50
+// scoops/portions is the normal shape of a Kenyan duka, not an edge case,
+// so this is a first-class stock operation rather than a manual pair of
+// adjustments. Always at a single branch (repackaging happens where the
+// physical stock is), and always atomic: one REPACK InventoryTransaction
+// decrementing the bulk variant, one REPACK InventoryTransaction
+// incrementing the portioned variant, both referencing this row's id, all
+// in the same transaction (see RepackagingService) - same shape as
+// StockTransfer above, just within one branch instead of across two.
+model Repackaging {
+  id             String   @id @default(uuid())
+  organizationId String
+  branchId       String
+  fromVariantId  String // the bulk item consumed
+  fromQuantity   Decimal  @db.Decimal(14, 3) // how many bulk units were broken down
+  toVariantId    String // the resale-sized item produced
+  toQuantity     Decimal  @db.Decimal(14, 3) // total resale units produced (the yield)
+  notes          String?
+  createdById    String
+  createdAt      DateTime @default(now())
+
+  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  branch       Branch         @relation(fields: [branchId], references: [id])
+  fromVariant  ProductVariant @relation("RepackagingFrom", fields: [fromVariantId], references: [id])
+  toVariant    ProductVariant @relation("RepackagingTo", fields: [toVariantId], references: [id])
+  createdBy    OrgUser        @relation(fields: [createdById], references: [id])
+
+  @@index([organizationId])
+  @@index([branchId])
+  @@map("repackagings")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Manufacturing — raw materials transformed into finished goods for sale
+// (bakery, brick-making...). A ProductionOrder generalizes Repackaging's
+// 1-in/1-out shape to an N-ingredient BOM: the finished good's
+// RecipeIngredient rows (already built for recipe-tracked sales, see
+// RecipeIngredient above) double as the bill of materials here - no
+// separate BOM table. Completing an order decrements every ingredient by
+// (recipe quantity × actualQuantity) and increments the finished good by
+// actualQuantity, both legs tagged PRODUCTION and referencing this row's
+// id, in one transaction (see ProductionOrdersService) - same atomicity
+// guarantee as Repackaging, just N ingredients instead of 1.
+enum ProductionOrderStatus {
+  DRAFT
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+model ProductionOrder {
+  id               String                @id @default(uuid())
+  organizationId   String
+  branchId         String
+  variantId        String // the finished good being produced
+  plannedQuantity  Decimal               @db.Decimal(14, 3)
+  actualQuantity   Decimal?              @db.Decimal(14, 3) // set on completion - the real yield, which can differ from planned
+  status           ProductionOrderStatus @default(DRAFT)
+  notes            String?
+  createdById      String
+  startedAt        DateTime?
+  completedAt      DateTime?
+  createdAt        DateTime              @default(now())
+
+  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  branch       Branch         @relation(fields: [branchId], references: [id])
+  variant      ProductVariant @relation(fields: [variantId], references: [id])
+  createdBy    OrgUser        @relation(fields: [createdById], references: [id])
+
+  @@index([organizationId])
+  @@index([branchId])
+  @@map("production_orders")
+}
+
+enum WasteReason {
+  EXPIRED
+  DAMAGED
+  SPOILED
+  OVERPRODUCTION
+  OTHER
+}
+
+// Disposing of stale/spoiled stock - or, for a recipe-tracked dish (see
+// RecipeIngredient), of made-but-unsold food - as its own tracked reason,
+// not a generic ADJUSTMENT indistinguishable from a stock-count
+// correction. variantId is always the item that was actually thrown away
+// (the raw material, or the finished dish); for a recipe-tracked variant
+// nothing of its own was ever in stock, so WasteService instead decrements
+// each ingredient (via WasteIngredient, the same snapshot-at-the-time
+// shape as SaleLineItemIngredient) and this row's cost fields still
+// reflect what was actually lost.
+//
+// unitCost/totalCost are snapshotted at write-off time (current
+// ProductVariant.cost, or the summed current cost of a recipe's
+// ingredients) - null when cost isn't known, same "don't fake a zero"
+// rule as everywhere else costs are optional in this schema - so the
+// waste report can total actual loss without a later cost change
+// silently rewriting history.
+model WasteLog {
+  id             String      @id @default(uuid())
+  organizationId String
+  branchId       String
+  variantId      String
+  quantity       Decimal     @db.Decimal(14, 3)
+  reason         WasteReason
+  notes          String?
+  // Which specific batch was written off - only meaningful for a plain
+  // stocked item (a recipe-tracked variant has no batches of its own).
+  batchId        String?
+  unitCost       Decimal?    @db.Decimal(12, 2)
+  totalCost      Decimal?    @db.Decimal(12, 2)
+  createdById    String
+  createdAt      DateTime    @default(now())
+
+  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  branch       Branch             @relation(fields: [branchId], references: [id])
+  variant      ProductVariant     @relation(fields: [variantId], references: [id])
+  batch        Batch?             @relation(fields: [batchId], references: [id])
+  createdBy    OrgUser            @relation(fields: [createdById], references: [id])
+  ingredients  WasteIngredient[]
+
+  @@index([organizationId])
+  @@index([branchId])
+  @@index([variantId])
+  @@map("waste_logs")
+}
+
+model WasteIngredient {
+  id                  String  @id @default(uuid())
+  wasteLogId          String
+  ingredientVariantId String
+  quantity            Decimal @db.Decimal(14, 3)
+
+  wasteLog          WasteLog       @relation(fields: [wasteLogId], references: [id], onDelete: Cascade)
+  ingredientVariant ProductVariant @relation(fields: [ingredientVariantId], references: [id], onDelete: Restrict)
+
+  @@index([wasteLogId])
+  @@map("waste_ingredients")
 }
 
 enum StockTakeStatus {
@@ -423,9 +656,9 @@ model StockTakeLine {
   id              String @id @default(uuid())
   stockTakeId     String
   variantId       String
-  systemQuantity  Int
-  countedQuantity Int?
-  variance        Int?
+  systemQuantity  Decimal @db.Decimal(14, 3)
+  countedQuantity Decimal? @db.Decimal(14, 3)
+  variance        Decimal? @db.Decimal(14, 3)
 
   stockTake StockTake      @relation(fields: [stockTakeId], references: [id], onDelete: Cascade)
   variant   ProductVariant @relation(fields: [variantId], references: [id])
@@ -489,6 +722,7 @@ model Customer {
   sales        Sale[]
   layaways     Layaway[]
   salonAppointments SalonAppointment[]
+  serviceJobs       ServiceJob[]
 
   @@unique([organizationId, phone])
   @@index([organizationId])
@@ -536,6 +770,7 @@ model Sale {
   kitchenTickets  KitchenTicket[]
   pharmacyPrescription PharmacySalePrescription?
   salonAppointmentSale SalonAppointmentSale?
+  serviceJobSale       ServiceJobSale?
 
   @@index([organizationId])
   @@index([branchId])
@@ -546,7 +781,7 @@ model SaleLineItem {
   id         String  @id @default(uuid())
   saleId     String
   variantId  String
-  quantity   Int
+  quantity   Decimal @db.Decimal(14, 3)
   unitPrice  Decimal @db.Decimal(12, 2)
   taxAmount  Decimal @db.Decimal(12, 2) @default(0)
   // Which batch this line was drawn from - core capability (see Batch's
@@ -557,9 +792,10 @@ model SaleLineItem {
   // the ledger.
   batchId    String?
 
-  sale    Sale           @relation(fields: [saleId], references: [id], onDelete: Cascade)
-  variant ProductVariant @relation(fields: [variantId], references: [id])
-  batch   Batch?         @relation(fields: [batchId], references: [id])
+  sale        Sale                     @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  variant     ProductVariant           @relation(fields: [variantId], references: [id])
+  batch       Batch?                   @relation(fields: [batchId], references: [id])
+  ingredients SaleLineItemIngredient[]
 
   @@index([saleId])
   @@map("sale_line_items")
@@ -667,7 +903,7 @@ model LayawayLineItem {
   id        String  @id @default(uuid())
   layawayId String
   variantId String
-  quantity  Int
+  quantity  Decimal @db.Decimal(14, 3)
   unitPrice Decimal @db.Decimal(12, 2)
   taxAmount Decimal @db.Decimal(12, 2) @default(0)
 
@@ -1042,6 +1278,137 @@ model SalonAppointmentSale {
   sale        Sale             @relation(fields: [saleId], references: [id], onDelete: Cascade)
 
   @@map("salon_appointment_sales")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Service industry — job/work-order businesses that bill labor and parts
+// against a customer's asset (garage: a vehicle; transport: a route/run).
+// `assetLabel` stays free text (plate number, route name...) the same way
+// SalonAppointment.serviceName does, rather than a dedicated Vehicle model
+// - keeps this generic across very different service businesses. No
+// line-item table of its own: invoicing reuses core's SaleLineItemInputDto
+// directly (parts AND labor are both just catalog ProductVariants - a
+// "Labor" service item priced per hour, quantity = hours billed), the
+// exact same "module composes a checkout sale from core's DTO" pattern as
+// SalonAppointmentSalesService/CheckoutAppointmentDto.
+enum ServiceJobStatus {
+  OPEN
+  IN_PROGRESS
+  WAITING_PARTS
+  COMPLETED
+  CANCELLED
+}
+
+model ServiceJob {
+  id             String           @id @default(uuid())
+  organizationId String
+  branchId       String
+  customerId     String?
+  assetLabel     String? // e.g. a vehicle plate or a transport route/run reference
+  description    String
+  status         ServiceJobStatus @default(OPEN)
+  notes          String?
+  createdById    String
+  closedAt       DateTime?
+  createdAt      DateTime         @default(now())
+
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  branch       Branch          @relation(fields: [branchId], references: [id])
+  customer     Customer?       @relation(fields: [customerId], references: [id])
+  createdBy    OrgUser         @relation(fields: [createdById], references: [id])
+  sale         ServiceJobSale?
+
+  @@index([organizationId])
+  @@index([branchId])
+  @@map("service_jobs")
+}
+
+model ServiceJobSale {
+  id     String @id @default(uuid())
+  jobId  String @unique
+  saleId String @unique
+
+  job  ServiceJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  sale Sale       @relation(fields: [saleId], references: [id], onDelete: Cascade)
+
+  @@map("service_job_sales")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Purchasing — suppliers and the purchase orders raised against them.
+// Receiving stock ad-hoc (no PO) still goes through Batch/InventoryTransaction
+// directly (see BatchesService) - a PurchaseOrder is the optional paper
+// trail of "what did we expect to arrive, from whom, and how much of it
+// actually has" on top of that same receiving path, not a replacement path.
+
+model Supplier {
+  id        String   @id @default(uuid())
+  organizationId String
+  name      String
+  phone     String?
+  email     String?
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  purchaseOrders PurchaseOrder[]
+
+  @@index([organizationId])
+  @@map("suppliers")
+}
+
+enum PurchaseOrderStatus {
+  DRAFT
+  ORDERED
+  PARTIALLY_RECEIVED
+  RECEIVED
+  CANCELLED
+}
+
+model PurchaseOrder {
+  id             String              @id @default(uuid())
+  organizationId String
+  branchId       String // receiving branch
+  supplierId     String
+  status         PurchaseOrderStatus @default(DRAFT)
+  reference      String? // supplier's own invoice/PO number, free text
+  notes          String?
+  createdById    String
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+
+  organization Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  branch       Branch                  @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  supplier     Supplier                @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  createdBy    OrgUser                 @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  lineItems    PurchaseOrderLineItem[]
+
+  @@index([organizationId])
+  @@index([branchId])
+  @@index([supplierId])
+  @@map("purchase_orders")
+}
+
+model PurchaseOrderLineItem {
+  id               String   @id @default(uuid())
+  purchaseOrderId  String
+  variantId        String
+  quantityOrdered  Decimal  @db.Decimal(14, 3)
+  // Denormalized running total, updated every time a receipt is recorded
+  // against this line - the same "derived value maintained alongside the
+  // append-only ledger" shape as InventoryItem.quantity (see its comment):
+  // the ledger entry (InventoryTransaction, referenceId = this PO's id) is
+  // the source of truth, this column is just the fast-read total.
+  quantityReceived Decimal  @default(0) @db.Decimal(14, 3)
+  unitCost         Decimal? @db.Decimal(12, 2)
+
+  purchaseOrder PurchaseOrder  @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  variant       ProductVariant @relation(fields: [variantId], references: [id], onDelete: Restrict)
+
+  @@index([purchaseOrderId])
+  @@index([variantId])
+  @@map("purchase_order_line_items")
 }
 
 // ─────────────────────────────────────────────────────────────────────────

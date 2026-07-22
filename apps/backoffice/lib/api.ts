@@ -36,6 +36,7 @@ async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> 
 export const apiGet = <T>(path: string) => apiFetch<T>(path, { method: "GET" });
 export const apiPost = <T>(path: string, body: unknown) => apiFetch<T>(path, { method: "POST", body: JSON.stringify(body) });
 export const apiPatch = <T>(path: string, body: unknown) => apiFetch<T>(path, { method: "PATCH", body: JSON.stringify(body) });
+export const apiPut = <T>(path: string, body: unknown) => apiFetch<T>(path, { method: "PUT", body: JSON.stringify(body) });
 
 /** Login doesn't have a session yet - takes the API base URL directly instead of reading it from getSession(). */
 export async function login(apiBaseUrl: string, email: string, password: string): Promise<{ accessToken: string }> {

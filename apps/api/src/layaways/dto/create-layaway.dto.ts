@@ -2,7 +2,7 @@ import { Type } from 'class-transformer';
 import {
   ArrayMinSize,
   IsArray,
-  IsInt,
+  IsNumber,
   IsPositive,
   IsUUID,
   ValidateNested,
@@ -12,7 +12,7 @@ export class LayawayLineItemInputDto {
   @IsUUID()
   variantId!: string;
 
-  @IsInt()
+  @IsNumber({ maxDecimalPlaces: 3 })
   @IsPositive()
   quantity!: number;
 }

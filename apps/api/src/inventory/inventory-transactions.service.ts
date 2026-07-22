@@ -4,12 +4,13 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { LowStockAlertStatus } from '@prisma/client';
+import { LowStockAlertStatus, Prisma } from '@prisma/client';
 import {
   TenantScopedPrismaService,
   TenantTx,
 } from '../common/prisma/tenant-scoped-prisma.service';
 import { getTenantStore } from '../common/tenant/tenant-context';
+import { assertQuantityMatchesMode } from '../common/inventory/quantity-mode.util';
 import { CreateInventoryTransactionDto } from './dto/create-inventory-transaction.dto';
 
 @Injectable()
@@ -19,7 +20,7 @@ export class InventoryTransactionsService {
     private readonly events: EventEmitter2,
   ) {}
 
-  private async assertBranchAndVariantExist(
+  private async loadBranchAndVariant(
     branchId: string,
     variantId: string,
     tx: TenantTx,
@@ -30,6 +31,7 @@ export class InventoryTransactionsService {
     ]);
     if (!branch) throw new NotFoundException('Branch not found');
     if (!variant) throw new NotFoundException('Product variant not found');
+    return variant;
   }
 
   /**
@@ -45,7 +47,16 @@ export class InventoryTransactionsService {
    * decrement rolls back independently, or vice versa).
    */
   async recordInTx(tx: TenantTx, dto: CreateInventoryTransactionDto) {
-    await this.assertBranchAndVariantExist(dto.branchId, dto.variantId, tx);
+    const variant = await this.loadBranchAndVariant(
+      dto.branchId,
+      dto.variantId,
+      tx,
+    );
+    assertQuantityMatchesMode(
+      variant.quantityMode,
+      Math.abs(dto.quantityDelta),
+      `Quantity for ${variant.sku}`,
+    );
 
     if (dto.batchId) {
       const batch = await tx.batch.findUnique({ where: { id: dto.batchId } });
@@ -125,11 +136,13 @@ export class InventoryTransactionsService {
     item: {
       branchId: string;
       variantId: string;
-      quantity: number;
-      lowStockThreshold: number;
+      quantity: Prisma.Decimal | number;
+      lowStockThreshold: Prisma.Decimal | number;
     },
   ) {
-    if (item.lowStockThreshold <= 0) return;
+    const quantity = Number(item.quantity);
+    const threshold = Number(item.lowStockThreshold);
+    if (threshold <= 0) return;
 
     const openAlert = await tx.lowStockAlert.findFirst({
       where: {
@@ -139,7 +152,7 @@ export class InventoryTransactionsService {
       },
     });
 
-    if (item.quantity <= item.lowStockThreshold) {
+    if (quantity <= threshold) {
       if (openAlert) return;
       const { organizationId } = getTenantStore();
       await tx.lowStockAlert.create({
@@ -147,8 +160,8 @@ export class InventoryTransactionsService {
           organizationId,
           branchId: item.branchId,
           variantId: item.variantId,
-          quantity: item.quantity,
-          threshold: item.lowStockThreshold,
+          quantity,
+          threshold,
         },
       });
     } else if (openAlert) {

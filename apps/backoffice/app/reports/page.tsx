@@ -36,13 +36,29 @@ interface ByHourRow {
   revenue: number;
 }
 
-type ReportKey = "sales-by-product" | "sales-by-branch" | "sales-by-cashier" | "sales-by-hour";
+interface WasteByProductRow {
+  variantId: string;
+  sku: string;
+  productName: string;
+  quantityWasted: number;
+  totalCost: number | null;
+  costPartiallyKnown: boolean;
+  byReason: Record<"EXPIRED" | "DAMAGED" | "SPOILED" | "OVERPRODUCTION" | "OTHER", number>;
+}
+
+type ReportKey =
+  | "sales-by-product"
+  | "sales-by-branch"
+  | "sales-by-cashier"
+  | "sales-by-hour"
+  | "waste-by-product";
 
 const REPORT_TABS: { key: ReportKey; label: string }[] = [
   { key: "sales-by-product", label: "By product" },
   { key: "sales-by-branch", label: "By branch" },
   { key: "sales-by-cashier", label: "By cashier" },
   { key: "sales-by-hour", label: "By hour" },
+  { key: "waste-by-product", label: "Waste" },
 ];
 
 function toDateInput(d: Date) {
@@ -69,6 +85,7 @@ export default function ReportsPage() {
   const [byBranch, setByBranch] = useState<ByBranchRow[]>([]);
   const [byCashier, setByCashier] = useState<ByCashierRow[]>([]);
   const [byHour, setByHour] = useState<ByHourRow[]>([]);
+  const [byWaste, setByWaste] = useState<WasteByProductRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -95,16 +112,18 @@ export default function ReportsPage() {
     // of the selected day so a same-day range isn't empty.
     const query = `?from=${from}T00:00:00.000Z&to=${to}T23:59:59.999Z`;
     try {
-      const [productResult, branchResult, cashierResult, hourResult] = await Promise.all([
+      const [productResult, branchResult, cashierResult, hourResult, wasteResult] = await Promise.all([
         apiGet<ByProductRow[]>(`/reports/sales-by-product${query}`),
         apiGet<ByBranchRow[]>(`/reports/sales-by-branch${query}`),
         apiGet<ByCashierRow[]>(`/reports/sales-by-cashier${query}`),
         apiGet<ByHourRow[]>(`/reports/sales-by-hour${query}`),
+        apiGet<WasteByProductRow[]>(`/reports/waste-by-product${query}`),
       ]);
       setByProduct(productResult);
       setByBranch(branchResult);
       setByCashier(cashierResult);
       setByHour(hourResult);
+      setByWaste(wasteResult);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not load reports.");
     } finally {
@@ -113,6 +132,10 @@ export default function ReportsPage() {
   }
 
   const totalRevenue = useMemo(() => byBranch.reduce((sum, r) => sum + r.revenue, 0), [byBranch]);
+  const totalWasteCost = useMemo(
+    () => byWaste.reduce((sum, r) => sum + (r.totalCost ?? 0), 0),
+    [byWaste],
+  );
 
   if (!session) return null;
 
@@ -141,7 +164,12 @@ export default function ReportsPage() {
               className="rounded-md border border-slate-700 bg-slate-800 p-2 text-sm"
             />
           </div>
-          {!loading && <p className="pb-2 text-sm text-slate-400">Total revenue: KES {totalRevenue.toFixed(2)}</p>}
+          {!loading && (
+            <p className="pb-2 text-sm text-slate-400">
+              Total revenue: KES {totalRevenue.toFixed(2)}
+              {byWaste.length > 0 && <span className="ml-3 text-red-400">Waste cost: KES {totalWasteCost.toFixed(2)}</span>}
+            </p>
+          )}
         </div>
 
         <div className="mb-4 flex gap-2">
@@ -194,6 +222,27 @@ export default function ReportsPage() {
               .map((r) => [`${String(r.hour).padStart(2, "0")}:00`, String(r.saleCount), r.revenue.toFixed(2)])}
             emptyMessage="No completed sales in this range."
           />
+        )}
+        {!loading && tab === "waste-by-product" && (
+          <ReportTable
+            columns={["Product", "SKU", "Qty wasted", "Cost (KES)", "Top reason"]}
+            rows={byWaste.map((r) => {
+              const topReason = (Object.entries(r.byReason) as [string, number][])
+                .sort((a, b) => b[1] - a[1])
+                .find(([, qty]) => qty > 0)?.[0];
+              return [
+                r.productName,
+                r.sku,
+                String(r.quantityWasted),
+                r.totalCost === null ? "—" : `${r.totalCost.toFixed(2)}${r.costPartiallyKnown ? "*" : ""}`,
+                topReason ?? "—",
+              ];
+            })}
+            emptyMessage="No write-offs in this range."
+          />
+        )}
+        {!loading && tab === "waste-by-product" && byWaste.some((r) => r.costPartiallyKnown) && (
+          <p className="mt-2 text-xs text-slate-500">* some entries for this product have no known cost - total is a partial figure.</p>
         )}
       </main>
     </div>

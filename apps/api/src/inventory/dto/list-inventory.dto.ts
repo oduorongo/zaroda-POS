@@ -1,6 +1,6 @@
 import {
   IsBooleanString,
-  IsInt,
+  IsNumber,
   IsOptional,
   IsUUID,
   Min,
@@ -28,7 +28,7 @@ export class ListInventoryTransactionsDto {
 
 export class SetLowStockThresholdDto {
   // 0 means "not tracked" - see InventoryTransactionsService.syncLowStockAlert.
-  @IsInt()
+  @IsNumber({ maxDecimalPlaces: 3 })
   @Min(0)
   lowStockThreshold!: number;
 }

@@ -24,9 +24,14 @@ export class InventoryItemsService {
     // Prisma Client can't compare one column to another (quantity vs
     // lowStockThreshold) in a `where` filter - filtering in memory is fine
     // at pilot scale (a branch's distinct variant count, not transaction
-    // volume) rather than reaching for $queryRaw here.
+    // volume) rather than reaching for $queryRaw here. Explicit Number()
+    // conversion, not a bare `<=` on the two Decimal objects - Decimal's
+    // valueOf() returns a string, so an unconverted comparison would
+    // silently do lexicographic (not numeric) comparison.
     return lowStockOnly
-      ? items.filter((item) => item.quantity <= item.lowStockThreshold)
+      ? items.filter(
+          (item) => Number(item.quantity) <= Number(item.lowStockThreshold),
+        )
       : items;
   }
 

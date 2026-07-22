@@ -177,6 +177,9 @@ export default function PosPage() {
   function addToCart(variant: CachedVariant) {
     setCart((prev) => {
       const next = new Map(prev);
+      // WEIGHT items don't have a natural "+1" - default to 1 (unit of the
+      // variant's own price basis, e.g. 1kg) and let the cart line's
+      // decimal input be corrected to the actual weighed amount.
       next.set(variant.id, (next.get(variant.id) ?? 0) + 1);
       return next;
     });
@@ -185,7 +188,7 @@ export default function PosPage() {
   function setQuantity(variantId: string, quantity: number) {
     setCart((prev) => {
       const next = new Map(prev);
-      if (quantity <= 0) next.delete(variantId);
+      if (!(quantity > 0)) next.delete(variantId);
       else next.set(variantId, quantity);
       return next;
     });
@@ -520,15 +523,29 @@ export default function PosPage() {
               <div key={variant.id} className="rounded-md bg-slate-800 p-2">
                 <p className="text-sm font-medium">{variant.productName}</p>
                 <div className="mt-1 flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <button onClick={() => setQuantity(variant.id, quantity - 1)} className="h-7 w-7 rounded bg-slate-700">
-                      -
-                    </button>
-                    <span className="w-6 text-center">{quantity}</span>
-                    <button onClick={() => setQuantity(variant.id, quantity + 1)} className="h-7 w-7 rounded bg-slate-700">
-                      +
-                    </button>
-                  </div>
+                  {variant.quantityMode === "WEIGHT" ? (
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        min={0.001}
+                        step="0.001"
+                        value={quantity}
+                        onChange={(e) => setQuantity(variant.id, Number(e.target.value))}
+                        className="w-20 rounded bg-slate-700 p-1 text-center"
+                      />
+                      <span className="text-xs text-slate-400">wt</span>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <button onClick={() => setQuantity(variant.id, quantity - 1)} className="h-7 w-7 rounded bg-slate-700">
+                        -
+                      </button>
+                      <span className="w-6 text-center">{quantity}</span>
+                      <button onClick={() => setQuantity(variant.id, quantity + 1)} className="h-7 w-7 rounded bg-slate-700">
+                        +
+                      </button>
+                    </div>
+                  )}
                   <span className="font-mono">KES {(variant.price * quantity).toFixed(2)}</span>
                 </div>
                 {device.industryType === "PHARMACY" && (

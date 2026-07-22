@@ -3,9 +3,10 @@ import { SalesController } from './sales.controller';
 import { SalesService } from './sales.service';
 import { InventoryModule } from '../inventory/inventory.module';
 import { CustomersModule } from '../customers/customers.module';
+import { RecipesModule } from '../recipes/recipes.module';
 
 @Module({
-  imports: [InventoryModule, CustomersModule],
+  imports: [InventoryModule, CustomersModule, RecipesModule],
   controllers: [SalesController],
   providers: [SalesService],
   // Exported so RestaurantModule (and future vertical modules) can call

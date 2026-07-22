@@ -18,7 +18,12 @@ export class SaleLineItemInputDto {
   @IsUUID()
   variantId!: string;
 
-  @IsInt()
+  // Whole or fractional depending on the variant's QuantityMode (COUNT vs
+  // WEIGHT) - checked against the actual variant server-side in
+  // SalesService, since that's the only place that knows which mode this
+  // variantId is in. maxDecimalPlaces caps precision at 3 (gram-level for
+  // a kg-priced item) regardless of mode.
+  @IsNumber({ maxDecimalPlaces: 3 })
   @IsPositive()
   quantity!: number;
 

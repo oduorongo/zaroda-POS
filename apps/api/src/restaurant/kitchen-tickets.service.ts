@@ -116,7 +116,14 @@ export class KitchenTicketsService {
           lines: {
             create: group.map((li) => ({
               variantId: li.variantId,
-              quantity: li.quantity,
+              // KitchenTicketLine.quantity stays an integer prep count
+              // (unlike core's SaleLineItem.quantity) - a kitchen ticket is
+              // a printed "make N of this" instruction, not a stock ledger
+              // entry, so a WEIGHT-mode variant's fractional quantity is
+              // rounded for display here. The actual inventory decrement
+              // for the sale still uses the exact fractional quantity via
+              // SalesService/InventoryTransactionsService.
+              quantity: Math.round(li.quantity),
               notes: li.notes,
             })),
           },

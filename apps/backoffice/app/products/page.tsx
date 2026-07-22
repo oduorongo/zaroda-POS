@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { apiGet, apiPost, ApiError } from "../../lib/api";
 import { getSession, type Session } from "../../lib/auth";
 import { Nav } from "../../components/nav";
@@ -18,12 +19,15 @@ interface TaxClass {
   isExempt: boolean;
 }
 
+type QuantityMode = "COUNT" | "WEIGHT";
+
 interface Variant {
   id: string;
   productId: string;
   sku: string;
   barcode: string | null;
   price: string;
+  quantityMode: QuantityMode;
 }
 
 interface Product {
@@ -59,6 +63,7 @@ export default function ProductsPage() {
   const [variantForProductId, setVariantForProductId] = useState<string | null>(null);
   const [variantSku, setVariantSku] = useState("");
   const [variantPrice, setVariantPrice] = useState("");
+  const [variantMode, setVariantMode] = useState<QuantityMode>("COUNT");
   const [variantBusy, setVariantBusy] = useState(false);
   const [variantError, setVariantError] = useState<string | null>(null);
 
@@ -119,10 +124,15 @@ export default function ProductsPage() {
     setVariantBusy(true);
     setVariantError(null);
     try {
-      await apiPost(`/products/${productId}/variants`, { sku: variantSku.trim(), price });
+      await apiPost(`/products/${productId}/variants`, {
+        sku: variantSku.trim(),
+        price,
+        quantityMode: variantMode,
+      });
       setVariantForProductId(null);
       setVariantSku("");
       setVariantPrice("");
+      setVariantMode("COUNT");
       await load();
     } catch (err) {
       setVariantError(err instanceof ApiError ? err.message : "Could not create variant.");
@@ -210,8 +220,23 @@ export default function ProductsPage() {
                   <tbody>
                     {product.variants.map((v) => (
                       <tr key={v.id} className="border-t border-slate-800">
-                        <td className="py-1.5">{v.sku}</td>
-                        <td className="py-1.5 text-right font-mono">KES {Number(v.price).toFixed(2)}</td>
+                        <td className="py-1.5">
+                          {v.sku}
+                          {v.quantityMode === "WEIGHT" && (
+                            <span className="ml-2 rounded bg-amber-950 px-1.5 py-0.5 text-xs text-amber-400">
+                              sold by weight
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-1.5 text-right font-mono">
+                          KES {Number(v.price).toFixed(2)}
+                          {v.quantityMode === "WEIGHT" && <span className="text-slate-500"> /unit</span>}
+                        </td>
+                        <td className="py-1.5 pl-3 text-right">
+                          <Link href={`/products/recipe/${v.id}`} className="text-xs text-blue-400 hover:underline">
+                            Recipe
+                          </Link>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -233,6 +258,15 @@ export default function ProductsPage() {
                     onChange={(e) => setVariantPrice(e.target.value)}
                     className="w-28 rounded-md border border-slate-700 bg-slate-900 p-2 text-sm"
                   />
+                  <select
+                    value={variantMode}
+                    onChange={(e) => setVariantMode(e.target.value as QuantityMode)}
+                    className="rounded-md border border-slate-700 bg-slate-900 p-2 text-sm"
+                    title="Count: sold in whole units (each, pack, box). Weight: sold in fractional quantities (kg, litre) - price is per unit."
+                  >
+                    <option value="COUNT">Sold by count</option>
+                    <option value="WEIGHT">Sold by weight/volume</option>
+                  </select>
                   <button
                     onClick={() => void createVariant(product.id)}
                     disabled={variantBusy || !variantSku.trim() || !Number.isFinite(Number(variantPrice))}

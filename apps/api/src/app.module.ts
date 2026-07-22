@@ -35,6 +35,12 @@ import { AllExceptionsFilter } from './common/logging/all-exceptions.filter';
 import { RestaurantModule } from './restaurant/restaurant.module';
 import { PharmacyModule } from './pharmacy/pharmacy.module';
 import { SalonModule } from './salon/salon.module';
+import { ManufacturingModule } from './manufacturing/manufacturing.module';
+import { ServiceJobsModule } from './service-jobs/service-jobs.module';
+import { PurchasingModule } from './purchasing/purchasing.module';
+import { RepackagingModule } from './repackaging/repackaging.module';
+import { RecipesModule } from './recipes/recipes.module';
+import { WasteModule } from './waste/waste.module';
 
 // Phase 1+ will import vertical module packages here and register their
 // manifests on ModuleRegistryService at bootstrap (see DESIGN.md §3) - none
@@ -99,6 +105,10 @@ import { SalonModule } from './salon/salon.module';
     OrgUsersModule,
     StockTransfersModule,
     StockTakesModule,
+    PurchasingModule,
+    RepackagingModule,
+    RecipesModule,
+    WasteModule,
     CustomersModule,
     OrganizationsModule,
     BranchesModule,
@@ -109,6 +119,8 @@ import { SalonModule } from './salon/salon.module';
     RestaurantModule,
     PharmacyModule,
     SalonModule,
+    ManufacturingModule,
+    ServiceJobsModule,
   ],
   controllers: [AppController],
   providers: [

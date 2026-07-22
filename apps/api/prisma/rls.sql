@@ -399,6 +399,109 @@ CREATE POLICY tenant_isolation ON salon_appointment_sales
   WITH CHECK (EXISTS (SELECT 1 FROM sales s WHERE s.id = salon_appointment_sales."saleId"
                  AND s."organizationId" = current_setting('app.current_tenant', true)));
 
+-- ── Scoped via variantId -> products."organizationId" ──────────────────────
+
+ALTER TABLE recipe_ingredients ENABLE ROW LEVEL SECURITY;
+ALTER TABLE recipe_ingredients FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON recipe_ingredients;
+CREATE POLICY tenant_isolation ON recipe_ingredients
+  USING (EXISTS (SELECT 1 FROM product_variants v JOIN products p ON p.id = v."productId"
+                 WHERE v.id = recipe_ingredients."variantId"
+                 AND p."organizationId" = current_setting('app.current_tenant', true)))
+  WITH CHECK (EXISTS (SELECT 1 FROM product_variants v JOIN products p ON p.id = v."productId"
+                 WHERE v.id = recipe_ingredients."variantId"
+                 AND p."organizationId" = current_setting('app.current_tenant', true)));
+
+-- ── Scoped via saleLineItemId -> sale_line_items.saleId -> sales."organizationId" ─
+
+ALTER TABLE sale_line_item_ingredients ENABLE ROW LEVEL SECURITY;
+ALTER TABLE sale_line_item_ingredients FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON sale_line_item_ingredients;
+CREATE POLICY tenant_isolation ON sale_line_item_ingredients
+  USING (EXISTS (SELECT 1 FROM sale_line_items sli JOIN sales s ON s.id = sli."saleId"
+                 WHERE sli.id = sale_line_item_ingredients."saleLineItemId"
+                 AND s."organizationId" = current_setting('app.current_tenant', true)))
+  WITH CHECK (EXISTS (SELECT 1 FROM sale_line_items sli JOIN sales s ON s.id = sli."saleId"
+                 WHERE sli.id = sale_line_item_ingredients."saleLineItemId"
+                 AND s."organizationId" = current_setting('app.current_tenant', true)));
+
+-- ── Purchasing (suppliers, purchase orders) ────────────────────────────────
+
+ALTER TABLE suppliers ENABLE ROW LEVEL SECURITY;
+ALTER TABLE suppliers FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON suppliers;
+CREATE POLICY tenant_isolation ON suppliers
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+ALTER TABLE purchase_orders ENABLE ROW LEVEL SECURITY;
+ALTER TABLE purchase_orders FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON purchase_orders;
+CREATE POLICY tenant_isolation ON purchase_orders
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+-- ── Scoped via purchaseOrderId -> purchase_orders."organizationId" ────────
+
+ALTER TABLE purchase_order_line_items ENABLE ROW LEVEL SECURITY;
+ALTER TABLE purchase_order_line_items FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON purchase_order_line_items;
+CREATE POLICY tenant_isolation ON purchase_order_line_items
+  USING (EXISTS (SELECT 1 FROM purchase_orders po WHERE po.id = purchase_order_line_items."purchaseOrderId"
+                 AND po."organizationId" = current_setting('app.current_tenant', true)))
+  WITH CHECK (EXISTS (SELECT 1 FROM purchase_orders po WHERE po.id = purchase_order_line_items."purchaseOrderId"
+                 AND po."organizationId" = current_setting('app.current_tenant', true)));
+
+ALTER TABLE waste_logs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE waste_logs FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON waste_logs;
+CREATE POLICY tenant_isolation ON waste_logs
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+-- ── Scoped via wasteLogId -> waste_logs."organizationId" ──────────────────
+
+ALTER TABLE waste_ingredients ENABLE ROW LEVEL SECURITY;
+ALTER TABLE waste_ingredients FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON waste_ingredients;
+CREATE POLICY tenant_isolation ON waste_ingredients
+  USING (EXISTS (SELECT 1 FROM waste_logs wl WHERE wl.id = waste_ingredients."wasteLogId"
+                 AND wl."organizationId" = current_setting('app.current_tenant', true)))
+  WITH CHECK (EXISTS (SELECT 1 FROM waste_logs wl WHERE wl.id = waste_ingredients."wasteLogId"
+                 AND wl."organizationId" = current_setting('app.current_tenant', true)));
+
+ALTER TABLE repackagings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE repackagings FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON repackagings;
+CREATE POLICY tenant_isolation ON repackagings
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+ALTER TABLE production_orders ENABLE ROW LEVEL SECURITY;
+ALTER TABLE production_orders FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON production_orders;
+CREATE POLICY tenant_isolation ON production_orders
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+ALTER TABLE service_jobs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE service_jobs FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON service_jobs;
+CREATE POLICY tenant_isolation ON service_jobs
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+-- ── Scoped via jobId -> service_jobs."organizationId" ──────────────────────
+
+ALTER TABLE service_job_sales ENABLE ROW LEVEL SECURITY;
+ALTER TABLE service_job_sales FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON service_job_sales;
+CREATE POLICY tenant_isolation ON service_job_sales
+  USING (EXISTS (SELECT 1 FROM service_jobs sj WHERE sj.id = service_job_sales."jobId"
+                 AND sj."organizationId" = current_setting('app.current_tenant', true)))
+  WITH CHECK (EXISTS (SELECT 1 FROM service_jobs sj WHERE sj.id = service_job_sales."jobId"
+                 AND sj."organizationId" = current_setting('app.current_tenant', true)));
+
 -- ── organizations itself ─────────────────────────────────────────────────
 -- A tenant may only ever see its own organization row (not a child table,
 -- so it filters on id directly rather than organizationId). Same pre-auth

@@ -32,4 +32,9 @@ export class ReportsController {
   salesByHour(@Query() filters: ReportFiltersDto) {
     return this.reports.salesByHour(filters);
   }
+
+  @Get('waste-by-product')
+  wasteByProduct(@Query() filters: ReportFiltersDto) {
+    return this.reports.wasteByProduct(filters);
+  }
 }

@@ -1,6 +1,6 @@
 import {
   IsDateString,
-  IsInt,
+  IsNumber,
   IsOptional,
   IsPositive,
   IsString,
@@ -27,7 +27,7 @@ export class CreateBatchDto {
   @IsOptional()
   expiryDate?: string;
 
-  @IsInt()
+  @IsNumber({ maxDecimalPlaces: 3 })
   @IsPositive()
   quantityReceived!: number;
 }

@@ -42,6 +42,8 @@ export interface CachedVariant {
   price: number;
   /** Decimal fraction (0.16 = 16%), 0 if untaxed/exempt/no tax class set. */
   taxRate: number;
+  /** COUNT = whole units only. WEIGHT = fractional quantity allowed (kg, litre, ...) - see api's schema.prisma QuantityMode comment. */
+  quantityMode: "COUNT" | "WEIGHT";
 }
 
 export interface CashierSession {

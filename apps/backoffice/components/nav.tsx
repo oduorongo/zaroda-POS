@@ -10,6 +10,9 @@ const LINKS = [
   { href: "/reports", label: "Reports" },
   { href: "/shifts", label: "Shifts" },
   { href: "/inventory", label: "Inventory" },
+  { href: "/purchase-orders", label: "Purchase Orders" },
+  { href: "/repackaging", label: "Repackaging" },
+  { href: "/waste", label: "Waste" },
   { href: "/layaways", label: "Layaways" },
   { href: "/staff", label: "Staff" },
   { href: "/branches", label: "Branches" },
@@ -22,6 +25,8 @@ const VERTICAL_LINKS: Record<string, { href: string; label: string }> = {
   RESTAURANT: { href: "/restaurant", label: "Tables & Kitchen" },
   PHARMACY: { href: "/pharmacy", label: "Pharmacy" },
   SALON: { href: "/bookings", label: "Bookings" },
+  MANUFACTURING: { href: "/manufacturing", label: "Production" },
+  SERVICE: { href: "/service-jobs", label: "Job Orders" },
 };
 
 export function Nav({ session }: { session: Session }) {

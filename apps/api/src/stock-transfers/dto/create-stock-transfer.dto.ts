@@ -1,5 +1,5 @@
 import {
-  IsInt,
+  IsNumber,
   IsOptional,
   IsPositive,
   IsString,
@@ -17,7 +17,7 @@ export class CreateStockTransferDto {
   @IsUUID()
   variantId!: string;
 
-  @IsInt()
+  @IsNumber({ maxDecimalPlaces: 3 })
   @IsPositive()
   quantity!: number;
 

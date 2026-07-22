@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { apiGet, apiPost, ApiError } from "../../lib/api";
 import { getSession, type Session } from "../../lib/auth";
 import { Nav } from "../../components/nav";
@@ -190,9 +191,17 @@ export default function InventoryPage() {
                   Conflicts
                 </button>
               </div>
-              <button onClick={() => setAdjOpen((v) => !v)} className="rounded-md bg-slate-800 px-3 py-1.5 text-sm hover:bg-slate-700">
-                + Record adjustment
-              </button>
+              <div className="flex gap-2">
+                <Link
+                  href="/inventory/receive"
+                  className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-semibold hover:bg-blue-500"
+                >
+                  + Receive stock
+                </Link>
+                <button onClick={() => setAdjOpen((v) => !v)} className="rounded-md bg-slate-800 px-3 py-1.5 text-sm hover:bg-slate-700">
+                  + Record adjustment
+                </button>
+              </div>
             </div>
 
             {adjOpen && (
@@ -216,7 +225,8 @@ export default function InventoryPage() {
                 </select>
                 <input
                   type="number"
-                  placeholder="Delta (+/-)"
+                  step="0.001"
+                  placeholder="Delta (+/-, decimals ok for weighted items)"
                   value={adjDelta}
                   onChange={(e) => setAdjDelta(e.target.value)}
                   className="w-32 rounded-md border border-slate-700 bg-slate-900 p-2 text-sm"
