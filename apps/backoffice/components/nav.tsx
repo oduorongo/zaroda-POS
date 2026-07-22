@@ -15,6 +15,7 @@ const LINKS = [
   { href: "/waste", label: "Waste" },
   { href: "/layaways", label: "Layaways" },
   { href: "/staff", label: "Staff" },
+  { href: "/roster", label: "Roster" },
   { href: "/payroll", label: "Payroll" },
   { href: "/branches", label: "Branches" },
 ];

@@ -62,6 +62,7 @@ model Organization {
   serviceJobs      ServiceJob[]
   payrollProfiles  PayrollProfile[]
   payrollRuns      PayrollRun[]
+  rosterShifts     RosterShift[]
 
   @@map("organizations")
 }
@@ -94,6 +95,7 @@ model Branch {
   wasteLogs            WasteLog[]
   productionOrders     ProductionOrder[]
   serviceJobs          ServiceJob[]
+  rosterShifts         RosterShift[]
 
   @@index([organizationId])
   @@map("branches")
@@ -173,10 +175,45 @@ model OrgUser {
   payslips         Payslip[]
   payrollRunsCreated  PayrollRun[] @relation("PayrollRunCreatedBy")
   payrollRunsApproved PayrollRun[] @relation("PayrollRunApprovedBy")
+  rosterShifts     RosterShift[] @relation("RosterShiftFor")
+  rosterShiftsCreated RosterShift[] @relation("RosterShiftCreatedBy")
 
   @@unique([organizationId, userId])
   @@index([organizationId])
   @@map("org_users")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Duty roster — planned shift assignments, distinct from both `Shift`
+// (an actual till/cash-drawer session someone opened) and CashierSession
+// (actual PIN-in/PIN-out clock times, which payroll's HOURLY calculation
+// reads) - this is what a manager plans *before* the work happens, not a
+// record of what happened. `published` gates visibility to the assigned
+// staff member (enforced in the terminal PWA, not here) so a manager can
+// draft a week's schedule before it's final - same "draft vs live" split
+// as ProductionOrder's DRAFT status, just a boolean here since there's no
+// multi-step lifecycle beyond published/not.
+model RosterShift {
+  id             String   @id @default(uuid())
+  organizationId String
+  branchId       String
+  orgUserId      String
+  startTime      DateTime
+  endTime        DateTime
+  published      Boolean  @default(false)
+  notes          String?
+  createdById    String
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  branch       Branch       @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  orgUser      OrgUser      @relation("RosterShiftFor", fields: [orgUserId], references: [id], onDelete: Cascade)
+  createdBy    OrgUser      @relation("RosterShiftCreatedBy", fields: [createdById], references: [id])
+
+  @@index([organizationId])
+  @@index([branchId])
+  @@index([orgUserId])
+  @@map("roster_shifts")
 }
 
 // ─────────────────────────────────────────────────────────────────────────

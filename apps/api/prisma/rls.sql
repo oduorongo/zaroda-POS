@@ -527,6 +527,13 @@ CREATE POLICY tenant_isolation ON payslips
   WITH CHECK (EXISTS (SELECT 1 FROM payroll_runs pr WHERE pr.id = payslips."payrollRunId"
                  AND pr."organizationId" = current_setting('app.current_tenant', true)));
 
+ALTER TABLE roster_shifts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE roster_shifts FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON roster_shifts;
+CREATE POLICY tenant_isolation ON roster_shifts
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
 -- ── organizations itself ─────────────────────────────────────────────────
 -- A tenant may only ever see its own organization row (not a child table,
 -- so it filters on id directly rather than organizationId). Same pre-auth
