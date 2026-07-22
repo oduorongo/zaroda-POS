@@ -46,6 +46,7 @@ export class RestaurantModule implements OnModuleInit {
 
   onModuleInit() {
     this.registry.register({
+      manifestVersion: 1,
       industryType: 'RESTAURANT',
       entityExtensions: [
         {

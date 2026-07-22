@@ -3,6 +3,17 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { IndustryModuleManifest } from './industry-module-manifest.interface';
 
 /**
+ * Every manifestVersion this registry still knows how to handle - see
+ * IndustryModuleManifest.manifestVersion's own comment on when this needs
+ * a new entry (a breaking contract change, never an additive one).
+ * Kept as a Set (not just "the current version") so a future breaking
+ * change can support the previous version alongside the new one for a
+ * migration window, rather than forcing every vertical package to update
+ * in lockstep with core.
+ */
+export const SUPPORTED_MANIFEST_VERSIONS = new Set([1]);
+
+/**
  * Every vertical package calls register() with its manifest at bootstrap
  * (see CoreModule wiring in app.module.ts). Nothing here knows what a
  * "restaurant" or "pharmacy" is - it just holds manifests and wires their
@@ -27,6 +38,11 @@ export class ModuleRegistryService {
   constructor(private readonly events: EventEmitter2) {}
 
   register(manifest: IndustryModuleManifest): void {
+    if (!SUPPORTED_MANIFEST_VERSIONS.has(manifest.manifestVersion)) {
+      throw new Error(
+        `Module "${manifest.industryType}" declares manifestVersion ${manifest.manifestVersion}, which this build of core doesn't recognize (supported: ${Array.from(SUPPORTED_MANIFEST_VERSIONS).join(', ')}) - update the vertical package to the current contract shape (see IndustryModuleManifest's own comment).`,
+      );
+    }
     if (this.manifests.has(manifest.industryType)) {
       throw new Error(
         `A module for industryType "${manifest.industryType}" is already registered`,

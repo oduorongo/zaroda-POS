@@ -32,6 +32,7 @@ export class PharmacyModule implements OnModuleInit {
 
   onModuleInit() {
     this.registry.register({
+      manifestVersion: 1,
       industryType: 'PHARMACY',
       entityExtensions: [
         {

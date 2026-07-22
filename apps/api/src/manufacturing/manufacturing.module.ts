@@ -24,6 +24,7 @@ export class ManufacturingModule implements OnModuleInit {
 
   onModuleInit() {
     this.registry.register({
+      manifestVersion: 1,
       industryType: 'MANUFACTURING',
       entityExtensions: [
         {

@@ -7,6 +7,19 @@ import { Role } from '@prisma/client';
  * never the reverse.
  */
 export interface IndustryModuleManifest {
+  /**
+   * Which shape of this contract the manifest was written against -
+   * checked by ModuleRegistryService.register() against
+   * SUPPORTED_MANIFEST_VERSIONS before anything else runs. Existing
+   * fields are stable at version 1; if a future change needs to remove or
+   * repurpose a field (not just add an optional one - additive changes
+   * never need a bump), bump this and update
+   * SUPPORTED_MANIFEST_VERSIONS so an older, unmigrated vertical package
+   * fails loudly and specifically at registration time instead of either
+   * crashing somewhere unrelated later or silently misbehaving.
+   */
+  manifestVersion: number;
+
   /** Matches Organization.industryType, e.g. "RETAIL" | "RESTAURANT" | "PHARMACY" | "SALON". */
   industryType: string;
 

@@ -30,6 +30,7 @@ export class SalonModule implements OnModuleInit {
 
   onModuleInit() {
     this.registry.register({
+      manifestVersion: 1,
       industryType: 'SALON',
       entityExtensions: [
         {

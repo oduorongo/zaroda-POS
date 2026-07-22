@@ -24,6 +24,7 @@ export class ServiceJobsModule implements OnModuleInit {
 
   onModuleInit() {
     this.registry.register({
+      manifestVersion: 1,
       industryType: 'SERVICE',
       entityExtensions: [
         {
