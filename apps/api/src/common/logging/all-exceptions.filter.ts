@@ -7,6 +7,8 @@ import {
 } from '@nestjs/common';
 import { Request, Response } from 'express';
 import { Logger } from 'nestjs-pino';
+import { AuthenticatedUser } from '../../auth/authenticated-user.interface';
+import { captureExceptionWithContext } from '../observability/sentry';
 
 /**
  * A caught HttpException (NotFoundException, BadRequestException, etc.)
@@ -26,7 +28,8 @@ export class AllExceptionsFilter implements ExceptionFilter {
   catch(exception: unknown, host: ArgumentsHost) {
     const ctx = host.switchToHttp();
     const response = ctx.getResponse<Response>();
-    const request = ctx.getRequest<Request>();
+    const request = ctx.getRequest<Request & { user?: AuthenticatedUser }>();
+    const requestId = (request as unknown as { id?: string }).id;
 
     const isHttpException = exception instanceof HttpException;
     const status = isHttpException
@@ -38,7 +41,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
 
     this.logger.error(
       {
-        requestId: (request as unknown as { id?: string }).id,
+        requestId,
         method: request.method,
         path: request.url,
         statusCode: status,
@@ -46,6 +49,22 @@ export class AllExceptionsFilter implements ExceptionFilter {
       },
       isHttpException ? 'Handled exception' : 'Unhandled exception',
     );
+
+    // Only the "worth paging someone" tier (same distinction the log
+    // level above already makes) - a well-formed HttpException (a
+    // validation error, a NotFoundException) is expected, routine
+    // application behavior, not an incident. Tagged with organizationId
+    // when available so Sentry's UI can filter/search by tenant, exactly
+    // the correlation TenantContextInterceptor already provides
+    // everywhere else in this codebase.
+    if (!isHttpException) {
+      captureExceptionWithContext(exception, {
+        requestId,
+        organizationId: request.user?.organizationId,
+        method: request.method,
+        path: request.url,
+      });
+    }
 
     response.status(status).json(body);
   }

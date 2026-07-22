@@ -1,9 +1,15 @@
+// Side-effect import, must be first - see tracing.ts's own comment on why
+// (auto-instrumentation has to register before express/PrismaClient are
+// ever required, which importing this any later than first would miss).
+import './common/observability/tracing';
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { Logger } from 'nestjs-pino';
 import { AppModule } from './app.module';
+import { initSentry } from './common/observability/sentry';
 
 async function bootstrap() {
+  initSentry();
   const app = await NestFactory.create(AppModule, { bufferLogs: true });
   // bufferLogs holds Nest's own startup logs (module init, route mapping)
   // until the pino logger below is attached, so they come out as

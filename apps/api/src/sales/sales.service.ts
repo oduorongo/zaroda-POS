@@ -25,6 +25,7 @@ import { RecipesService } from '../recipes/recipes.service';
 import { CreateSaleDto } from './dto/create-sale.dto';
 import { VoidSaleDto } from './dto/void-sale.dto';
 import { CreateRefundDto } from './dto/create-refund.dto';
+import { withSpan } from '../common/observability/trace-span.util';
 
 const SALE_INCLUDE = {
   lineItems: { include: { ingredients: true } },
@@ -112,6 +113,18 @@ export class SalesService {
   }
 
   private async createInner(dto: CreateSaleDto) {
+    return withSpan(
+      'sale.complete',
+      {
+        branchId: dto.branchId,
+        terminalId: dto.terminalId,
+        lineItemCount: dto.lineItems.length,
+      },
+      () => this.createInnerTraced(dto),
+    );
+  }
+
+  private async createInnerTraced(dto: CreateSaleDto) {
     return this.tenantPrisma.run(async (tx) => {
       // Idempotent: a retried submission with the same client-generated id
       // returns the original sale rather than erroring or double-selling

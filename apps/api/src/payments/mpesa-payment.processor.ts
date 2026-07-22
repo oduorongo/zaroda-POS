@@ -4,6 +4,7 @@ import {
   PaymentInitiationResult,
   PaymentProcessor,
 } from './payment-processor.interface';
+import { withSpan } from '../common/observability/trace-span.util';
 
 /**
  * Safaricom Daraja STK Push (Lipa Na M-Pesa Online). Implemented against the
@@ -72,6 +73,22 @@ export class MpesaPaymentProcessor implements PaymentProcessor {
     reference: string;
     phoneNumber?: string;
   }): Promise<PaymentInitiationResult> {
+    return withSpan(
+      'mpesa.stk_push',
+      { reference: input.reference, amountKes: input.amountKes },
+      () => this.initiateTraced(input),
+    );
+  }
+
+  // Two awaited network round trips (OAuth, then the STK push itself) is
+  // exactly the shape a multi-step bug likes to hide in - a trace here
+  // shows which of the two actually took the time or failed, not just
+  // "M-Pesa was slow/broken" from the outside.
+  private async initiateTraced(input: {
+    amountKes: number;
+    reference: string;
+    phoneNumber?: string;
+  }): Promise<PaymentInitiationResult> {
     if (!input.phoneNumber) {
       throw new InternalServerErrorException(
         'phoneNumber is required to initiate an M-Pesa STK push',
@@ -81,7 +98,9 @@ export class MpesaPaymentProcessor implements PaymentProcessor {
     const shortcode = this.requireConfig('MPESA_SHORTCODE');
     const passkey = this.requireConfig('MPESA_PASSKEY');
     const callbackUrl = this.requireConfig('MPESA_CALLBACK_URL');
-    const accessToken = await this.getAccessToken();
+    const accessToken = await withSpan('mpesa.oauth', {}, () =>
+      this.getAccessToken(),
+    );
     const timestamp = this.timestamp();
     const password = Buffer.from(`${shortcode}${passkey}${timestamp}`).toString(
       'base64',

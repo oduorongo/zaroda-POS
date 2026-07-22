@@ -1,3 +1,5 @@
+// Side-effect import, must be first - see tracing.ts's own comment.
+import './common/observability/tracing';
 import { NestFactory } from '@nestjs/core';
 // nestjs-pino's Logger, NOT @nestjs/common's - LoggerModule.forRoot()
 // (worker.module.ts) registers this one as the DI token; importing the
@@ -6,6 +8,7 @@ import { NestFactory } from '@nestjs/core';
 // different, unregistered token. Same import main.ts already uses.
 import { Logger } from 'nestjs-pino';
 import { WorkerModule } from './worker.module';
+import { initSentry } from './common/observability/sentry';
 
 /**
  * A separate deployable from main.ts/AppModule - runs no HTTP server at
@@ -18,6 +21,7 @@ import { WorkerModule } from './worker.module';
  * connections it needs to keep serving requests.
  */
 async function bootstrap() {
+  initSentry();
   const app = await NestFactory.createApplicationContext(WorkerModule, {
     bufferLogs: true,
   });
