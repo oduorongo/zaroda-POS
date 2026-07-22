@@ -109,6 +109,7 @@ export default function SaleDetailPage() {
     setRefundError(null);
     try {
       await apiPost(`/sales/${sale.id}/refunds`, {
+        clientId: crypto.randomUUID(),
         amount,
         reason: refundReason.trim(),
         approvedById: refundApproverId,

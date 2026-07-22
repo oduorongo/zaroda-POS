@@ -1,0 +1,16 @@
+# Local-dev-only infrastructure this repo needs but doesn't own itself -
+# Postgres is Neon-hosted even in dev (see apps/api/prisma/README.md), so
+# the one thing actually missing locally is Redis for the BullMQ job queue
+# (apps/api/src/queue/). Not used in CI or production - those provision
+# Redis separately (see .github/workflows/ci.yml's dependency-audit job's
+# neighbors for the pattern, and REDIS_URL in apps/api/.env.example).
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5

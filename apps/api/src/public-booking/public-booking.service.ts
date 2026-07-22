@@ -6,7 +6,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../common/prisma/prisma.service';
 import { TenantTx } from '../common/prisma/tenant-scoped-prisma.service';
-import { AfricasTalkingSmsProvider } from '../notifications/africas-talking-sms.provider';
+import { NotificationsQueueService } from '../queue/notifications-queue.service';
 import { assertNoOverlap } from '../salon/salon-overlap.util';
 import { PublicBookAppointmentDto } from './dto/public-book-appointment.dto';
 
@@ -35,7 +35,7 @@ const TX_OPTIONS = { timeout: 15_000, maxWait: 15_000 };
 export class PublicBookingService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly sms: AfricasTalkingSmsProvider,
+    private readonly notificationsQueue: NotificationsQueueService,
     private readonly config: ConfigService,
   ) {}
 
@@ -133,10 +133,31 @@ export class PublicBookingService {
       throw new BadRequestException('startTime must be in the future');
     }
 
-    const appointment = await this.runForBranch(
+    const { appointment, isNew } = await this.runForBranch(
       organizationId,
       branchId,
       async (tx) => {
+        // Idempotent on clientId (DESIGN.md §6) - same reasoning as the
+        // staff-facing SalonAppointmentsService.create(), doubly important
+        // here since a public, unauthenticated caller (a customer's own
+        // browser retrying after a flaky connection) has no other recourse
+        // if a retry hit assertNoOverlap and errored instead of returning
+        // their actual booking. isNew gates the SMS resend below - a retry
+        // must not re-text the customer a second confirmation.
+        const existing = await tx.salonAppointment.findUnique({
+          where: { clientId: dto.clientId },
+          select: {
+            id: true,
+            serviceName: true,
+            startTime: true,
+            endTime: true,
+            status: true,
+            cancelToken: true,
+            resource: { select: { name: true } },
+          },
+        });
+        if (existing) return { appointment: existing, isNew: false };
+
         const resource = await tx.salonResource.findUnique({
           where: { id: dto.resourceId },
         });
@@ -169,7 +190,7 @@ export class PublicBookingService {
             },
           }));
 
-        return tx.salonAppointment.create({
+        const created = await tx.salonAppointment.create({
           data: {
             organizationId,
             branchId,
@@ -178,6 +199,7 @@ export class PublicBookingService {
             serviceName: dto.serviceName,
             startTime,
             endTime,
+            clientId: dto.clientId,
           },
           // cancelToken IS returned here, and only here - this is the one
           // moment the customer who just created this booking legitimately
@@ -194,26 +216,32 @@ export class PublicBookingService {
             resource: { select: { name: true } },
           },
         });
+        return { appointment: created, isNew: true };
       },
     );
 
-    // SMS is sent AFTER the transaction above has committed, never
-    // inside it - a network call held open inside a DB transaction is
-    // exactly the kind of thing this project's own load-testing history
-    // (see the README) already found compounds Neon's connection-pool
-    // pressure. A failed/unconfigured send never fails the booking
-    // itself (see SendSmsResult's own comment) - `notified` on the
-    // response just tells the frontend whether to also show the link on
-    // screen as the only copy, or mention it was texted too.
+    // Enqueued AFTER the transaction above has committed, never inside it
+    // - a network call (even just enqueuing to Redis) held open inside a
+    // DB transaction is exactly the kind of thing this project's own
+    // load-testing history (see the README) already found compounds
+    // Neon's connection-pool pressure. The actual Africa's Talking send
+    // now happens in the worker process (queue/notifications.processor.ts),
+    // not here - `notified` reflects "queued for delivery", not "delivery
+    // confirmed" (it never meant the latter even before this moved to a
+    // queue - AfricasTalkingSmsProvider's own synchronous call was only
+    // ever "the provider's API accepted it," not "the phone received it").
+    // Never queued for an idempotent replay (isNew false) - same reasoning
+    // as Sale.create() gating sale.afterComplete.
     const manageBaseUrl = this.config.get<string>('PUBLIC_BOOKING_BASE_URL');
     let notified = false;
-    if (manageBaseUrl) {
+    if (manageBaseUrl && isNew) {
       const manageUrl = `${manageBaseUrl.replace(/\/+$/, '')}/book/manage/${organizationId}/${branchId}/${appointment.id}?token=${appointment.cancelToken}`;
-      const result = await this.sms.sendSms({
+      await this.notificationsQueue.enqueueSms({
+        organizationId,
         to: dto.customerPhone,
         message: `Your ${appointment.serviceName} booking at ${appointment.resource.name} is confirmed for ${appointment.startTime.toLocaleString()}. Manage it: ${manageUrl}`,
       });
-      notified = result.sent;
+      notified = true;
     }
 
     return { ...appointment, notified };

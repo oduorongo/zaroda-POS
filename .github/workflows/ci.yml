@@ -34,8 +34,135 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
 
+      - name: Lint
+        run: pnpm lint
+
       - name: Unit tests
         run: pnpm test
+
+  api-rls-isolation:
+    # Separate job (not just another step in `api` above) because this is
+    # the one thing in this repo that genuinely needs a live Postgres, with
+    # migrations + rls.sql + the least-privilege zaroda_app role all applied
+    # first - see rls-isolation.e2e-spec.ts's own comment on why testing
+    # against anything else (a superuser/owner connection) would make
+    # broken RLS pass silently.
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/api
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: zaroda_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      # app.e2e-spec.ts boots the full AppModule, which now pulls in
+      # QueueModule (via PublicBookingModule) - the app itself degrades
+      # gracefully with no Redis reachable (see queue.module.ts's own
+      # comment on why that no longer crashes the process), but without
+      # this service the CI log fills with harmless-but-alarming-looking
+      # ECONNREFUSED stack traces from BullMQ's background reconnect
+      # attempts. Cheap to just provide a real one.
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      # The bootstrap `postgres` role is a real superuser, which - same as
+      # Neon's owner role - always bypasses RLS. Stands in for DIRECT_URL:
+      # migrations and the two setup scripts below all need to run as it.
+      DIRECT_URL: postgresql://postgres:postgres@localhost:5432/zaroda_ci
+      # zaroda_app's password here is CI-only, throwaway, and never used
+      # outside this ephemeral service container.
+      DATABASE_URL: postgresql://zaroda_app:ci_only_password@localhost:5432/zaroda_ci
+      # app.e2e-spec.ts (which this job's `pnpm test:e2e` also runs, same
+      # jest-e2e.json testRegex as rls-isolation.e2e-spec.ts) boots the full
+      # AppModule, and both AuthModule and PlatformAdminModule call
+      # config.getOrThrow on these - CI-only throwaway values, never real
+      # secrets.
+      JWT_SECRET: ci_only_jwt_secret
+      PLATFORM_ADMIN_JWT_SECRET: ci_only_platform_admin_jwt_secret
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+        working-directory: .
+
+      - name: Generate Prisma client
+        run: pnpm exec prisma generate
+
+      - name: Apply migrations
+        run: pnpm exec prisma migrate deploy
+
+      - name: Create the least-privilege app role
+        # create-app-role.sql ships with a REPLACE_ME placeholder (real
+        # environments set a real password by hand per prisma/README.md) -
+        # substituted here only for this ephemeral CI database.
+        run: |
+          sed 's/REPLACE_ME/ci_only_password/' prisma/create-app-role.sql > /tmp/create-app-role.ci.sql
+          PGPASSWORD=postgres psql -h localhost -U postgres -d zaroda_ci -f /tmp/create-app-role.ci.sql
+
+      - name: Apply RLS policies
+        run: PGPASSWORD=postgres psql -h localhost -U postgres -d zaroda_ci -f prisma/rls.sql
+
+      - name: Cross-tenant isolation tests
+        run: pnpm test:e2e
+
+  dependency-audit:
+    # Non-blocking (continue-on-error) for now: as of this writing there
+    # are 38 pre-existing advisories (15 high) in transitive dependencies
+    # -mostly @nestjs/cli's webpack/build-tooling chain and a multer version
+    # pulled in via @nestjs/platform-express - none introduced by recent
+    # work, and turning this into a hard gate immediately would fail every
+    # PR on unrelated debt rather than on anything a given change actually
+    # did. Still runs on every push/PR so findings are visible in the
+    # Actions log; promote to a required, failing check once that backlog
+    # is triaged and cleared.
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: pnpm audit
+        run: pnpm audit --audit-level=high
 
   terminal-pwa:
     runs-on: ubuntu-latest

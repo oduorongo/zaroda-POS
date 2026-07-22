@@ -59,6 +59,16 @@ export class SalonAppointmentsService {
     }
 
     return this.tenantPrisma.run(async (tx) => {
+      // Idempotent on clientId (DESIGN.md §6) - a retried submission
+      // returns the original booking instead of hitting assertNoOverlap
+      // below (which would otherwise see the first attempt's own row as a
+      // conflicting double-booking and reject the retry outright).
+      const existing = await tx.salonAppointment.findUnique({
+        where: { clientId: dto.clientId },
+        include: APPOINTMENT_INCLUDE,
+      });
+      if (existing) return existing;
+
       const [branch, resource] = await Promise.all([
         tx.branch.findUnique({ where: { id: dto.branchId } }),
         tx.salonResource.findUnique({ where: { id: dto.resourceId } }),
@@ -84,6 +94,7 @@ export class SalonAppointmentsService {
           startTime,
           endTime,
           notes: dto.notes,
+          clientId: dto.clientId,
         },
         include: APPOINTMENT_INCLUDE,
       });

@@ -13,6 +13,7 @@ import { TenantContextInterceptor } from './common/tenant/tenant-context.interce
 import { AuthModule } from './auth/auth.module';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
 import { RolesGuard } from './auth/roles.guard';
+import { TenantRateLimitGuard } from './common/tenant/tenant-rate-limit.guard';
 import { ModuleRegistryModule } from './module-registry/module-registry.module';
 import { CatalogModule } from './catalog/catalog.module';
 import { InventoryModule } from './inventory/inventory.module';
@@ -132,11 +133,14 @@ import { WasteModule } from './waste/waste.module';
     // Order matters: ThrottlerGuard runs first (IP-based, doesn't need
     // req.user) so rate limiting applies even to @Public() routes like
     // /auth/login and /auth/pin-login; JwtAuthGuard then populates
-    // req.user, RolesGuard reads it, TenantContextInterceptor (below)
-    // reads it after both guards have run.
+    // req.user, RolesGuard reads it, TenantRateLimitGuard runs last of the
+    // guards (it needs req.user.organizationId, which only exists once
+    // JwtAuthGuard has run - see that guard's own comment), and
+    // TenantContextInterceptor (below) reads it after every guard has run.
     { provide: APP_GUARD, useClass: ThrottlerGuard },
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
+    { provide: APP_GUARD, useClass: TenantRateLimitGuard },
     { provide: APP_INTERCEPTOR, useClass: TenantContextInterceptor },
     { provide: APP_FILTER, useClass: AllExceptionsFilter },
   ],

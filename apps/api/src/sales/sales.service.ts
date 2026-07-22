@@ -536,7 +536,20 @@ export class SalesService {
    * the client, same reasoning as a sale's discount approver.
    */
   async refund(saleId: string, dto: CreateRefundDto) {
-    const refund = await this.tenantPrisma.run(async (tx) => {
+    const { refund, isNew } = await this.tenantPrisma.run(async (tx) => {
+      // Idempotent on clientId (DESIGN.md §6), same reasoning as
+      // create()'s clientId check: a retried refund submission (terminal
+      // never saw the response to a request that actually went through)
+      // returns the original refund rather than erroring on the remaining-
+      // balance check below or, worse, double-refunding. isNew gates the
+      // refund.afterApproved event below the same way Sale.create() gates
+      // sale.afterComplete - a replay must not re-fire a hook a listener
+      // might treat as "this happened again."
+      const existing = await tx.refund.findUnique({
+        where: { clientId: dto.clientId },
+      });
+      if (existing) return { refund: existing, isNew: false };
+
       const sale = await tx.sale.findUnique({
         where: { id: saleId },
         include: { refunds: true },
@@ -572,6 +585,7 @@ export class SalesService {
           amount,
           reason: dto.reason,
           approvedById: dto.approvedById,
+          clientId: dto.clientId,
         },
       });
 
@@ -582,15 +596,18 @@ export class SalesService {
         after: { amount, reason: dto.reason, approvedById: dto.approvedById },
       });
 
-      return created;
+      return { refund: created, isNew: true };
     });
 
     // The fourth core domain event (industry-module-manifest.interface.ts)
     // - unwireable until now because nothing in core ever created a
     // Refund row to fire it from. Fired after the transaction commits,
     // same reasoning as sale.afterComplete: a slow/misbehaving hook
-    // shouldn't hold this transaction open.
-    await this.events.emitAsync('refund.afterApproved', refund);
+    // shouldn't hold this transaction open. Never re-fired for an
+    // idempotent replay - same reasoning as sale.afterComplete.
+    if (isNew) {
+      await this.events.emitAsync('refund.afterApproved', refund);
+    }
 
     return this.tenantPrisma.run((tx) =>
       tx.sale.findUnique({ where: { id: saleId }, include: SALE_INCLUDE }),

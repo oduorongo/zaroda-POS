@@ -33,6 +33,13 @@ export class StockTransfersService {
     }
 
     return this.tenantPrisma.run(async (tx) => {
+      // Idempotent on clientId (DESIGN.md §6) - a retried submission
+      // returns the original transfer instead of moving stock twice.
+      const existing = await tx.stockTransfer.findUnique({
+        where: { clientId: dto.clientId },
+      });
+      if (existing) return existing;
+
       const [fromBranch, toBranch, variant] = await Promise.all([
         tx.branch.findUnique({ where: { id: dto.fromBranchId } }),
         tx.branch.findUnique({ where: { id: dto.toBranchId } }),
@@ -53,6 +60,7 @@ export class StockTransfersService {
           quantity: dto.quantity,
           notes: dto.notes,
           createdById: orgUserId,
+          clientId: dto.clientId,
         },
       });
 

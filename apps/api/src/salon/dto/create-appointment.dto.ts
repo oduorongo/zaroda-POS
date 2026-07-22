@@ -7,6 +7,10 @@ import {
 } from 'class-validator';
 
 export class CreateAppointmentDto {
+  /** Client-generated idempotency key (DESIGN.md §6) - resubmitting the same clientId returns the original booking instead of erroring against assertNoOverlap or double-booking the resource. */
+  @IsUUID()
+  clientId!: string;
+
   @IsUUID()
   branchId!: string;
 

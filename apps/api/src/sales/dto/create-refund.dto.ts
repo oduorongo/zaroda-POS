@@ -8,6 +8,10 @@ import {
 } from 'class-validator';
 
 export class CreateRefundDto {
+  /** Client-generated idempotency key (DESIGN.md §6) - resubmitting the same clientId returns the original refund instead of erroring or double-refunding. */
+  @IsUUID()
+  clientId!: string;
+
   @IsNumber()
   @Min(0.01)
   amount!: number;

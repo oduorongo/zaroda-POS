@@ -114,6 +114,7 @@ export default function PublicBookingPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          clientId: crypto.randomUUID(),
           resourceId,
           serviceName: serviceName.trim(),
           startTime: start.toISOString(),
@@ -154,7 +155,7 @@ export default function PublicBookingPage() {
           <div className="mt-4 rounded-md bg-slate-900 p-3 text-left">
             <p className="text-xs text-slate-400">
               {confirmed.notified
-                ? "We've also texted this link to your phone, but save it here too in case the message doesn't arrive:"
+                ? "We're also sending this link to your phone by text, but save it here too in case the message doesn't arrive:"
                 : "Save this link to view or cancel your booking later - we weren't able to text it to you, so this is the only place it's shown:"}
             </p>
             <a href={manageHref} className="mt-1 block break-all text-xs text-blue-400 hover:underline">

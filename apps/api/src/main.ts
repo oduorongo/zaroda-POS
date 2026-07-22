@@ -9,7 +9,28 @@ async function bootstrap() {
   // until the pino logger below is attached, so they come out as
   // structured JSON too instead of bypassing it as raw console.log lines.
   app.useLogger(app.get(Logger));
-  app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
+  // Wires SIGTERM/SIGINT (what a container orchestrator sends before
+  // killing a pod/instance) to Nest's shutdown lifecycle - every
+  // OnModuleDestroy hook (PrismaService.$disconnect, most notably) runs
+  // before the process actually exits, and app.close() itself stops
+  // accepting new connections while letting in-flight requests finish
+  // rather than cutting them off mid-response. Without this, a rolling
+  // deploy could kill a request (e.g. a sale mid-transaction) at exactly
+  // the wrong moment instead of letting the orchestrator's own grace
+  // period do its job.
+  app.enableShutdownHooks();
+  // forbidNonWhitelisted (on top of whitelist) turns an unexpected field
+  // into a 400 instead of silently stripping it - catches a client trying
+  // to mass-assign a server-derived field (organizationId, cashierOrgUserId,
+  // ...) as a clear rejection during development rather than a
+  // quietly-ignored no-op that could mask a real bug in the caller.
+  app.useGlobalPipes(
+    new ValidationPipe({
+      whitelist: true,
+      forbidNonWhitelisted: true,
+      transform: true,
+    }),
+  );
   // The terminal PWA (and eventually the back-office app) call this API
   // from a different origin/port via browser fetch() - without CORS
   // enabled, every request from an actual browser is silently blocked

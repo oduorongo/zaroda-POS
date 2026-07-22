@@ -606,6 +606,11 @@ model StockTransfer {
   quantity       Decimal  @db.Decimal(14, 3)
   notes          String?
   createdById    String
+  // Client-generated idempotency key - same nullable+unique pattern as
+  // Refund.clientId (existing rows predate this column; every new
+  // transfer's DTO requires one). A retried submission returns the
+  // original transfer instead of moving stock twice.
+  clientId       String?  @unique
   createdAt      DateTime @default(now())
 
   organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
@@ -990,6 +995,13 @@ model Refund {
   amount       Decimal  @db.Decimal(12, 2)
   reason       String
   approvedById String
+  // Client-generated idempotency key (nullable+unique - see Sale.clientId's
+  // comment for the general pattern; nullable here only because existing
+  // rows predate this column, every new refund's DTO requires one). A
+  // retried refund submission (e.g. a terminal that never saw the response
+  // to a request that actually succeeded) returns the original refund
+  // instead of erroring or double-refunding.
+  clientId     String?  @unique
   createdAt    DateTime @default(now())
 
   sale       Sale    @relation(fields: [saleId], references: [id], onDelete: Cascade)
@@ -1373,6 +1385,13 @@ model SalonAppointment {
   endTime        DateTime
   status         SalonAppointmentStatus @default(SCHEDULED)
   notes          String?
+  // Client-generated idempotency key - same nullable+unique pattern as
+  // Refund.clientId/StockTransfer.clientId (existing rows predate this
+  // column). Both the staff-facing create() and the public booking flow
+  // require one going forward: without it, a retried submission after a
+  // dropped response hits assertNoOverlap's double-booking check and
+  // errors outright instead of returning the original booking.
+  clientId       String?                @unique
   // A random, unguessable value generated at creation the same way `id`
   // above already is (@default(uuid())) - the only "credential" a
   // public, unauthenticated customer has to view/cancel their own

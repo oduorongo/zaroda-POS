@@ -1,6 +1,8 @@
 import { randomUUID } from 'crypto';
 import {
   ConflictException,
+  HttpException,
+  HttpStatus,
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -12,6 +14,7 @@ import { LoginDto } from './dto/login.dto';
 import { PinLoginDto } from './dto/pin-login.dto';
 import { RegisterOrganizationDto } from './dto/register-organization.dto';
 import { JwtPayload } from './jwt.strategy';
+import { PinLockoutService } from './pin-lockout.service';
 
 const SALT_ROUNDS = 10;
 
@@ -20,6 +23,7 @@ export class AuthService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwt: JwtService,
+    private readonly pinLockout: PinLockoutService,
   ) {}
 
   /**
@@ -82,6 +86,23 @@ export class AuthService {
    * module in Phase 1 - this only handles "who is the current cashier".
    */
   async pinLogin(dto: PinLoginDto) {
+    // Checked before touching the database at all - see PinLockoutService's
+    // own comment for why this is a second, independent brake on top of
+    // AuthController's IP-based @Throttle. Unlike the "don't distinguish
+    // why" wrong-PIN message below, being locked out is already observable
+    // (the legitimate cashier who tripped it needs to know to wait, not
+    // keep guessing), so this gets its own explicit message.
+    const lockedForSeconds = this.pinLockout.getLockoutRemainingSeconds(
+      dto.terminalId,
+      dto.orgUserId,
+    );
+    if (lockedForSeconds !== null) {
+      throw new HttpException(
+        `Too many failed PIN attempts - try again in ${lockedForSeconds}s`,
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+
     // org_users has a pre-auth SELECT exception (prisma/rls.sql), so this
     // lookup works before any tenant is established.
     const orgUser = await this.prisma.orgUser.findUnique({
@@ -97,8 +118,10 @@ export class AuthService {
       !orgUser.user.pinHash ||
       !(await bcrypt.compare(dto.pin, orgUser.user.pinHash))
     ) {
+      this.pinLockout.recordFailure(dto.terminalId, dto.orgUserId);
       throw new UnauthorizedException('Invalid PIN');
     }
+    this.pinLockout.recordSuccess(dto.terminalId, dto.orgUserId);
 
     // Everything from here on touches tables with no pre-auth exception
     // (terminals, cashier_sessions) - now that orgUser resolves the tenant,

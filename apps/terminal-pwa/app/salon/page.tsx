@@ -218,6 +218,7 @@ export default function SalonPage() {
       await apiPost(
         "/salon/appointments",
         {
+          clientId: crypto.randomUUID(),
           branchId: device.branchId,
           resourceId: newResourceId,
           customerId: newCustomer?.id,
