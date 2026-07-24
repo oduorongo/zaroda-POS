@@ -29,6 +29,7 @@ import { OrganizationsModule } from './organizations/organizations.module';
 import { BranchesModule } from './branches/branches.module';
 import { TerminalsModule } from './terminals/terminals.module';
 import { PlatformAdminModule } from './platform-admin/platform-admin.module';
+import { PublicPlansModule } from './public-plans/public-plans.module';
 import { PublicBookingModule } from './public-booking/public-booking.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { LayawaysModule } from './layaways/layaways.module';
@@ -119,6 +120,7 @@ import { WasteModule } from './waste/waste.module';
     BranchesModule,
     TerminalsModule,
     PlatformAdminModule,
+    PublicPlansModule,
     PublicBookingModule,
     LayawaysModule,
     RestaurantModule,
