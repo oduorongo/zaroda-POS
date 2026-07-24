@@ -4,6 +4,7 @@ import {
   Get,
   Param,
   ParseUUIDPipe,
+  Patch,
   Post,
   Req,
   UseGuards,
@@ -16,6 +17,9 @@ import { PlatformAdminAuthService } from './platform-admin-auth.service';
 import { PlatformAdminService } from './platform-admin.service';
 import { PlatformAuditLogService } from './platform-audit-log.service';
 import { PlatformAdminLoginDto } from './dto/platform-admin-login.dto';
+import { CreatePlanDto, UpdatePlanDto } from './dto/create-plan.dto';
+import { OnboardTenantDto } from './dto/onboard-tenant.dto';
+import { RecordPaymentDto, SetSuspensionDto } from './dto/record-payment.dto';
 
 // Same throttle shape as tenant login (auth.controller.ts) - this is the
 // one public, pre-JWT endpoint on this controller.
@@ -74,5 +78,116 @@ export class PlatformAdminController {
       organizationId: id,
     });
     return result;
+  }
+
+  @Public()
+  @UseGuards(PlatformAdminAuthGuard)
+  @Post('tenants')
+  async onboardTenant(
+    @Req() req: PlatformAdminRequest,
+    @Body() dto: OnboardTenantDto,
+  ) {
+    const result = await this.platformAdmin.onboardTenant(dto);
+    await this.auditLog.log({
+      platformAdminId: req.user!.platformAdminId,
+      action: 'platform_admin.onboarded_tenant',
+      entityType: 'Organization',
+      entityId: result.organizationId,
+      organizationId: result.organizationId,
+    });
+    return result;
+  }
+
+  @Public()
+  @UseGuards(PlatformAdminAuthGuard)
+  @Get('plans')
+  listPlans() {
+    return this.platformAdmin.listPlans();
+  }
+
+  @Public()
+  @UseGuards(PlatformAdminAuthGuard)
+  @Post('plans')
+  async createPlan(
+    @Req() req: PlatformAdminRequest,
+    @Body() dto: CreatePlanDto,
+  ) {
+    const result = await this.platformAdmin.createPlan(dto);
+    await this.auditLog.log({
+      platformAdminId: req.user!.platformAdminId,
+      action: 'platform_admin.created_plan',
+      entityType: 'Plan',
+      entityId: result.id,
+    });
+    return result;
+  }
+
+  @Public()
+  @UseGuards(PlatformAdminAuthGuard)
+  @Patch('plans/:id')
+  async updatePlan(
+    @Req() req: PlatformAdminRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdatePlanDto,
+  ) {
+    const result = await this.platformAdmin.updatePlan(id, dto);
+    await this.auditLog.log({
+      platformAdminId: req.user!.platformAdminId,
+      action: 'platform_admin.updated_plan',
+      entityType: 'Plan',
+      entityId: id,
+    });
+    return result;
+  }
+
+  @Public()
+  @UseGuards(PlatformAdminAuthGuard)
+  @Post('organizations/:id/payments')
+  async recordPayment(
+    @Req() req: PlatformAdminRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: RecordPaymentDto,
+  ) {
+    const result = await this.platformAdmin.recordPayment(
+      id,
+      dto,
+      req.user!.platformAdminId,
+    );
+    await this.auditLog.log({
+      platformAdminId: req.user!.platformAdminId,
+      action: 'platform_admin.recorded_payment',
+      entityType: 'Subscription',
+      entityId: result.subscription.id,
+      organizationId: id,
+    });
+    return result;
+  }
+
+  @Public()
+  @UseGuards(PlatformAdminAuthGuard)
+  @Patch('organizations/:id/suspension')
+  async setSuspension(
+    @Req() req: PlatformAdminRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: SetSuspensionDto,
+  ) {
+    const result = await this.platformAdmin.setSuspension(id, dto.suspended);
+    await this.auditLog.log({
+      platformAdminId: req.user!.platformAdminId,
+      action: dto.suspended
+        ? 'platform_admin.suspended_tenant'
+        : 'platform_admin.reactivated_tenant',
+      entityType: 'Subscription',
+      entityId: result.id,
+      organizationId: id,
+    });
+    return result;
+  }
+
+  @Public()
+  @UseGuards(PlatformAdminAuthGuard)
+  @Get('analytics')
+  analytics() {
+    return this.platformAdmin.analytics();
   }
 }

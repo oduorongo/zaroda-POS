@@ -70,6 +70,7 @@ model Organization {
   payrollRuns      PayrollRun[]
   rosterShifts     RosterShift[]
   mpesaStkRequests MpesaStkRequest[]
+  subscription     Subscription?
 
   @@map("organizations")
 }
@@ -1650,4 +1651,85 @@ model PlatformAuditLog {
 
   @@index([platformAdminId])
   @@map("platform_audit_log")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Platform billing (rental subscriptions) - the platform owner's own
+// business, not tenant data. Deliberately NOT row-level-secured like every
+// other table in this file: only PlatformAdminController (guarded by
+// PlatformAdminAuthGuard, a completely different identity from a tenant
+// JWT) ever queries these, the same trust boundary platform_admins itself
+// already relies on above. No tenant-facing endpoint may read or write
+// these tables - that's an application-level invariant, not a
+// database-enforced one, precisely because RLS's tenant model doesn't fit
+// "the platform owner's own revenue records" in the first place.
+
+model Plan {
+  id               String   @id @default(uuid())
+  // "BASIC" | "STANDARD" | "PREMIUM" - a string, not an enum, so a new
+  // tier doesn't need a migration (same reasoning as Organization.industryType).
+  tier             String   @unique
+  name             String
+  priceKes         Decimal  @db.Decimal(12, 2)
+  billingPeriodDays Int     @default(30)
+  maxDevices       Int
+  maxBranches      Int
+  // Retiring a plan without deleting it - existing subscriptions on a
+  // retired plan keep working, it just can't be assigned to a new tenant.
+  active           Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  subscriptions Subscription[]
+
+  @@map("plans")
+}
+
+model Subscription {
+  id                String   @id @default(uuid())
+  // One subscription per tenant at this pilot's scale - a plan change is
+  // an update to this row (with a SubscriptionPayment audit trail of when
+  // and what changed), not a new row.
+  organizationId    String   @unique
+  planId            String
+  currentPeriodEnd  DateTime
+  graceDays         Int      @default(7)
+  // True until the first real payment is recorded - lets the platform
+  // admin dashboard distinguish "never paid, still on trial" from "paying
+  // customer currently in their grace window" instead of both just
+  // looking like ACTIVE/GRACE from currentPeriodEnd alone.
+  isTrial           Boolean  @default(true)
+  // Force-suspend independent of payment status (e.g. abuse, tenant
+  // requested pause) - reactivation clears this, it never rewrites
+  // currentPeriodEnd. Effective status (TRIAL/ACTIVE/GRACE/SUSPENDED) is
+  // computed from this + currentPeriodEnd + graceDays at read time
+  // (PlatformAdminService), not stored redundantly - see ShiftReport for
+  // the same computed-not-stored pattern elsewhere in this schema.
+  manuallySuspended Boolean  @default(false)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  plan         Plan         @relation(fields: [planId], references: [id])
+  payments     SubscriptionPayment[]
+
+  @@map("subscriptions")
+}
+
+model SubscriptionPayment {
+  id             String   @id @default(uuid())
+  subscriptionId String
+  amount         Decimal  @db.Decimal(12, 2)
+  method         String // "MPESA" | "BANK" | "CASH" - recorded manually by a platform admin, not yet a live Daraja/bank integration (same deferral as the tenant-facing M-Pesa STK push had before credentials existed).
+  reference      String?
+  // The billing period this payment extends currentPeriodEnd to cover -
+  // informational for the payment-history view, not re-derived from it.
+  periodEnd      DateTime
+  recordedByPlatformAdminId String?
+  paidAt         DateTime @default(now())
+
+  subscription Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+
+  @@index([subscriptionId])
+  @@map("subscription_payments")
 }

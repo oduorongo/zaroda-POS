@@ -241,6 +241,27 @@ export class AuthService {
             },
           });
 
+          // Every self-registered tenant starts on a 14-day trial of the
+          // entry-level plan - BASIC must exist (prisma/seed-plans.ts is a
+          // deployment prerequisite, not optional). If it's ever missing,
+          // failing registration loudly here is correct: better than
+          // silently onboarding a tenant with no billing record at all,
+          // which platform-admin's billing screen has no way to represent.
+          const basicPlan = await tx.plan.findUniqueOrThrow({
+            where: { tier: 'BASIC' },
+          });
+          const trialDays = 14;
+          await tx.subscription.create({
+            data: {
+              organizationId,
+              planId: basicPlan.id,
+              currentPeriodEnd: new Date(
+                Date.now() + trialDays * 24 * 60 * 60 * 1000,
+              ),
+              isTrial: true,
+            },
+          });
+
           return { orgUser, branch, terminal };
         },
         { timeout: 15_000, maxWait: 15_000 },

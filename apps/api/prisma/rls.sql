@@ -563,3 +563,14 @@ CREATE POLICY tenant_isolation ON organizations
 -- The application layer restricts which user rows are readable per request
 -- by only ever looking users up via an org_users row already filtered by
 -- the policies above - never by scanning `users` directly with tenant trust.
+
+-- ── platform billing tables (plans, subscriptions, subscription_payments) ──
+-- Deliberately NO RLS policy, same reasoning as platform_admins/
+-- platform_audit_log (never given a policy in this file at all): these are
+-- the platform owner's own rental-business records, not tenant data, and
+-- are only ever queried by PlatformAdminController behind
+-- PlatformAdminAuthGuard - a completely separate identity from a tenant
+-- JWT. No tenant-facing controller may read or write them; that boundary
+-- is enforced at the application layer (which endpoints exist), not by a
+-- database policy, because RLS's "current_tenant" model has no meaningful
+-- value to scope these rows by.

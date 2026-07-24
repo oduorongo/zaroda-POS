@@ -1,5 +1,14 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { randomUUID } from 'crypto';
+import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { Prisma, Role } from '@prisma/client';
+import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '../common/prisma/prisma.service';
+import { CreatePlanDto, UpdatePlanDto } from './dto/create-plan.dto';
+import { OnboardTenantDto } from './dto/onboard-tenant.dto';
+import { RecordPaymentDto } from './dto/record-payment.dto';
+import { effectiveStatus } from './subscriptions.util';
+
+const SALT_ROUNDS = 10;
 
 /**
  * Every method here queries across tenants - the one identity in this
@@ -17,6 +26,8 @@ import { PrismaService } from '../common/prisma/prisma.service';
  *   org's id for one transaction, then querying normally within it - the
  *   exact same mechanism TenantScopedPrismaService.run() uses, just
  *   looped across N tenants here instead of fixed to one.
+ * - plans/subscriptions/subscription_payments carry no RLS at all (see
+ *   their schema.prisma comment) - queried directly, no set_config needed.
  *
  * Documented pilot-scale limit: the loop is N *sequential* round trips
  * for an org-list-with-counts view (deliberately not fired concurrently
@@ -46,11 +57,27 @@ export class PlatformAdminService {
     const organizations = await this.prisma.organization.findMany({
       orderBy: { createdAt: 'desc' },
     });
+    const subscriptions = await this.prisma.subscription.findMany({
+      include: { plan: true },
+    });
+    const subByOrg = new Map(subscriptions.map((s) => [s.organizationId, s]));
 
     const results = [];
     for (const org of organizations) {
       const counts = await this.countsForOrg(org.id);
-      results.push({ ...org, ...counts });
+      const sub = subByOrg.get(org.id);
+      results.push({
+        ...org,
+        ...counts,
+        subscription: sub
+          ? {
+              planTier: sub.plan.tier,
+              planName: sub.plan.name,
+              currentPeriodEnd: sub.currentPeriodEnd,
+              status: effectiveStatus(sub),
+            }
+          : null,
+      });
     }
     return results;
   }
@@ -76,8 +103,20 @@ export class PlatformAdminService {
         orderBy: { user: { fullName: 'asc' } },
       });
     }, TX_OPTIONS);
+    const subscription = await this.prisma.subscription.findUnique({
+      where: { organizationId: id },
+      include: { plan: true, payments: { orderBy: { paidAt: 'desc' }, take: 20 } },
+    });
 
-    return { ...org, ...counts, branches, orgUsers };
+    return {
+      ...org,
+      ...counts,
+      branches,
+      orgUsers,
+      subscription: subscription
+        ? { ...subscription, status: effectiveStatus(subscription) }
+        : null,
+    };
   }
 
   private async countsForOrg(organizationId: string) {
@@ -86,7 +125,179 @@ export class PlatformAdminService {
       const branchCount = await tx.branch.count();
       const orgUserCount = await tx.orgUser.count();
       const saleCount = await tx.sale.count();
-      return { branchCount, orgUserCount, saleCount };
+      const terminalCount = await tx.terminal.count({
+        where: { branch: { organizationId } },
+      });
+      return { branchCount, orgUserCount, saleCount, terminalCount };
     }, TX_OPTIONS);
+  }
+
+  // ── Plans ────────────────────────────────────────────────────────────
+
+  listPlans() {
+    return this.prisma.plan.findMany({ orderBy: { priceKes: 'asc' } });
+  }
+
+  createPlan(dto: CreatePlanDto) {
+    return this.prisma.plan.create({ data: dto });
+  }
+
+  async updatePlan(id: string, dto: UpdatePlanDto) {
+    const plan = await this.prisma.plan.findUnique({ where: { id } });
+    if (!plan) throw new NotFoundException('Plan not found');
+    return this.prisma.plan.update({ where: { id }, data: dto });
+  }
+
+  // ── Onboarding ───────────────────────────────────────────────────────
+
+  /**
+   * Admin-driven onboarding - unlike the public /auth/register (which
+   * always starts a BASIC trial), a platform admin picks the plan
+   * directly and the tenant starts ACTIVE (isTrial: false), since an
+   * admin walking someone through onboarding implies a plan has already
+   * been agreed, not a self-serve trial.
+   */
+  async onboardTenant(dto: OnboardTenantDto) {
+    const plan = await this.prisma.plan.findUnique({ where: { tier: dto.planTier } });
+    if (!plan) throw new NotFoundException(`No plan with tier ${dto.planTier}`);
+
+    const organizationId = randomUUID();
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        await tx.$executeRaw`SELECT set_config('app.current_tenant', ${organizationId}, true)`;
+
+        await tx.organization.create({
+          data: {
+            id: organizationId,
+            name: dto.organizationName,
+            industryType: dto.industryType,
+            kraPin: dto.kraPin,
+          },
+        });
+
+        const user = await tx.user.create({
+          data: {
+            email: dto.ownerEmail,
+            fullName: dto.ownerFullName,
+            passwordHash: await bcrypt.hash(dto.ownerPassword, SALT_ROUNDS),
+          },
+        });
+
+        await tx.orgUser.create({
+          data: { organizationId, userId: user.id, role: Role.OWNER },
+        });
+
+        const branch = await tx.branch.create({
+          data: { organizationId, name: dto.branchName },
+        });
+
+        const terminalCount = dto.terminalCount ?? 1;
+        for (let i = 1; i <= terminalCount; i++) {
+          await tx.terminal.create({
+            data: { branchId: branch.id, deviceLabel: `Register ${i}` },
+          });
+        }
+
+        const subscription = await tx.subscription.create({
+          data: {
+            organizationId,
+            planId: plan.id,
+            currentPeriodEnd: new Date(Date.now() + plan.billingPeriodDays * 24 * 60 * 60 * 1000),
+            isTrial: false,
+          },
+        });
+
+        return { organizationId, branchId: branch.id, subscriptionId: subscription.id };
+      }, TX_OPTIONS);
+    } catch (e) {
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
+        throw new ConflictException('An account already exists for this email');
+      }
+      throw e;
+    }
+  }
+
+  // ── Billing ──────────────────────────────────────────────────────────
+
+  /**
+   * Recording a payment extends currentPeriodEnd by the plan's billing
+   * period from whichever is later - "now" or the current period end -
+   * so paying early stacks onto the existing paid-through date rather
+   * than shortening it, and paying late (after the grace window) starts
+   * the new period from today rather than backdating.
+   */
+  async recordPayment(
+    organizationId: string,
+    dto: RecordPaymentDto,
+    platformAdminId: string,
+  ) {
+    const subscription = await this.prisma.subscription.findUnique({
+      where: { organizationId },
+      include: { plan: true },
+    });
+    if (!subscription) throw new NotFoundException('This tenant has no subscription');
+
+    const base = subscription.currentPeriodEnd > new Date() ? subscription.currentPeriodEnd : new Date();
+    const newPeriodEnd = new Date(base.getTime() + subscription.plan.billingPeriodDays * 24 * 60 * 60 * 1000);
+
+    return this.prisma.$transaction(async (tx) => {
+      const payment = await tx.subscriptionPayment.create({
+        data: {
+          subscriptionId: subscription.id,
+          amount: dto.amount,
+          method: dto.method,
+          reference: dto.reference,
+          periodEnd: newPeriodEnd,
+          recordedByPlatformAdminId: platformAdminId,
+        },
+      });
+      const updated = await tx.subscription.update({
+        where: { id: subscription.id },
+        data: { currentPeriodEnd: newPeriodEnd, isTrial: false },
+        include: { plan: true },
+      });
+      return { payment, subscription: { ...updated, status: effectiveStatus(updated) } };
+    }, TX_OPTIONS);
+  }
+
+  async setSuspension(organizationId: string, suspended: boolean) {
+    const subscription = await this.prisma.subscription.findUnique({ where: { organizationId } });
+    if (!subscription) throw new NotFoundException('This tenant has no subscription');
+    const updated = await this.prisma.subscription.update({
+      where: { organizationId },
+      data: { manuallySuspended: suspended },
+      include: { plan: true },
+    });
+    return { ...updated, status: effectiveStatus(updated) };
+  }
+
+  // ── Platform analytics ──────────────────────────────────────────────
+
+  async analytics() {
+    const [organizationCount, subscriptions, terminalCount] = await Promise.all([
+      this.prisma.organization.count(),
+      this.prisma.subscription.findMany({ include: { plan: true } }),
+      this.prisma.terminal.count(),
+    ]);
+
+    const byStatus: Record<string, number> = { TRIAL: 0, ACTIVE: 0, GRACE: 0, SUSPENDED: 0 };
+    let mrrKes = 0;
+    for (const sub of subscriptions) {
+      const status = effectiveStatus(sub);
+      byStatus[status] = (byStatus[status] ?? 0) + 1;
+      // MRR counts paying (non-trial), non-suspended subscriptions only -
+      // a trial or a suspended tenant contributes no recurring revenue.
+      if (!sub.isTrial && status !== 'SUSPENDED') {
+        const monthlyEquivalent = (Number(sub.plan.priceKes) / sub.plan.billingPeriodDays) * 30;
+        mrrKes += monthlyEquivalent;
+      }
+    }
+
+    return {
+      tenantCount: organizationCount,
+      subscriptionsByStatus: byStatus,
+      mrrKes: Math.round(mrrKes),
+      deviceCount: terminalCount,
+    };
   }
 }
