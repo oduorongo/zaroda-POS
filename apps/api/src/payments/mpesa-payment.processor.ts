@@ -9,15 +9,17 @@ import { withSpan } from '../common/observability/trace-span.util';
 /**
  * Safaricom Daraja STK Push (Lipa Na M-Pesa Online). Implemented against the
  * published API spec but NOT YET LIVE-TESTED - this environment has no
- * sandbox credentials (see DESIGN.md and the Phase 1 sales-pipeline
- * decision: cash was built and verified first; wiring this into
- * SalesService, and the /payments/mpesa/callback webhook that completes the
- * async settlement, is deferred until credentials are available to design
- * and test that flow properly rather than guess at it).
+ * sandbox credentials. The full plumbing is wired (PaymentsController's
+ * initiate/callback/status endpoints, MpesaStkRequest tracking the async
+ * settlement, SalesService accepting a MPESA payment once a request reaches
+ * SUCCESS), so the only missing piece is real Daraja credentials in env -
+ * every `requireConfig` call below throws a clear "not configured" error
+ * until then, rather than silently misbehaving.
  *
  * Required env: MPESA_CONSUMER_KEY, MPESA_CONSUMER_SECRET, MPESA_SHORTCODE,
- * MPESA_PASSKEY, MPESA_CALLBACK_URL. MPESA_ENV=production switches off the
- * sandbox host; defaults to sandbox.
+ * MPESA_PASSKEY, MPESA_CALLBACK_URL (base path - PaymentsController appends
+ * `/:organizationId`, see initiateTraced below). MPESA_ENV=production
+ * switches off the sandbox host; defaults to sandbox.
  */
 @Injectable()
 export class MpesaPaymentProcessor implements PaymentProcessor {
@@ -72,6 +74,7 @@ export class MpesaPaymentProcessor implements PaymentProcessor {
     amountKes: number;
     reference: string;
     phoneNumber?: string;
+    organizationId: string;
   }): Promise<PaymentInitiationResult> {
     return withSpan(
       'mpesa.stk_push',
@@ -88,6 +91,7 @@ export class MpesaPaymentProcessor implements PaymentProcessor {
     amountKes: number;
     reference: string;
     phoneNumber?: string;
+    organizationId: string;
   }): Promise<PaymentInitiationResult> {
     if (!input.phoneNumber) {
       throw new InternalServerErrorException(
@@ -97,7 +101,14 @@ export class MpesaPaymentProcessor implements PaymentProcessor {
 
     const shortcode = this.requireConfig('MPESA_SHORTCODE');
     const passkey = this.requireConfig('MPESA_PASSKEY');
-    const callbackUrl = this.requireConfig('MPESA_CALLBACK_URL');
+    // MPESA_CALLBACK_URL is the base webhook path (e.g.
+    // https://api.example.com/payments/mpesa/callback); the organizationId
+    // is appended so PaymentsController.mpesaCallback can establish tenant
+    // context (set_config('app.current_tenant', ...)) before touching the
+    // database, without the callback carrying any auth token of its own -
+    // Safaricom's webhook has none to give it. See PublicBookingService for
+    // the same URL-carries-tenant-identity pattern used elsewhere.
+    const callbackUrl = `${this.requireConfig('MPESA_CALLBACK_URL').replace(/\/+$/, '')}/${input.organizationId}`;
     const accessToken = await withSpan('mpesa.oauth', {}, () =>
       this.getAccessToken(),
     );

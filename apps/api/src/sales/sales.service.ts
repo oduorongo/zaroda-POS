@@ -56,19 +56,19 @@ export class SalesService {
   ) {}
 
   /**
-   * Cash-only in this increment (DESIGN.md sales-pipeline decision): M-Pesa
-   * STK push is async (the customer approves on their phone before it
-   * settles), which needs a pending-payment status and a callback webhook
-   * to complete correctly - deferred until there are real credentials to
-   * design and test that flow against, rather than guess at it. Rejecting
-   * non-cash methods here is deliberate, not an oversight - see
-   * payments/mpesa-payment.processor.ts.
+   * CASH and MPESA are wired end-to-end (MPESA verified against an
+   * already-SUCCESS MpesaStkRequest below - see the loop over dto.payments
+   * further down). CARD/WALLET remain rejected: no processor exists for
+   * them yet, and pretending to accept them would complete a sale nothing
+   * actually charged.
    */
   async create(dto: CreateSaleDto) {
-    const nonCash = dto.payments.find((p) => p.method !== 'CASH');
-    if (nonCash) {
+    const unsupported = dto.payments.find(
+      (p) => p.method !== 'CASH' && p.method !== 'MPESA',
+    );
+    if (unsupported) {
       throw new BadRequestException(
-        `Payment method ${nonCash.method} is not wired into sale completion yet - only CASH is supported until M-Pesa credentials are available (see payments/mpesa-payment.processor.ts).`,
+        `Payment method ${unsupported.method} is not wired into sale completion yet - only CASH and MPESA are supported.`,
       );
     }
 
@@ -288,6 +288,39 @@ export class SalesService {
         );
       }
 
+      // An MPESA payment is only trusted once the customer has actually
+      // approved the STK prompt - re-verified here against MpesaStkRequest
+      // (written by PaymentsService.handleMpesaCallback), never taken on
+      // the client's word. A cashier's request naming a checkoutRequestId
+      // that's missing, still PENDING, FAILED, or for a different amount is
+      // rejected outright rather than completing the sale unpaid.
+      for (const payment of dto.payments) {
+        if (payment.method !== 'MPESA') continue;
+        if (!payment.providerReference) {
+          throw new BadRequestException(
+            'MPESA payment requires providerReference (the checkoutRequestId from /payments/mpesa/initiate)',
+          );
+        }
+        const stkRequest = await tx.mpesaStkRequest.findUnique({
+          where: { checkoutRequestId: payment.providerReference },
+        });
+        if (!stkRequest) {
+          throw new BadRequestException(
+            `No M-Pesa STK request found for ${payment.providerReference}`,
+          );
+        }
+        if (stkRequest.status !== 'SUCCESS') {
+          throw new BadRequestException(
+            `M-Pesa payment ${payment.providerReference} is ${stkRequest.status.toLowerCase()}, not confirmed - cannot complete the sale yet`,
+          );
+        }
+        if (Math.abs(Number(stkRequest.amount) - payment.amount) > 0.01) {
+          throw new BadRequestException(
+            `M-Pesa payment ${payment.providerReference} was confirmed for ${Number(stkRequest.amount).toFixed(2)}, not the ${payment.amount.toFixed(2)} claimed`,
+          );
+        }
+      }
+
       // Earned on the amount actually paid (post-discount, post-redemption)
       // - spending points to earn points back would let a customer cycle
       // an ever-larger balance out of nothing.
@@ -330,6 +363,13 @@ export class SalesService {
             create: dto.payments.map((p) => ({
               method: p.method,
               amount: p.amount,
+              providerReference: p.providerReference,
+              // M-Pesa always settles in KES (DESIGN.md §9) - denormalized
+              // here even for a KES-base-currency org so every MPESA
+              // payment row is self-describing without a join back to the
+              // org's currency setting.
+              settlementCurrency: p.method === 'MPESA' ? 'KES' : undefined,
+              settlementAmount: p.method === 'MPESA' ? p.amount : undefined,
             })),
           },
           discounts: dto.discount
@@ -435,10 +475,17 @@ export class SalesService {
     });
   }
 
-  findAll(filters: { branchId?: string; shiftId?: string }) {
+  findAll(filters: { branchId?: string; shiftId?: string; clientId?: string }) {
     return this.tenantPrisma.run((tx) =>
       tx.sale.findMany({
-        where: { branchId: filters.branchId, shiftId: filters.shiftId },
+        where: {
+          branchId: filters.branchId,
+          shiftId: filters.shiftId,
+          // Exact match only - clientId is how a cashier looks up the sale
+          // printed on a customer's receipt (returns/refund flow), not a
+          // general search field.
+          clientId: filters.clientId,
+        },
         include: SALE_INCLUDE,
         orderBy: { createdAt: 'desc' },
         take: 200,

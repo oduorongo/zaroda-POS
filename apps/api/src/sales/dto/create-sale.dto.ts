@@ -42,10 +42,10 @@ export class SaleLineItemInputDto {
 }
 
 export class SalePaymentInputDto {
-  // Only CASH actually completes a sale in this increment - see
-  // SalesService.create()'s comment on why M-Pesa/card are rejected here
-  // rather than silently mishandled.
-  @IsIn(['CASH'] satisfies PaymentMethod[])
+  // CARD/WALLET still rejected - see SalesService.create()'s comment.
+  // MPESA is only accepted when providerReference names an already-SUCCESS
+  // MpesaStkRequest (verified server-side, never trusted from the client).
+  @IsIn(['CASH', 'MPESA'] satisfies PaymentMethod[])
   method!: PaymentMethod;
 
   @IsNumber()
@@ -55,6 +55,13 @@ export class SalePaymentInputDto {
   @IsString()
   @IsOptional()
   phoneNumber?: string;
+
+  // Required when method is MPESA - the checkoutRequestId from
+  // POST /payments/mpesa/initiate. Cross-checked against MpesaStkRequest in
+  // SalesService.create().
+  @IsString()
+  @IsOptional()
+  providerReference?: string;
 }
 
 export class DiscountInputDto {

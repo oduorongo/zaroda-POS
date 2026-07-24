@@ -74,6 +74,13 @@ CREATE POLICY tenant_isolation ON sales
   USING ("organizationId" = current_setting('app.current_tenant', true))
   WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
 
+ALTER TABLE mpesa_stk_requests ENABLE ROW LEVEL SECURITY;
+ALTER TABLE mpesa_stk_requests FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON mpesa_stk_requests;
+CREATE POLICY tenant_isolation ON mpesa_stk_requests
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
 ALTER TABLE audit_log ENABLE ROW LEVEL SECURITY;
 ALTER TABLE audit_log FORCE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS tenant_isolation ON audit_log;

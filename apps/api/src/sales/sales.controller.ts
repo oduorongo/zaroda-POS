@@ -30,8 +30,9 @@ export class SalesController {
   findAll(
     @Query('branchId') branchId?: string,
     @Query('shiftId') shiftId?: string,
+    @Query('clientId') clientId?: string,
   ) {
-    return this.sales.findAll({ branchId, shiftId });
+    return this.sales.findAll({ branchId, shiftId, clientId });
   }
 
   @Get(':id')

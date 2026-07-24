@@ -63,6 +63,7 @@ model Organization {
   payrollProfiles  PayrollProfile[]
   payrollRuns      PayrollRun[]
   rosterShifts     RosterShift[]
+  mpesaStkRequests MpesaStkRequest[]
 
   @@map("organizations")
 }
@@ -968,6 +969,40 @@ model SalePayment {
 
   @@index([saleId])
   @@map("sale_payments")
+}
+
+enum StkRequestStatus {
+  PENDING
+  SUCCESS
+  FAILED
+}
+
+// A tracked Daraja STK push, independent of Sale - a sale is only created
+// (via the normal /sales endpoint, SalePaymentInputDto.providerReference
+// pointing back at this row's checkoutRequestId) once Safaricom's async
+// callback confirms SUCCESS. Never held open inside SalesService.create's
+// own transaction, since the customer approving the prompt on their phone
+// can take anywhere from seconds to (if they don't respond) never.
+model MpesaStkRequest {
+  id                  String            @id @default(uuid())
+  organizationId      String
+  checkoutRequestId   String            @unique
+  // The clientId the terminal will use for the eventual /sales POST -
+  // lets the callback (and a supervisor debugging a stuck payment) trace
+  // an STK request back to the sale it's for before that sale exists.
+  reference           String
+  amount              Decimal           @db.Decimal(12, 2)
+  phoneNumber         String
+  status              StkRequestStatus  @default(PENDING)
+  mpesaReceiptNumber  String?
+  resultDesc          String?
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@map("mpesa_stk_requests")
 }
 
 enum DiscountType {
