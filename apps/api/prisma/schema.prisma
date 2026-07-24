@@ -35,6 +35,12 @@ model Organization {
   industryType  String // "RETAIL" | "RESTAURANT" | "PHARMACY" | "SALON" | ...
   country       String   @default("KE")
   baseCurrency  String   @default("KES") // ISO 4217 — see DESIGN.md §9
+  // Tax/compliance identity for eTIMS (KRA VSCU) invoicing - not the eTIMS
+  // integration itself (no invoice sync exists yet, see the backoffice
+  // tax-settings screen's own comment), just the settings a tenant needs
+  // to enter before that integration can be wired up.
+  kraPin         String?
+  vatRegistered  Boolean  @default(false)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
