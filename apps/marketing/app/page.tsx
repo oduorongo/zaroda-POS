@@ -1,5 +1,12 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { Card, CardContent } from "@zaroda/ui";
+
+export const metadata: Metadata = {
+  title: "Zaroda POS — POS for Kenyan Retail",
+  description: "Rent-to-run POS for Kenyan shops — M-Pesa STK push, offline sales, and eTIMS-ready tax from day one.",
+  alternates: { canonical: "https://zarodashop.com" },
+};
 
 const FEATURES = [
   {
