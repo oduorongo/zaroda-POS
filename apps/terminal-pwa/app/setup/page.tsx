@@ -61,10 +61,11 @@ interface TerminalResponse {
  * credentials again after this screen - it switches to PIN-based cashier
  * login from here on (DESIGN.md §9).
  */
+const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:3001";
+
 export default function SetupPage() {
   const router = useRouter();
   const [step, setStep] = useState<1 | 2>(1);
-  const [apiBaseUrl, setApiBaseUrl] = useState("http://localhost:3001");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [accessToken, setAccessToken] = useState("");
@@ -80,10 +81,10 @@ export default function SetupPage() {
     setError(null);
     setBusy(true);
     try {
-      const { accessToken: token } = await apiPost<LoginResponse>("/auth/login", { email, password }, undefined, apiBaseUrl.trim());
+      const { accessToken: token } = await apiPost<LoginResponse>("/auth/login", { email, password }, undefined, apiBaseUrl);
       const [branchList, terminalList] = await Promise.all([
-        apiGet<BranchResponse[]>("/branches", token, apiBaseUrl.trim()),
-        apiGet<TerminalResponse[]>("/terminals", token, apiBaseUrl.trim()),
+        apiGet<BranchResponse[]>("/branches", token, apiBaseUrl),
+        apiGet<TerminalResponse[]>("/terminals", token, apiBaseUrl),
       ]);
       if (branchList.length === 0) {
         setError("This organization has no branches yet - create one in the back office first.");
@@ -109,11 +110,11 @@ export default function SetupPage() {
     setError(null);
     setBusy(true);
     try {
-      const org = await apiGet<OrganizationResponse>("/organizations/me", accessToken, apiBaseUrl.trim());
+      const org = await apiGet<OrganizationResponse>("/organizations/me", accessToken, apiBaseUrl);
 
       await db.deviceConfig.put({
         id: "device",
-        apiBaseUrl: apiBaseUrl.trim(),
+        apiBaseUrl,
         branchId,
         terminalId,
         branchName: branches.find((b) => b.id === branchId)?.name ?? "",
@@ -123,11 +124,11 @@ export default function SetupPage() {
         industryType: org.industryType,
       });
 
-      const orgUsers = await apiGet<OrgUserResponse[]>("/org-users", accessToken, apiBaseUrl.trim());
+      const orgUsers = await apiGet<OrgUserResponse[]>("/org-users", accessToken, apiBaseUrl);
       await db.orgUsers.clear();
       await db.orgUsers.bulkPut(orgUsers.map((ou) => ({ id: ou.id, role: ou.role, fullName: ou.user.fullName })));
 
-      const products = await apiGet<ProductResponse[]>("/products", accessToken, apiBaseUrl.trim());
+      const products = await apiGet<ProductResponse[]>("/products", accessToken, apiBaseUrl);
       const variants = products.flatMap((product) =>
         product.variants.map((variant) => ({
           id: variant.id,
@@ -165,15 +166,6 @@ export default function SetupPage() {
 
         {step === 1 && (
           <form onSubmit={handleLogin} className="mt-6 space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-slate-300">API base URL</label>
-              <input
-                className="mt-1 w-full rounded-md border border-slate-600 bg-slate-900 p-2.5"
-                value={apiBaseUrl}
-                onChange={(e) => setApiBaseUrl(e.target.value)}
-                required
-              />
-            </div>
             <div>
               <label className="block text-sm font-medium text-slate-300">Manager email</label>
               <input

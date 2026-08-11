@@ -13,9 +13,10 @@ import { setSession } from "../../lib/auth";
  * way an account exists is `pnpm --filter api seed:platform-admin`, run
  * manually against the database.
  */
+const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:3001";
+
 export default function LoginPage() {
   const router = useRouter();
-  const [apiBaseUrl, setApiBaseUrl] = useState("http://localhost:3001");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
@@ -26,8 +27,8 @@ export default function LoginPage() {
     setBusy(true);
     setError(null);
     try {
-      const { accessToken } = await login(apiBaseUrl.trim(), email.trim(), password);
-      setSession({ apiBaseUrl: apiBaseUrl.trim(), accessToken, email: email.trim() });
+      const { accessToken } = await login(apiBaseUrl, email.trim(), password);
+      setSession({ apiBaseUrl, accessToken, email: email.trim() });
       router.replace("/organizations");
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Login failed - check the API URL and try again");
@@ -45,15 +46,6 @@ export default function LoginPage() {
         <p className="text-sm text-zinc-400">
           Cross-tenant access - this is not a tenant login. Every action here is logged.
         </p>
-        <div>
-          <label className="block text-sm font-medium text-zinc-300">API base URL</label>
-          <input
-            className="mt-1 w-full rounded-md border border-zinc-700 bg-zinc-950 p-2.5"
-            value={apiBaseUrl}
-            onChange={(e) => setApiBaseUrl(e.target.value)}
-            required
-          />
-        </div>
         <div>
           <label className="block text-sm font-medium text-zinc-300">Email</label>
           <input
