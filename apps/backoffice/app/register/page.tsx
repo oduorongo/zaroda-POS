@@ -27,9 +27,10 @@ const INDUSTRY_TYPES = [
  * makes sense against a real deployment, not something worth pointing at
  * an arbitrary URL the way logging into an already-known org is.
  */
+const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:3001";
+
 export default function RegisterPage() {
   const router = useRouter();
-  const [apiBaseUrl, setApiBaseUrl] = useState("http://localhost:3001");
   const [organizationName, setOrganizationName] = useState("");
   const [industryType, setIndustryType] = useState("RETAIL");
   const [branchName, setBranchName] = useState("Main");
@@ -46,7 +47,7 @@ export default function RegisterPage() {
     setBusy(true);
     setError(null);
     try {
-      const response = await fetch(`${apiBaseUrl.trim().replace(/\/+$/, "")}/auth/register`, {
+      const response = await fetch(`${apiBaseUrl.replace(/\/+$/, "")}/auth/register`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -66,7 +67,7 @@ export default function RegisterPage() {
       const data = json as RegisterResponse;
       setResult(data);
       const role = decodeRole(data.accessToken) ?? "OWNER";
-      setSession({ apiBaseUrl: apiBaseUrl.trim(), accessToken: data.accessToken, role, email: ownerEmail.trim(), industryType });
+      setSession({ apiBaseUrl, accessToken: data.accessToken, role, email: ownerEmail.trim(), industryType });
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Registration failed - check the API URL and try again");
     } finally {
@@ -106,15 +107,6 @@ export default function RegisterPage() {
         <p className="text-sm text-slate-400">
           Creates your organization, its first branch and terminal, and your owner account in one step.
         </p>
-        <div>
-          <label className="block text-sm font-medium text-slate-300">API base URL</label>
-          <input
-            className="mt-1 w-full rounded-md border border-slate-600 bg-slate-900 p-2.5"
-            value={apiBaseUrl}
-            onChange={(e) => setApiBaseUrl(e.target.value)}
-            required
-          />
-        </div>
         <div>
           <label className="block text-sm font-medium text-slate-300">Business name</label>
           <input

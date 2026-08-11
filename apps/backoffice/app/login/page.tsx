@@ -5,9 +5,10 @@ import { useRouter } from "next/navigation";
 import { login, getOrganization, ApiError } from "../../lib/api";
 import { setSession, decodeRole } from "../../lib/auth";
 
+const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:3001";
+
 export default function LoginPage() {
   const router = useRouter();
-  const [apiBaseUrl, setApiBaseUrl] = useState("http://localhost:3001");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
@@ -18,10 +19,10 @@ export default function LoginPage() {
     setBusy(true);
     setError(null);
     try {
-      const { accessToken } = await login(apiBaseUrl.trim(), email.trim(), password);
+      const { accessToken } = await login(apiBaseUrl, email.trim(), password);
       const role = decodeRole(accessToken) ?? "UNKNOWN";
-      const { industryType } = await getOrganization(apiBaseUrl.trim(), accessToken);
-      setSession({ apiBaseUrl: apiBaseUrl.trim(), accessToken, role, email: email.trim(), industryType });
+      const { industryType } = await getOrganization(apiBaseUrl, accessToken);
+      setSession({ apiBaseUrl, accessToken, role, email: email.trim(), industryType });
       router.replace("/sales");
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Login failed - check the API URL and try again");
@@ -38,15 +39,6 @@ export default function LoginPage() {
           Full email/password login (not the terminal&apos;s PIN switch) - this console is for owners, managers, and
           auditors reviewing sales and managing the catalog.
         </p>
-        <div>
-          <label className="block text-sm font-medium text-slate-300">API base URL</label>
-          <input
-            className="mt-1 w-full rounded-md border border-slate-600 bg-slate-900 p-2.5"
-            value={apiBaseUrl}
-            onChange={(e) => setApiBaseUrl(e.target.value)}
-            required
-          />
-        </div>
         <div>
           <label className="block text-sm font-medium text-slate-300">Email</label>
           <input
