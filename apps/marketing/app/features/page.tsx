@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import Image from "next/image";
 import { Card, CardContent } from "@zaroda/ui";
+import CapabilityGrid from "../../components/capability-grid";
 
 export const metadata: Metadata = {
   title: "Features — Zaroda POS",
@@ -72,6 +73,10 @@ export default function FeaturesPage() {
           </div>
         </div>
       </section>
+
+      <div className="border-t border-border">
+        <CapabilityGrid />
+      </div>
 
       <section className="border-t border-border bg-surface py-16 text-center">
         <div className="mx-auto max-w-3xl px-6">

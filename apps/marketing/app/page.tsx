@@ -2,39 +2,13 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import Image from "next/image";
 import { Card, CardContent, Badge } from "@zaroda/ui";
+import CapabilityGrid from "../components/capability-grid";
 
 export const metadata: Metadata = {
   title: "Zaroda POS — POS for Kenyan Retail",
   description: "Rent-to-run POS for Kenyan shops — M-Pesa STK push, offline sales, and eTIMS-ready tax from day one.",
   alternates: { canonical: "https://zarodashop.com" },
 };
-
-const FEATURES = [
-  {
-    title: "M-Pesa built in",
-    description: "STK push at the till, not a bolt-on. Cash, M-Pesa, and card in one checkout flow.",
-  },
-  {
-    title: "Works without internet",
-    description: "Sales complete offline and sync automatically when connectivity returns — never lose a sale to a dropped connection.",
-  },
-  {
-    title: "eTIMS-ready",
-    description: "VAT breakdown, KRA PIN, and tax-class management built in from day one — ready as KRA integration comes online.",
-  },
-  {
-    title: "Theft-resistant by design",
-    description: "Every discount, void, and refund is logged to who approved it. PIN-based cashier accountability on shared terminals.",
-  },
-  {
-    title: "Multi-branch, one dashboard",
-    description: "Stock, staff, and sales roll up across every branch — see the whole business from one back office.",
-  },
-  {
-    title: "Built for your trade",
-    description: "Supermarkets, minimarts, pharmacies, agrovets, hardware, electronics, wines & spirits — dedicated screens for each.",
-  },
-];
 
 const INTEGRATIONS = [
   {
@@ -109,23 +83,7 @@ export default function LandingPage() {
         </div>
       </section>
 
-      <section className="py-16">
-        <div className="mx-auto max-w-6xl px-6">
-          <h2 className="mb-10 text-center text-2xl font-bold text-foreground">
-            Everything a Kenyan shop actually needs
-          </h2>
-          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-            {FEATURES.map((f) => (
-              <Card key={f.title}>
-                <CardContent>
-                  <h3 className="font-semibold text-foreground">{f.title}</h3>
-                  <p className="mt-1.5 text-sm text-secondary-500">{f.description}</p>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        </div>
-      </section>
+      <CapabilityGrid />
 
       <section className="border-t border-border bg-surface py-16">
         <div className="mx-auto max-w-6xl px-6">
