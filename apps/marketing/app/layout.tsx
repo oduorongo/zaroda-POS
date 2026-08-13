@@ -3,9 +3,18 @@ import "./globals.css";
 import Nav from "../components/nav";
 import Footer from "../components/footer";
 
-const TITLE = "Zaroda POS — Point of Sale for Kenyan Retail";
+const TITLE = "Zaroda Shop — POS for Kenyan Retail";
 const DESCRIPTION =
-  "Rent-to-run POS for supermarkets, minimarts, pharmacies, agrovets, and more — M-Pesa built in, works offline.";
+  "Zaroda Shop is rent-to-run POS for supermarkets, minimarts, pharmacies, agrovets, and more — M-Pesa built in, works offline.";
+
+const ORGANIZATION_JSON_LD = {
+  "@context": "https://schema.org",
+  "@type": "Organization",
+  name: "Zaroda Shop",
+  url: "https://zarodashop.com",
+  description: DESCRIPTION,
+  logo: "https://zarodashop.com/logo.png",
+};
 
 export const metadata: Metadata = {
   title: TITLE,
@@ -32,6 +41,10 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   return (
     <html lang="en">
       <body className="antialiased">
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(ORGANIZATION_JSON_LD) }}
+        />
         <Nav />
         {children}
         <Footer />

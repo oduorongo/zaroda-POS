@@ -48,7 +48,7 @@ export default function LandingPage() {
     <main>
       <section className="mx-auto max-w-4xl px-6 py-20 text-center">
         <h1 className="text-4xl font-bold tracking-tight text-foreground sm:text-5xl">
-          The POS your shop rents, not builds
+          Zaroda Shop — the POS your shop rents, not builds
         </h1>
         <p className="mx-auto mt-4 max-w-2xl text-lg text-secondary-500">
           M-Pesa, KES, and Kenyan retail from the ground up. No hardware to buy, no server to run —
