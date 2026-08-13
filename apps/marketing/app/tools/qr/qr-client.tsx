@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import QRCode from "qrcode";
 import { Card, CardContent, Button, Input, Label } from "@zaroda/ui";
 
@@ -23,7 +24,9 @@ function buildWifiString(ssid: string, password: string, encryption: Encryption,
 }
 
 export default function QrClient() {
-  const [mode, setMode] = useState<Mode>("text");
+  const searchParams = useSearchParams();
+  const initialMode: Mode = searchParams.get("mode") === "wifi" ? "wifi" : "text";
+  const [mode, setMode] = useState<Mode>(initialMode);
 
   const [text, setText] = useState("https://zarodashop.com");
 

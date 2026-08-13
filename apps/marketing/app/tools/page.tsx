@@ -1,12 +1,28 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import type { LucideIcon } from "lucide-react";
-import { Barcode, QrCode, Calculator, FileText, PackageSearch, Users } from "lucide-react";
+import {
+  Barcode,
+  QrCode,
+  Wifi,
+  Calculator,
+  FileText,
+  Receipt,
+  Tag,
+  IdCard,
+  ClipboardList,
+  UtensilsCrossed,
+  ChefHat,
+  QrCode as QrMenuIcon,
+  CalendarClock,
+  MessageSquareText,
+  BrainCircuit,
+} from "lucide-react";
 import { Card, CardContent, Badge } from "@zaroda/ui";
 
 export const metadata: Metadata = {
   title: "Free Business Tools — Zaroda POS",
-  description: "Free, browser-based tools for Kenyan shops — barcode generator, QR & WiFi QR codes, profit margin calculator, and invoice generator. No sign-up required.",
+  description: "Free, browser-based tools for Kenyan shops — barcode, QR & WiFi QR codes, invoices, receipts, price tags, business cards, purchase orders, and a profit margin calculator. No sign-up required.",
   alternates: { canonical: "https://zarodashop.com/tools" },
 };
 
@@ -19,7 +35,7 @@ type Tool = {
   comingSoon?: boolean;
 };
 
-const TOOLS: Tool[] = [
+const LIVE_TOOLS: Tool[] = [
   {
     icon: Barcode,
     color: "bg-primary-600",
@@ -31,8 +47,15 @@ const TOOLS: Tool[] = [
     icon: QrCode,
     color: "bg-accent-500",
     title: "QR Code Generator",
-    description: "Turn a link or WiFi network into a scannable QR code.",
+    description: "Turn a link or piece of text into a scannable QR code.",
     href: "/tools/qr",
+  },
+  {
+    icon: Wifi,
+    color: "bg-accent-500",
+    title: "WiFi QR Generator",
+    description: "Generate a QR code that connects to your shop WiFi automatically.",
+    href: "/tools/wifi",
   },
   {
     icon: Calculator,
@@ -49,22 +72,122 @@ const TOOLS: Tool[] = [
     href: "/tools/invoice",
   },
   {
-    icon: PackageSearch,
+    icon: Receipt,
+    color: "bg-secondary-700",
+    title: "Receipt Generator",
+    description: "Create a thermal-style receipt in KES — print it or export as a PDF.",
+    href: "/tools/receipt",
+  },
+  {
+    icon: Tag,
+    color: "bg-warning-600",
+    title: "Price Tag Generator",
+    description: "Print a sheet of price tags with an optional barcode.",
+    href: "/tools/pricetag",
+  },
+  {
+    icon: IdCard,
+    color: "bg-success-600",
+    title: "Business Card Generator",
+    description: "Design a simple business card and download it as PNG or PDF.",
+    href: "/tools/businesscard",
+  },
+  {
+    icon: ClipboardList,
+    color: "bg-secondary-700",
+    title: "Purchase Order Generator",
+    description: "Build a supplier purchase order in KES and export it as a PDF.",
+    href: "/tools/purchaseorder",
+  },
+];
+
+const COMING_SOON_TOOLS: Tool[] = [
+  {
+    icon: UtensilsCrossed,
     color: "bg-secondary-400",
-    title: "Stock Reorder Calculator",
-    description: "Work out reorder points from sales velocity and lead time.",
+    title: "Menu Maker",
+    description: "Design and update a restaurant menu.",
     href: "#",
     comingSoon: true,
   },
   {
-    icon: Users,
+    icon: ChefHat,
     color: "bg-secondary-400",
-    title: "Staff Shift Planner",
-    description: "Draft a weekly shift roster for your branch.",
+    title: "Menu Engineering",
+    description: "See which dishes actually make money.",
+    href: "#",
+    comingSoon: true,
+  },
+  {
+    icon: QrMenuIcon,
+    color: "bg-secondary-400",
+    title: "QR Menu Generator",
+    description: "Turn your menu into a scannable table QR code.",
+    href: "#",
+    comingSoon: true,
+  },
+  {
+    icon: CalendarClock,
+    color: "bg-secondary-400",
+    title: "Schedule Manager",
+    description: "Plan staff shifts across your branches.",
+    href: "#",
+    comingSoon: true,
+  },
+  {
+    icon: MessageSquareText,
+    color: "bg-secondary-400",
+    title: "Bulk Messaging",
+    description: "Send SMS/WhatsApp promotions to your customer list.",
+    href: "#",
+    comingSoon: true,
+  },
+  {
+    icon: BrainCircuit,
+    color: "bg-secondary-400",
+    title: "AI Business Analyser",
+    description: "Get insights on sales trends and slow-moving stock.",
     href: "#",
     comingSoon: true,
   },
 ];
+
+function ToolCard({ tool }: { tool: Tool }) {
+  const Icon = tool.icon;
+  const content = (
+    <Card
+      className={`flex h-full flex-col transition-shadow ${
+        tool.comingSoon ? "opacity-60" : "group-hover:shadow-md group-hover:border-primary-600/40"
+      }`}
+    >
+      <CardContent className="flex h-full flex-col">
+        <div className="flex items-center justify-between">
+          <div className={`flex h-10 w-10 items-center justify-center rounded-lg ${tool.color} text-white`}>
+            <Icon size={20} strokeWidth={2} />
+          </div>
+          {tool.comingSoon && <Badge variant="neutral">Coming soon</Badge>}
+        </div>
+        <h2 className="mt-4 font-semibold text-foreground">{tool.title}</h2>
+        <p className="mt-1.5 flex-1 text-sm text-secondary-500">{tool.description}</p>
+        {tool.comingSoon && <p className="mt-2 text-xs text-secondary-400">Available with your Zaroda account</p>}
+      </CardContent>
+    </Card>
+  );
+
+  if (tool.comingSoon) {
+    return (
+      <div className="cursor-not-allowed" aria-disabled="true">
+        {content}
+      </div>
+    );
+  }
+
+  return (
+    <Link href={tool.href} className="group block h-full">
+      {content}
+    </Link>
+  );
+}
 
 export default function ToolsPage() {
   return (
@@ -78,44 +201,24 @@ export default function ToolsPage() {
         </p>
       </section>
 
-      <section className="pb-16">
+      <section className="pb-8">
         <div className="mx-auto max-w-6xl px-6">
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-6 lg:grid-cols-3">
-            {TOOLS.map((tool) => {
-              const Icon = tool.icon;
-              const content = (
-                <Card
-                  className={`flex h-full flex-col transition-shadow ${
-                    tool.comingSoon ? "opacity-60" : "group-hover:shadow-md group-hover:border-primary-600/40"
-                  }`}
-                >
-                  <CardContent className="flex h-full flex-col">
-                    <div className="flex items-center justify-between">
-                      <div className={`flex h-10 w-10 items-center justify-center rounded-lg ${tool.color} text-white`}>
-                        <Icon size={20} strokeWidth={2} />
-                      </div>
-                      {tool.comingSoon && <Badge variant="neutral">Coming soon</Badge>}
-                    </div>
-                    <h2 className="mt-4 font-semibold text-foreground">{tool.title}</h2>
-                    <p className="mt-1.5 flex-1 text-sm text-secondary-500">{tool.description}</p>
-                  </CardContent>
-                </Card>
-              );
+          <div className="grid grid-cols-2 gap-4 sm:gap-6 md:grid-cols-3 lg:grid-cols-4">
+            {LIVE_TOOLS.map((tool) => (
+              <ToolCard key={tool.title} tool={tool} />
+            ))}
+          </div>
+        </div>
+      </section>
 
-              if (tool.comingSoon) {
-                return (
-                  <div key={tool.title} className="cursor-not-allowed" aria-disabled="true">
-                    {content}
-                  </div>
-                );
-              }
-
-              return (
-                <Link key={tool.title} href={tool.href} className="group block h-full">
-                  {content}
-                </Link>
-              );
-            })}
+      <section className="pb-16 pt-8">
+        <div className="mx-auto max-w-6xl px-6">
+          <h2 className="text-lg font-semibold text-foreground">Coming soon</h2>
+          <p className="mt-1 text-sm text-secondary-500">Built into your Zaroda account as they ship.</p>
+          <div className="mt-6 grid grid-cols-2 gap-4 sm:gap-6 md:grid-cols-3 lg:grid-cols-4">
+            {COMING_SOON_TOOLS.map((tool) => (
+              <ToolCard key={tool.title} tool={tool} />
+            ))}
           </div>
         </div>
       </section>

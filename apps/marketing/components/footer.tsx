@@ -6,6 +6,13 @@ const PRODUCT_LINKS = [
   { href: "/pricing", label: "Pricing" },
 ];
 
+const TOOLS_LINKS = [
+  { href: "/tools", label: "All free tools" },
+  { href: "/tools/barcode", label: "Barcode Generator" },
+  { href: "/tools/qr", label: "QR Code Generator" },
+  { href: "/tools/invoice", label: "Invoice Generator" },
+];
+
 const COMPANY_LINKS = [
   { href: "/signup", label: "Start Free Trial" },
   { href: "http://localhost:3003/login", label: "Sign In" },
@@ -16,8 +23,8 @@ export default function Footer() {
 
   return (
     <footer className="border-t border-border bg-surface py-12 text-sm">
-      <div className="mx-auto grid max-w-6xl gap-10 px-6 sm:grid-cols-3">
-        <div>
+      <div className="mx-auto grid max-w-6xl gap-10 px-6 sm:grid-cols-4">
+        <div className="sm:col-span-1">
           <div className="font-bold text-foreground">
             Zaroda <span className="text-primary-600">POS</span>
           </div>
@@ -31,6 +38,19 @@ export default function Footer() {
           <div className="font-semibold text-foreground">Product</div>
           <ul className="mt-3 space-y-2">
             {PRODUCT_LINKS.map((link) => (
+              <li key={link.href}>
+                <Link href={link.href} className="text-secondary-500 hover:text-foreground">
+                  {link.label}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        <div>
+          <div className="font-semibold text-foreground">Free tools</div>
+          <ul className="mt-3 space-y-2">
+            {TOOLS_LINKS.map((link) => (
               <li key={link.href}>
                 <Link href={link.href} className="text-secondary-500 hover:text-foreground">
                   {link.label}

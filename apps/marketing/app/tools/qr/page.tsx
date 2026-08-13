@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import QrClient from "./qr-client";
 
 export const metadata: Metadata = {
@@ -8,5 +9,9 @@ export const metadata: Metadata = {
 };
 
 export default function QrToolPage() {
-  return <QrClient />;
+  return (
+    <Suspense fallback={null}>
+      <QrClient />
+    </Suspense>
+  );
 }
