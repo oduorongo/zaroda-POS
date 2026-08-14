@@ -26,7 +26,7 @@ import {
   Factory,
   Wrench,
 } from "lucide-react";
-import { getSession, clearSession, type Session } from "../../lib/auth";
+import { getSession, clearSession, isBackofficeRole, type Session } from "../../lib/auth";
 import { Badge, Button } from "@zaroda/ui";
 
 const MARKETING_URL = process.env.NEXT_PUBLIC_MARKETING_URL ?? "http://localhost:3005";
@@ -113,6 +113,11 @@ export default function DashboardPage() {
   useEffect(() => {
     const s = getSession();
     if (!s) {
+      router.replace("/login");
+      return;
+    }
+    if (!isBackofficeRole(s.role)) {
+      clearSession();
       router.replace("/login");
       return;
     }

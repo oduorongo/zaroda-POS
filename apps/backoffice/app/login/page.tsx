@@ -3,9 +3,10 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { login, getOrganization, ApiError } from "../../lib/api";
-import { setSession, decodeRole } from "../../lib/auth";
+import { setSession, clearSession, decodeRole, isBackofficeRole } from "../../lib/auth";
 
 const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:3001";
+const TERMINAL_URL = process.env.NEXT_PUBLIC_TERMINAL_URL ?? "https://pos.zarodashop.com";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -13,14 +14,25 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [blockedCashier, setBlockedCashier] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
     setError(null);
+    setBlockedCashier(false);
     try {
       const { accessToken } = await login(apiBaseUrl, email.trim(), password);
       const role = decodeRole(accessToken) ?? "UNKNOWN";
+
+      // The back office is for owners/managers/auditors only - a cashier
+      // never gets a session here, they belong at the till (PIN login).
+      if (!isBackofficeRole(role)) {
+        clearSession();
+        setBlockedCashier(true);
+        return;
+      }
+
       const { industryType } = await getOrganization(apiBaseUrl, accessToken);
       setSession({ apiBaseUrl, accessToken, role, email: email.trim(), industryType });
       router.replace("/dashboard");
@@ -104,6 +116,15 @@ export default function LoginPage() {
             <p className="rounded-lg border border-red-900/50 bg-red-950/40 px-3 py-2 text-sm text-red-300">
               {error}
             </p>
+          )}
+
+          {blockedCashier && (
+            <div className="rounded-lg border border-amber-900/50 bg-amber-950/40 px-3 py-2.5 text-sm text-amber-200">
+              <p>Cashiers sign in at the till, not here. Open pos.zarodashop.com and tap your PIN.</p>
+              <a href={TERMINAL_URL} className="mt-1.5 inline-block font-semibold text-amber-100 hover:underline">
+                Go to the till →
+              </a>
+            </div>
           )}
 
           <button

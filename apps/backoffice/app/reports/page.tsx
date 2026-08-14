@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { apiGet, ApiError } from "../../lib/api";
-import { getSession, type Session } from "../../lib/auth";
+import { getSession, clearSession, isBackofficeRole, type Session } from "../../lib/auth";
 import { Nav } from "../../components/nav";
 import { PageHeader } from "../../components/page-header";
 
@@ -93,6 +93,11 @@ export default function ReportsPage() {
   useEffect(() => {
     const s = getSession();
     if (!s) {
+      router.replace("/login");
+      return;
+    }
+    if (!isBackofficeRole(s.role)) {
+      clearSession();
       router.replace("/login");
       return;
     }

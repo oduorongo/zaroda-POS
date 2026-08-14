@@ -17,6 +17,20 @@ export interface Session {
 
 const KEY = "zaroda-backoffice-session";
 
+/**
+ * The back office is for owners/managers/auditors reviewing sales and
+ * managing the catalog - never for cashiers, who belong at the till (PIN
+ * login on the terminal PWA). Matches the Role enum in
+ * apps/api/prisma/schema.prisma (CASHIER, SUPERVISOR, MANAGER, OWNER,
+ * AUDITOR); this is a UI convenience only - the API's @Roles() guards are
+ * the real authorization boundary.
+ */
+export const BACKOFFICE_ROLES = ["OWNER", "MANAGER", "AUDITOR"] as const;
+
+export function isBackofficeRole(role: string): boolean {
+  return (BACKOFFICE_ROLES as readonly string[]).includes(role);
+}
+
 export function getSession(): Session | null {
   if (typeof window === "undefined") return null;
   const raw = window.localStorage.getItem(KEY);

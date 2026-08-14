@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { apiGet, apiPatch, apiPost, apiDelete, ApiError } from "../../../lib/api";
-import { getSession, type Session } from "../../../lib/auth";
+import { getSession, clearSession, isBackofficeRole, type Session } from "../../../lib/auth";
 import { Nav } from "../../../components/nav";
 import { PageHeader } from "../../../components/page-header";
 import { Button, Card, CardContent, CardHeader, CardTitle, Input, Label, Table, TableBody, TableCell, TableHead, TableHeaderCell, TableRow, Badge, EmptyState, LoadingState } from "@zaroda/ui";
@@ -51,6 +51,11 @@ export default function TaxSettingsPage() {
   useEffect(() => {
     const s = getSession();
     if (!s) {
+      router.replace("/login");
+      return;
+    }
+    if (!isBackofficeRole(s.role)) {
+      clearSession();
       router.replace("/login");
       return;
     }
