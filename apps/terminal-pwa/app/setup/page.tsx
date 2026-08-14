@@ -158,16 +158,26 @@ export default function SetupPage() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-slate-900 p-4 text-slate-100">
       <div className="w-full max-w-md rounded-xl bg-slate-800 p-6 shadow-xl">
-        <h1 className="text-2xl font-bold">Terminal Setup</h1>
+        <div className="flex flex-col items-center text-center">
+          {/* LOGO SLOT: replace this div with an <img src="/logo.svg" /> once a real mark exists */}
+          <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-blue-600 text-lg font-bold text-white">
+            Z
+          </div>
+          <span className="mt-2 text-sm font-bold tracking-tight">
+            Zaroda <span className="text-blue-400">POS</span>
+          </span>
+        </div>
+
+        <h1 className="mt-4 text-2xl font-bold">Set up this till</h1>
         <p className="mt-1 text-sm text-slate-400">
-          One-time setup for this device. A manager logs in once to pick this terminal and fetch the cashier list and
-          catalog; after this, cashiers just PIN in.
+          Owner or manager: sign in once on this device to turn it into a till. After this, your cashiers just tap
+          their PIN to start selling.
         </p>
 
         {step === 1 && (
           <form onSubmit={handleLogin} className="mt-6 space-y-4">
             <div>
-              <label className="block text-sm font-medium text-slate-300">Manager email</label>
+              <label className="block text-sm font-medium text-slate-300">Owner / manager email</label>
               <input
                 type="email"
                 className="mt-1 w-full rounded-md border border-slate-600 bg-slate-900 p-2.5"
@@ -177,7 +187,7 @@ export default function SetupPage() {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-300">Manager password</label>
+              <label className="block text-sm font-medium text-slate-300">Password</label>
               <input
                 type="password"
                 className="mt-1 w-full rounded-md border border-slate-600 bg-slate-900 p-2.5"
@@ -194,7 +204,7 @@ export default function SetupPage() {
               disabled={busy}
               className="w-full rounded-md bg-blue-600 p-3 text-lg font-semibold hover:bg-blue-500 disabled:opacity-50"
             >
-              {busy ? "Signing in..." : "Continue"}
+              {busy ? "Signing in..." : "Set up this till"}
             </button>
           </form>
         )}

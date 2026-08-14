@@ -111,8 +111,20 @@ export default function LoginPage() {
       >
         &larr; Back
       </button>
-      <h1 className="mt-4 text-xl font-bold">{selected.fullName}</h1>
-      <p className="text-secondary-400">Ingiza PIN yako · Enter your PIN</p>
+
+      <div className="mt-2 flex flex-col items-center text-center">
+        {/* LOGO SLOT: replace this div with an <img src="/logo.svg" /> once a real mark exists */}
+        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary-600 text-base font-bold text-white">
+          Z
+        </div>
+        <span className="mt-1.5 text-xs font-bold tracking-tight text-secondary-300">
+          Zaroda <span className="text-primary-400">POS</span>
+        </span>
+      </div>
+
+      <p className="mt-4 text-secondary-400">{selected.fullName}</p>
+      <h1 className="text-xl font-bold">Enter your PIN</h1>
+      <p className="text-secondary-400">Tap your PIN to start your shift.</p>
 
       <div className="mt-6 flex gap-3" aria-hidden="true">
         {Array.from({ length: Math.max(pin.length, 4) }).map((_, i) => (
