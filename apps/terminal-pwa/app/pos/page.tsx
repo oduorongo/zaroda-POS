@@ -15,6 +15,7 @@ import {
 } from "../../lib/db";
 import { apiGet, apiPost, ApiError, OfflineError } from "../../lib/api";
 import { useSyncEngine } from "../../hooks/use-sync-engine";
+import { BarcodeScanner } from "../../components/barcode-scanner";
 import { Button, Badge } from "@zaroda/ui";
 
 interface CartEntry {
@@ -97,6 +98,9 @@ export default function PosPage() {
   const [orgUsers, setOrgUsers] = useState<CachedOrgUser[]>([]);
   const [variants, setVariants] = useState<CachedVariant[]>([]);
   const [search, setSearch] = useState("");
+  const [scannerOpen, setScannerOpen] = useState(false);
+  const [scanStatus, setScanStatus] = useState<string | null>(null);
+  const scanLockRef = useRef(false);
   const [cart, setCart] = useState<Map<string, number>>(new Map());
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [tendered, setTendered] = useState("");
@@ -236,6 +240,35 @@ export default function PosPage() {
     const total = Math.max(0, preDiscountTotal - discountAmount - redemptionValue);
     return { subtotal, tax, discountAmount, redemptionValue, total };
   }, [cartEntries, discount, redeemPoints, customer]);
+
+  function openScanner() {
+    scanLockRef.current = false;
+    setScanStatus(null);
+    setScannerOpen(true);
+  }
+
+  function closeScanner() {
+    setScannerOpen(false);
+    setScanStatus(null);
+  }
+
+  // Reuses the exact same variant.barcode / variant.sku match the search box
+  // uses - a scanned code is just a faster way to type the same query.
+  function handleScanDetected(value: string) {
+    if (scanLockRef.current) return;
+    const q = value.trim().toLowerCase();
+    if (!q) return;
+    const match = variants.find((v) => v.barcode?.toLowerCase() === q || v.sku.toLowerCase() === q);
+    if (match) {
+      scanLockRef.current = true;
+      addToCart(match);
+      closeScanner();
+      setToast(`Added: ${match.productName}`);
+      setTimeout(() => setToast(null), 2000);
+    } else {
+      setScanStatus(`Not found · Haipatikani: ${value}`);
+    }
+  }
 
   function addToCart(variant: CachedVariant) {
     setCart((prev) => {
@@ -656,12 +689,24 @@ export default function PosPage() {
 
       <div className="flex flex-1 overflow-hidden">
         <div className="flex flex-1 flex-col overflow-hidden p-3">
-          <input
-            className="mb-3 rounded-md border border-secondary-700 bg-secondary-800 p-2.5 text-secondary-100 placeholder:text-secondary-500"
-            placeholder="Search product, SKU, or scan barcode... · Tafuta bidhaa"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
+          <div className="mb-3 flex gap-2">
+            <input
+              className="flex-1 rounded-md border border-secondary-700 bg-secondary-800 p-2.5 text-secondary-100 placeholder:text-secondary-500"
+              placeholder="Search product, SKU, or scan barcode... · Tafuta bidhaa"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+            <button
+              onClick={openScanner}
+              aria-label="Scan barcode"
+              title="Scan · Skani"
+              className="flex min-h-touch min-w-touch items-center justify-center rounded-md bg-secondary-800 px-3 text-secondary-200 hover:bg-secondary-700"
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M4 8V5a1 1 0 011-1h3M20 8V5a1 1 0 00-1-1h-3M4 16v3a1 1 0 001 1h3M20 16v3a1 1 0 01-1 1h-3M7 9v6M11 9v6M14 9v6M17 9v6" />
+              </svg>
+            </button>
+          </div>
           <div className="grid flex-1 grid-cols-2 gap-3 overflow-y-auto sm:grid-cols-3">
             {filtered.map((variant) => (
               <button
@@ -834,6 +879,10 @@ export default function PosPage() {
           </Button>
         </div>
       </div>
+
+      {scannerOpen && (
+        <BarcodeScanner onDetected={handleScanDetected} onClose={closeScanner} statusMessage={scanStatus} />
+      )}
 
       {checkoutOpen && (
         <div className="fixed inset-0 flex items-center justify-center bg-black/70 p-4">

@@ -15,7 +15,8 @@
     "react-dom": "^18",
     "next": "14.2.35",
     "dexie": "^4.0.8",
-    "dexie-react-hooks": "^1.1.7"
+    "dexie-react-hooks": "^1.1.7",
+    "@zxing/browser": "^0.2.1"
   },
   "devDependencies": {
     "typescript": "^5",
