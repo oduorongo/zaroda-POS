@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { apiPost, ApiError } from "../../lib/api";
 import { Button, Input, Label } from "@zaroda/ui";
 
@@ -10,6 +10,16 @@ const INDUSTRY_TYPES = [
   { value: "PHARMACY", label: "Pharmacy" },
   { value: "SALON", label: "Salon / spa" },
 ];
+
+const BACKOFFICE_URL = process.env.NEXT_PUBLIC_BACKOFFICE_URL ?? "http://localhost:3003";
+
+interface RegisterResponse {
+  accessToken: string;
+  organizationId: string;
+  orgUserId: string;
+  branchId: string;
+  terminalId: string;
+}
 
 /**
  * Public self-service signup - posts directly to /auth/register, which
@@ -29,12 +39,25 @@ export default function SignupClient() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
+  const [accessToken, setAccessToken] = useState<string | null>(null);
+
+  const handoffUrl = accessToken
+    ? `${BACKOFFICE_URL}/auth/callback#token=${encodeURIComponent(accessToken)}&email=${encodeURIComponent(ownerEmail.trim())}`
+    : null;
+
+  useEffect(() => {
+    if (!handoffUrl) return;
+    const timer = setTimeout(() => {
+      window.location.href = handoffUrl;
+    }, 1500);
+    return () => clearTimeout(timer);
+  }, [handoffUrl]);
 
   async function submit() {
     setSubmitting(true);
     setError(null);
     try {
-      await apiPost("/auth/register", {
+      const response = await apiPost<RegisterResponse>("/auth/register", {
         organizationName: organizationName.trim(),
         industryType,
         ownerFullName: ownerFullName.trim(),
@@ -42,6 +65,7 @@ export default function SignupClient() {
         ownerPassword,
         branchName: branchName.trim(),
       });
+      setAccessToken(response.accessToken);
       setDone(true);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not create your account - try again.");
@@ -58,15 +82,15 @@ export default function SignupClient() {
       <main className="mx-auto max-w-md px-6 py-24 text-center">
         <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-success-600 text-2xl text-white">✓</div>
         <h1 className="mt-4 text-2xl font-bold text-foreground">You&apos;re in — 14-day free trial started</h1>
-        <p className="mt-2 text-secondary-500">
-          Log in to your back office with the email and password you just set to add products, staff, and start selling.
-        </p>
-        <a
-          href="http://localhost:3003/login"
-          className="mt-6 inline-block rounded-md bg-primary-600 px-6 py-3 font-semibold text-white hover:bg-primary-700"
-        >
-          Go to back office
-        </a>
+        <p className="mt-2 text-secondary-500">Taking you to your back office...</p>
+        {handoffUrl && (
+          <a
+            href={handoffUrl}
+            className="mt-6 inline-block rounded-md bg-primary-600 px-6 py-3 font-semibold text-white hover:bg-primary-700"
+          >
+            Go to back office
+          </a>
+        )}
       </main>
     );
   }
