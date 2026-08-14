@@ -6,6 +6,8 @@ import { apiGet, apiPost, ApiError } from "../../lib/api";
 import { getSession, type Session } from "../../lib/auth";
 import { Nav } from "../../components/nav";
 
+const TERMINAL_URL = process.env.NEXT_PUBLIC_TERMINAL_URL ?? "http://localhost:3002";
+
 interface Branch {
   id: string;
   name: string;
@@ -154,8 +156,13 @@ export default function BranchesPage() {
                   {terminals
                     .filter((t) => t.branchId === branch.id)
                     .map((t) => (
-                      <li key={t.id}>
-                        {t.deviceLabel} <span className="font-mono text-xs">({t.id})</span>
+                      <li key={t.id} className="flex items-center justify-between gap-3">
+                        <span>
+                          {t.deviceLabel} <span className="font-mono text-xs">({t.id})</span>
+                        </span>
+                        <a href={TERMINAL_URL} className="text-xs font-medium text-blue-400 hover:underline">
+                          Open Terminal →
+                        </a>
                       </li>
                     ))}
                 </ul>

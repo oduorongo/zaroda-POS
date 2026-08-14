@@ -28,6 +28,8 @@ const LINKS = [
 const MANAGER_LINKS = [{ href: "/settings/tax", label: "Tax Settings" }];
 const MANAGER_ROLES = ["MANAGER", "OWNER"];
 
+const MARKETING_URL = process.env.NEXT_PUBLIC_MARKETING_URL ?? "http://localhost:3005";
+
 // Vertical-specific screens, gated the same way the terminal PWA gates
 // its own nav on device.industryType - a RETAIL (or any unrecognized)
 // org just sees the plain links above, nothing extra.
@@ -48,9 +50,17 @@ export function Nav({ session }: { session: Session }) {
   return (
     <header className="flex items-center justify-between border-b border-border bg-surface px-4 py-3">
       <div className="flex min-w-0 items-center gap-6">
-        <span className="whitespace-nowrap font-bold text-foreground">
-          ZARODA <span className="text-primary-600">Back Office</span>
-        </span>
+        <div className="flex flex-col">
+          <a
+            href={MARKETING_URL}
+            className="whitespace-nowrap text-xs text-secondary-400 hover:text-foreground"
+          >
+            ← zarodashop.com
+          </a>
+          <span className="whitespace-nowrap font-bold text-foreground">
+            ZARODA <span className="text-primary-600">Back Office</span>
+          </span>
+        </div>
         <nav className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
           {links.map((link) => (
             <Link
