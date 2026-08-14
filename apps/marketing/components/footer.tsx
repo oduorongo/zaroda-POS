@@ -1,5 +1,7 @@
 import Link from "next/link";
 
+const BACKOFFICE_URL = process.env.NEXT_PUBLIC_BACKOFFICE_URL ?? "http://localhost:3003";
+
 const PRODUCT_LINKS = [
   { href: "/features", label: "Features" },
   { href: "/industries", label: "Industries" },
@@ -15,7 +17,7 @@ const TOOLS_LINKS = [
 
 const COMPANY_LINKS = [
   { href: "/signup", label: "Start Free Trial" },
-  { href: "http://localhost:3003/login", label: "Sign In" },
+  { href: `${BACKOFFICE_URL}/login`, label: "Sign In" },
 ];
 
 export default function Footer() {

@@ -10,7 +10,8 @@ const LINKS = [
   { href: "/pricing", label: "Pricing" },
 ];
 
-const BACKOFFICE_LOGIN_URL = "http://localhost:3003/login";
+const BACKOFFICE_URL = process.env.NEXT_PUBLIC_BACKOFFICE_URL ?? "http://localhost:3003";
+const BACKOFFICE_LOGIN_URL = `${BACKOFFICE_URL}/login`;
 
 export default function Nav() {
   const [open, setOpen] = useState(false);
