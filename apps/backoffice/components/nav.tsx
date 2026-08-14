@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { LayoutGrid } from "lucide-react";
+import { LayoutGrid, ExternalLink } from "lucide-react";
 import { clearSession, type Session } from "../lib/auth";
 import { Badge, Button } from "@zaroda/ui";
 
@@ -14,7 +14,7 @@ const QUICK_LINKS = [
   { href: "/reports", label: "Reports" },
 ];
 
-const MARKETING_URL = process.env.NEXT_PUBLIC_MARKETING_URL ?? "http://localhost:3005";
+const MARKETING_URL = process.env.NEXT_PUBLIC_MARKETING_URL ?? "https://zarodashop.com";
 
 // Vertical-specific screens, gated the same way the terminal PWA gates
 // its own nav on device.industryType - a RETAIL (or any unrecognized)
@@ -38,9 +38,13 @@ export function Nav({ session }: { session: Session }) {
         <div className="flex flex-col">
           <a
             href={MARKETING_URL}
-            className="whitespace-nowrap text-xs text-secondary-400 hover:text-foreground"
+            target="_blank"
+            rel="noreferrer"
+            className="flex items-center gap-1 whitespace-nowrap text-xs text-secondary-400 hover:text-foreground"
+            title="Leaves the back office for the public Zaroda site"
           >
-            ← zarodashop.com
+            zarodashop.com
+            <ExternalLink size={11} />
           </a>
           <Link href="/dashboard" className="whitespace-nowrap font-bold text-foreground">
             ZARODA <span className="text-primary-600">Back Office</span>

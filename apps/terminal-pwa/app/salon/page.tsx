@@ -616,9 +616,14 @@ export default function SalonPage() {
   return (
     <div className="flex h-screen flex-col bg-slate-900 text-slate-100">
       <header className="flex items-center justify-between border-b border-slate-800 p-3">
-        <button onClick={() => router.push("/pos")} className="text-blue-400">
-          &larr; POS
-        </button>
+        <div className="flex items-center gap-3">
+          <button onClick={() => router.back()} className="text-blue-400">
+            &larr; Back
+          </button>
+          <button onClick={() => router.push("/pos")} className="text-blue-400">
+            Home
+          </button>
+        </div>
         <p className="font-semibold">Today&apos;s bookings</p>
         <button onClick={() => setNewOpen(true)} className="rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold hover:bg-blue-500">
           + New

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { apiGet, apiPost, ApiError } from "../../lib/api";
 import { getSession, type Session } from "../../lib/auth";
 import { Nav } from "../../components/nav";
+import { PageHeader } from "../../components/page-header";
 import { Button, Card, CardContent, Input, Table, TableBody, TableCell, TableHead, TableHeaderCell, TableRow, Badge, EmptyState, LoadingState, ErrorState } from "@zaroda/ui";
 
 interface Customer {
@@ -77,6 +78,7 @@ export default function CustomersPage() {
   return (
     <div className="min-h-screen bg-background text-foreground">
       <Nav session={session} />
+      <PageHeader />
       <main className="mx-auto max-w-3xl p-6">
         <h1 className="mb-4 text-xl font-bold">Customers &amp; Loyalty</h1>
 

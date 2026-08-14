@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { apiGet, apiPatch, apiPost, apiDelete, ApiError } from "../../../lib/api";
 import { getSession, type Session } from "../../../lib/auth";
 import { Nav } from "../../../components/nav";
+import { PageHeader } from "../../../components/page-header";
 import { Button, Card, CardContent, CardHeader, CardTitle, Input, Label, Table, TableBody, TableCell, TableHead, TableHeaderCell, TableRow, Badge, EmptyState, LoadingState } from "@zaroda/ui";
 
 interface Organization {
@@ -124,6 +125,7 @@ export default function TaxSettingsPage() {
   return (
     <div className="min-h-screen bg-background text-foreground">
       <Nav session={session} />
+      <PageHeader />
       <main className="mx-auto max-w-3xl space-y-6 p-6">
         <h1 className="text-xl font-bold">eTIMS &amp; Tax Settings</h1>
 

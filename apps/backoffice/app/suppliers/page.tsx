@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { apiGet, apiPatch, apiPost, ApiError } from "../../lib/api";
 import { getSession, type Session } from "../../lib/auth";
 import { Nav } from "../../components/nav";
+import { PageHeader } from "../../components/page-header";
 
 interface Supplier {
   id: string;
@@ -103,6 +104,7 @@ export default function SuppliersPage() {
   return (
     <div className="min-h-screen bg-slate-900 text-slate-100">
       <Nav session={session} />
+      <PageHeader />
       <main className="mx-auto max-w-3xl p-6">
         <div className="mb-4 flex items-center justify-between">
           <h1 className="text-xl font-bold">Suppliers</h1>

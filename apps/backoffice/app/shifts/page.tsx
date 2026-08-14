@@ -6,6 +6,7 @@ import Link from "next/link";
 import { apiGet, ApiError } from "../../lib/api";
 import { getSession, type Session } from "../../lib/auth";
 import { Nav } from "../../components/nav";
+import { PageHeader } from "../../components/page-header";
 
 interface Shift {
   id: string;
@@ -68,6 +69,7 @@ export default function ShiftsPage() {
   return (
     <div className="min-h-screen bg-slate-900 text-slate-100">
       <Nav session={session} />
+      <PageHeader />
       <main className="mx-auto max-w-4xl p-6">
         <div className="mb-4 flex items-center justify-between">
           <h1 className="text-xl font-bold">Shifts</h1>

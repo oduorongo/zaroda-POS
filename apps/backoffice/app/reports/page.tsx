@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { apiGet, ApiError } from "../../lib/api";
 import { getSession, type Session } from "../../lib/auth";
 import { Nav } from "../../components/nav";
+import { PageHeader } from "../../components/page-header";
 
 interface ByProductRow {
   variantId: string;
@@ -142,6 +143,7 @@ export default function ReportsPage() {
   return (
     <div className="min-h-screen bg-slate-900 text-slate-100">
       <Nav session={session} />
+      <PageHeader />
       <main className="mx-auto max-w-5xl p-6">
         <h1 className="mb-4 text-xl font-bold">Reports</h1>
 

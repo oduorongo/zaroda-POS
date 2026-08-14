@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { apiGet, apiPost, ApiError } from "../../lib/api";
 import { getSession, type Session } from "../../lib/auth";
 import { Nav } from "../../components/nav";
+import { PageHeader } from "../../components/page-header";
 
 const TERMINAL_URL = process.env.NEXT_PUBLIC_TERMINAL_URL ?? "http://localhost:3002";
 
@@ -103,6 +104,7 @@ export default function BranchesPage() {
   return (
     <div className="min-h-screen bg-slate-900 text-slate-100">
       <Nav session={session} />
+      <PageHeader />
       <main className="mx-auto max-w-3xl p-6">
         <h1 className="mb-4 text-xl font-bold">Branches</h1>
 

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { apiGet, apiPost, ApiError } from "../../lib/api";
 import { getSession, type Session } from "../../lib/auth";
 import { Nav } from "../../components/nav";
+import { PageHeader } from "../../components/page-header";
 
 interface Variant {
   id: string;
@@ -221,6 +222,7 @@ export default function RepackagingPage() {
   return (
     <div className="min-h-screen bg-slate-900 text-slate-100">
       <Nav session={session} />
+      <PageHeader />
       <main className="mx-auto max-w-3xl p-6">
         <h1 className="mb-1 text-xl font-bold">Repackaging</h1>
         <p className="mb-4 text-sm text-slate-400">

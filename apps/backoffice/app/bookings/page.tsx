@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { apiGet, ApiError } from "../../lib/api";
 import { getSession, type Session } from "../../lib/auth";
 import { Nav } from "../../components/nav";
+import { PageHeader } from "../../components/page-header";
 
 interface Branch {
   id: string;
@@ -98,6 +99,7 @@ export default function BookingsPage() {
   return (
     <div className="min-h-screen bg-slate-900 text-slate-100">
       <Nav session={session} />
+      <PageHeader />
       <main className="mx-auto max-w-3xl p-6">
         <div className="mb-4 flex items-center justify-between">
           <h1 className="text-xl font-bold">Today&apos;s bookings</h1>

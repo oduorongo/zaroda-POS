@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { apiGet, ApiError } from "../../../lib/api";
 import { getSession, type Session } from "../../../lib/auth";
 import { Nav } from "../../../components/nav";
+import { PageHeader } from "../../../components/page-header";
 
 interface ShiftReport {
   shiftId: string;
@@ -50,6 +51,7 @@ export default function ShiftReportPage() {
   return (
     <div className="min-h-screen bg-slate-900 text-slate-100">
       <Nav session={session} />
+      <PageHeader />
       <main className="mx-auto max-w-2xl p-6">
         <button onClick={() => router.push("/shifts")} className="mb-4 text-blue-400 hover:underline">
           &larr; Shifts

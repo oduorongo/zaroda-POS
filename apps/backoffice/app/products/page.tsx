@@ -6,6 +6,7 @@ import Link from "next/link";
 import { apiGet, apiPost, ApiError } from "../../lib/api";
 import { getSession, type Session } from "../../lib/auth";
 import { Nav } from "../../components/nav";
+import { PageHeader } from "../../components/page-header";
 
 interface Category {
   id: string;
@@ -146,6 +147,7 @@ export default function ProductsPage() {
   return (
     <div className="min-h-screen bg-slate-900 text-slate-100">
       <Nav session={session} />
+      <PageHeader />
       <main className="mx-auto max-w-4xl p-6">
         <h1 className="mb-4 text-xl font-bold">Products</h1>
         {error && <p className="mb-4 rounded-md bg-red-950 p-3 text-sm text-red-300">{error}</p>}

@@ -401,9 +401,14 @@ export default function TablesPage() {
   return (
     <div className="flex h-screen flex-col bg-slate-900 text-slate-100">
       <header className="flex items-center justify-between border-b border-slate-800 p-3">
-        <button onClick={() => router.push("/pos")} className="text-blue-400">
-          &larr; POS
-        </button>
+        <div className="flex items-center gap-3">
+          <button onClick={() => router.back()} className="text-blue-400">
+            &larr; Back
+          </button>
+          <button onClick={() => router.push("/pos")} className="text-blue-400">
+            Home
+          </button>
+        </div>
         <p className="font-semibold">Floor</p>
         <span className="w-16" />
       </header>

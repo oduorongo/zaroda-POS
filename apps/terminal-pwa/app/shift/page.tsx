@@ -129,9 +129,14 @@ export default function ShiftClosePage() {
       <div className="mx-auto max-w-md">
         <div className="mb-4 flex items-center justify-between">
           <h1 className="text-xl font-bold">Funga Zamu · End shift</h1>
-          <button onClick={() => router.push("/pos")} className="min-h-touch px-2 text-sm text-primary-400">
-            Back to till
-          </button>
+          <div className="flex items-center gap-3">
+            <button onClick={() => router.back()} className="min-h-touch px-2 text-sm text-primary-400">
+              &larr; Back
+            </button>
+            <button onClick={() => router.push("/pos")} className="min-h-touch px-2 text-sm text-primary-400">
+              Home
+            </button>
+          </div>
         </div>
 
         {loadError && (
