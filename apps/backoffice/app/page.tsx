@@ -8,7 +8,7 @@ export default function RootPage() {
   const router = useRouter();
 
   useEffect(() => {
-    router.replace(getSession() ? "/sales" : "/login");
+    router.replace(getSession() ? "/dashboard" : "/login");
   }, [router]);
 
   return (

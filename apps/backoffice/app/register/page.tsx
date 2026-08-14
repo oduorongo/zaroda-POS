@@ -90,7 +90,7 @@ export default function RegisterPage() {
             <Row label="Terminal ID" value={result.terminalId} />
           </dl>
           <button
-            onClick={() => router.push("/sales")}
+            onClick={() => router.push("/dashboard")}
             className="w-full rounded-md bg-blue-600 p-3 font-semibold hover:bg-blue-500"
           >
             Continue to Back Office

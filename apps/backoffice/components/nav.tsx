@@ -2,31 +2,17 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+import { LayoutGrid } from "lucide-react";
 import { clearSession, type Session } from "../lib/auth";
 import { Badge, Button } from "@zaroda/ui";
 
-const LINKS = [
+// A handful of the most-used screens, kept in the top bar for quick access.
+// The full set of screens lives on the /dashboard tile grid.
+const QUICK_LINKS = [
   { href: "/sales", label: "Sales" },
   { href: "/products", label: "Products" },
   { href: "/reports", label: "Reports" },
-  { href: "/shifts", label: "Shifts" },
-  { href: "/inventory", label: "Inventory" },
-  { href: "/purchase-orders", label: "Purchase Orders" },
-  { href: "/repackaging", label: "Repackaging" },
-  { href: "/waste", label: "Waste" },
-  { href: "/layaways", label: "Layaways" },
-  { href: "/staff", label: "Staff" },
-  { href: "/roster", label: "Roster" },
-  { href: "/payroll", label: "Payroll" },
-  { href: "/branches", label: "Branches" },
-  { href: "/customers", label: "Customers" },
 ];
-
-// Owner/manager only - a cashier-role session never sees this link, though
-// the real authorization boundary is the API's @Roles() guard on the
-// endpoint itself, not this UI check.
-const MANAGER_LINKS = [{ href: "/settings/tax", label: "Tax Settings" }];
-const MANAGER_ROLES = ["MANAGER", "OWNER"];
 
 const MARKETING_URL = process.env.NEXT_PUBLIC_MARKETING_URL ?? "http://localhost:3005";
 
@@ -45,7 +31,6 @@ export function Nav({ session }: { session: Session }) {
   const pathname = usePathname();
   const router = useRouter();
   const verticalLink = VERTICAL_LINKS[session.industryType];
-  const links = MANAGER_ROLES.includes(session.role) ? [...LINKS, ...MANAGER_LINKS] : LINKS;
 
   return (
     <header className="flex items-center justify-between border-b border-border bg-surface px-4 py-3">
@@ -57,12 +42,23 @@ export function Nav({ session }: { session: Session }) {
           >
             ← zarodashop.com
           </a>
-          <span className="whitespace-nowrap font-bold text-foreground">
+          <Link href="/dashboard" className="whitespace-nowrap font-bold text-foreground">
             ZARODA <span className="text-primary-600">Back Office</span>
-          </span>
+          </Link>
         </div>
-        <nav className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
-          {links.map((link) => (
+        <nav className="flex items-center gap-4 text-sm">
+          <Link
+            href="/dashboard"
+            className={
+              pathname === "/dashboard"
+                ? "flex items-center gap-1.5 font-medium text-primary-600"
+                : "flex items-center gap-1.5 text-secondary-500 hover:text-foreground"
+            }
+          >
+            <LayoutGrid size={15} />
+            Home
+          </Link>
+          {QUICK_LINKS.map((link) => (
             <Link
               key={link.href}
               href={link.href}
@@ -102,7 +98,7 @@ export function Nav({ session }: { session: Session }) {
           variant="secondary"
           size="sm"
         >
-          Log out
+          Sign out
         </Button>
       </div>
     </header>

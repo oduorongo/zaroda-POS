@@ -23,7 +23,7 @@ export default function LoginPage() {
       const role = decodeRole(accessToken) ?? "UNKNOWN";
       const { industryType } = await getOrganization(apiBaseUrl, accessToken);
       setSession({ apiBaseUrl, accessToken, role, email: email.trim(), industryType });
-      router.replace("/sales");
+      router.replace("/dashboard");
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Login failed - check the API URL and try again");
     } finally {
