@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import Image from "next/image";
 import { Card, CardContent, Badge } from "@zaroda/ui";
+import { FeatureIllustration, type IllustrationKey } from "../../components/feature-illustrations";
 
 export const metadata: Metadata = {
   title: "Industries — Zaroda POS",
@@ -9,30 +9,40 @@ export const metadata: Metadata = {
   alternates: { canonical: "https://zarodashop.com/industries" },
 };
 
-const INDUSTRIES = [
+type Tone = "primary" | "accent" | "secondary" | "warning" | "success" | "error";
+
+const INDUSTRIES: { name: string; tagline: string; description: string; illustration: IllustrationKey; tone: Tone }[] = [
   {
     name: "Retail & supermarkets",
     tagline: "Supermarkets, minimarts, hardware, electronics, agrovets, wines & spirits",
     description:
       "Barcode-driven checkout, stock tracking, and multi-branch reporting for every kind of shop counter — from a neighborhood minimart to a multi-branch supermarket.",
+    illustration: "shopfront",
+    tone: "primary",
   },
   {
     name: "Restaurants",
     tagline: "Eateries and restaurants",
     description:
       "Order-to-till checkout built for a fast counter — ring up orders, take M-Pesa or cash, and keep the till moving during a lunch rush.",
+    illustration: "restaurant",
+    tone: "warning",
   },
   {
     name: "Pharmacies",
     tagline: "Pharmacies",
     description:
       "Fast checkout with the accountability a pharmacy till needs — every discount and refund logged to the staff member who approved it.",
+    illustration: "pharmacy",
+    tone: "success",
   },
   {
     name: "Salons & spas",
     tagline: "Salons and spas",
     description:
       "Simple service-based checkout with staff PINs, so every till transaction on a shared terminal is tied to the person who rang it up.",
+    illustration: "salon",
+    tone: "secondary",
   },
 ];
 
@@ -53,9 +63,12 @@ export default function IndustriesPage() {
             {INDUSTRIES.map((ind) => (
               <Card key={ind.name}>
                 <CardContent>
-                  <div className="flex items-center justify-center rounded-lg border border-dashed border-border bg-surface p-6">
-                    <Image src="/placeholder.svg" alt="" width={400} height={300} className="h-auto w-full max-w-[260px]" unoptimized />
-                  </div>
+                  <FeatureIllustration
+                    illustration={ind.illustration}
+                    tone={ind.tone}
+                    className="h-40 rounded-lg"
+                    iconClassName="h-16 w-16"
+                  />
                   <div className="mt-4">
                     <Badge variant="neutral">{ind.tagline}</Badge>
                     <h2 className="mt-2 text-xl font-semibold text-foreground">{ind.name}</h2>

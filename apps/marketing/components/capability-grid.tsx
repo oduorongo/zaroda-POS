@@ -15,10 +15,15 @@ import {
   Wallet,
 } from "lucide-react";
 import { Card, CardContent } from "@zaroda/ui";
+import { FeatureIllustration, type IllustrationKey } from "./feature-illustrations";
+
+type Tone = "primary" | "accent" | "secondary" | "warning" | "success" | "error";
 
 type Capability = {
   icon: LucideIcon;
   color: string;
+  tone: Tone;
+  illustration: IllustrationKey;
   title: string;
   description: string;
   href: string;
@@ -28,6 +33,8 @@ const CAPABILITIES: Capability[] = [
   {
     icon: MonitorSmartphone,
     color: "bg-primary-600",
+    tone: "primary",
+    illustration: "pos",
     title: "Point of Sale",
     description: "Offline-first till that keeps ringing up sales with or without a connection.",
     href: "/signup",
@@ -35,6 +42,8 @@ const CAPABILITIES: Capability[] = [
   {
     icon: Smartphone,
     color: "bg-accent-500",
+    tone: "accent",
+    illustration: "mpesa",
     title: "M-Pesa Checkout",
     description: "STK push built into the till — customers pay from their own phone.",
     href: "/features",
@@ -42,6 +51,8 @@ const CAPABILITIES: Capability[] = [
   {
     icon: Boxes,
     color: "bg-primary-600",
+    tone: "primary",
+    illustration: "inventory",
     title: "Inventory & Stock-Takes",
     description: "Batches, branch transfers, and low-stock alerts before you run out.",
     href: "/features",
@@ -49,6 +60,8 @@ const CAPABILITIES: Capability[] = [
   {
     icon: Building2,
     color: "bg-secondary-700",
+    tone: "secondary",
+    illustration: "branches",
     title: "Multi-Branch Dashboard",
     description: "Sales, stock, and staff across every branch in one back office.",
     href: "/features",
@@ -56,6 +69,8 @@ const CAPABILITIES: Capability[] = [
   {
     icon: ShieldCheck,
     color: "bg-error-600",
+    tone: "error",
+    illustration: "staff",
     title: "Staff Accountability",
     description: "PIN logins on shared terminals — every void and discount logged to who approved it.",
     href: "/features",
@@ -63,6 +78,8 @@ const CAPABILITIES: Capability[] = [
   {
     icon: BarChart3,
     color: "bg-primary-600",
+    tone: "primary",
+    illustration: "reporting",
     title: "Reporting",
     description: "Daily sales, Z-reports, and tax breakdowns without exporting a spreadsheet.",
     href: "/features",
@@ -70,6 +87,8 @@ const CAPABILITIES: Capability[] = [
   {
     icon: UtensilsCrossed,
     color: "bg-warning-600",
+    tone: "warning",
+    illustration: "restaurant",
     title: "Restaurant Mode",
     description: "Table management and kitchen tickets (KDS) for a fast-moving counter.",
     href: "/industries",
@@ -77,6 +96,8 @@ const CAPABILITIES: Capability[] = [
   {
     icon: Pill,
     color: "bg-success-600",
+    tone: "success",
+    illustration: "pharmacy",
     title: "Pharmacy Mode",
     description: "Prescription flags on sale items for a pharmacy till.",
     href: "/industries",
@@ -84,6 +105,8 @@ const CAPABILITIES: Capability[] = [
   {
     icon: Scissors,
     color: "bg-secondary-700",
+    tone: "secondary",
+    illustration: "salon",
     title: "Salon Mode",
     description: "Appointments and resource booking alongside the checkout.",
     href: "/industries",
@@ -91,6 +114,8 @@ const CAPABILITIES: Capability[] = [
   {
     icon: Receipt,
     color: "bg-primary-600",
+    tone: "primary",
+    illustration: "etims",
     title: "eTIMS / KRA Ready",
     description: "VAT breakdown and tax-class management, ready for eTIMS submission.",
     href: "/features",
@@ -98,6 +123,8 @@ const CAPABILITIES: Capability[] = [
   {
     icon: MessageSquareText,
     color: "bg-accent-500",
+    tone: "accent",
+    illustration: "sms",
     title: "SMS/WhatsApp Receipts",
     description: "Receipts and stock alerts sent via Africa's Talking, no extra app required.",
     href: "/features",
@@ -105,6 +132,8 @@ const CAPABILITIES: Capability[] = [
   {
     icon: Wallet,
     color: "bg-primary-600",
+    tone: "primary",
+    illustration: "layaway",
     title: "Layaway & Refunds",
     description: "Partial payments on layaway, and every refund logged against the sale.",
     href: "/features",
@@ -134,9 +163,8 @@ export default function CapabilityGrid() {
                     </div>
                     <h3 className="mt-4 font-semibold text-foreground">{c.title}</h3>
                     <p className="mt-1.5 flex-1 text-sm text-secondary-500">{c.description}</p>
-                    <div className="mt-4 flex h-20 items-center justify-center rounded-md border border-dashed border-border bg-secondary-50 text-xs text-secondary-400">
-                      Screenshot placeholder
-                    </div>
+                    <FeatureIllustration illustration={c.illustration} tone={c.tone} className="mt-4 h-20" />
+
                   </CardContent>
                 </Card>
               </Link>

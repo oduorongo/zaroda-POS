@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import Image from "next/image";
 import { Card, CardContent, Badge } from "@zaroda/ui";
 import CapabilityGrid from "../components/capability-grid";
+import { ShopSceneIllustration } from "../components/feature-illustrations";
 
 export const metadata: Metadata = {
   title: "Zaroda POS — POS for Kenyan Retail",
@@ -122,8 +122,8 @@ export default function LandingPage() {
               </div>
             ))}
           </div>
-          <div className="mx-auto mt-12 flex max-w-3xl items-center justify-center rounded-lg border border-dashed border-border bg-surface p-10 text-sm text-secondary-400">
-            <Image src="/placeholder.svg" alt="" width={400} height={300} className="h-auto w-full max-w-sm" unoptimized />
+          <div className="mx-auto mt-12 max-w-3xl overflow-hidden rounded-lg border border-border">
+            <ShopSceneIllustration className="h-auto w-full" />
           </div>
         </div>
       </section>

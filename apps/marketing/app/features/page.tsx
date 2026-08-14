@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import Image from "next/image";
 import { Card, CardContent } from "@zaroda/ui";
 import CapabilityGrid from "../../components/capability-grid";
+import { FeatureIllustration, type IllustrationKey } from "../../components/feature-illustrations";
 
 export const metadata: Metadata = {
   title: "Features — Zaroda POS",
@@ -10,36 +10,50 @@ export const metadata: Metadata = {
   alternates: { canonical: "https://zarodashop.com/features" },
 };
 
-const CAPABILITIES = [
+type Tone = "primary" | "accent" | "secondary" | "warning" | "success" | "error";
+
+const CAPABILITIES: { title: string; description: string; illustration: IllustrationKey; tone: Tone }[] = [
   {
     title: "Offline-first terminal",
     description:
       "The till keeps ringing up sales even when the connection drops. Every sale is stored locally and syncs automatically the moment connectivity returns — no lost transactions, no waiting on a signal to serve a customer.",
+    illustration: "pos",
+    tone: "primary",
   },
   {
     title: "M-Pesa checkout",
     description:
       "STK push is built into the checkout flow, not bolted on. A cashier taps M-Pesa, the customer enters their PIN on their own phone, and the sale confirms itself — cash, M-Pesa, and card side by side on the same screen.",
+    illustration: "mpesa",
+    tone: "accent",
   },
   {
     title: "Inventory & stock-takes",
     description:
       "Track stock levels per branch, log stock-takes to catch shrinkage early, and get ahead of running out with visibility into what's moving and what isn't — down to the SKU.",
+    illustration: "inventory",
+    tone: "primary",
   },
   {
     title: "Multi-branch dashboard",
     description:
       "Sales, stock, and staff performance from every branch roll up into one back office. Compare branches side by side without asking anyone to send a report.",
+    illustration: "branches",
+    tone: "secondary",
   },
   {
     title: "Staff PIN accountability",
     description:
       "Every cashier signs in with their own PIN on shared terminals. Discounts, voids, and refunds are all logged to the person who approved them, so shrinkage has a name attached to it.",
+    illustration: "staff",
+    tone: "error",
   },
   {
     title: "Reporting",
     description:
       "Daily sales, VAT breakdowns, and staff activity in one place — the numbers you need for KRA compliance and for knowing how the shop is actually doing, without exporting spreadsheets by hand.",
+    illustration: "reporting",
+    tone: "primary",
   },
 ];
 
@@ -64,9 +78,12 @@ export default function FeaturesPage() {
                     <h2 className="text-xl font-semibold text-foreground">{c.title}</h2>
                     <p className="mt-2 text-secondary-500">{c.description}</p>
                   </div>
-                  <div className={`flex items-center justify-center rounded-lg border border-dashed border-border bg-surface p-6 ${idx % 2 === 1 ? "sm:order-1" : ""}`}>
-                    <Image src="/placeholder.svg" alt="" width={400} height={300} className="h-auto w-full max-w-[220px]" unoptimized />
-                  </div>
+                  <FeatureIllustration
+                    illustration={c.illustration}
+                    tone={c.tone}
+                    className={`h-40 rounded-lg ${idx % 2 === 1 ? "sm:order-1" : ""}`}
+                    iconClassName="h-16 w-16"
+                  />
                 </CardContent>
               </Card>
             ))}

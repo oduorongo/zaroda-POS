@@ -126,7 +126,7 @@ export default function InvoiceClient() {
               <div className="flex h-12 w-12 items-center justify-center rounded-md bg-primary-600 text-sm font-bold text-white">
                 {logoInitials}
               </div>
-              <p className="text-xs text-secondary-400">Logo placeholder — shown as initials on the PDF.</p>
+              <p className="text-xs text-secondary-400">Your logo shows as initials on the invoice.</p>
             </div>
 
             <div className="mt-6 grid gap-4 sm:grid-cols-2">
