@@ -45,17 +45,20 @@ export default function LoginPage() {
 
   return (
     <div className="flex min-h-screen bg-slate-950 text-slate-100">
-      {/* Hero panel — hidden on mobile, brand + tagline on desktop */}
-      <div className="relative hidden overflow-hidden lg:flex lg:w-1/2 lg:flex-col lg:justify-between lg:p-12 lg:bg-gradient-to-br lg:from-slate-900 lg:via-slate-900 lg:to-primary-900">
+      {/* Hero panel — hidden on mobile, brand + tagline on desktop.
+          Background photo: apps/backoffice/public/login-hero.png
+          (glossy-navy POS hardware shot). Falls back to the plain navy
+          gradient underneath if that file is ever removed. */}
+      <div
+        className="relative hidden overflow-hidden bg-cover bg-center lg:flex lg:w-1/2 lg:flex-col lg:justify-between lg:p-12 lg:bg-gradient-to-br lg:from-slate-900 lg:via-slate-900 lg:to-primary-900"
+        style={{ backgroundImage: "url(/login-hero.png)" }}
+      >
+        {/* Navy overlay - keeps the wordmark/heading/copy readable over any photo */}
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-slate-950/90 via-slate-950/75 to-primary-900/85" />
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(37,99,235,0.25),transparent_55%)]" />
-        <div className="relative flex items-center gap-3">
-          {/* LOGO SLOT: replace this div with an <img src="/logo.svg" /> once a real mark exists */}
-          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary-600 font-bold text-white">
-            Z
-          </div>
-          <span className="text-xl font-bold tracking-tight">
-            Zaroda <span className="text-primary-400">POS</span>
-          </span>
+        <div className="relative flex items-center">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/logo.png" alt="Zaroda Solutions" className="h-14 w-auto" />
         </div>
         <div className="relative">
           <h2 className="text-3xl font-bold leading-tight text-white">
@@ -73,13 +76,8 @@ export default function LoginPage() {
       <div className="flex flex-1 items-center justify-center p-4 sm:p-8">
         <form onSubmit={handleSubmit} className="w-full max-w-sm space-y-6">
           <div className="flex flex-col items-center gap-3 text-center lg:hidden">
-            {/* LOGO SLOT: replace this div with an <img src="/logo.svg" /> once a real mark exists */}
-            <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-primary-600 text-lg font-bold text-white">
-              Z
-            </div>
-            <span className="text-lg font-bold tracking-tight">
-              Zaroda <span className="text-primary-400">POS</span>
-            </span>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/logo.png" alt="Zaroda Solutions" className="h-16 w-auto" />
           </div>
 
           <div className="text-center lg:text-left">
