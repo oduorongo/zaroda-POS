@@ -371,7 +371,7 @@ export default function ReceiveStockPage() {
           <button
             onClick={() => void submitAll()}
             disabled={submitting || lines.length === 0 || !branchId.trim()}
-            className="mt-4 rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold hover:bg-blue-500 disabled:opacity-40"
+            className="mt-4 rounded-md bg-primary-600 px-4 py-2 text-sm font-semibold hover:bg-primary-500 disabled:opacity-40"
           >
             {submitting ? "Saving..." : `Receive delivery (${lines.length})`}
           </button>

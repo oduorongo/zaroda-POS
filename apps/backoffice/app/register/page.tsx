@@ -91,7 +91,7 @@ export default function RegisterPage() {
           </dl>
           <button
             onClick={() => router.push("/dashboard")}
-            className="w-full rounded-md bg-blue-600 p-3 font-semibold hover:bg-blue-500"
+            className="w-full rounded-md bg-primary-600 p-3 font-semibold hover:bg-primary-500"
           >
             Continue to Back Office
           </button>
@@ -184,14 +184,14 @@ export default function RegisterPage() {
         <button
           type="submit"
           disabled={busy}
-          className="w-full rounded-md bg-blue-600 p-3 text-lg font-semibold hover:bg-blue-500 disabled:opacity-50"
+          className="w-full rounded-md bg-primary-600 p-3 text-lg font-semibold hover:bg-primary-500 disabled:opacity-50"
         >
           {busy ? "Creating..." : "Create organization"}
         </button>
         <button
           type="button"
           onClick={() => router.push("/login")}
-          className="w-full text-center text-sm text-blue-400 hover:underline"
+          className="w-full text-center text-sm text-primary-400 hover:underline"
         >
           Already have an organization? Log in
         </button>

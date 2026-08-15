@@ -41,7 +41,7 @@ const NEXT_LABEL: Record<TicketStatus, string> = {
 
 const STATUS_COLOR: Record<TicketStatus, string> = {
   QUEUED: "border-amber-600",
-  IN_PROGRESS: "border-blue-600",
+  IN_PROGRESS: "border-primary-600",
   READY: "border-green-600",
   SERVED: "border-slate-700",
 };
@@ -136,10 +136,10 @@ export default function KdsPage() {
     <div className="flex h-screen flex-col bg-slate-900 text-slate-100">
       <header className="flex items-center justify-between border-b border-slate-800 p-3">
         <div className="flex items-center gap-3">
-          <button onClick={() => router.back()} className="text-blue-400">
+          <button onClick={() => router.back()} className="text-primary-400">
             &larr; Back
           </button>
-          <button onClick={() => router.push("/pos")} className="text-blue-400">
+          <button onClick={() => router.push("/pos")} className="text-primary-400">
             Home
           </button>
         </div>
@@ -178,7 +178,7 @@ export default function KdsPage() {
               <button
                 onClick={() => void advance(ticket)}
                 disabled={busyId === ticket.id}
-                className="mt-3 w-full rounded-md bg-blue-600 p-2 text-sm font-semibold hover:bg-blue-500 disabled:opacity-40"
+                className="mt-3 w-full rounded-md bg-primary-600 p-2 text-sm font-semibold hover:bg-primary-500 disabled:opacity-40"
               >
                 {busyId === ticket.id ? "..." : NEXT_LABEL[ticket.status]}
               </button>

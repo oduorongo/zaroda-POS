@@ -131,7 +131,7 @@ export default function LayawayDetailPage() {
       <Nav session={session} />
       <PageHeader />
       <main className="mx-auto max-w-2xl p-6">
-        <button onClick={() => router.push("/layaways")} className="mb-4 text-blue-400 hover:underline">
+        <button onClick={() => router.push("/layaways")} className="mb-4 text-primary-400 hover:underline">
           &larr; Layaways
         </button>
         {error && <p className="mb-4 rounded-md bg-red-950 p-3 text-sm text-red-300">{error}</p>}
@@ -193,7 +193,7 @@ export default function LayawayDetailPage() {
                   <button
                     onClick={() => void recordPayment()}
                     disabled={actionBusy || !Number.isFinite(Number(paymentAmount)) || Number(paymentAmount) <= 0}
-                    className="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold hover:bg-blue-500 disabled:opacity-40"
+                    className="rounded-md bg-primary-600 px-4 py-2 text-sm font-semibold hover:bg-primary-500 disabled:opacity-40"
                   >
                     Record payment
                   </button>

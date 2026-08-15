@@ -40,7 +40,7 @@ type Tile = {
 };
 
 const TILES: Tile[] = [
-  { href: "/sales", label: "Sales", description: "Today's transactions and till activity.", icon: ShoppingCart, tone: "bg-blue-600" },
+  { href: "/sales", label: "Sales", description: "Today's transactions and till activity.", icon: ShoppingCart, tone: "bg-primary-600" },
   { href: "/products", label: "Products", description: "Manage your catalog, prices, and variants.", icon: Package, tone: "bg-purple-600" },
   { href: "/inventory", label: "Inventory", description: "Stock levels, batches, and stock-takes.", icon: Boxes, tone: "bg-teal-600" },
   { href: "/reports", label: "Reports", description: "Sales trends, Z-reports, and tax breakdowns.", icon: BarChart3, tone: "bg-green-600" },
@@ -49,7 +49,7 @@ const TILES: Tile[] = [
   { href: "/repackaging", label: "Repackaging", description: "Break bulk stock into sellable units.", icon: PackageOpen, tone: "bg-cyan-600" },
   { href: "/waste", label: "Waste", description: "Log damaged or expired stock write-offs.", icon: Trash2, tone: "bg-red-600" },
   { href: "/layaways", label: "Layaways", description: "Partial payments and outstanding balances.", icon: PiggyBank, tone: "bg-pink-600" },
-  { href: "/staff", label: "Staff", description: "Team members, PINs, and roles.", icon: Users, tone: "bg-blue-600" },
+  { href: "/staff", label: "Staff", description: "Team members, PINs, and roles.", icon: Users, tone: "bg-primary-600" },
   { href: "/roster", label: "Roster", description: "Plan and review staff shift schedules.", icon: CalendarDays, tone: "bg-purple-600" },
   { href: "/payroll", label: "Payroll", description: "Staff pay runs and payment history.", icon: Wallet, tone: "bg-teal-600" },
   { href: "/branches", label: "Branches", description: "Manage branches and their terminals.", icon: Building2, tone: "bg-orange-600" },
@@ -141,7 +141,7 @@ export default function DashboardPage() {
               ← zarodashop.com
             </a>
             <span className="font-bold">
-              ZARODA <span className="text-blue-500">Back Office</span>
+              ZARODA <span className="text-primary-500">Back Office</span>
             </span>
           </div>
           <div className="flex items-center gap-3 text-sm">

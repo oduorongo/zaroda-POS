@@ -76,7 +76,7 @@ export default function SalesListPage() {
                     <td className="p-3">{sale.status}</td>
                     <td className="p-3 text-right font-mono">{Number(sale.total).toFixed(2)}</td>
                     <td className="p-3 text-right">
-                      <Link href={`/sales/${sale.id}`} className="text-blue-400 hover:underline">
+                      <Link href={`/sales/${sale.id}`} className="text-primary-400 hover:underline">
                         View
                       </Link>
                     </td>

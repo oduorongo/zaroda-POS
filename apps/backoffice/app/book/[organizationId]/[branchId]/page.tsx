@@ -158,7 +158,7 @@ export default function PublicBookingPage() {
                 ? "We're also sending this link to your phone by text, but save it here too in case the message doesn't arrive:"
                 : "Save this link to view or cancel your booking later - we weren't able to text it to you, so this is the only place it's shown:"}
             </p>
-            <a href={manageHref} className="mt-1 block break-all text-xs text-blue-400 hover:underline">
+            <a href={manageHref} className="mt-1 block break-all text-xs text-primary-400 hover:underline">
               {typeof window !== "undefined" ? `${window.location.origin}${manageHref}` : manageHref}
             </a>
           </div>
@@ -269,7 +269,7 @@ export default function PublicBookingPage() {
             <button
               type="submit"
               disabled={submitBusy || !resourceId}
-              className="w-full rounded-md bg-blue-600 p-3 text-lg font-semibold hover:bg-blue-500 disabled:opacity-50"
+              className="w-full rounded-md bg-primary-600 p-3 text-lg font-semibold hover:bg-primary-500 disabled:opacity-50"
             >
               {submitBusy ? "Booking..." : "Book"}
             </button>

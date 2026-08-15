@@ -38,7 +38,7 @@ interface ReceiptDraft {
 const STATUS_COLOR: Record<Status, string> = {
   DRAFT: "text-slate-400",
   ORDERED: "text-amber-400",
-  PARTIALLY_RECEIVED: "text-blue-400",
+  PARTIALLY_RECEIVED: "text-primary-400",
   RECEIVED: "text-green-400",
   CANCELLED: "text-red-400",
 };
@@ -143,7 +143,7 @@ export default function PurchaseOrderDetailPage() {
       <Nav session={session} />
       <PageHeader />
       <main className="mx-auto max-w-3xl p-6">
-        <button onClick={() => router.push("/purchase-orders")} className="mb-4 text-blue-400 hover:underline">
+        <button onClick={() => router.push("/purchase-orders")} className="mb-4 text-primary-400 hover:underline">
           &larr; Purchase orders
         </button>
         {error && <p className="mb-4 rounded-md bg-red-950 p-3 text-sm text-red-300">{error}</p>}
@@ -240,7 +240,7 @@ export default function PurchaseOrderDetailPage() {
                 <button
                   onClick={() => void receiveAll()}
                   disabled={busy}
-                  className="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold hover:bg-blue-500 disabled:opacity-40"
+                  className="rounded-md bg-primary-600 px-4 py-2 text-sm font-semibold hover:bg-primary-500 disabled:opacity-40"
                 >
                   {busy ? "Saving..." : "Record receipt"}
                 </button>

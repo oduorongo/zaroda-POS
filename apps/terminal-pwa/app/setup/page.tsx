@@ -160,11 +160,11 @@ export default function SetupPage() {
       <div className="w-full max-w-md rounded-xl bg-slate-800 p-6 shadow-xl">
         <div className="flex flex-col items-center text-center">
           {/* LOGO SLOT: replace this div with an <img src="/logo.svg" /> once a real mark exists */}
-          <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-blue-600 text-lg font-bold text-white">
+          <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-primary-600 text-lg font-bold text-white">
             Z
           </div>
           <span className="mt-2 text-sm font-bold tracking-tight">
-            Zaroda <span className="text-blue-400">POS</span>
+            Zaroda <span className="text-primary-400">POS</span>
           </span>
         </div>
 
@@ -202,7 +202,7 @@ export default function SetupPage() {
             <button
               type="submit"
               disabled={busy}
-              className="w-full rounded-md bg-blue-600 p-3 text-lg font-semibold hover:bg-blue-500 disabled:opacity-50"
+              className="w-full rounded-md bg-primary-600 p-3 text-lg font-semibold hover:bg-primary-500 disabled:opacity-50"
             >
               {busy ? "Signing in..." : "Set up this till"}
             </button>
@@ -259,7 +259,7 @@ export default function SetupPage() {
               <button
                 type="submit"
                 disabled={busy || !terminalId}
-                className="flex-1 rounded-md bg-blue-600 p-3 text-lg font-semibold hover:bg-blue-500 disabled:opacity-50"
+                className="flex-1 rounded-md bg-primary-600 p-3 text-lg font-semibold hover:bg-primary-500 disabled:opacity-50"
               >
                 {busy ? "Setting up..." : "Finish setup"}
               </button>

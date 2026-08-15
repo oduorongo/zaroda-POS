@@ -44,7 +44,7 @@ interface KitchenTicket {
 const STATUS_COLOR: Record<TableStatus, string> = {
   AVAILABLE: "border-green-700",
   OCCUPIED: "border-amber-700",
-  RESERVED: "border-blue-700",
+  RESERVED: "border-primary-700",
   NEEDS_CLEANING: "border-red-700",
 };
 

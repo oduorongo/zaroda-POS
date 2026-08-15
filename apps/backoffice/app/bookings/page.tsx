@@ -26,7 +26,7 @@ interface Appointment {
 
 const STATUS_COLOR: Record<AppointmentStatus, string> = {
   SCHEDULED: "text-slate-400",
-  CONFIRMED: "text-blue-400",
+  CONFIRMED: "text-primary-400",
   IN_PROGRESS: "text-amber-400",
   COMPLETED: "text-green-400",
   CANCELLED: "text-red-400",

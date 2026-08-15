@@ -177,7 +177,7 @@ export default function StaffPage() {
       <main className="mx-auto max-w-3xl p-6">
         <div className="mb-4 flex items-center justify-between">
           <h1 className="text-xl font-bold">Staff</h1>
-          <button onClick={() => setNewOpen((v) => !v)} className="rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold hover:bg-blue-500">
+          <button onClick={() => setNewOpen((v) => !v)} className="rounded-md bg-primary-600 px-3 py-2 text-sm font-semibold hover:bg-primary-500">
             + Add person
           </button>
         </div>
@@ -236,7 +236,7 @@ export default function StaffPage() {
             <button
               onClick={() => void createStaff()}
               disabled={createBusy || !newEmail.trim()}
-              className="mt-3 rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold hover:bg-blue-500 disabled:opacity-40"
+              className="mt-3 rounded-md bg-primary-600 px-4 py-2 text-sm font-semibold hover:bg-primary-500 disabled:opacity-40"
             >
               {createBusy ? "Adding..." : "Add"}
             </button>
@@ -306,7 +306,7 @@ export default function StaffPage() {
                     <button
                       onClick={() => void saveEdit()}
                       disabled={editBusy}
-                      className="rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold hover:bg-blue-500 disabled:opacity-40"
+                      className="rounded-md bg-primary-600 px-3 py-2 text-sm font-semibold hover:bg-primary-500 disabled:opacity-40"
                     >
                       Save
                     </button>
@@ -329,7 +329,7 @@ export default function StaffPage() {
                     <button
                       onClick={() => void savePin()}
                       disabled={pinBusy || pinValue.length < 4}
-                      className="rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold hover:bg-blue-500 disabled:opacity-40"
+                      className="rounded-md bg-primary-600 px-3 py-2 text-sm font-semibold hover:bg-primary-500 disabled:opacity-40"
                     >
                       Set
                     </button>

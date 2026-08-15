@@ -29,7 +29,7 @@ interface TableOrderLine {
 const STATUS_COLOR: Record<RestaurantTable["status"], string> = {
   AVAILABLE: "bg-green-900 hover:bg-green-800",
   OCCUPIED: "bg-amber-900 hover:bg-amber-800",
-  RESERVED: "bg-blue-900 hover:bg-blue-800",
+  RESERVED: "bg-primary-900 hover:bg-primary-800",
   NEEDS_CLEANING: "bg-red-900 hover:bg-red-800",
 };
 
@@ -254,7 +254,7 @@ export default function TablesPage() {
     return (
       <div className="flex h-screen flex-col bg-slate-900 text-slate-100">
         <header className="flex items-center justify-between border-b border-slate-800 p-3">
-          <button onClick={() => setActiveTable(null)} className="text-blue-400">
+          <button onClick={() => setActiveTable(null)} className="text-primary-400">
             &larr; Floor
           </button>
           <p className="font-semibold">{activeTable.label}</p>
@@ -305,7 +305,7 @@ export default function TablesPage() {
                   className="flex flex-col items-start rounded-lg bg-slate-800 p-3 text-left hover:bg-slate-700 disabled:opacity-40"
                 >
                   <span className="font-medium">{variant.productName}</span>
-                  <span className="mt-1 font-mono text-lg font-bold text-blue-400">KES {variant.price.toFixed(2)}</span>
+                  <span className="mt-1 font-mono text-lg font-bold text-primary-400">KES {variant.price.toFixed(2)}</span>
                 </button>
               ))}
               {stations.length === 0 && <p className="col-span-full text-center text-slate-400">No kitchen stations set up yet.</p>}
@@ -356,7 +356,7 @@ export default function TablesPage() {
             <button
               onClick={() => setCheckoutOpen(true)}
               disabled={order.length === 0 || submitting}
-              className="mt-3 w-full rounded-md bg-blue-600 p-3 font-semibold hover:bg-blue-500 disabled:opacity-40"
+              className="mt-3 w-full rounded-md bg-primary-600 p-3 font-semibold hover:bg-primary-500 disabled:opacity-40"
             >
               Send &amp; charge (Cash)
             </button>
@@ -386,7 +386,7 @@ export default function TablesPage() {
                 <button
                   onClick={submitOrder}
                   disabled={submitting || !Number.isFinite(Number(tendered)) || Number(tendered) < totals.total - 0.01}
-                  className="flex-1 rounded-md bg-blue-600 p-3 font-semibold disabled:opacity-40"
+                  className="flex-1 rounded-md bg-primary-600 p-3 font-semibold disabled:opacity-40"
                 >
                   {submitting ? "Sending..." : "Confirm"}
                 </button>
@@ -402,10 +402,10 @@ export default function TablesPage() {
     <div className="flex h-screen flex-col bg-slate-900 text-slate-100">
       <header className="flex items-center justify-between border-b border-slate-800 p-3">
         <div className="flex items-center gap-3">
-          <button onClick={() => router.back()} className="text-blue-400">
+          <button onClick={() => router.back()} className="text-primary-400">
             &larr; Back
           </button>
-          <button onClick={() => router.push("/pos")} className="text-blue-400">
+          <button onClick={() => router.push("/pos")} className="text-primary-400">
             Home
           </button>
         </div>

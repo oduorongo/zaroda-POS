@@ -53,7 +53,7 @@ interface NewLine {
 const STATUS_COLOR: Record<Status, string> = {
   DRAFT: "text-slate-400",
   ORDERED: "text-amber-400",
-  PARTIALLY_RECEIVED: "text-blue-400",
+  PARTIALLY_RECEIVED: "text-primary-400",
   RECEIVED: "text-green-400",
   CANCELLED: "text-red-400",
 };
@@ -192,7 +192,7 @@ export default function PurchaseOrdersPage() {
             <Link href="/suppliers" className="rounded-md bg-slate-800 px-3 py-2 text-sm hover:bg-slate-700">
               Suppliers
             </Link>
-            <button onClick={() => void openNew()} className="rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold hover:bg-blue-500">
+            <button onClick={() => void openNew()} className="rounded-md bg-primary-600 px-3 py-2 text-sm font-semibold hover:bg-primary-500">
               + New purchase order
             </button>
           </div>
@@ -203,7 +203,7 @@ export default function PurchaseOrdersPage() {
             <button
               key={s || "all"}
               onClick={() => setStatusFilter(s)}
-              className={`rounded-md px-3 py-1.5 text-sm ${statusFilter === s ? "bg-blue-600" : "bg-slate-800 hover:bg-slate-700"}`}
+              className={`rounded-md px-3 py-1.5 text-sm ${statusFilter === s ? "bg-primary-600" : "bg-slate-800 hover:bg-slate-700"}`}
             >
               {s || "All"}
             </button>
@@ -314,7 +314,7 @@ export default function PurchaseOrdersPage() {
               <button
                 onClick={() => void createOrder()}
                 disabled={createBusy || !branchId.trim() || !supplierId.trim() || lines.length === 0}
-                className="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold hover:bg-blue-500 disabled:opacity-40"
+                className="rounded-md bg-primary-600 px-4 py-2 text-sm font-semibold hover:bg-primary-500 disabled:opacity-40"
               >
                 {createBusy ? "Creating..." : "Create purchase order"}
               </button>
@@ -355,7 +355,7 @@ export default function PurchaseOrdersPage() {
                         {received} / {ordered}
                       </td>
                       <td className="p-3 text-right">
-                        <Link href={`/purchase-orders/${o.id}`} className="text-blue-400 hover:underline">
+                        <Link href={`/purchase-orders/${o.id}`} className="text-primary-400 hover:underline">
                           View
                         </Link>
                       </td>

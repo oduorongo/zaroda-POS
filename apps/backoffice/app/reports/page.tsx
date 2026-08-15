@@ -184,7 +184,7 @@ export default function ReportsPage() {
             <button
               key={t.key}
               onClick={() => setTab(t.key)}
-              className={`rounded-md px-3 py-1.5 text-sm ${tab === t.key ? "bg-blue-600" : "bg-slate-800 hover:bg-slate-700"}`}
+              className={`rounded-md px-3 py-1.5 text-sm ${tab === t.key ? "bg-primary-600" : "bg-slate-800 hover:bg-slate-700"}`}
             >
               {t.label}
             </button>

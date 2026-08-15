@@ -181,19 +181,19 @@ export default function InventoryPage() {
               <div className="flex gap-2">
                 <button
                   onClick={() => setTab("items")}
-                  className={`rounded-md px-3 py-1.5 text-sm ${tab === "items" ? "bg-blue-600" : "bg-slate-800 hover:bg-slate-700"}`}
+                  className={`rounded-md px-3 py-1.5 text-sm ${tab === "items" ? "bg-primary-600" : "bg-slate-800 hover:bg-slate-700"}`}
                 >
                   Stock levels{lowStockCount > 0 && tab === "items" ? ` (${lowStockCount} low)` : ""}
                 </button>
                 <button
                   onClick={() => setTab("alerts")}
-                  className={`rounded-md px-3 py-1.5 text-sm ${tab === "alerts" ? "bg-blue-600" : "bg-slate-800 hover:bg-slate-700"}`}
+                  className={`rounded-md px-3 py-1.5 text-sm ${tab === "alerts" ? "bg-primary-600" : "bg-slate-800 hover:bg-slate-700"}`}
                 >
                   Low-stock alerts
                 </button>
                 <button
                   onClick={() => setTab("conflicts")}
-                  className={`rounded-md px-3 py-1.5 text-sm ${tab === "conflicts" ? "bg-blue-600" : "bg-slate-800 hover:bg-slate-700"}`}
+                  className={`rounded-md px-3 py-1.5 text-sm ${tab === "conflicts" ? "bg-primary-600" : "bg-slate-800 hover:bg-slate-700"}`}
                 >
                   Conflicts
                 </button>
@@ -201,7 +201,7 @@ export default function InventoryPage() {
               <div className="flex gap-2">
                 <Link
                   href="/inventory/receive"
-                  className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-semibold hover:bg-blue-500"
+                  className="rounded-md bg-primary-600 px-3 py-1.5 text-sm font-semibold hover:bg-primary-500"
                 >
                   + Receive stock
                 </Link>
@@ -241,7 +241,7 @@ export default function InventoryPage() {
                 <button
                   onClick={() => void submitAdjustment()}
                   disabled={adjBusy || !adjVariantId.trim() || !Number.isFinite(Number(adjDelta)) || Number(adjDelta) === 0}
-                  className="rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold hover:bg-blue-500 disabled:opacity-40"
+                  className="rounded-md bg-primary-600 px-3 py-2 text-sm font-semibold hover:bg-primary-500 disabled:opacity-40"
                 >
                   {adjBusy ? "Saving..." : "Save"}
                 </button>

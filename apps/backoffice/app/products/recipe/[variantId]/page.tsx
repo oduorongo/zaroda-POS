@@ -152,7 +152,7 @@ export default function RecipeEditorPage() {
       <Nav session={session} />
       <PageHeader />
       <main className="mx-auto max-w-2xl p-6">
-        <button onClick={() => router.push("/products")} className="mb-4 text-blue-400 hover:underline">
+        <button onClick={() => router.push("/products")} className="mb-4 text-primary-400 hover:underline">
           &larr; Products
         </button>
 
@@ -251,7 +251,7 @@ export default function RecipeEditorPage() {
               <button
                 onClick={() => void save(lines)}
                 disabled={saving}
-                className="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold hover:bg-blue-500 disabled:opacity-40"
+                className="rounded-md bg-primary-600 px-4 py-2 text-sm font-semibold hover:bg-primary-500 disabled:opacity-40"
               >
                 {saving ? "Saving..." : "Save recipe"}
               </button>

@@ -74,7 +74,7 @@ const NEXT_STATUSES: Record<AppointmentStatus, AppointmentStatus[]> = {
 
 const STATUS_COLOR: Record<AppointmentStatus, string> = {
   SCHEDULED: "border-slate-600",
-  CONFIRMED: "border-blue-600",
+  CONFIRMED: "border-primary-600",
   IN_PROGRESS: "border-amber-600",
   COMPLETED: "border-green-600",
   CANCELLED: "border-red-900",
@@ -395,7 +395,7 @@ export default function SalonPage() {
     return (
       <div className="flex h-screen flex-col bg-slate-900 text-slate-100">
         <header className="flex items-center justify-between border-b border-slate-800 p-3">
-          <button onClick={() => setCheckoutTarget(null)} className="text-blue-400">
+          <button onClick={() => setCheckoutTarget(null)} className="text-primary-400">
             &larr; Bookings
           </button>
           <p className="font-semibold">
@@ -422,7 +422,7 @@ export default function SalonPage() {
                   className="flex flex-col items-start rounded-lg bg-slate-800 p-3 text-left hover:bg-slate-700"
                 >
                   <span className="font-medium">{variant.productName}</span>
-                  <span className="mt-1 font-mono text-lg font-bold text-blue-400">KES {variant.price.toFixed(2)}</span>
+                  <span className="mt-1 font-mono text-lg font-bold text-primary-400">KES {variant.price.toFixed(2)}</span>
                 </button>
               ))}
             </div>
@@ -543,7 +543,7 @@ export default function SalonPage() {
             <button
               onClick={() => void submitCheckout()}
               disabled={checkoutBusy || checkoutLines.length === 0 || !Number.isFinite(Number(tendered)) || Number(tendered) < checkoutTotals.total - 0.01}
-              className="mt-3 w-full rounded-md bg-blue-600 p-3 font-semibold hover:bg-blue-500 disabled:opacity-40"
+              className="mt-3 w-full rounded-md bg-primary-600 p-3 font-semibold hover:bg-primary-500 disabled:opacity-40"
             >
               {checkoutBusy ? "Charging..." : "Charge (Cash)"}
             </button>
@@ -557,13 +557,13 @@ export default function SalonPage() {
               <div className="mt-4 flex gap-2">
                 <button
                   onClick={() => setDiscountType("PERCENT")}
-                  className={`flex-1 rounded-md p-2 ${discountType === "PERCENT" ? "bg-blue-600" : "bg-slate-700"}`}
+                  className={`flex-1 rounded-md p-2 ${discountType === "PERCENT" ? "bg-primary-600" : "bg-slate-700"}`}
                 >
                   Percent
                 </button>
                 <button
                   onClick={() => setDiscountType("FIXED")}
-                  className={`flex-1 rounded-md p-2 ${discountType === "FIXED" ? "bg-blue-600" : "bg-slate-700"}`}
+                  className={`flex-1 rounded-md p-2 ${discountType === "FIXED" ? "bg-primary-600" : "bg-slate-700"}`}
                 >
                   Fixed (KES)
                 </button>
@@ -581,7 +581,7 @@ export default function SalonPage() {
                   <button
                     key={a.id}
                     onClick={() => setDiscountApproverId(a.id)}
-                    className={`w-full rounded-md p-2 text-left ${discountApproverId === a.id ? "bg-blue-600" : "bg-slate-900 hover:bg-slate-700"}`}
+                    className={`w-full rounded-md p-2 text-left ${discountApproverId === a.id ? "bg-primary-600" : "bg-slate-900 hover:bg-slate-700"}`}
                   >
                     {a.fullName} <span className="text-xs text-slate-400">({a.role})</span>
                   </button>
@@ -601,7 +601,7 @@ export default function SalonPage() {
                 <button
                   onClick={applyDiscount}
                   disabled={!Number.isFinite(Number(discountValue)) || Number(discountValue) <= 0 || !discountApproverId}
-                  className="flex-1 rounded-md bg-blue-600 p-3 font-semibold disabled:opacity-40"
+                  className="flex-1 rounded-md bg-primary-600 p-3 font-semibold disabled:opacity-40"
                 >
                   Apply
                 </button>
@@ -617,15 +617,15 @@ export default function SalonPage() {
     <div className="flex h-screen flex-col bg-slate-900 text-slate-100">
       <header className="flex items-center justify-between border-b border-slate-800 p-3">
         <div className="flex items-center gap-3">
-          <button onClick={() => router.back()} className="text-blue-400">
+          <button onClick={() => router.back()} className="text-primary-400">
             &larr; Back
           </button>
-          <button onClick={() => router.push("/pos")} className="text-blue-400">
+          <button onClick={() => router.push("/pos")} className="text-primary-400">
             Home
           </button>
         </div>
         <p className="font-semibold">Today&apos;s bookings</p>
-        <button onClick={() => setNewOpen(true)} className="rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold hover:bg-blue-500">
+        <button onClick={() => setNewOpen(true)} className="rounded-md bg-primary-600 px-3 py-2 text-sm font-semibold hover:bg-primary-500">
           + New
         </button>
       </header>
@@ -663,7 +663,7 @@ export default function SalonPage() {
               {(a.status === "IN_PROGRESS" || a.status === "COMPLETED") && (
                 <button
                   onClick={() => openCheckout(a)}
-                  className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-semibold hover:bg-blue-500"
+                  className="rounded-md bg-primary-600 px-3 py-1.5 text-sm font-semibold hover:bg-primary-500"
                 >
                   Checkout
                 </button>
@@ -733,7 +733,7 @@ export default function SalonPage() {
               <button
                 onClick={() => void createAppointment()}
                 disabled={newBusy || !newResourceId || !newServiceName.trim() || !newStart || !newEnd}
-                className="flex-1 rounded-md bg-blue-600 p-3 font-semibold disabled:opacity-40"
+                className="flex-1 rounded-md bg-primary-600 p-3 font-semibold disabled:opacity-40"
               >
                 {newBusy ? "Booking..." : "Book"}
               </button>
@@ -770,7 +770,7 @@ export default function SalonPage() {
             {customerSearch.trim().length > 0 && customerResults.length === 0 && !customerBusy && (
               <button
                 onClick={() => void createCustomer(customerSearch, "")}
-                className="mt-3 w-full rounded-md bg-blue-600 p-2 text-sm font-semibold"
+                className="mt-3 w-full rounded-md bg-primary-600 p-2 text-sm font-semibold"
               >
                 + New customer &quot;{customerSearch.trim()}&quot;
               </button>

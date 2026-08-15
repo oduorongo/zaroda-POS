@@ -183,7 +183,7 @@ export default function LayawaysPage() {
       <main className="mx-auto max-w-4xl p-6">
         <div className="mb-4 flex items-center justify-between">
           <h1 className="text-xl font-bold">Layaways</h1>
-          <button onClick={() => void openNew()} className="rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold hover:bg-blue-500">
+          <button onClick={() => void openNew()} className="rounded-md bg-primary-600 px-3 py-2 text-sm font-semibold hover:bg-primary-500">
             + New layaway
           </button>
         </div>
@@ -193,7 +193,7 @@ export default function LayawaysPage() {
             <button
               key={s || "all"}
               onClick={() => setStatusFilter(s)}
-              className={`rounded-md px-3 py-1.5 text-sm ${statusFilter === s ? "bg-blue-600" : "bg-slate-800 hover:bg-slate-700"}`}
+              className={`rounded-md px-3 py-1.5 text-sm ${statusFilter === s ? "bg-primary-600" : "bg-slate-800 hover:bg-slate-700"}`}
             >
               {s || "All"}
             </button>
@@ -285,7 +285,7 @@ export default function LayawaysPage() {
               <button
                 onClick={() => void createLayaway()}
                 disabled={createBusy || !branchId.trim() || !selectedCustomer || lines.length === 0}
-                className="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold hover:bg-blue-500 disabled:opacity-40"
+                className="rounded-md bg-primary-600 px-4 py-2 text-sm font-semibold hover:bg-primary-500 disabled:opacity-40"
               >
                 {createBusy ? "Creating..." : "Create layaway"}
               </button>
@@ -319,7 +319,7 @@ export default function LayawaysPage() {
                       {Number(l.depositPaid).toFixed(2)} / {Number(l.total).toFixed(2)}
                     </td>
                     <td className="p-3 text-right">
-                      <Link href={`/layaways/${l.id}`} className="text-blue-400 hover:underline">
+                      <Link href={`/layaways/${l.id}`} className="text-primary-400 hover:underline">
                         View
                       </Link>
                     </td>

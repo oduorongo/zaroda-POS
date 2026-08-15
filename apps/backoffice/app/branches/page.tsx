@@ -131,7 +131,7 @@ export default function BranchesPage() {
             <button
               onClick={() => void createBranch()}
               disabled={branchBusy || !newBranchName.trim()}
-              className="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold hover:bg-blue-500 disabled:opacity-40"
+              className="rounded-md bg-primary-600 px-4 py-2 text-sm font-semibold hover:bg-primary-500 disabled:opacity-40"
             >
               {branchBusy ? "Creating..." : "Create"}
             </button>
@@ -167,7 +167,7 @@ export default function BranchesPage() {
                         <span>
                           {t.deviceLabel} <span className="font-mono text-xs">({t.id})</span>
                         </span>
-                        <a href={TERMINAL_URL} className="text-xs font-medium text-blue-400 hover:underline">
+                        <a href={TERMINAL_URL} className="text-xs font-medium text-primary-400 hover:underline">
                           Open Terminal →
                         </a>
                       </li>
@@ -186,7 +186,7 @@ export default function BranchesPage() {
                   <button
                     onClick={() => void createTerminal(branch.id)}
                     disabled={terminalBusy || !newTerminalLabel.trim()}
-                    className="rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold hover:bg-blue-500 disabled:opacity-40"
+                    className="rounded-md bg-primary-600 px-3 py-2 text-sm font-semibold hover:bg-primary-500 disabled:opacity-40"
                   >
                     {terminalBusy ? "Saving..." : "Save"}
                   </button>

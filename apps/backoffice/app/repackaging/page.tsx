@@ -318,7 +318,7 @@ export default function RepackagingPage() {
           <button
             onClick={() => void submit()}
             disabled={busy || !branchId.trim() || !fromVariant?.id || !toVariant?.id}
-            className="mt-3 rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold hover:bg-blue-500 disabled:opacity-40"
+            className="mt-3 rounded-md bg-primary-600 px-4 py-2 text-sm font-semibold hover:bg-primary-500 disabled:opacity-40"
           >
             {busy ? "Saving..." : "Record repackaging"}
           </button>

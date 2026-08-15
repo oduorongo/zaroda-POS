@@ -113,7 +113,7 @@ export default function SuppliersPage() {
       <main className="mx-auto max-w-3xl p-6">
         <div className="mb-4 flex items-center justify-between">
           <h1 className="text-xl font-bold">Suppliers</h1>
-          <button onClick={openNew} className="rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold hover:bg-blue-500">
+          <button onClick={openNew} className="rounded-md bg-primary-600 px-3 py-2 text-sm font-semibold hover:bg-primary-500">
             + New supplier
           </button>
         </div>
@@ -164,7 +164,7 @@ export default function SuppliersPage() {
               <button
                 onClick={() => void save()}
                 disabled={saveBusy || !name.trim()}
-                className="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold hover:bg-blue-500 disabled:opacity-40"
+                className="rounded-md bg-primary-600 px-4 py-2 text-sm font-semibold hover:bg-primary-500 disabled:opacity-40"
               >
                 {saveBusy ? "Saving..." : "Save"}
               </button>
@@ -194,7 +194,7 @@ export default function SuppliersPage() {
                     <td className="p-3">{s.phone ?? "-"}</td>
                     <td className="p-3">{s.email ?? "-"}</td>
                     <td className="p-3 text-right">
-                      <button onClick={() => openEdit(s)} className="text-blue-400 hover:underline">
+                      <button onClick={() => openEdit(s)} className="text-primary-400 hover:underline">
                         Edit
                       </button>
                     </td>

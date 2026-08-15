@@ -193,7 +193,7 @@ export default function ProductsPage() {
             <button
               onClick={() => void createProduct()}
               disabled={createBusy || !newName.trim()}
-              className="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold hover:bg-blue-500 disabled:opacity-40"
+              className="rounded-md bg-primary-600 px-4 py-2 text-sm font-semibold hover:bg-primary-500 disabled:opacity-40"
             >
               {createBusy ? "Creating..." : "Create"}
             </button>
@@ -240,7 +240,7 @@ export default function ProductsPage() {
                           {v.quantityMode === "WEIGHT" && <span className="text-slate-500"> /unit</span>}
                         </td>
                         <td className="py-1.5 pl-3 text-right">
-                          <Link href={`/products/recipe/${v.id}`} className="text-xs text-blue-400 hover:underline">
+                          <Link href={`/products/recipe/${v.id}`} className="text-xs text-primary-400 hover:underline">
                             Recipe
                           </Link>
                         </td>
@@ -277,7 +277,7 @@ export default function ProductsPage() {
                   <button
                     onClick={() => void createVariant(product.id)}
                     disabled={variantBusy || !variantSku.trim() || !Number.isFinite(Number(variantPrice))}
-                    className="rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold hover:bg-blue-500 disabled:opacity-40"
+                    className="rounded-md bg-primary-600 px-3 py-2 text-sm font-semibold hover:bg-primary-500 disabled:opacity-40"
                   >
                     {variantBusy ? "Saving..." : "Save"}
                   </button>

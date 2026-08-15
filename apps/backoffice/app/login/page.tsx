@@ -46,15 +46,15 @@ export default function LoginPage() {
   return (
     <div className="flex min-h-screen bg-slate-950 text-slate-100">
       {/* Hero panel — hidden on mobile, brand + tagline on desktop */}
-      <div className="relative hidden overflow-hidden lg:flex lg:w-1/2 lg:flex-col lg:justify-between lg:p-12 lg:bg-gradient-to-br lg:from-slate-900 lg:via-slate-900 lg:to-blue-950">
+      <div className="relative hidden overflow-hidden lg:flex lg:w-1/2 lg:flex-col lg:justify-between lg:p-12 lg:bg-gradient-to-br lg:from-slate-900 lg:via-slate-900 lg:to-primary-900">
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(37,99,235,0.25),transparent_55%)]" />
         <div className="relative flex items-center gap-3">
           {/* LOGO SLOT: replace this div with an <img src="/logo.svg" /> once a real mark exists */}
-          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-600 font-bold text-white">
+          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary-600 font-bold text-white">
             Z
           </div>
           <span className="text-xl font-bold tracking-tight">
-            Zaroda <span className="text-blue-400">POS</span>
+            Zaroda <span className="text-primary-400">POS</span>
           </span>
         </div>
         <div className="relative">
@@ -74,11 +74,11 @@ export default function LoginPage() {
         <form onSubmit={handleSubmit} className="w-full max-w-sm space-y-6">
           <div className="flex flex-col items-center gap-3 text-center lg:hidden">
             {/* LOGO SLOT: replace this div with an <img src="/logo.svg" /> once a real mark exists */}
-            <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-blue-600 text-lg font-bold text-white">
+            <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-primary-600 text-lg font-bold text-white">
               Z
             </div>
             <span className="text-lg font-bold tracking-tight">
-              Zaroda <span className="text-blue-400">POS</span>
+              Zaroda <span className="text-primary-400">POS</span>
             </span>
           </div>
 
@@ -92,7 +92,7 @@ export default function LoginPage() {
               <label className="mb-1.5 block text-sm font-medium text-slate-300">Email</label>
               <input
                 type="email"
-                className="w-full rounded-lg border border-slate-700 bg-slate-900 p-3 text-sm text-slate-100 placeholder:text-slate-500 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+                className="w-full rounded-lg border border-slate-700 bg-slate-900 p-3 text-sm text-slate-100 placeholder:text-slate-500 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/40"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="you@yourshop.co.ke"
@@ -103,7 +103,7 @@ export default function LoginPage() {
               <label className="mb-1.5 block text-sm font-medium text-slate-300">Password</label>
               <input
                 type="password"
-                className="w-full rounded-lg border border-slate-700 bg-slate-900 p-3 text-sm text-slate-100 placeholder:text-slate-500 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+                className="w-full rounded-lg border border-slate-700 bg-slate-900 p-3 text-sm text-slate-100 placeholder:text-slate-500 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/40"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
@@ -130,7 +130,7 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={busy}
-            className="w-full rounded-lg bg-blue-600 p-3 font-semibold text-white transition-colors hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
+            className="w-full rounded-lg bg-primary-600 p-3 font-semibold text-white transition-colors hover:bg-primary-500 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {busy ? "Signing in..." : "Sign in"}
           </button>
@@ -138,7 +138,7 @@ export default function LoginPage() {
           <button
             type="button"
             onClick={() => router.push("/register")}
-            className="w-full text-center text-sm text-slate-400 hover:text-blue-400 hover:underline"
+            className="w-full text-center text-sm text-slate-400 hover:text-primary-400 hover:underline"
           >
             New here? Set up your organization
           </button>

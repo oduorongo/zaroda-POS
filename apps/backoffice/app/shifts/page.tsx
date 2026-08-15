@@ -110,7 +110,7 @@ export default function ShiftsPage() {
                       {shift.variance === null ? "—" : Number(shift.variance).toFixed(2)}
                     </td>
                     <td className="p-3 text-right">
-                      <Link href={`/shifts/${shift.id}`} className="text-blue-400 hover:underline">
+                      <Link href={`/shifts/${shift.id}`} className="text-primary-400 hover:underline">
                         Report
                       </Link>
                     </td>

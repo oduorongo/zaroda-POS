@@ -2,17 +2,20 @@
 // terminal-pwa (and marketing, once it exists). Consumed by tailwind-preset.js.
 
 export const colors = {
+  // Zaroda's brand color - deep glossy navy, matching the Zaroda Solutions
+  // product line. Single source of truth: every "primary-*" class across
+  // every app resolves through this scale via tailwind-preset.ts.
   primary: {
-    50: "#eff6ff",
-    100: "#dbeafe",
-    200: "#bfdbfe",
-    300: "#93c5fd",
-    400: "#60a5fa",
-    500: "#3b82f6",
-    600: "#2563eb",
-    700: "#1d4ed8",
-    800: "#1e40af",
-    900: "#1e3a8a",
+    50: "#eef1f7",
+    100: "#d3dce8",
+    200: "#a3b4cc",
+    300: "#6c85a8",
+    400: "#3a5480",
+    500: "#16305c",
+    600: "#0f1f3d",
+    700: "#0a1730",
+    800: "#081527",
+    900: "#050c1a",
   },
   secondary: {
     50: "#f8fafc",
