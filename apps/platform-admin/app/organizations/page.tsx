@@ -63,7 +63,7 @@ export default function OrganizationsPage() {
   if (!session) return null;
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-100">
+    <div className="min-h-screen bg-primary-900 text-zinc-100">
       <Nav session={session} />
       <main className="mx-auto max-w-6xl p-6">
         <div className="mb-4 flex items-center justify-between">
@@ -83,9 +83,9 @@ export default function OrganizationsPage() {
         )}
 
         {!loading && !error && organizations.length > 0 && (
-          <div className="overflow-x-auto rounded-lg border border-zinc-800">
+          <div className="overflow-x-auto rounded-lg border border-primary-700">
             <table className="w-full text-left text-sm">
-              <thead className="bg-zinc-900 text-zinc-400">
+              <thead className="bg-primary-800 text-zinc-400">
                 <tr>
                   <th className="p-3">Name</th>
                   <th className="p-3">Industry</th>
@@ -99,7 +99,7 @@ export default function OrganizationsPage() {
               </thead>
               <tbody>
                 {organizations.map((org) => (
-                  <tr key={org.id} className="border-t border-zinc-800 hover:bg-zinc-900/50">
+                  <tr key={org.id} className="border-t border-primary-700 hover:bg-primary-800/50">
                     <td className="p-3 font-medium">{org.name}</td>
                     <td className="p-3 text-zinc-400">{org.industryType}</td>
                     <td className="p-3 text-zinc-400">{org.subscription?.planName ?? "—"}</td>

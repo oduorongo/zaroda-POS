@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { LayoutGrid, ExternalLink } from "lucide-react";
 import { clearSession, type Session } from "../lib/auth";
+import { useIdleLogout } from "../hooks/use-idle-logout";
 import { Badge, Button } from "@zaroda/ui";
 
 // A handful of the most-used screens, kept in the top bar for quick access.
@@ -31,6 +32,7 @@ export function Nav({ session }: { session: Session }) {
   const pathname = usePathname();
   const router = useRouter();
   const verticalLink = VERTICAL_LINKS[session.industryType];
+  useIdleLogout();
 
   return (
     <header className="flex items-center justify-between border-b border-border bg-surface px-4 py-3">

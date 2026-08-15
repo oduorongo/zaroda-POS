@@ -106,7 +106,7 @@ export default function OrganizationDetailPage() {
   if (!session) return null;
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-100">
+    <div className="min-h-screen bg-primary-900 text-zinc-100">
       <Nav session={session} />
       <main className="mx-auto max-w-3xl p-6">
         <button onClick={() => router.push("/organizations")} className="mb-4 text-amber-400 hover:underline">
@@ -132,8 +132,8 @@ export default function OrganizationDetailPage() {
               <Stat label="Sales" value={String(org.saleCount)} />
             </div>
 
-            <section className="mt-6 rounded-lg border border-zinc-800">
-              <h2 className="border-b border-zinc-800 bg-zinc-900 p-3 font-semibold">Subscription</h2>
+            <section className="mt-6 rounded-lg border border-primary-700">
+              <h2 className="border-b border-primary-700 bg-primary-800 p-3 font-semibold">Subscription</h2>
               {!org.subscription ? (
                 <p className="p-3 text-sm text-zinc-500">No subscription on record.</p>
               ) : (
@@ -155,7 +155,7 @@ export default function OrganizationDetailPage() {
                   </button>
 
                   {org.subscription.payments.length > 0 && (
-                    <div className="mt-4 border-t border-zinc-800 pt-3">
+                    <div className="mt-4 border-t border-primary-700 pt-3">
                       <p className="mb-2 text-xs uppercase tracking-wide text-zinc-500">Payment history</p>
                       <div className="space-y-1">
                         {org.subscription.payments.map((p) => (
@@ -171,21 +171,21 @@ export default function OrganizationDetailPage() {
               )}
             </section>
 
-            <section className="mt-4 rounded-lg border border-zinc-800">
-              <h2 className="border-b border-zinc-800 bg-zinc-900 p-3 font-semibold">Branches</h2>
+            <section className="mt-4 rounded-lg border border-primary-700">
+              <h2 className="border-b border-primary-700 bg-primary-800 p-3 font-semibold">Branches</h2>
               {org.branches.length === 0 && <p className="p-3 text-sm text-zinc-500">None yet.</p>}
               {org.branches.map((b) => (
-                <div key={b.id} className="border-b border-zinc-800 p-3 text-sm last:border-b-0">
+                <div key={b.id} className="border-b border-primary-700 p-3 text-sm last:border-b-0">
                   {b.name} {b.county && <span className="text-zinc-500">({b.county})</span>}
                 </div>
               ))}
             </section>
 
-            <section className="mt-4 rounded-lg border border-zinc-800">
-              <h2 className="border-b border-zinc-800 bg-zinc-900 p-3 font-semibold">Staff</h2>
+            <section className="mt-4 rounded-lg border border-primary-700">
+              <h2 className="border-b border-primary-700 bg-primary-800 p-3 font-semibold">Staff</h2>
               {org.orgUsers.length === 0 && <p className="p-3 text-sm text-zinc-500">None yet.</p>}
               {org.orgUsers.map((u) => (
-                <div key={u.id} className="border-b border-zinc-800 p-3 text-sm last:border-b-0">
+                <div key={u.id} className="border-b border-primary-700 p-3 text-sm last:border-b-0">
                   <span className={u.isActive ? "" : "text-zinc-500 line-through"}>
                     {u.user.fullName} ({u.user.email})
                   </span>{" "}
@@ -203,7 +203,7 @@ export default function OrganizationDetailPage() {
 
 function Stat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-lg border border-zinc-800 p-3">
+    <div className="rounded-lg border border-primary-700 p-3">
       <p className="text-xs text-zinc-500">{label}</p>
       <p className="mt-1 font-mono text-lg">{value}</p>
     </div>

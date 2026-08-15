@@ -16,7 +16,7 @@ interface Analytics {
 
 function StatCard({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
   return (
-    <Card className="border-zinc-800 bg-zinc-900">
+    <Card className="border-primary-700 bg-primary-800">
       <CardContent>
         <p className="text-sm text-zinc-500">{label}</p>
         <p className={`mt-1 text-3xl font-bold ${accent ? "text-amber-400" : "text-zinc-100"}`}>{value}</p>
@@ -54,7 +54,7 @@ export default function AnalyticsPage() {
   if (!session) return null;
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-100">
+    <div className="min-h-screen bg-primary-900 text-zinc-100">
       <Nav session={session} />
       <main className="mx-auto max-w-5xl space-y-6 p-6">
         <h1 className="text-xl font-bold">Platform Analytics</h1>
@@ -71,7 +71,7 @@ export default function AnalyticsPage() {
               <StatCard label="Suspended" value={String(data.subscriptionsByStatus.SUSPENDED ?? 0)} />
             </div>
 
-            <Card className="border-zinc-800 bg-zinc-900">
+            <Card className="border-primary-700 bg-primary-800">
               <CardContent>
                 <p className="mb-3 text-sm font-semibold text-zinc-300">Subscriptions by status</p>
                 <div className="space-y-2">
@@ -81,7 +81,7 @@ export default function AnalyticsPage() {
                     return (
                       <div key={status} className="flex items-center gap-3">
                         <span className="w-24 text-sm text-zinc-400">{status}</span>
-                        <div className="h-2 flex-1 overflow-hidden rounded-full bg-zinc-800">
+                        <div className="h-2 flex-1 overflow-hidden rounded-full bg-primary-700">
                           <div className="h-full bg-amber-500" style={{ width: `${pct}%` }} />
                         </div>
                         <span className="w-10 text-right text-sm text-zinc-400">{count}</span>

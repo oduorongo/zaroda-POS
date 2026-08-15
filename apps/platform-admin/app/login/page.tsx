@@ -38,8 +38,8 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-950 p-4 text-zinc-100">
-      <form onSubmit={handleSubmit} className="w-full max-w-md space-y-4 rounded-xl border border-zinc-800 bg-zinc-900 p-6 shadow-xl">
+    <div className="flex min-h-screen items-center justify-center bg-primary-900 p-4 text-zinc-100">
+      <form onSubmit={handleSubmit} className="w-full max-w-md space-y-4 rounded-xl border border-primary-700 bg-primary-800 p-6 shadow-xl">
         <h1 className="text-2xl font-bold">
           ZARODA <span className="text-amber-400">Platform Admin</span>
         </h1>
@@ -50,7 +50,7 @@ export default function LoginPage() {
           <label className="block text-sm font-medium text-zinc-300">Email</label>
           <input
             type="email"
-            className="mt-1 w-full rounded-md border border-zinc-700 bg-zinc-950 p-2.5"
+            className="mt-1 w-full rounded-md border border-primary-600 bg-primary-900 p-2.5"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             required
@@ -60,7 +60,7 @@ export default function LoginPage() {
           <label className="block text-sm font-medium text-zinc-300">Password</label>
           <input
             type="password"
-            className="mt-1 w-full rounded-md border border-zinc-700 bg-zinc-950 p-2.5"
+            className="mt-1 w-full rounded-md border border-primary-600 bg-primary-900 p-2.5"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required

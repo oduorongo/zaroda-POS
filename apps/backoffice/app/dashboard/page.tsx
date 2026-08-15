@@ -27,6 +27,7 @@ import {
   Wrench,
 } from "lucide-react";
 import { getSession, clearSession, isBackofficeRole, type Session } from "../../lib/auth";
+import { useIdleLogout } from "../../hooks/use-idle-logout";
 import { Badge, Button } from "@zaroda/ui";
 
 const MARKETING_URL = process.env.NEXT_PUBLIC_MARKETING_URL ?? "http://localhost:3005";
@@ -109,6 +110,7 @@ const VERTICAL_TILES: Record<string, Tile> = {
 export default function DashboardPage() {
   const router = useRouter();
   const [session, setSessionState] = useState<Session | null>(null);
+  useIdleLogout();
 
   useEffect(() => {
     const s = getSession();
