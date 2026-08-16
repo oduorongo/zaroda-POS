@@ -34,6 +34,18 @@ export class OnboardTenantDto {
   @MaxLength(200)
   branchName!: string;
 
+  // First branch's location - shown in the tenant list so support/onboarding
+  // can tell shops apart by where they actually are, not just by name.
+  @IsString()
+  @IsOptional()
+  @MaxLength(100)
+  county?: string;
+
+  @IsString()
+  @IsOptional()
+  @MaxLength(100)
+  subCounty?: string;
+
   @IsInt()
   @IsPositive()
   @IsOptional()

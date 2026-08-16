@@ -36,6 +36,8 @@ export default function NewTenantPage() {
   const [ownerEmail, setOwnerEmail] = useState("");
   const [ownerPassword, setOwnerPassword] = useState("");
   const [branchName, setBranchName] = useState("");
+  const [county, setCounty] = useState("");
+  const [subCounty, setSubCounty] = useState("");
   const [terminalCount, setTerminalCount] = useState("1");
   const [planTier, setPlanTier] = useState("");
 
@@ -75,6 +77,8 @@ export default function NewTenantPage() {
         ownerEmail: ownerEmail.trim(),
         ownerPassword,
         branchName: branchName.trim(),
+        county: county.trim() || undefined,
+        subCounty: subCounty.trim() || undefined,
         terminalCount: Number(terminalCount) || 1,
         planTier,
       });
@@ -135,6 +139,16 @@ export default function NewTenantPage() {
                 <div>
                   <Label className="text-secondary-500">First branch name</Label>
                   <Input value={branchName} onChange={(e) => setBranchName(e.target.value)} className="border-border bg-background" />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <Label className="text-secondary-500">County</Label>
+                    <Input value={county} onChange={(e) => setCounty(e.target.value)} placeholder="e.g. Nairobi" className="border-border bg-background" />
+                  </div>
+                  <div>
+                    <Label className="text-secondary-500">Sub-county</Label>
+                    <Input value={subCounty} onChange={(e) => setSubCounty(e.target.value)} placeholder="e.g. Westlands" className="border-border bg-background" />
+                  </div>
                 </div>
                 <div>
                   <Label className="text-secondary-500">Number of devices/terminals</Label>

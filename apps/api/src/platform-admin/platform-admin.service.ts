@@ -129,7 +129,22 @@ export class PlatformAdminService {
       const terminalCount = await tx.terminal.count({
         where: { branch: { organizationId } },
       });
-      return { branchCount, orgUserCount, saleCount, terminalCount };
+      // The org's first branch's location, shown as a "where is this
+      // tenant" column on the tenant list - most tenants only ever have
+      // one branch at onboarding time, and the earliest one is as good a
+      // proxy as any for "where this shop is" when there are several.
+      const primaryBranch = await tx.branch.findFirst({
+        orderBy: { createdAt: 'asc' },
+        select: { county: true, subCounty: true },
+      });
+      return {
+        branchCount,
+        orgUserCount,
+        saleCount,
+        terminalCount,
+        county: primaryBranch?.county ?? null,
+        subCounty: primaryBranch?.subCounty ?? null,
+      };
     }, TX_OPTIONS);
   }
 
@@ -189,7 +204,7 @@ export class PlatformAdminService {
         });
 
         const branch = await tx.branch.create({
-          data: { organizationId, name: dto.branchName },
+          data: { organizationId, name: dto.branchName, county: dto.county, subCounty: dto.subCounty },
         });
 
         const terminalCount = dto.terminalCount ?? 1;
@@ -299,6 +314,32 @@ export class PlatformAdminService {
         where: { id },
         data: { isActive, deactivatedAt: isActive ? null : new Date() },
       });
+    }, TX_OPTIONS);
+  }
+
+  /**
+   * Support/recovery path for a tenant user locked out of their own
+   * account (forgotten password, no working email access) - there's no
+   * self-service "forgot password" flow yet, so this is the only way
+   * back in. orgUserId (not userId/email) is the identifier, scoped to
+   * this specific organization, so a platform admin can't accidentally
+   * reset a user's password in the wrong tenant even if that email
+   * belongs to more than one org.
+   */
+  async resetUserPassword(organizationId: string, orgUserId: string, newPassword: string) {
+    const passwordHash = await bcrypt.hash(newPassword, SALT_ROUNDS);
+
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT set_config('app.current_tenant', ${organizationId}, true)`;
+      const orgUser = await tx.orgUser.findUnique({
+        where: { id: orgUserId },
+        select: { userId: true, organizationId: true, user: { select: { email: true, fullName: true } } },
+      });
+      if (!orgUser || orgUser.organizationId !== organizationId) {
+        throw new NotFoundException('No such staff member in this organization');
+      }
+      await tx.user.update({ where: { id: orgUser.userId }, data: { passwordHash } });
+      return { email: orgUser.user.email, fullName: orgUser.user.fullName };
     }, TX_OPTIONS);
   }
 

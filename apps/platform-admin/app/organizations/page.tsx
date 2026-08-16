@@ -15,6 +15,8 @@ interface Organization {
   country: string;
   baseCurrency: string;
   isActive: boolean;
+  county: string | null;
+  subCounty: string | null;
   createdAt: string;
   branchCount: number;
   orgUserCount: number;
@@ -42,6 +44,7 @@ function OrganizationTable({ organizations }: { organizations: Organization[] })
         <thead className="bg-surface text-secondary-500">
           <tr>
             <th className="p-3">Name</th>
+            <th className="p-3">Location</th>
             <th className="p-3">Industry</th>
             <th className="p-3">Plan</th>
             <th className="p-3">Status</th>
@@ -55,6 +58,11 @@ function OrganizationTable({ organizations }: { organizations: Organization[] })
           {organizations.map((org) => (
             <tr key={org.id} className="border-t border-border hover:bg-surface/50">
               <td className="p-3 font-medium">{org.name}</td>
+              <td className="p-3 text-secondary-500">
+                {org.county || org.subCounty
+                  ? [org.subCounty, org.county].filter(Boolean).join(", ")
+                  : "—"}
+              </td>
               <td className="p-3 text-secondary-500">{org.industryType}</td>
               <td className="p-3 text-secondary-500">{org.subscription?.planName ?? "—"}</td>
               <td className="p-3">

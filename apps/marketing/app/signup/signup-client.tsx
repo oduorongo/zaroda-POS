@@ -35,6 +35,8 @@ export default function SignupClient() {
   const [ownerEmail, setOwnerEmail] = useState("");
   const [ownerPassword, setOwnerPassword] = useState("");
   const [branchName, setBranchName] = useState("");
+  const [county, setCounty] = useState("");
+  const [subCounty, setSubCounty] = useState("");
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -64,6 +66,8 @@ export default function SignupClient() {
         ownerEmail: ownerEmail.trim(),
         ownerPassword,
         branchName: branchName.trim(),
+        county: county.trim() || undefined,
+        subCounty: subCounty.trim() || undefined,
       });
       setAccessToken(response.accessToken);
       setDone(true);
@@ -118,6 +122,16 @@ export default function SignupClient() {
         <div>
           <Label>First branch name</Label>
           <Input value={branchName} onChange={(e) => setBranchName(e.target.value)} placeholder="e.g. Main Branch" />
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <Label>County</Label>
+            <Input value={county} onChange={(e) => setCounty(e.target.value)} placeholder="e.g. Nairobi" />
+          </div>
+          <div>
+            <Label>Sub-county</Label>
+            <Input value={subCounty} onChange={(e) => setSubCounty(e.target.value)} placeholder="e.g. Westlands" />
+          </div>
         </div>
         <div>
           <Label>Your full name</Label>

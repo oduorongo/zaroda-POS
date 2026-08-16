@@ -11,6 +11,7 @@ interface Branch {
   id: string;
   name: string;
   county: string | null;
+  subCounty: string | null;
 }
 
 interface OrgUserRow {
@@ -88,6 +89,12 @@ export default function OrganizationDetailPage() {
   const [deactivateConfirm, setDeactivateConfirm] = useState("");
   const [togglingActive, setTogglingActive] = useState(false);
 
+  const [resetTargetId, setResetTargetId] = useState<string | null>(null);
+  const [newPassword, setNewPassword] = useState("");
+  const [resetBusy, setResetBusy] = useState(false);
+  const [resetError, setResetError] = useState<string | null>(null);
+  const [resetSuccess, setResetSuccess] = useState<string | null>(null);
+
   useEffect(() => {
     const s = getSession();
     if (!s) {
@@ -159,6 +166,32 @@ export default function OrganizationDetailPage() {
       setError(err instanceof ApiError ? err.message : "Could not update tenant status.");
     } finally {
       setTogglingActive(false);
+    }
+  }
+
+  function openReset(orgUserId: string) {
+    setResetTargetId(orgUserId);
+    setNewPassword("");
+    setResetError(null);
+    setResetSuccess(null);
+  }
+
+  async function submitReset() {
+    if (!org || !resetTargetId || newPassword.length < 8) return;
+    setResetBusy(true);
+    setResetError(null);
+    try {
+      const result = await apiPatch<{ email: string; fullName: string }>(
+        `/platform-admin/organizations/${org.id}/users/${resetTargetId}/reset-password`,
+        { newPassword },
+      );
+      setResetSuccess(`Password reset for ${result.fullName} (${result.email}).`);
+      setResetTargetId(null);
+      setNewPassword("");
+    } catch (err) {
+      setResetError(err instanceof ApiError ? err.message : "Could not reset password.");
+    } finally {
+      setResetBusy(false);
     }
   }
 
@@ -332,23 +365,59 @@ export default function OrganizationDetailPage() {
             <section className="mt-4 rounded-lg border border-border">
               <h2 className="border-b border-border bg-surface p-3 font-semibold">Branches</h2>
               {org.branches.length === 0 && <p className="p-3 text-sm text-secondary-500">None yet.</p>}
-              {org.branches.map((b) => (
-                <div key={b.id} className="border-b border-border p-3 text-sm last:border-b-0">
-                  {b.name} {b.county && <span className="text-secondary-500">({b.county})</span>}
-                </div>
-              ))}
+              {org.branches.map((b) => {
+                const location = [b.subCounty, b.county].filter(Boolean).join(", ");
+                return (
+                  <div key={b.id} className="border-b border-border p-3 text-sm last:border-b-0">
+                    {b.name} {location && <span className="text-secondary-500">({location})</span>}
+                  </div>
+                );
+              })}
             </section>
 
             <section className="mt-4 rounded-lg border border-border">
               <h2 className="border-b border-border bg-surface p-3 font-semibold">Staff</h2>
+              {resetSuccess && (
+                <p className="border-b border-border bg-success-50 p-3 text-sm text-success-700">{resetSuccess}</p>
+              )}
               {org.orgUsers.length === 0 && <p className="p-3 text-sm text-secondary-500">None yet.</p>}
               {org.orgUsers.map((u) => (
                 <div key={u.id} className="border-b border-border p-3 text-sm last:border-b-0">
-                  <span className={u.isActive ? "" : "text-secondary-500 line-through"}>
-                    {u.user.fullName} ({u.user.email})
-                  </span>{" "}
-                  <span className="text-secondary-500">- {u.role}</span>
-                  {!u.isActive && <span className="ml-2 text-xs text-red-400">deactivated</span>}
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <span className={u.isActive ? "" : "text-secondary-500 line-through"}>
+                        {u.user.fullName} ({u.user.email})
+                      </span>{" "}
+                      <span className="text-secondary-500">- {u.role}</span>
+                      {!u.isActive && <span className="ml-2 text-xs text-red-400">deactivated</span>}
+                    </div>
+                    <button
+                      onClick={() => (resetTargetId === u.id ? setResetTargetId(null) : openReset(u.id))}
+                      className="shrink-0 text-xs font-medium text-amber-400 hover:underline"
+                    >
+                      {resetTargetId === u.id ? "Cancel" : "Reset password"}
+                    </button>
+                  </div>
+
+                  {resetTargetId === u.id && (
+                    <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-border pt-3">
+                      <input
+                        type="text"
+                        value={newPassword}
+                        onChange={(e) => setNewPassword(e.target.value)}
+                        placeholder="New password (min 8 characters)"
+                        className="min-w-0 flex-1 rounded-md border border-border bg-background p-2 text-sm"
+                      />
+                      <button
+                        onClick={() => void submitReset()}
+                        disabled={resetBusy || newPassword.length < 8}
+                        className="rounded-md bg-amber-500 px-3 py-2 text-xs font-semibold text-zinc-950 hover:bg-amber-400 disabled:opacity-40"
+                      >
+                        {resetBusy ? "..." : "Set new password"}
+                      </button>
+                      {resetError && <p className="w-full text-xs text-red-400">{resetError}</p>}
+                    </div>
+                  )}
                 </div>
               ))}
             </section>

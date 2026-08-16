@@ -21,6 +21,7 @@ import { CreatePlanDto, UpdatePlanDto } from './dto/create-plan.dto';
 import { OnboardTenantDto } from './dto/onboard-tenant.dto';
 import { RecordPaymentDto, SetSuspensionDto } from './dto/record-payment.dto';
 import { SetOrganizationActiveDto, UpdateOrganizationDto } from './dto/update-organization.dto';
+import { ResetUserPasswordDto } from './dto/reset-user-password.dto';
 
 // Same throttle shape as tenant login (auth.controller.ts) - this is the
 // one public, pre-JWT endpoint on this controller.
@@ -134,6 +135,26 @@ export class PlatformAdminController {
         : 'platform_admin.deactivated_organization',
       entityType: 'Organization',
       entityId: id,
+      organizationId: id,
+    });
+    return result;
+  }
+
+  @Public()
+  @UseGuards(PlatformAdminAuthGuard)
+  @Patch('organizations/:id/users/:orgUserId/reset-password')
+  async resetUserPassword(
+    @Req() req: PlatformAdminRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('orgUserId', ParseUUIDPipe) orgUserId: string,
+    @Body() dto: ResetUserPasswordDto,
+  ) {
+    const result = await this.platformAdmin.resetUserPassword(id, orgUserId, dto.newPassword);
+    await this.auditLog.log({
+      platformAdminId: req.user!.platformAdminId,
+      action: 'platform_admin.reset_user_password',
+      entityType: 'OrgUser',
+      entityId: orgUserId,
       organizationId: id,
     });
     return result;

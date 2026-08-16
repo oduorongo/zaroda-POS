@@ -235,7 +235,7 @@ export class AuthService {
           });
 
           const branch = await tx.branch.create({
-            data: { organizationId, name: dto.branchName },
+            data: { organizationId, name: dto.branchName, county: dto.county, subCounty: dto.subCounty },
           });
 
           const terminal = await tx.terminal.create({
