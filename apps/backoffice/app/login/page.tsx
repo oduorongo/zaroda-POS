@@ -44,13 +44,13 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen bg-background text-foreground">
-      {/* Hero panel — hidden on mobile, brand + tagline on desktop.
-          Background photo: apps/backoffice/public/login-hero.png
+    <div className="flex min-h-screen flex-col bg-background text-foreground lg:flex-row">
+      {/* Hero panel — a compact banner on mobile, a full-height side panel
+          from lg up. Background photo: apps/backoffice/public/login-hero.png
           (glossy-navy POS hardware shot). Falls back to the plain navy
           gradient underneath if that file is ever removed. */}
       <div
-        className="relative hidden overflow-hidden bg-cover bg-center lg:flex lg:w-1/2 lg:flex-col lg:justify-between lg:p-12 lg:bg-gradient-to-br lg:from-slate-900 lg:via-slate-900 lg:to-primary-900"
+        className="relative flex min-h-[320px] flex-col justify-between overflow-hidden bg-cover bg-center p-6 sm:min-h-[380px] sm:p-8 lg:min-h-screen lg:w-1/2 lg:p-12 lg:bg-gradient-to-br lg:from-slate-900 lg:via-slate-900 lg:to-primary-900"
         style={{ backgroundImage: "url(/login-hero.png)" }}
       >
         {/* Navy overlay - keeps the wordmark/heading/copy readable over any photo */}
@@ -58,18 +58,18 @@ export default function LoginPage() {
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(37,99,235,0.25),transparent_55%)]" />
         <div className="relative flex items-center">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/logo.png" alt="Zaroda Solutions" className="h-14 w-auto" />
+          <img src="/logo.png" alt="Zaroda Solutions" className="h-11 w-auto sm:h-14" />
         </div>
         <div className="relative">
-          <h2 className="text-3xl font-bold leading-tight text-white">
+          <h2 className="text-2xl font-bold leading-tight text-white sm:text-3xl">
             Let Zarodashop help you run your hustle like a Pro.
           </h2>
-          <p className="mt-3 max-w-sm text-sm text-secondary-500">
+          <p className="mt-3 max-w-sm text-sm text-secondary-300">
             Purchases, sales, stock, staff and reports for your business in one back office designed for
             the Kenyan Hustles.
           </p>
         </div>
-        <p className="relative text-xs text-secondary-500">
+        <p className="relative text-xs text-secondary-400">
           © {new Date().getFullYear()} Zaroda POS · Powered by Zaroda Solutions. Innovative. Reliable. Forward.
         </p>
       </div>
@@ -77,13 +77,8 @@ export default function LoginPage() {
       {/* Form panel */}
       <div className="flex flex-1 items-center justify-center p-4 sm:p-8">
         <form onSubmit={handleSubmit} className="w-full max-w-sm space-y-6">
-          <div className="flex flex-col items-center gap-3 text-center lg:hidden">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/logo.png" alt="Zaroda Solutions" className="h-16 w-auto" />
-          </div>
-
           <div className="text-center lg:text-left">
-            <h1 className="text-2xl font-bold text-white">Welcome back</h1>
+            <h1 className="text-2xl font-bold text-foreground">Welcome back</h1>
             <p className="mt-1 text-sm text-secondary-500">Sign in to your Zaroda back office.</p>
           </div>
 
