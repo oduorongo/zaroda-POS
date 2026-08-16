@@ -35,6 +35,53 @@ const STATUS_VARIANT: Record<string, "primary" | "success" | "warning" | "error"
   SUSPENDED: "error",
 };
 
+function OrganizationTable({ organizations }: { organizations: Organization[] }) {
+  return (
+    <div className="overflow-x-auto rounded-lg border border-border">
+      <table className="w-full text-left text-sm">
+        <thead className="bg-surface text-secondary-500">
+          <tr>
+            <th className="p-3">Name</th>
+            <th className="p-3">Industry</th>
+            <th className="p-3">Plan</th>
+            <th className="p-3">Status</th>
+            <th className="p-3">Next billing date</th>
+            <th className="p-3 text-right">Branches</th>
+            <th className="p-3 text-right">Devices</th>
+            <th className="p-3" />
+          </tr>
+        </thead>
+        <tbody>
+          {organizations.map((org) => (
+            <tr key={org.id} className="border-t border-border hover:bg-surface/50">
+              <td className="p-3 font-medium">{org.name}</td>
+              <td className="p-3 text-secondary-500">{org.industryType}</td>
+              <td className="p-3 text-secondary-500">{org.subscription?.planName ?? "—"}</td>
+              <td className="p-3">
+                {org.subscription ? (
+                  <Badge variant={STATUS_VARIANT[org.subscription.status]}>{org.subscription.status}</Badge>
+                ) : (
+                  <Badge variant="neutral">No subscription</Badge>
+                )}
+              </td>
+              <td className="p-3 text-secondary-500">
+                {org.subscription ? new Date(org.subscription.currentPeriodEnd).toLocaleDateString() : "—"}
+              </td>
+              <td className="p-3 text-right font-mono">{org.branchCount}</td>
+              <td className="p-3 text-right font-mono">{org.terminalCount}</td>
+              <td className="p-3 text-right">
+                <Link href={`/organizations/${org.id}`} className="text-amber-400 hover:underline">
+                  View
+                </Link>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 export default function OrganizationsPage() {
   const router = useRouter();
   const [session, setSessionState] = useState<Session | null>(null);
@@ -63,6 +110,9 @@ export default function OrganizationsPage() {
 
   if (!session) return null;
 
+  const activeOrgs = organizations.filter((org) => org.isActive);
+  const deactivatedOrgs = organizations.filter((org) => !org.isActive);
+
   return (
     <div className="min-h-screen bg-background text-foreground">
       <Nav session={session} />
@@ -84,53 +134,24 @@ export default function OrganizationsPage() {
         )}
 
         {!loading && !error && organizations.length > 0 && (
-          <div className="overflow-x-auto rounded-lg border border-border">
-            <table className="w-full text-left text-sm">
-              <thead className="bg-surface text-secondary-500">
-                <tr>
-                  <th className="p-3">Name</th>
-                  <th className="p-3">Industry</th>
-                  <th className="p-3">Plan</th>
-                  <th className="p-3">Status</th>
-                  <th className="p-3">Next billing date</th>
-                  <th className="p-3 text-right">Branches</th>
-                  <th className="p-3 text-right">Devices</th>
-                  <th className="p-3" />
-                </tr>
-              </thead>
-              <tbody>
-                {organizations.map((org) => (
-                  <tr key={org.id} className="border-t border-border hover:bg-surface/50">
-                    <td className="p-3 font-medium">
-                      {org.name}
-                      {!org.isActive && (
-                        <Badge variant="error" className="ml-2">Deactivated</Badge>
-                      )}
-                    </td>
-                    <td className="p-3 text-secondary-500">{org.industryType}</td>
-                    <td className="p-3 text-secondary-500">{org.subscription?.planName ?? "—"}</td>
-                    <td className="p-3">
-                      {org.subscription ? (
-                        <Badge variant={STATUS_VARIANT[org.subscription.status]}>{org.subscription.status}</Badge>
-                      ) : (
-                        <Badge variant="neutral">No subscription</Badge>
-                      )}
-                    </td>
-                    <td className="p-3 text-secondary-500">
-                      {org.subscription ? new Date(org.subscription.currentPeriodEnd).toLocaleDateString() : "—"}
-                    </td>
-                    <td className="p-3 text-right font-mono">{org.branchCount}</td>
-                    <td className="p-3 text-right font-mono">{org.terminalCount}</td>
-                    <td className="p-3 text-right">
-                      <Link href={`/organizations/${org.id}`} className="text-amber-400 hover:underline">
-                        View
-                      </Link>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <>
+            {activeOrgs.length > 0 ? (
+              <OrganizationTable organizations={activeOrgs} />
+            ) : (
+              <EmptyState title="No active tenants" description="Every tenant here has been deactivated." />
+            )}
+
+            {deactivatedOrgs.length > 0 && (
+              <div className="mt-8">
+                <h2 className="mb-2 text-sm font-semibold text-secondary-500">
+                  Deactivated ({deactivatedOrgs.length})
+                </h2>
+                <div className="opacity-70">
+                  <OrganizationTable organizations={deactivatedOrgs} />
+                </div>
+              </div>
+            )}
+          </>
         )}
       </main>
     </div>
