@@ -45,6 +45,10 @@ interface OrganizationDetail {
   industryType: string;
   country: string;
   baseCurrency: string;
+  kraPin: string | null;
+  vatRegistered: boolean;
+  isActive: boolean;
+  deactivatedAt: string | null;
   createdAt: string;
   branchCount: number;
   orgUserCount: number;
@@ -61,6 +65,8 @@ const STATUS_VARIANT: Record<string, "primary" | "success" | "warning" | "error"
   SUSPENDED: "error",
 };
 
+const INDUSTRY_TYPES = ["RETAIL", "RESTAURANT", "PHARMACY", "SALON"] as const;
+
 export default function OrganizationDetailPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
@@ -68,6 +74,19 @@ export default function OrganizationDetailPage() {
   const [org, setOrg] = useState<OrganizationDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [togglingSuspend, setTogglingSuspend] = useState(false);
+
+  const [editing, setEditing] = useState(false);
+  const [editName, setEditName] = useState("");
+  const [editIndustryType, setEditIndustryType] = useState("RETAIL");
+  const [editCountry, setEditCountry] = useState("");
+  const [editBaseCurrency, setEditBaseCurrency] = useState("");
+  const [editKraPin, setEditKraPin] = useState("");
+  const [editVatRegistered, setEditVatRegistered] = useState(false);
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
+
+  const [deactivateConfirm, setDeactivateConfirm] = useState("");
+  const [togglingActive, setTogglingActive] = useState(false);
 
   useEffect(() => {
     const s = getSession();
@@ -82,9 +101,64 @@ export default function OrganizationDetailPage() {
 
   async function load() {
     try {
-      setOrg(await apiGet<OrganizationDetail>(`/platform-admin/organizations/${params.id}`));
+      const result = await apiGet<OrganizationDetail>(`/platform-admin/organizations/${params.id}`);
+      setOrg(result);
+      resetEditFields(result);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not load this organization.");
+    }
+  }
+
+  function resetEditFields(o: OrganizationDetail) {
+    setEditName(o.name);
+    setEditIndustryType(o.industryType);
+    setEditCountry(o.country);
+    setEditBaseCurrency(o.baseCurrency);
+    setEditKraPin(o.kraPin ?? "");
+    setEditVatRegistered(o.vatRegistered);
+  }
+
+  async function saveEdit() {
+    if (!org || !editName.trim()) return;
+    setSavingEdit(true);
+    setEditError(null);
+    try {
+      await apiPatch(`/platform-admin/organizations/${org.id}`, {
+        name: editName.trim(),
+        industryType: editIndustryType,
+        country: editCountry.trim(),
+        baseCurrency: editBaseCurrency.trim(),
+        kraPin: editKraPin.trim() || undefined,
+        vatRegistered: editVatRegistered,
+      });
+      setEditing(false);
+      await load();
+    } catch (err) {
+      setEditError(err instanceof ApiError ? err.message : "Could not save changes.");
+    } finally {
+      setSavingEdit(false);
+    }
+  }
+
+  // The soft-delete "delete tenant" action - blocks login for everyone in
+  // the org while preserving all its data (see PlatformAdminService's own
+  // comment on why this is never a real DELETE). Deactivating requires
+  // typing the org's name first since it's disruptive; reactivating does
+  // not, since it's the safe direction.
+  async function toggleActive() {
+    if (!org) return;
+    const nextActive = !org.isActive;
+    if (!nextActive && deactivateConfirm.trim() !== org.name) return;
+    setTogglingActive(true);
+    setError(null);
+    try {
+      await apiPatch(`/platform-admin/organizations/${org.id}/active`, { isActive: nextActive });
+      setDeactivateConfirm("");
+      await load();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not update tenant status.");
+    } finally {
+      setTogglingActive(false);
     }
   }
 
@@ -116,15 +190,99 @@ export default function OrganizationDetailPage() {
         {!org && !error && <p className="text-zinc-400">Loading...</p>}
         {org && (
           <>
-            <div className="flex items-center justify-between">
+            <div className="flex items-start justify-between gap-3">
               <div>
-                <h1 className="text-xl font-bold">{org.name}</h1>
+                <div className="flex items-center gap-2">
+                  <h1 className="text-xl font-bold">{org.name}</h1>
+                  {!org.isActive && <Badge variant="error">Deactivated</Badge>}
+                </div>
                 <p className="mt-1 text-sm text-zinc-500">
                   {org.industryType} · {org.country} · {org.baseCurrency} · created {new Date(org.createdAt).toLocaleString()}
                 </p>
               </div>
-              {org.subscription && <Badge variant={STATUS_VARIANT[org.subscription.status]}>{org.subscription.status}</Badge>}
+              <div className="flex shrink-0 items-center gap-2">
+                {org.subscription && <Badge variant={STATUS_VARIANT[org.subscription.status]}>{org.subscription.status}</Badge>}
+                <button
+                  onClick={() => setEditing((v) => !v)}
+                  className="rounded-md bg-primary-700 px-3 py-1.5 text-sm hover:bg-primary-600"
+                >
+                  {editing ? "Cancel" : "Edit"}
+                </button>
+              </div>
             </div>
+
+            {editing && (
+              <section className="mt-4 rounded-lg border border-primary-700 p-4">
+                <h2 className="font-semibold">Edit tenant</h2>
+                <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
+                  <div className="col-span-2">
+                    <label className="mb-1 block text-xs text-zinc-500">Business name</label>
+                    <input
+                      value={editName}
+                      onChange={(e) => setEditName(e.target.value)}
+                      className="w-full rounded-md border border-primary-600 bg-primary-950 p-2"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs text-zinc-500">Industry</label>
+                    <select
+                      value={editIndustryType}
+                      onChange={(e) => setEditIndustryType(e.target.value)}
+                      className="w-full rounded-md border border-primary-600 bg-primary-950 p-2"
+                    >
+                      {INDUSTRY_TYPES.map((t) => (
+                        <option key={t} value={t}>{t}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs text-zinc-500">Country</label>
+                    <input
+                      value={editCountry}
+                      onChange={(e) => setEditCountry(e.target.value)}
+                      maxLength={2}
+                      className="w-full rounded-md border border-primary-600 bg-primary-950 p-2"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs text-zinc-500">Currency</label>
+                    <input
+                      value={editBaseCurrency}
+                      onChange={(e) => setEditBaseCurrency(e.target.value)}
+                      maxLength={3}
+                      className="w-full rounded-md border border-primary-600 bg-primary-950 p-2"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs text-zinc-500">KRA PIN</label>
+                    <input
+                      value={editKraPin}
+                      onChange={(e) => setEditKraPin(e.target.value)}
+                      className="w-full rounded-md border border-primary-600 bg-primary-950 p-2"
+                    />
+                  </div>
+                  <div className="flex items-end pb-2">
+                    <label className="flex items-center gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={editVatRegistered}
+                        onChange={(e) => setEditVatRegistered(e.target.checked)}
+                        className="h-4 w-4"
+                      />
+                      VAT registered
+                    </label>
+                  </div>
+                </div>
+                {editError && <p className="mt-2 text-sm text-red-400">{editError}</p>}
+                <button
+                  onClick={() => void saveEdit()}
+                  disabled={savingEdit || !editName.trim()}
+                  className="mt-3 rounded-md bg-amber-500 px-4 py-2 text-sm font-semibold text-zinc-950 hover:bg-amber-400 disabled:opacity-40"
+                >
+                  {savingEdit ? "Saving..." : "Save changes"}
+                </button>
+              </section>
+            )}
 
             <div className="mt-6 grid grid-cols-3 gap-3">
               <Stat label="Branches" value={String(org.branchCount)} />
@@ -193,6 +351,53 @@ export default function OrganizationDetailPage() {
                   {!u.isActive && <span className="ml-2 text-xs text-red-400">deactivated</span>}
                 </div>
               ))}
+            </section>
+
+            <section className="mt-4 rounded-lg border border-red-900">
+              <h2 className="border-b border-red-900 bg-red-950/40 p-3 font-semibold text-red-300">Danger zone</h2>
+              <div className="p-3 text-sm">
+                {org.isActive ? (
+                  <>
+                    <p className="text-zinc-400">
+                      Deactivating blocks every login for this tenant - owner, managers, and cashiers alike -
+                      immediately. Nothing is deleted; all sales, staff, and audit history stay intact and this
+                      can be reversed at any time.
+                    </p>
+                    <label className="mb-1 mt-3 block text-xs text-zinc-500">
+                      Type <span className="font-mono text-zinc-300">{org.name}</span> to confirm
+                    </label>
+                    <input
+                      value={deactivateConfirm}
+                      onChange={(e) => setDeactivateConfirm(e.target.value)}
+                      className="w-full max-w-sm rounded-md border border-primary-600 bg-primary-950 p-2"
+                    />
+                    <div className="mt-3">
+                      <button
+                        onClick={() => void toggleActive()}
+                        disabled={togglingActive || deactivateConfirm.trim() !== org.name}
+                        className="rounded-md bg-red-700 px-4 py-2 text-sm font-semibold text-white hover:bg-red-600 disabled:opacity-40"
+                      >
+                        {togglingActive ? "..." : "Deactivate tenant"}
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-zinc-400">
+                      This tenant is deactivated
+                      {org.deactivatedAt && ` since ${new Date(org.deactivatedAt).toLocaleString()}`}. No one can
+                      log in until it&apos;s reactivated.
+                    </p>
+                    <button
+                      onClick={() => void toggleActive()}
+                      disabled={togglingActive}
+                      className="mt-3 rounded-md bg-success-600 px-4 py-2 text-sm font-semibold text-white hover:bg-success-700 disabled:opacity-40"
+                    >
+                      {togglingActive ? "..." : "Reactivate tenant"}
+                    </button>
+                  </>
+                )}
+              </div>
             </section>
           </>
         )}

@@ -41,6 +41,14 @@ model Organization {
   // to enter before that integration can be wired up.
   kraPin         String?
   vatRegistered  Boolean  @default(false)
+  // Soft-delete for platform-admin "delete tenant" - a deactivated org
+  // can't log in (tenant login + PIN login both check this) but every
+  // row it owns is preserved, unlike a hard DELETE which would cascade
+  // away all of it (branches/sales/audit history - see the FK
+  // onDelete: Cascade on every child table below). Mirrors the same
+  // isActive convention OrgUser already uses for staff deactivation.
+  isActive       Boolean   @default(true)
+  deactivatedAt  DateTime?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 

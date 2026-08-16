@@ -6,6 +6,7 @@ import { PrismaService } from '../common/prisma/prisma.service';
 import { CreatePlanDto, UpdatePlanDto } from './dto/create-plan.dto';
 import { OnboardTenantDto } from './dto/onboard-tenant.dto';
 import { RecordPaymentDto } from './dto/record-payment.dto';
+import { UpdateOrganizationDto } from './dto/update-organization.dto';
 import { effectiveStatus } from './subscriptions.util';
 
 const SALT_ROUNDS = 10;
@@ -257,6 +258,47 @@ export class PlatformAdminService {
         include: { plan: true },
       });
       return { payment, subscription: { ...updated, status: effectiveStatus(updated) } };
+    }, TX_OPTIONS);
+  }
+
+  // ── Organization edit / deactivate ──────────────────────────────────
+
+  /**
+   * organizations carries RLS (see rls.sql) whose WITH CHECK on
+   * UPDATE requires app.current_tenant to already equal the row's own
+   * id - unlike the pre-auth SELECT exception listOrganizations()/
+   * getOrganization() ride, a write always needs the tenant context
+   * explicitly set first, same as countsForOrg()/onboardTenant() above.
+   */
+  async updateOrganization(id: string, dto: UpdateOrganizationDto) {
+    const org = await this.prisma.organization.findUnique({ where: { id } });
+    if (!org) throw new NotFoundException('Organization not found');
+
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT set_config('app.current_tenant', ${id}, true)`;
+      return tx.organization.update({ where: { id }, data: dto });
+    }, TX_OPTIONS);
+  }
+
+  /**
+   * "Delete tenant" in this system is always this soft-delete, never a
+   * real DELETE - every child table cascades on Organization deletion
+   * (branches, sales, staff, audit history, all of it), so a hard
+   * delete would be an irreversible, silent data-destruction path this
+   * codebase doesn't otherwise have. Deactivating blocks both login
+   * paths (AuthService.login/pinLogin check organization.isActive) while
+   * preserving every row the tenant ever wrote.
+   */
+  async setOrganizationActive(id: string, isActive: boolean) {
+    const org = await this.prisma.organization.findUnique({ where: { id } });
+    if (!org) throw new NotFoundException('Organization not found');
+
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT set_config('app.current_tenant', ${id}, true)`;
+      return tx.organization.update({
+        where: { id },
+        data: { isActive, deactivatedAt: isActive ? null : new Date() },
+      });
     }, TX_OPTIONS);
   }
 

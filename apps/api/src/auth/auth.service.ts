@@ -40,12 +40,14 @@ export class AuthService {
       throw new UnauthorizedException('Invalid email or password');
     }
 
-    // A deactivated membership doesn't get to participate in login at
-    // all - filtered out before the single-vs-multiple-org resolution
-    // below, same as if it didn't exist, rather than surfacing a
-    // distinct "deactivated" error that would confirm to whoever's
-    // trying that this email/org combination exists.
-    const activeOrgUsers = user.orgUsers.filter((ou) => ou.isActive);
+    // A deactivated membership - or a membership in an org a platform
+    // admin has deactivated (soft-deleted "tenant") - doesn't get to
+    // participate in login at all - filtered out before the
+    // single-vs-multiple-org resolution below, same as if it didn't
+    // exist, rather than surfacing a distinct "deactivated" error that
+    // would confirm to whoever's trying that this email/org combination
+    // exists.
+    const activeOrgUsers = user.orgUsers.filter((ou) => ou.isActive && ou.organization.isActive);
 
     const membership = dto.organizationId
       ? activeOrgUsers.find((ou) => ou.organizationId === dto.organizationId)
@@ -107,14 +109,16 @@ export class AuthService {
     // lookup works before any tenant is established.
     const orgUser = await this.prisma.orgUser.findUnique({
       where: { id: dto.orgUserId },
-      include: { user: true },
+      include: { user: true, organization: true },
     });
     // Same "don't distinguish why" principle as login() above - a
-    // deactivated membership fails PIN check the same generic way as a
-    // wrong PIN, not a separate message that would confirm this
-    // orgUserId exists and is just switched off.
+    // deactivated membership, or one in a platform-admin-deactivated
+    // organization, fails PIN check the same generic way as a wrong
+    // PIN, not a separate message that would confirm this orgUserId
+    // exists and is just switched off.
     if (
       !orgUser?.isActive ||
+      !orgUser.organization.isActive ||
       !orgUser.user.pinHash ||
       !(await bcrypt.compare(dto.pin, orgUser.user.pinHash))
     ) {

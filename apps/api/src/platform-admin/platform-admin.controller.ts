@@ -20,6 +20,7 @@ import { PlatformAdminLoginDto } from './dto/platform-admin-login.dto';
 import { CreatePlanDto, UpdatePlanDto } from './dto/create-plan.dto';
 import { OnboardTenantDto } from './dto/onboard-tenant.dto';
 import { RecordPaymentDto, SetSuspensionDto } from './dto/record-payment.dto';
+import { SetOrganizationActiveDto, UpdateOrganizationDto } from './dto/update-organization.dto';
 
 // Same throttle shape as tenant login (auth.controller.ts) - this is the
 // one public, pre-JWT endpoint on this controller.
@@ -94,6 +95,46 @@ export class PlatformAdminController {
       entityType: 'Organization',
       entityId: result.organizationId,
       organizationId: result.organizationId,
+    });
+    return result;
+  }
+
+  @Public()
+  @UseGuards(PlatformAdminAuthGuard)
+  @Patch('organizations/:id')
+  async updateOrganization(
+    @Req() req: PlatformAdminRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateOrganizationDto,
+  ) {
+    const result = await this.platformAdmin.updateOrganization(id, dto);
+    await this.auditLog.log({
+      platformAdminId: req.user!.platformAdminId,
+      action: 'platform_admin.updated_organization',
+      entityType: 'Organization',
+      entityId: id,
+      organizationId: id,
+    });
+    return result;
+  }
+
+  @Public()
+  @UseGuards(PlatformAdminAuthGuard)
+  @Patch('organizations/:id/active')
+  async setOrganizationActive(
+    @Req() req: PlatformAdminRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: SetOrganizationActiveDto,
+  ) {
+    const result = await this.platformAdmin.setOrganizationActive(id, dto.isActive);
+    await this.auditLog.log({
+      platformAdminId: req.user!.platformAdminId,
+      action: dto.isActive
+        ? 'platform_admin.reactivated_organization'
+        : 'platform_admin.deactivated_organization',
+      entityType: 'Organization',
+      entityId: id,
+      organizationId: id,
     });
     return result;
   }

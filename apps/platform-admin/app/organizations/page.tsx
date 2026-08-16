@@ -14,6 +14,7 @@ interface Organization {
   industryType: string;
   country: string;
   baseCurrency: string;
+  isActive: boolean;
   createdAt: string;
   branchCount: number;
   orgUserCount: number;
@@ -100,7 +101,12 @@ export default function OrganizationsPage() {
               <tbody>
                 {organizations.map((org) => (
                   <tr key={org.id} className="border-t border-primary-700 hover:bg-primary-800/50">
-                    <td className="p-3 font-medium">{org.name}</td>
+                    <td className="p-3 font-medium">
+                      {org.name}
+                      {!org.isActive && (
+                        <Badge variant="error" className="ml-2">Deactivated</Badge>
+                      )}
+                    </td>
                     <td className="p-3 text-zinc-400">{org.industryType}</td>
                     <td className="p-3 text-zinc-400">{org.subscription?.planName ?? "—"}</td>
                     <td className="p-3">
