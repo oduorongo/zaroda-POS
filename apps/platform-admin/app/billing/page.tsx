@@ -135,7 +135,7 @@ export default function BillingPage() {
   if (!session) return null;
 
   return (
-    <div className="min-h-screen bg-primary-900 text-zinc-100">
+    <div className="min-h-screen bg-background text-foreground">
       <Nav session={session} />
       <main className="mx-auto max-w-5xl space-y-6 p-6">
         <h1 className="text-xl font-bold">Billing</h1>
@@ -145,21 +145,21 @@ export default function BillingPage() {
 
         {!loading && !error && (
           <>
-            <Card className="border-primary-700 bg-primary-800">
-              <CardHeader className="border-primary-700"><CardTitle className="text-zinc-100">Plan pricing</CardTitle></CardHeader>
+            <Card className="border-border bg-surface">
+              <CardHeader className="border-border"><CardTitle className="text-foreground">Plan pricing</CardTitle></CardHeader>
               <CardContent>
                 <div className="grid gap-3 sm:grid-cols-3">
                   {plans.map((plan) => (
-                    <div key={plan.id} className="rounded-lg border border-primary-700 p-4">
+                    <div key={plan.id} className="rounded-lg border border-border p-4">
                       <div className="flex items-center justify-between">
                         <p className="font-semibold">{plan.name}</p>
                         {!plan.active && <Badge variant="neutral">Retired</Badge>}
                       </div>
                       <p className="mt-1 text-2xl font-bold text-amber-400">
                         KES {Number(plan.priceKes).toLocaleString()}
-                        <span className="text-xs font-normal text-zinc-500">/{plan.billingPeriodDays}d</span>
+                        <span className="text-xs font-normal text-secondary-500">/{plan.billingPeriodDays}d</span>
                       </p>
-                      <p className="mt-1 text-xs text-zinc-500">{plan.maxDevices} devices · {plan.maxBranches} branches</p>
+                      <p className="mt-1 text-xs text-secondary-500">{plan.maxDevices} devices · {plan.maxBranches} branches</p>
                       <button
                         onClick={() => { setEditingPlan(plan); setEditPrice(plan.priceKes); }}
                         className="mt-3 text-sm text-amber-400 hover:underline"
@@ -172,18 +172,18 @@ export default function BillingPage() {
               </CardContent>
             </Card>
 
-            <Card className="border-primary-700 bg-primary-800">
-              <CardHeader className="border-primary-700"><CardTitle className="text-zinc-100">Overdue accounts</CardTitle></CardHeader>
+            <Card className="border-border bg-surface">
+              <CardHeader className="border-border"><CardTitle className="text-foreground">Overdue accounts</CardTitle></CardHeader>
               <CardContent>
                 {overdue.length === 0 ? (
                   <EmptyState title="No overdue accounts" description="Every tenant is current on payment." />
                 ) : (
                   <div className="space-y-2">
                     {overdue.map((org) => (
-                      <div key={org.id} className="flex items-center justify-between rounded-lg border border-primary-700 p-3">
+                      <div key={org.id} className="flex items-center justify-between rounded-lg border border-border p-3">
                         <div>
                           <p className="font-medium">{org.name}</p>
-                          <p className="text-xs text-zinc-500">
+                          <p className="text-xs text-secondary-500">
                             {org.subscription!.planName} · billed through {new Date(org.subscription!.currentPeriodEnd).toLocaleDateString()}
                           </p>
                         </div>

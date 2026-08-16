@@ -144,16 +144,16 @@ export default function PublicBookingPage() {
   if (confirmed) {
     const manageHref = `/book/manage/${params.organizationId}/${params.branchId}/${confirmed.id}?token=${confirmed.cancelToken}`;
     return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-900 p-4 text-slate-100">
-        <div className="w-full max-w-md space-y-3 rounded-xl bg-slate-800 p-6 text-center shadow-xl">
+      <div className="flex min-h-screen items-center justify-center bg-background p-4 text-foreground">
+        <div className="w-full max-w-md space-y-3 rounded-xl bg-surface p-6 text-center shadow-xl">
           <h1 className="text-2xl font-bold text-green-400">Booking confirmed</h1>
           <p>{confirmed.serviceName}</p>
-          <p className="text-slate-400">
+          <p className="text-secondary-500">
             {new Date(confirmed.startTime).toLocaleString()} - {new Date(confirmed.endTime).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
           </p>
-          <p className="text-sm text-slate-500">{confirmed.resourceName}</p>
-          <div className="mt-4 rounded-md bg-slate-900 p-3 text-left">
-            <p className="text-xs text-slate-400">
+          <p className="text-sm text-secondary-500">{confirmed.resourceName}</p>
+          <div className="mt-4 rounded-md bg-background p-3 text-left">
+            <p className="text-xs text-secondary-500">
               {confirmed.notified
                 ? "We're also sending this link to your phone by text, but save it here too in case the message doesn't arrive:"
                 : "Save this link to view or cancel your booking later - we weren't able to text it to you, so this is the only place it's shown:"}
@@ -168,18 +168,18 @@ export default function PublicBookingPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-slate-900 p-4 text-slate-100">
-      <div className="w-full max-w-md rounded-xl bg-slate-800 p-6 shadow-xl">
+    <div className="flex min-h-screen items-center justify-center bg-background p-4 text-foreground">
+      <div className="w-full max-w-md rounded-xl bg-surface p-6 shadow-xl">
         <h1 className="text-2xl font-bold">Book an appointment</h1>
-        {loading && <p className="mt-4 text-slate-400">Loading...</p>}
+        {loading && <p className="mt-4 text-secondary-500">Loading...</p>}
         {loadError && <p className="mt-4 rounded-md bg-red-950 p-2.5 text-sm text-red-300">{loadError}</p>}
 
         {!loading && !loadError && (
           <form onSubmit={handleSubmit} className="mt-4 space-y-4">
             <div>
-              <label className="block text-sm font-medium text-slate-300">With</label>
+              <label className="block text-sm font-medium text-secondary-600">With</label>
               <select
-                className="mt-1 w-full rounded-md border border-slate-600 bg-slate-900 p-2.5"
+                className="mt-1 w-full rounded-md border border-secondary-500 bg-background p-2.5"
                 value={resourceId}
                 onChange={(e) => setResourceId(e.target.value)}
               >
@@ -191,37 +191,37 @@ export default function PublicBookingPage() {
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-300">Date</label>
+              <label className="block text-sm font-medium text-secondary-600">Date</label>
               <input
                 type="date"
                 min={toLocalDateInput(new Date())}
-                className="mt-1 w-full rounded-md border border-slate-600 bg-slate-900 p-2.5"
+                className="mt-1 w-full rounded-md border border-secondary-500 bg-background p-2.5"
                 value={date}
                 onChange={(e) => setDate(e.target.value)}
               />
             </div>
 
             {busyToday.length > 0 && (
-              <div className="rounded-md bg-slate-900 p-2.5 text-xs text-slate-400">
+              <div className="rounded-md bg-background p-2.5 text-xs text-secondary-500">
                 Already booked today: {busyToday.map((b) => `${b.start}-${b.end}`).join(", ")}
               </div>
             )}
 
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-sm font-medium text-slate-300">Start time</label>
+                <label className="block text-sm font-medium text-secondary-600">Start time</label>
                 <input
                   type="time"
                   required
-                  className="mt-1 w-full rounded-md border border-slate-600 bg-slate-900 p-2.5"
+                  className="mt-1 w-full rounded-md border border-secondary-500 bg-background p-2.5"
                   value={startTime}
                   onChange={(e) => setStartTime(e.target.value)}
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-slate-300">Duration</label>
+                <label className="block text-sm font-medium text-secondary-600">Duration</label>
                 <select
-                  className="mt-1 w-full rounded-md border border-slate-600 bg-slate-900 p-2.5"
+                  className="mt-1 w-full rounded-md border border-secondary-500 bg-background p-2.5"
                   value={durationMinutes}
                   onChange={(e) => setDurationMinutes(Number(e.target.value))}
                 >
@@ -235,30 +235,30 @@ export default function PublicBookingPage() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-slate-300">Service</label>
+              <label className="block text-sm font-medium text-secondary-600">Service</label>
               <input
                 required
                 placeholder="e.g. Haircut"
-                className="mt-1 w-full rounded-md border border-slate-600 bg-slate-900 p-2.5"
+                className="mt-1 w-full rounded-md border border-secondary-500 bg-background p-2.5"
                 value={serviceName}
                 onChange={(e) => setServiceName(e.target.value)}
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-300">Your name</label>
+              <label className="block text-sm font-medium text-secondary-600">Your name</label>
               <input
                 required
-                className="mt-1 w-full rounded-md border border-slate-600 bg-slate-900 p-2.5"
+                className="mt-1 w-full rounded-md border border-secondary-500 bg-background p-2.5"
                 value={customerName}
                 onChange={(e) => setCustomerName(e.target.value)}
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-300">Your phone</label>
+              <label className="block text-sm font-medium text-secondary-600">Your phone</label>
               <input
                 required
                 type="tel"
-                className="mt-1 w-full rounded-md border border-slate-600 bg-slate-900 p-2.5"
+                className="mt-1 w-full rounded-md border border-secondary-500 bg-background p-2.5"
                 value={customerPhone}
                 onChange={(e) => setCustomerPhone(e.target.value)}
               />

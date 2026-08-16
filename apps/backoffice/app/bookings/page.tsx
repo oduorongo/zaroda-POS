@@ -25,7 +25,7 @@ interface Appointment {
 }
 
 const STATUS_COLOR: Record<AppointmentStatus, string> = {
-  SCHEDULED: "text-slate-400",
+  SCHEDULED: "text-secondary-500",
   CONFIRMED: "text-primary-400",
   IN_PROGRESS: "text-amber-400",
   COMPLETED: "text-green-400",
@@ -102,7 +102,7 @@ export default function BookingsPage() {
   const sorted = [...appointments].sort((a, b) => a.startTime.localeCompare(b.startTime));
 
   return (
-    <div className="min-h-screen bg-slate-900 text-slate-100">
+    <div className="min-h-screen bg-background text-foreground">
       <Nav session={session} />
       <PageHeader />
       <main className="mx-auto max-w-3xl p-6">
@@ -111,7 +111,7 @@ export default function BookingsPage() {
           <select
             value={branchId}
             onChange={(e) => setBranchId(e.target.value)}
-            className="rounded-md border border-slate-700 bg-slate-800 p-2 text-sm"
+            className="rounded-md border border-border bg-surface p-2 text-sm"
           >
             {branches.map((b) => (
               <option key={b.id} value={b.id}>
@@ -122,18 +122,18 @@ export default function BookingsPage() {
         </div>
 
         {error && <p className="mb-4 rounded-md bg-red-950 p-3 text-sm text-red-300">{error}</p>}
-        {loading && <p className="text-slate-400">Loading...</p>}
-        {!loading && sorted.length === 0 && !error && <p className="text-slate-400">No bookings today.</p>}
+        {loading && <p className="text-secondary-500">Loading...</p>}
+        {!loading && sorted.length === 0 && !error && <p className="text-secondary-500">No bookings today.</p>}
 
         <div className="space-y-2">
           {sorted.map((a) => (
-            <div key={a.id} className="rounded-lg border border-slate-800 p-3">
+            <div key={a.id} className="rounded-lg border border-border p-3">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="font-medium">
                     {a.serviceName} · {a.resource.name}
                   </p>
-                  <p className="text-sm text-slate-400">
+                  <p className="text-sm text-secondary-500">
                     {new Date(a.startTime).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} -{" "}
                     {new Date(a.endTime).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                     {a.customer && ` · ${a.customer.name}`}

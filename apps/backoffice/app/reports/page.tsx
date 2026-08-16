@@ -146,7 +146,7 @@ export default function ReportsPage() {
   if (!session) return null;
 
   return (
-    <div className="min-h-screen bg-slate-900 text-slate-100">
+    <div className="min-h-screen bg-background text-foreground">
       <Nav session={session} />
       <PageHeader />
       <main className="mx-auto max-w-5xl p-6">
@@ -154,25 +154,25 @@ export default function ReportsPage() {
 
         <div className="mb-4 flex flex-wrap items-end gap-3">
           <div>
-            <label className="block text-xs text-slate-400">From</label>
+            <label className="block text-xs text-secondary-500">From</label>
             <input
               type="date"
               value={from}
               onChange={(e) => setFrom(e.target.value)}
-              className="rounded-md border border-slate-700 bg-slate-800 p-2 text-sm"
+              className="rounded-md border border-border bg-surface p-2 text-sm"
             />
           </div>
           <div>
-            <label className="block text-xs text-slate-400">To</label>
+            <label className="block text-xs text-secondary-500">To</label>
             <input
               type="date"
               value={to}
               onChange={(e) => setTo(e.target.value)}
-              className="rounded-md border border-slate-700 bg-slate-800 p-2 text-sm"
+              className="rounded-md border border-border bg-surface p-2 text-sm"
             />
           </div>
           {!loading && (
-            <p className="pb-2 text-sm text-slate-400">
+            <p className="pb-2 text-sm text-secondary-500">
               Total revenue: KES {totalRevenue.toFixed(2)}
               {byWaste.length > 0 && <span className="ml-3 text-red-400">Waste cost: KES {totalWasteCost.toFixed(2)}</span>}
             </p>
@@ -184,7 +184,7 @@ export default function ReportsPage() {
             <button
               key={t.key}
               onClick={() => setTab(t.key)}
-              className={`rounded-md px-3 py-1.5 text-sm ${tab === t.key ? "bg-primary-600" : "bg-slate-800 hover:bg-slate-700"}`}
+              className={`rounded-md px-3 py-1.5 text-sm ${tab === t.key ? "bg-primary-600" : "bg-surface hover:bg-border"}`}
             >
               {t.label}
             </button>
@@ -192,7 +192,7 @@ export default function ReportsPage() {
         </div>
 
         {error && <p className="mb-4 rounded-md bg-red-950 p-3 text-sm text-red-300">{error}</p>}
-        {loading && <p className="text-slate-400">Loading...</p>}
+        {loading && <p className="text-secondary-500">Loading...</p>}
 
         {!loading && tab === "sales-by-product" && (
           <ReportTable
@@ -249,7 +249,7 @@ export default function ReportsPage() {
           />
         )}
         {!loading && tab === "waste-by-product" && byWaste.some((r) => r.costPartiallyKnown) && (
-          <p className="mt-2 text-xs text-slate-500">* some entries for this product have no known cost - total is a partial figure.</p>
+          <p className="mt-2 text-xs text-secondary-500">* some entries for this product have no known cost - total is a partial figure.</p>
         )}
       </main>
     </div>
@@ -257,11 +257,11 @@ export default function ReportsPage() {
 }
 
 function ReportTable({ columns, rows, emptyMessage }: { columns: string[]; rows: string[][]; emptyMessage: string }) {
-  if (rows.length === 0) return <p className="text-slate-400">{emptyMessage}</p>;
+  if (rows.length === 0) return <p className="text-secondary-500">{emptyMessage}</p>;
   return (
-    <div className="overflow-x-auto rounded-lg border border-slate-800">
+    <div className="overflow-x-auto rounded-lg border border-border">
       <table className="w-full text-left text-sm">
-        <thead className="bg-slate-800 text-slate-400">
+        <thead className="bg-surface text-secondary-500">
           <tr>
             {columns.map((c) => (
               <th key={c} className="p-3">
@@ -272,7 +272,7 @@ function ReportTable({ columns, rows, emptyMessage }: { columns: string[]; rows:
         </thead>
         <tbody>
           {rows.map((row, i) => (
-            <tr key={i} className="border-t border-slate-800">
+            <tr key={i} className="border-t border-border">
               {row.map((cell, j) => (
                 <td key={j} className={`p-3 ${j > 0 ? "text-right font-mono" : ""}`}>
                   {cell}

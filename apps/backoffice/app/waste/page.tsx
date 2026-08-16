@@ -208,13 +208,13 @@ export default function WastePage() {
   const isRecipeItem = (recipe?.length ?? 0) > 0;
 
   return (
-    <div className="min-h-screen bg-slate-900 text-slate-100">
+    <div className="min-h-screen bg-background text-foreground">
       <Nav session={session} />
       <PageHeader />
       <main className="mx-auto max-w-3xl p-6">
         <div className="mb-4 flex items-center justify-between">
           <h1 className="text-xl font-bold">Waste / spoilage</h1>
-          <Link href="/reports" className="text-sm text-slate-400 hover:text-slate-200">
+          <Link href="/reports" className="text-sm text-secondary-500 hover:text-secondary-600">
             View waste report &rarr;
           </Link>
         </div>
@@ -222,11 +222,11 @@ export default function WastePage() {
         {loadError && <p className="mb-4 rounded-md bg-red-950 p-3 text-sm text-red-300">{loadError}</p>}
 
         <div className="mb-4">
-          <label className="block text-xs text-slate-400">Branch</label>
+          <label className="block text-xs text-secondary-500">Branch</label>
           <select
             value={branchId}
             onChange={(e) => setBranchId(e.target.value)}
-            className="mt-1 w-full max-w-md rounded-md border border-slate-700 bg-slate-800 p-2 text-sm"
+            className="mt-1 w-full max-w-md rounded-md border border-border bg-surface p-2 text-sm"
           >
             {branches.length === 0 && <option value="">No branches found</option>}
             {branches.map((b) => (
@@ -237,14 +237,14 @@ export default function WastePage() {
           </select>
         </div>
 
-        <div className="mb-6 rounded-lg border border-slate-800 p-4">
+        <div className="mb-6 rounded-lg border border-border p-4">
           <h2 className="mb-3 font-semibold">Record a write-off</h2>
 
-          <label className="block text-xs text-slate-400">Product</label>
+          <label className="block text-xs text-secondary-500">Product</label>
           {variant ? (
-            <div className="mt-1 flex items-center justify-between rounded-md bg-slate-900 p-2 text-sm">
+            <div className="mt-1 flex items-center justify-between rounded-md bg-background p-2 text-sm">
               <span>
-                {variant.product.name} <span className="text-slate-500">({variant.sku})</span>
+                {variant.product.name} <span className="text-secondary-500">({variant.sku})</span>
               </span>
               <button onClick={clearVariant} className="text-xs text-red-400">
                 Change
@@ -256,20 +256,20 @@ export default function WastePage() {
                 placeholder="Search by product name or SKU"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="mt-1 w-full rounded-md border border-slate-700 bg-slate-900 p-2 text-sm"
+                className="mt-1 w-full rounded-md border border-border bg-background p-2 text-sm"
               />
               {search.trim() && (
-                <div className="mt-1 max-h-48 overflow-y-auto rounded-md border border-slate-700 bg-slate-900">
+                <div className="mt-1 max-h-48 overflow-y-auto rounded-md border border-border bg-background">
                   {searchOptions.length === 0 ? (
-                    <p className="p-2 text-sm text-slate-500">No matching products.</p>
+                    <p className="p-2 text-sm text-secondary-500">No matching products.</p>
                   ) : (
                     searchOptions.map((v) => (
                       <button
                         key={v.id}
                         onClick={() => void pickVariant(v)}
-                        className="block w-full px-2 py-1.5 text-left text-sm hover:bg-slate-800"
+                        className="block w-full px-2 py-1.5 text-left text-sm hover:bg-surface"
                       >
-                        {v.product.name} <span className="text-slate-500">({v.sku})</span>
+                        {v.product.name} <span className="text-secondary-500">({v.sku})</span>
                       </button>
                     ))
                   )}
@@ -278,7 +278,7 @@ export default function WastePage() {
             </>
           )}
 
-          {checkingRecipe && <p className="mt-2 text-xs text-slate-500">Checking recipe...</p>}
+          {checkingRecipe && <p className="mt-2 text-xs text-secondary-500">Checking recipe...</p>}
           {!checkingRecipe && isRecipeItem && (
             <p className="mt-2 rounded-md bg-amber-950 p-2 text-xs text-amber-400">
               This is a recipe-tracked dish - writing it off will decrement its ingredients (
@@ -288,7 +288,7 @@ export default function WastePage() {
 
           <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
-              <label className="block text-xs text-slate-400">
+              <label className="block text-xs text-secondary-500">
                 Quantity{variant?.quantityMode === "WEIGHT" && !isRecipeItem ? " (e.g. kg)" : ""}
               </label>
               <input
@@ -297,15 +297,15 @@ export default function WastePage() {
                 step={variant?.quantityMode === "WEIGHT" && !isRecipeItem ? "0.001" : "1"}
                 value={quantity}
                 onChange={(e) => setQuantity(e.target.value)}
-                className="mt-1 w-full rounded-md border border-slate-700 bg-slate-900 p-2 text-sm"
+                className="mt-1 w-full rounded-md border border-border bg-background p-2 text-sm"
               />
             </div>
             <div>
-              <label className="block text-xs text-slate-400">Reason</label>
+              <label className="block text-xs text-secondary-500">Reason</label>
               <select
                 value={reason}
                 onChange={(e) => setReason(e.target.value as WasteReason)}
-                className="mt-1 w-full rounded-md border border-slate-700 bg-slate-900 p-2 text-sm"
+                className="mt-1 w-full rounded-md border border-border bg-background p-2 text-sm"
               >
                 {REASONS.map((r) => (
                   <option key={r} value={r}>
@@ -316,11 +316,11 @@ export default function WastePage() {
             </div>
             {!isRecipeItem && batches.length > 0 && (
               <div>
-                <label className="block text-xs text-slate-400">Batch (optional)</label>
+                <label className="block text-xs text-secondary-500">Batch (optional)</label>
                 <select
                   value={batchId}
                   onChange={(e) => setBatchId(e.target.value)}
-                  className="mt-1 w-full rounded-md border border-slate-700 bg-slate-900 p-2 text-sm"
+                  className="mt-1 w-full rounded-md border border-border bg-background p-2 text-sm"
                 >
                   <option value="">No specific batch</option>
                   {batches.map((b) => (
@@ -333,11 +333,11 @@ export default function WastePage() {
               </div>
             )}
             <div className="sm:col-span-2">
-              <label className="block text-xs text-slate-400">Notes (optional)</label>
+              <label className="block text-xs text-secondary-500">Notes (optional)</label>
               <input
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
-                className="mt-1 w-full rounded-md border border-slate-700 bg-slate-900 p-2 text-sm"
+                className="mt-1 w-full rounded-md border border-border bg-background p-2 text-sm"
               />
             </div>
           </div>
@@ -354,30 +354,30 @@ export default function WastePage() {
           </button>
         </div>
 
-        <div className="rounded-lg border border-slate-800 p-4">
+        <div className="rounded-lg border border-border p-4">
           <h2 className="mb-3 font-semibold">Recent write-offs at this branch</h2>
           {loading ? (
-            <p className="text-sm text-slate-400">Loading...</p>
+            <p className="text-sm text-secondary-500">Loading...</p>
           ) : history.length === 0 ? (
-            <p className="text-sm text-slate-500">Nothing written off yet.</p>
+            <p className="text-sm text-secondary-500">Nothing written off yet.</p>
           ) : (
             <div className="space-y-2">
               {history.map((w) => (
-                <div key={w.id} className="rounded-md bg-slate-900 p-2 text-sm">
+                <div key={w.id} className="rounded-md bg-background p-2 text-sm">
                   <p>
                     {w.variant.product.name} ({w.variant.sku}) &times; {w.quantity} -{" "}
                     <span className="text-amber-400">{w.reason}</span>
                     {w.totalCost !== null && (
-                      <span className="ml-2 font-mono text-slate-400">KES {Number(w.totalCost).toFixed(2)}</span>
+                      <span className="ml-2 font-mono text-secondary-500">KES {Number(w.totalCost).toFixed(2)}</span>
                     )}
                   </p>
-                  <p className="text-xs text-slate-500">
+                  <p className="text-xs text-secondary-500">
                     {new Date(w.createdAt).toLocaleString()}
                     {w.batch ? ` · batch ${w.batch.batchNumber}` : ""}
                     {w.notes ? ` · ${w.notes}` : ""}
                   </p>
                   {w.ingredients.length > 0 && (
-                    <p className="mt-1 text-xs text-slate-500">
+                    <p className="mt-1 text-xs text-secondary-500">
                       Ingredients: {w.ingredients.map((i) => `${i.quantity} ${i.ingredientVariant.sku}`).join(", ")}
                     </p>
                   )}

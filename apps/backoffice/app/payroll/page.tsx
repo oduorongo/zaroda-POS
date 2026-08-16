@@ -50,7 +50,7 @@ interface PayrollRun {
 }
 
 const STATUS_COLOR: Record<RunStatus, string> = {
-  DRAFT: "text-slate-400",
+  DRAFT: "text-secondary-500",
   APPROVED: "text-amber-400",
   PAID: "text-green-400",
 };
@@ -205,29 +205,29 @@ export default function PayrollPage() {
   const unprofiledStaff = orgUsers.filter((u) => u.isActive && !profiledIds.has(u.id));
 
   return (
-    <div className="min-h-screen bg-slate-900 text-slate-100">
+    <div className="min-h-screen bg-background text-foreground">
       <Nav session={session} />
       <PageHeader />
       <main className="mx-auto max-w-3xl p-6">
         <h1 className="mb-1 text-xl font-bold">Payroll</h1>
-        <p className="mb-4 text-sm text-slate-400">
+        <p className="mb-4 text-sm text-secondary-500">
           Set a pay rate per staff member (opt-in - only staff with a pay profile are included in a run), then run
           payroll for a period. PAYE, NSSF, SHIF, and the Housing Levy are calculated automatically using current
           Kenyan statutory rates.
         </p>
 
         {error && <p className="mb-4 rounded-md bg-red-950 p-3 text-sm text-red-300">{error}</p>}
-        {loading && <p className="text-slate-400">Loading...</p>}
+        {loading && <p className="text-secondary-500">Loading...</p>}
 
-        <div className="mb-6 rounded-lg border border-slate-800 p-4">
+        <div className="mb-6 rounded-lg border border-border p-4">
           <h2 className="mb-3 font-semibold">Set a pay profile</h2>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
-              <label className="block text-xs text-slate-400">Staff member</label>
+              <label className="block text-xs text-secondary-500">Staff member</label>
               <select
                 value={profileOrgUserId}
                 onChange={(e) => setProfileOrgUserId(e.target.value)}
-                className="mt-1 w-full rounded-md border border-slate-700 bg-slate-900 p-2 text-sm"
+                className="mt-1 w-full rounded-md border border-border bg-background p-2 text-sm"
               >
                 <option value="">Select...</option>
                 {orgUsers
@@ -240,11 +240,11 @@ export default function PayrollPage() {
               </select>
             </div>
             <div>
-              <label className="block text-xs text-slate-400">Pay type</label>
+              <label className="block text-xs text-secondary-500">Pay type</label>
               <select
                 value={profilePayType}
                 onChange={(e) => setProfilePayType(e.target.value as PayType)}
-                className="mt-1 w-full rounded-md border border-slate-700 bg-slate-900 p-2 text-sm"
+                className="mt-1 w-full rounded-md border border-border bg-background p-2 text-sm"
               >
                 <option value="SALARY">Salary (fixed monthly)</option>
                 <option value="HOURLY">Hourly (from clocked sessions)</option>
@@ -252,22 +252,22 @@ export default function PayrollPage() {
             </div>
             {profilePayType === "SALARY" ? (
               <div>
-                <label className="block text-xs text-slate-400">Monthly base salary</label>
+                <label className="block text-xs text-secondary-500">Monthly base salary</label>
                 <input
                   type="number"
                   value={profileBaseSalary}
                   onChange={(e) => setProfileBaseSalary(e.target.value)}
-                  className="mt-1 w-full rounded-md border border-slate-700 bg-slate-900 p-2 text-sm"
+                  className="mt-1 w-full rounded-md border border-border bg-background p-2 text-sm"
                 />
               </div>
             ) : (
               <div>
-                <label className="block text-xs text-slate-400">Hourly rate</label>
+                <label className="block text-xs text-secondary-500">Hourly rate</label>
                 <input
                   type="number"
                   value={profileHourlyRate}
                   onChange={(e) => setProfileHourlyRate(e.target.value)}
-                  className="mt-1 w-full rounded-md border border-slate-700 bg-slate-900 p-2 text-sm"
+                  className="mt-1 w-full rounded-md border border-border bg-background p-2 text-sm"
                 />
               </div>
             )}
@@ -284,40 +284,40 @@ export default function PayrollPage() {
           </button>
 
           {profiles.length > 0 && (
-            <div className="mt-4 space-y-1 border-t border-slate-800 pt-3 text-sm">
+            <div className="mt-4 space-y-1 border-t border-border pt-3 text-sm">
               {profiles.map((p) => (
-                <p key={p.id} className={p.active ? "" : "text-slate-500 line-through"}>
+                <p key={p.id} className={p.active ? "" : "text-secondary-500 line-through"}>
                   {p.orgUser.user.fullName} - {p.payType === "SALARY" ? `KES ${money(Number(p.baseSalary))}/mo` : `KES ${money(Number(p.hourlyRate))}/hr`}
                 </p>
               ))}
             </div>
           )}
           {unprofiledStaff.length > 0 && (
-            <p className="mt-3 text-xs text-slate-500">
+            <p className="mt-3 text-xs text-secondary-500">
               No pay profile yet: {unprofiledStaff.map((u) => u.user.fullName).join(", ")}
             </p>
           )}
         </div>
 
-        <div className="mb-6 rounded-lg border border-slate-800 p-4">
+        <div className="mb-6 rounded-lg border border-border p-4">
           <h2 className="mb-3 font-semibold">Run payroll for a period</h2>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
-              <label className="block text-xs text-slate-400">Period start</label>
+              <label className="block text-xs text-secondary-500">Period start</label>
               <input
                 type="date"
                 value={periodStart}
                 onChange={(e) => setPeriodStart(e.target.value)}
-                className="mt-1 w-full rounded-md border border-slate-700 bg-slate-900 p-2 text-sm"
+                className="mt-1 w-full rounded-md border border-border bg-background p-2 text-sm"
               />
             </div>
             <div>
-              <label className="block text-xs text-slate-400">Period end</label>
+              <label className="block text-xs text-secondary-500">Period end</label>
               <input
                 type="date"
                 value={periodEnd}
                 onChange={(e) => setPeriodEnd(e.target.value)}
-                className="mt-1 w-full rounded-md border border-slate-700 bg-slate-900 p-2 text-sm"
+                className="mt-1 w-full rounded-md border border-border bg-background p-2 text-sm"
               />
             </div>
           </div>
@@ -331,16 +331,16 @@ export default function PayrollPage() {
           </button>
         </div>
 
-        <div className="rounded-lg border border-slate-800 p-4">
+        <div className="rounded-lg border border-border p-4">
           <h2 className="mb-3 font-semibold">Payroll runs</h2>
           {runs.length === 0 ? (
-            <p className="text-sm text-slate-500">No payroll runs yet.</p>
+            <p className="text-sm text-secondary-500">No payroll runs yet.</p>
           ) : (
             <div className="space-y-2">
               {runs.map((r) => {
                 const totalNet = r.payslips.reduce((sum, p) => sum + Number(p.netPay), 0);
                 return (
-                  <div key={r.id} className="rounded-md bg-slate-900 p-3 text-sm">
+                  <div key={r.id} className="rounded-md bg-background p-3 text-sm">
                     <div className="flex items-center justify-between">
                       <button
                         onClick={() => setExpandedRunId((id) => (id === r.id ? null : r.id))}
@@ -356,7 +356,7 @@ export default function PayrollPage() {
                       <div className="mt-2 flex flex-wrap gap-2">
                         <button
                           onClick={() => void generate(r.id)}
-                          className="rounded-md bg-slate-700 px-3 py-1 text-xs hover:bg-slate-600"
+                          className="rounded-md bg-border px-3 py-1 text-xs hover:bg-secondary-500"
                         >
                           {r.payslips.length > 0 ? "Regenerate payslips" : "Generate payslips"}
                         </button>
@@ -382,18 +382,18 @@ export default function PayrollPage() {
                     )}
 
                     {expandedRunId === r.id && r.payslips.length > 0 && (
-                      <div className="mt-3 space-y-2 border-t border-slate-800 pt-3">
+                      <div className="mt-3 space-y-2 border-t border-border pt-3">
                         {r.payslips.map((p) => (
-                          <div key={p.id} className="rounded bg-slate-950 p-2 text-xs">
-                            <p className="font-medium text-slate-200">
+                          <div key={p.id} className="rounded bg-background p-2 text-xs">
+                            <p className="font-medium text-secondary-600">
                               {p.orgUser.user.fullName}
                               {p.hoursWorked !== null ? ` · ${Number(p.hoursWorked).toFixed(1)} hrs` : ""}
                             </p>
-                            <p className="text-slate-400">
+                            <p className="text-secondary-500">
                               Gross KES {money(Number(p.grossPay))} · PAYE {money(Number(p.payeTax))} · NSSF{" "}
                               {money(Number(p.nssfDeduction))} · SHIF {money(Number(p.shifDeduction))} · Housing Levy{" "}
                               {money(Number(p.housingLevy))} · Net{" "}
-                              <span className="font-semibold text-slate-200">KES {money(Number(p.netPay))}</span>
+                              <span className="font-semibold text-secondary-600">KES {money(Number(p.netPay))}</span>
                             </p>
                           </div>
                         ))}

@@ -59,11 +59,11 @@ function VariantPicker({
 
   return (
     <div>
-      <label className="block text-xs text-slate-400">Finished good</label>
+      <label className="block text-xs text-secondary-500">Finished good</label>
       {selected ? (
-        <div className="mt-1 flex items-center justify-between rounded-md bg-slate-900 p-2 text-sm">
+        <div className="mt-1 flex items-center justify-between rounded-md bg-background p-2 text-sm">
           <span>
-            {selected.product.name} <span className="text-slate-500">({selected.sku})</span>
+            {selected.product.name} <span className="text-secondary-500">({selected.sku})</span>
           </span>
           <button onClick={() => onSelect(null)} className="text-xs text-red-400">
             Change
@@ -75,12 +75,12 @@ function VariantPicker({
             placeholder="Search by product name or SKU - must have a recipe (BOM) set"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="mt-1 w-full rounded-md border border-slate-700 bg-slate-900 p-2 text-sm"
+            className="mt-1 w-full rounded-md border border-border bg-background p-2 text-sm"
           />
           {search.trim() && (
-            <div className="mt-1 max-h-40 overflow-y-auto rounded-md border border-slate-700 bg-slate-900">
+            <div className="mt-1 max-h-40 overflow-y-auto rounded-md border border-border bg-background">
               {options.length === 0 ? (
-                <p className="p-2 text-sm text-slate-500">No matching products.</p>
+                <p className="p-2 text-sm text-secondary-500">No matching products.</p>
               ) : (
                 options.map((v) => (
                   <button
@@ -89,9 +89,9 @@ function VariantPicker({
                       onSelect(v);
                       setSearch("");
                     }}
-                    className="block w-full px-2 py-1.5 text-left text-sm hover:bg-slate-800"
+                    className="block w-full px-2 py-1.5 text-left text-sm hover:bg-surface"
                   >
-                    {v.product.name} <span className="text-slate-500">({v.sku})</span>
+                    {v.product.name} <span className="text-secondary-500">({v.sku})</span>
                   </button>
                 ))
               )}
@@ -230,12 +230,12 @@ export default function ManufacturingPage() {
   if (!session) return null;
 
   return (
-    <div className="min-h-screen bg-slate-900 text-slate-100">
+    <div className="min-h-screen bg-background text-foreground">
       <Nav session={session} />
       <PageHeader />
       <main className="mx-auto max-w-3xl p-6">
         <h1 className="mb-1 text-xl font-bold">Production</h1>
-        <p className="mb-4 text-sm text-slate-400">
+        <p className="mb-4 text-sm text-secondary-500">
           Turn raw materials into finished goods for sale. A production order consumes the finished good&apos;s
           recipe (bill of materials, set via Products &rarr; Recipe) and credits the finished good itself when
           completed.
@@ -244,11 +244,11 @@ export default function ManufacturingPage() {
         {loadError && <p className="mb-4 rounded-md bg-red-950 p-3 text-sm text-red-300">{loadError}</p>}
 
         <div className="mb-4">
-          <label className="block text-xs text-slate-400">Branch</label>
+          <label className="block text-xs text-secondary-500">Branch</label>
           <select
             value={branchId}
             onChange={(e) => setBranchId(e.target.value)}
-            className="mt-1 w-full max-w-md rounded-md border border-slate-700 bg-slate-800 p-2 text-sm"
+            className="mt-1 w-full max-w-md rounded-md border border-border bg-surface p-2 text-sm"
           >
             {branches.length === 0 && <option value="">No branches found</option>}
             {branches.map((b) => (
@@ -259,12 +259,12 @@ export default function ManufacturingPage() {
           </select>
         </div>
 
-        <div className="mb-6 rounded-lg border border-slate-800 p-4">
+        <div className="mb-6 rounded-lg border border-border p-4">
           <h2 className="mb-3 font-semibold">Raise a production order</h2>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <VariantPicker products={products} selected={variant} onSelect={setVariant} />
             <div>
-              <label className="block text-xs text-slate-400">
+              <label className="block text-xs text-secondary-500">
                 Planned quantity{variant?.quantityMode === "WEIGHT" ? " (e.g. kg)" : ""}
               </label>
               <input
@@ -273,15 +273,15 @@ export default function ManufacturingPage() {
                 step={variant?.quantityMode === "WEIGHT" ? "0.001" : "1"}
                 value={plannedQuantity}
                 onChange={(e) => setPlannedQuantity(e.target.value)}
-                className="mt-1 w-full rounded-md border border-slate-700 bg-slate-900 p-2 text-sm"
+                className="mt-1 w-full rounded-md border border-border bg-background p-2 text-sm"
               />
             </div>
             <div className="sm:col-span-2">
-              <label className="block text-xs text-slate-400">Notes (optional)</label>
+              <label className="block text-xs text-secondary-500">Notes (optional)</label>
               <input
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
-                className="mt-1 w-full rounded-md border border-slate-700 bg-slate-900 p-2 text-sm"
+                className="mt-1 w-full rounded-md border border-border bg-background p-2 text-sm"
               />
             </div>
           </div>
@@ -297,27 +297,27 @@ export default function ManufacturingPage() {
           </button>
         </div>
 
-        <div className="rounded-lg border border-slate-800 p-4">
+        <div className="rounded-lg border border-border p-4">
           <h2 className="mb-3 font-semibold">Orders at this branch</h2>
           {loading ? (
-            <p className="text-sm text-slate-400">Loading...</p>
+            <p className="text-sm text-secondary-500">Loading...</p>
           ) : orders.length === 0 ? (
-            <p className="text-sm text-slate-500">No production orders yet.</p>
+            <p className="text-sm text-secondary-500">No production orders yet.</p>
           ) : (
             <div className="space-y-2">
               {orders.map((o) => (
-                <div key={o.id} className="rounded-md bg-slate-900 p-3 text-sm">
+                <div key={o.id} className="rounded-md bg-background p-3 text-sm">
                   <div className="flex items-center justify-between">
                     <p>
-                      {o.variant.product.name} <span className="text-slate-500">({o.variant.sku})</span> - planned{" "}
+                      {o.variant.product.name} <span className="text-secondary-500">({o.variant.sku})</span> - planned{" "}
                       {o.plannedQuantity}
                       {o.actualQuantity !== null ? `, actual ${o.actualQuantity}` : ""}
                     </p>
-                    <span className="rounded bg-slate-800 px-2 py-0.5 text-xs uppercase tracking-wide text-slate-400">
+                    <span className="rounded bg-surface px-2 py-0.5 text-xs uppercase tracking-wide text-secondary-500">
                       {o.status}
                     </span>
                   </div>
-                  <p className="text-xs text-slate-500">
+                  <p className="text-xs text-secondary-500">
                     {new Date(o.createdAt).toLocaleString()}
                     {o.notes ? ` · ${o.notes}` : ""}
                   </p>
@@ -327,7 +327,7 @@ export default function ManufacturingPage() {
                       {o.status === "DRAFT" && (
                         <button
                           onClick={() => void start(o.id)}
-                          className="rounded-md bg-slate-700 px-3 py-1 text-xs hover:bg-slate-600"
+                          className="rounded-md bg-border px-3 py-1 text-xs hover:bg-secondary-500"
                         >
                           Start
                         </button>
@@ -337,7 +337,7 @@ export default function ManufacturingPage() {
                         placeholder="Actual yield"
                         value={actualByOrder[o.id] ?? ""}
                         onChange={(e) => setActualByOrder((prev) => ({ ...prev, [o.id]: e.target.value }))}
-                        className="w-28 rounded-md border border-slate-700 bg-slate-800 p-1 text-xs"
+                        className="w-28 rounded-md border border-border bg-surface p-1 text-xs"
                       />
                       <button
                         onClick={() => void complete(o.id)}

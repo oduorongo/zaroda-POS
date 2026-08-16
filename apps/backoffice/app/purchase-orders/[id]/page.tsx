@@ -36,7 +36,7 @@ interface ReceiptDraft {
 }
 
 const STATUS_COLOR: Record<Status, string> = {
-  DRAFT: "text-slate-400",
+  DRAFT: "text-secondary-500",
   ORDERED: "text-amber-400",
   PARTIALLY_RECEIVED: "text-primary-400",
   RECEIVED: "text-green-400",
@@ -139,7 +139,7 @@ export default function PurchaseOrderDetailPage() {
   const canCancel = order && (order.status === "DRAFT" || order.status === "ORDERED");
 
   return (
-    <div className="min-h-screen bg-slate-900 text-slate-100">
+    <div className="min-h-screen bg-background text-foreground">
       <Nav session={session} />
       <PageHeader />
       <main className="mx-auto max-w-3xl p-6">
@@ -147,21 +147,21 @@ export default function PurchaseOrderDetailPage() {
           &larr; Purchase orders
         </button>
         {error && <p className="mb-4 rounded-md bg-red-950 p-3 text-sm text-red-300">{error}</p>}
-        {!order && !error && <p className="text-slate-400">Loading...</p>}
+        {!order && !error && <p className="text-secondary-500">Loading...</p>}
 
         {order && (
           <>
             <h1 className="text-xl font-bold">{order.supplier.name}</h1>
-            <p className="mt-1 text-sm text-slate-400">
+            <p className="mt-1 text-sm text-secondary-500">
               {order.branch.name} · {new Date(order.createdAt).toLocaleString()} ·{" "}
               <span className={STATUS_COLOR[order.status]}>{order.status.replace("_", " ")}</span>
               {order.reference && ` · ref ${order.reference}`}
             </p>
-            {order.notes && <p className="mt-1 text-sm text-slate-500">{order.notes}</p>}
+            {order.notes && <p className="mt-1 text-sm text-secondary-500">{order.notes}</p>}
 
-            <section className="mt-6 overflow-x-auto rounded-lg border border-slate-800">
+            <section className="mt-6 overflow-x-auto rounded-lg border border-border">
               <table className="w-full text-left text-sm">
-                <thead className="bg-slate-800 text-slate-400">
+                <thead className="bg-surface text-secondary-500">
                   <tr>
                     <th className="p-3">Product</th>
                     <th className="p-3 text-right">Ordered</th>
@@ -174,16 +174,16 @@ export default function PurchaseOrderDetailPage() {
                     const remaining = l.quantityOrdered - l.quantityReceived;
                     const draft = drafts[l.id];
                     return (
-                      <tr key={l.id} className="border-t border-slate-800 align-top">
+                      <tr key={l.id} className="border-t border-border align-top">
                         <td className="p-3">
-                          {l.variant.product.name} <span className="text-slate-500">({l.variant.sku})</span>
+                          {l.variant.product.name} <span className="text-secondary-500">({l.variant.sku})</span>
                         </td>
                         <td className="p-3 text-right font-mono">{l.quantityOrdered}</td>
                         <td className="p-3 text-right font-mono">{l.quantityReceived}</td>
                         {canReceive && (
                           <td className="p-3">
                             {remaining <= 0 ? (
-                              <span className="text-xs text-slate-500">fully received</span>
+                              <span className="text-xs text-secondary-500">fully received</span>
                             ) : (
                               draft && (
                                 <div className="flex flex-wrap items-center gap-2">
@@ -195,9 +195,9 @@ export default function PurchaseOrderDetailPage() {
                                     placeholder={`max ${remaining}`}
                                     value={draft.quantity}
                                     onChange={(e) => updateDraft(l.id, { quantity: e.target.value })}
-                                    className="w-24 rounded-md border border-slate-700 bg-slate-900 p-1.5 text-sm"
+                                    className="w-24 rounded-md border border-border bg-background p-1.5 text-sm"
                                   />
-                                  <label className="flex items-center gap-1 text-xs text-slate-400">
+                                  <label className="flex items-center gap-1 text-xs text-secondary-500">
                                     <input
                                       type="checkbox"
                                       checked={draft.trackBatch}
@@ -211,13 +211,13 @@ export default function PurchaseOrderDetailPage() {
                                         placeholder="batch #"
                                         value={draft.batchNumber}
                                         onChange={(e) => updateDraft(l.id, { batchNumber: e.target.value })}
-                                        className="w-24 rounded-md border border-slate-700 bg-slate-900 p-1.5 text-sm"
+                                        className="w-24 rounded-md border border-border bg-background p-1.5 text-sm"
                                       />
                                       <input
                                         type="date"
                                         value={draft.expiryDate}
                                         onChange={(e) => updateDraft(l.id, { expiryDate: e.target.value })}
-                                        className="rounded-md border border-slate-700 bg-slate-900 p-1.5 text-sm"
+                                        className="rounded-md border border-border bg-background p-1.5 text-sm"
                                       />
                                     </>
                                   )}

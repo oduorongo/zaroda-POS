@@ -5,7 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { LayoutGrid, ExternalLink } from "lucide-react";
 import { clearSession, type Session } from "../lib/auth";
 import { useIdleLogout } from "../hooks/use-idle-logout";
-import { Badge, Button } from "@zaroda/ui";
+import { Badge, Button, ThemeToggle } from "@zaroda/ui";
 
 // A handful of the most-used screens, kept in the top bar for quick access.
 // The full set of screens lives on the /dashboard tile grid.
@@ -96,6 +96,7 @@ export function Nav({ session }: { session: Session }) {
         <span className="hidden text-secondary-500 sm:inline">
           {session.email} · {session.role}
         </span>
+        <ThemeToggle />
         <Button
           onClick={() => {
             clearSession();

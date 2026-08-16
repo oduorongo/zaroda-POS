@@ -107,7 +107,7 @@ export default function SuppliersPage() {
   if (!session) return null;
 
   return (
-    <div className="min-h-screen bg-slate-900 text-slate-100">
+    <div className="min-h-screen bg-background text-foreground">
       <Nav session={session} />
       <PageHeader />
       <main className="mx-auto max-w-3xl p-6">
@@ -119,46 +119,46 @@ export default function SuppliersPage() {
         </div>
 
         {formOpen && (
-          <div className="mb-6 rounded-lg border border-slate-800 p-4">
+          <div className="mb-6 rounded-lg border border-border p-4">
             <h2 className="mb-3 font-semibold">{editingId ? "Edit supplier" : "New supplier"}</h2>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
-                <label className="block text-xs text-slate-400">Name</label>
+                <label className="block text-xs text-secondary-500">Name</label>
                 <input
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  className="mt-1 w-full rounded-md border border-slate-700 bg-slate-900 p-2 text-sm"
+                  className="mt-1 w-full rounded-md border border-border bg-background p-2 text-sm"
                 />
               </div>
               <div>
-                <label className="block text-xs text-slate-400">Phone</label>
+                <label className="block text-xs text-secondary-500">Phone</label>
                 <input
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
-                  className="mt-1 w-full rounded-md border border-slate-700 bg-slate-900 p-2 text-sm"
+                  className="mt-1 w-full rounded-md border border-border bg-background p-2 text-sm"
                 />
               </div>
               <div>
-                <label className="block text-xs text-slate-400">Email</label>
+                <label className="block text-xs text-secondary-500">Email</label>
                 <input
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="mt-1 w-full rounded-md border border-slate-700 bg-slate-900 p-2 text-sm"
+                  className="mt-1 w-full rounded-md border border-border bg-background p-2 text-sm"
                 />
               </div>
               <div className="sm:col-span-2">
-                <label className="block text-xs text-slate-400">Notes</label>
+                <label className="block text-xs text-secondary-500">Notes</label>
                 <textarea
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
                   rows={2}
-                  className="mt-1 w-full rounded-md border border-slate-700 bg-slate-900 p-2 text-sm"
+                  className="mt-1 w-full rounded-md border border-border bg-background p-2 text-sm"
                 />
               </div>
             </div>
             {saveError && <p className="mt-2 text-sm text-red-400">{saveError}</p>}
             <div className="mt-3 flex gap-3">
-              <button onClick={() => setFormOpen(false)} className="rounded-md bg-slate-700 px-4 py-2 text-sm">
+              <button onClick={() => setFormOpen(false)} className="rounded-md bg-border px-4 py-2 text-sm">
                 Cancel
               </button>
               <button
@@ -173,13 +173,13 @@ export default function SuppliersPage() {
         )}
 
         {error && <p className="mb-4 rounded-md bg-red-950 p-3 text-sm text-red-300">{error}</p>}
-        {loading && <p className="text-slate-400">Loading...</p>}
-        {!loading && suppliers.length === 0 && !error && <p className="text-slate-400">No suppliers yet.</p>}
+        {loading && <p className="text-secondary-500">Loading...</p>}
+        {!loading && suppliers.length === 0 && !error && <p className="text-secondary-500">No suppliers yet.</p>}
 
         {suppliers.length > 0 && (
-          <div className="overflow-x-auto rounded-lg border border-slate-800">
+          <div className="overflow-x-auto rounded-lg border border-border">
             <table className="w-full text-left text-sm">
-              <thead className="bg-slate-800 text-slate-400">
+              <thead className="bg-surface text-secondary-500">
                 <tr>
                   <th className="p-3">Name</th>
                   <th className="p-3">Phone</th>
@@ -189,7 +189,7 @@ export default function SuppliersPage() {
               </thead>
               <tbody>
                 {suppliers.map((s) => (
-                  <tr key={s.id} className="border-t border-slate-800 hover:bg-slate-800/50">
+                  <tr key={s.id} className="border-t border-border hover:bg-surface/50">
                     <td className="p-3">{s.name}</td>
                     <td className="p-3">{s.phone ?? "-"}</td>
                     <td className="p-3">{s.email ?? "-"}</td>

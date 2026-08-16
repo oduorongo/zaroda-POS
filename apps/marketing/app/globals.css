@@ -9,13 +9,23 @@
   --border: #e2e8f0;
 }
 
+/* System-driven dark mode, unless a manual toggle (ThemeToggle, see
+   @zaroda/ui) has set data-theme="light" to override it. */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     --background: #0f172a;
     --foreground: #f1f5f9;
     --surface: #1e293b;
     --border: #334155;
   }
+}
+
+/* Manual override wins in both directions, regardless of OS setting. */
+:root[data-theme="dark"] {
+  --background: #0f172a;
+  --foreground: #f1f5f9;
+  --surface: #1e293b;
+  --border: #334155;
 }
 
 body {

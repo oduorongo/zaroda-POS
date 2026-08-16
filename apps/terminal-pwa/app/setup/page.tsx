@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { db } from "../../lib/db";
 import { apiPost, apiGet, ApiError } from "../../lib/api";
+import { ThemeToggle } from "@zaroda/ui";
 
 interface LoginResponse {
   accessToken: string;
@@ -156,8 +157,11 @@ export default function SetupPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-slate-900 p-4 text-slate-100">
-      <div className="w-full max-w-md rounded-xl bg-slate-800 p-6 shadow-xl">
+    <div className="flex min-h-screen items-center justify-center bg-background p-4 text-foreground">
+      <div className="w-full max-w-md rounded-xl bg-surface p-6 shadow-xl">
+        <div className="flex justify-end">
+          <ThemeToggle />
+        </div>
         <div className="flex flex-col items-center text-center">
           {/* LOGO SLOT: replace this div with an <img src="/logo.svg" /> once a real mark exists */}
           <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-primary-600 text-lg font-bold text-white">
@@ -169,7 +173,7 @@ export default function SetupPage() {
         </div>
 
         <h1 className="mt-4 text-2xl font-bold">Set up this till</h1>
-        <p className="mt-1 text-sm text-slate-400">
+        <p className="mt-1 text-sm text-secondary-500">
           Owner or manager: sign in once on this device to turn it into a till. After this, your cashiers just tap
           their PIN to start selling.
         </p>
@@ -177,20 +181,20 @@ export default function SetupPage() {
         {step === 1 && (
           <form onSubmit={handleLogin} className="mt-6 space-y-4">
             <div>
-              <label className="block text-sm font-medium text-slate-300">Owner / manager email</label>
+              <label className="block text-sm font-medium text-secondary-600">Owner / manager email</label>
               <input
                 type="email"
-                className="mt-1 w-full rounded-md border border-slate-600 bg-slate-900 p-2.5"
+                className="mt-1 w-full rounded-md border border-secondary-500 bg-background p-2.5"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-300">Password</label>
+              <label className="block text-sm font-medium text-secondary-600">Password</label>
               <input
                 type="password"
-                className="mt-1 w-full rounded-md border border-slate-600 bg-slate-900 p-2.5"
+                className="mt-1 w-full rounded-md border border-secondary-500 bg-background p-2.5"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
@@ -212,9 +216,9 @@ export default function SetupPage() {
         {step === 2 && (
           <form onSubmit={handleFinish} className="mt-6 space-y-4">
             <div>
-              <label className="block text-sm font-medium text-slate-300">Branch</label>
+              <label className="block text-sm font-medium text-secondary-600">Branch</label>
               <select
-                className="mt-1 w-full rounded-md border border-slate-600 bg-slate-900 p-2.5"
+                className="mt-1 w-full rounded-md border border-secondary-500 bg-background p-2.5"
                 value={branchId}
                 onChange={(e) => {
                   setBranchId(e.target.value);
@@ -229,9 +233,9 @@ export default function SetupPage() {
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-300">Terminal</label>
+              <label className="block text-sm font-medium text-secondary-600">Terminal</label>
               <select
-                className="mt-1 w-full rounded-md border border-slate-600 bg-slate-900 p-2.5"
+                className="mt-1 w-full rounded-md border border-secondary-500 bg-background p-2.5"
                 value={terminalId}
                 onChange={(e) => setTerminalId(e.target.value)}
                 required
@@ -253,7 +257,7 @@ export default function SetupPage() {
             {error && <p className="rounded-md bg-red-950 p-2.5 text-sm text-red-300">{error}</p>}
 
             <div className="flex gap-3">
-              <button type="button" onClick={() => setStep(1)} className="flex-1 rounded-md bg-slate-700 p-3">
+              <button type="button" onClick={() => setStep(1)} className="flex-1 rounded-md bg-border p-3">
                 Back
               </button>
               <button
@@ -266,6 +270,9 @@ export default function SetupPage() {
             </div>
           </form>
         )}
+        <p className="mt-6 text-center text-xs text-secondary-500">
+          Powered by Zaroda Solutions. Innovative. Reliable. Forward.
+        </p>
       </div>
     </div>
   );

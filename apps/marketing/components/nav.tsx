@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { ThemeToggle } from "@zaroda/ui";
 
 const LINKS = [
   { href: "/features", label: "Features" },
@@ -38,15 +39,18 @@ export default function Nav() {
           >
             Start Free Trial
           </Link>
+          <ThemeToggle />
         </nav>
 
-        <button
-          type="button"
-          onClick={() => setOpen((v) => !v)}
-          className="flex h-9 w-9 items-center justify-center rounded-md border border-border text-foreground md:hidden"
-          aria-label="Toggle menu"
-          aria-expanded={open}
-        >
+        <div className="flex items-center gap-1 md:hidden">
+          <ThemeToggle />
+          <button
+            type="button"
+            onClick={() => setOpen((v) => !v)}
+            className="flex h-9 w-9 items-center justify-center rounded-md border border-border text-foreground"
+            aria-label="Toggle menu"
+            aria-expanded={open}
+          >
           <span className="sr-only">Toggle menu</span>
           {open ? (
             <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.5">
@@ -57,7 +61,8 @@ export default function Nav() {
               <path d="M1 4h16M1 9h16M1 14h16" strokeLinecap="round" />
             </svg>
           )}
-        </button>
+          </button>
+        </div>
       </div>
 
       {open && (

@@ -97,17 +97,17 @@ export default function NewTenantPage() {
   if (!session) return null;
 
   return (
-    <div className="min-h-screen bg-primary-900 text-zinc-100">
+    <div className="min-h-screen bg-background text-foreground">
       <Nav session={session} />
       <main className="mx-auto max-w-2xl p-6">
         <h1 className="mb-4 text-xl font-bold">Onboard a new tenant</h1>
 
         {done ? (
-          <Card className="border-primary-700 bg-primary-800">
+          <Card className="border-border bg-surface">
             <CardContent className="text-center">
               <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-success-600 text-2xl">✓</div>
-              <p className="mt-3 font-semibold text-zinc-100">Tenant onboarded</p>
-              <p className="mt-1 text-sm text-zinc-400">The owner can now log in to the back office with the email and password you set.</p>
+              <p className="mt-3 font-semibold text-foreground">Tenant onboarded</p>
+              <p className="mt-1 text-sm text-secondary-500">The owner can now log in to the back office with the email and password you set.</p>
               <Button onClick={() => router.push("/organizations")} className="mt-6" variant="primary">
                 Back to tenant list
               </Button>
@@ -115,68 +115,68 @@ export default function NewTenantPage() {
           </Card>
         ) : (
           <div className="space-y-4">
-            <Card className="border-primary-700 bg-primary-800">
-              <CardHeader className="border-primary-700"><CardTitle className="text-zinc-100">Business details</CardTitle></CardHeader>
+            <Card className="border-border bg-surface">
+              <CardHeader className="border-border"><CardTitle className="text-foreground">Business details</CardTitle></CardHeader>
               <CardContent className="space-y-3">
                 <div>
-                  <Label className="text-zinc-400">Business name</Label>
-                  <Input value={organizationName} onChange={(e) => setOrganizationName(e.target.value)} className="border-primary-600 bg-primary-900" />
+                  <Label className="text-secondary-500">Business name</Label>
+                  <Input value={organizationName} onChange={(e) => setOrganizationName(e.target.value)} className="border-border bg-background" />
                 </div>
                 <div>
-                  <Label className="text-zinc-400">Industry</Label>
-                  <select value={industryType} onChange={(e) => setIndustryType(e.target.value)} className="w-full rounded-md border border-primary-600 bg-primary-900 p-2.5 text-sm">
+                  <Label className="text-secondary-500">Industry</Label>
+                  <select value={industryType} onChange={(e) => setIndustryType(e.target.value)} className="w-full rounded-md border border-border bg-background p-2.5 text-sm">
                     {INDUSTRY_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
                   </select>
                 </div>
                 <div>
-                  <Label className="text-zinc-400">KRA PIN (optional)</Label>
-                  <Input value={kraPin} onChange={(e) => setKraPin(e.target.value)} className="border-primary-600 bg-primary-900" />
+                  <Label className="text-secondary-500">KRA PIN (optional)</Label>
+                  <Input value={kraPin} onChange={(e) => setKraPin(e.target.value)} className="border-border bg-background" />
                 </div>
                 <div>
-                  <Label className="text-zinc-400">First branch name</Label>
-                  <Input value={branchName} onChange={(e) => setBranchName(e.target.value)} className="border-primary-600 bg-primary-900" />
+                  <Label className="text-secondary-500">First branch name</Label>
+                  <Input value={branchName} onChange={(e) => setBranchName(e.target.value)} className="border-border bg-background" />
                 </div>
                 <div>
-                  <Label className="text-zinc-400">Number of devices/terminals</Label>
-                  <Input type="number" min={1} value={terminalCount} onChange={(e) => setTerminalCount(e.target.value)} className="w-24 border-primary-600 bg-primary-900" />
+                  <Label className="text-secondary-500">Number of devices/terminals</Label>
+                  <Input type="number" min={1} value={terminalCount} onChange={(e) => setTerminalCount(e.target.value)} className="w-24 border-border bg-background" />
                 </div>
               </CardContent>
             </Card>
 
-            <Card className="border-primary-700 bg-primary-800">
-              <CardHeader className="border-primary-700"><CardTitle className="text-zinc-100">Owner account</CardTitle></CardHeader>
+            <Card className="border-border bg-surface">
+              <CardHeader className="border-border"><CardTitle className="text-foreground">Owner account</CardTitle></CardHeader>
               <CardContent className="space-y-3">
                 <div>
-                  <Label className="text-zinc-400">Full name</Label>
-                  <Input value={ownerFullName} onChange={(e) => setOwnerFullName(e.target.value)} className="border-primary-600 bg-primary-900" />
+                  <Label className="text-secondary-500">Full name</Label>
+                  <Input value={ownerFullName} onChange={(e) => setOwnerFullName(e.target.value)} className="border-border bg-background" />
                 </div>
                 <div>
-                  <Label className="text-zinc-400">Email</Label>
-                  <Input type="email" value={ownerEmail} onChange={(e) => setOwnerEmail(e.target.value)} className="border-primary-600 bg-primary-900" />
+                  <Label className="text-secondary-500">Email</Label>
+                  <Input type="email" value={ownerEmail} onChange={(e) => setOwnerEmail(e.target.value)} className="border-border bg-background" />
                 </div>
                 <div>
-                  <Label className="text-zinc-400">Temporary password (min 8 characters)</Label>
-                  <Input type="password" value={ownerPassword} onChange={(e) => setOwnerPassword(e.target.value)} className="border-primary-600 bg-primary-900" />
+                  <Label className="text-secondary-500">Temporary password (min 8 characters)</Label>
+                  <Input type="password" value={ownerPassword} onChange={(e) => setOwnerPassword(e.target.value)} className="border-border bg-background" />
                 </div>
               </CardContent>
             </Card>
 
-            <Card className="border-primary-700 bg-primary-800">
-              <CardHeader className="border-primary-700"><CardTitle className="text-zinc-100">Plan</CardTitle></CardHeader>
+            <Card className="border-border bg-surface">
+              <CardHeader className="border-border"><CardTitle className="text-foreground">Plan</CardTitle></CardHeader>
               <CardContent>
                 <div className="grid gap-2 sm:grid-cols-3">
                   {plans.map((plan) => (
                     <button
                       key={plan.id}
                       onClick={() => setPlanTier(plan.tier)}
-                      className={`rounded-lg border p-3 text-left ${planTier === plan.tier ? "border-amber-500 bg-amber-500/10" : "border-primary-600 hover:border-primary-500"}`}
+                      className={`rounded-lg border p-3 text-left ${planTier === plan.tier ? "border-amber-500 bg-amber-500/10" : "border-border hover:border-primary-500"}`}
                     >
-                      <p className="font-semibold text-zinc-100">{plan.name}</p>
-                      <p className="text-lg font-bold text-amber-400">KES {Number(plan.priceKes).toLocaleString()}<span className="text-xs font-normal text-zinc-500">/mo</span></p>
-                      <p className="text-xs text-zinc-500">{plan.maxDevices} devices · {plan.maxBranches} branches</p>
+                      <p className="font-semibold text-foreground">{plan.name}</p>
+                      <p className="text-lg font-bold text-amber-400">KES {Number(plan.priceKes).toLocaleString()}<span className="text-xs font-normal text-secondary-500">/mo</span></p>
+                      <p className="text-xs text-secondary-500">{plan.maxDevices} devices · {plan.maxBranches} branches</p>
                     </button>
                   ))}
-                  {plans.length === 0 && <p className="text-sm text-zinc-500">No plans configured yet - run `pnpm --filter api seed:plans`.</p>}
+                  {plans.length === 0 && <p className="text-sm text-secondary-500">No plans configured yet - run `pnpm --filter api seed:plans`.</p>}
                 </div>
               </CardContent>
             </Card>

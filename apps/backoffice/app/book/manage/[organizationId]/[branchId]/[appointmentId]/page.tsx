@@ -89,20 +89,20 @@ export default function ManageBookingPage() {
   const canCancel = booking?.status === "SCHEDULED" || booking?.status === "CONFIRMED";
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-slate-900 p-4 text-slate-100">
-      <div className="w-full max-w-md space-y-3 rounded-xl bg-slate-800 p-6 shadow-xl">
+    <div className="flex min-h-screen items-center justify-center bg-background p-4 text-foreground">
+      <div className="w-full max-w-md space-y-3 rounded-xl bg-surface p-6 shadow-xl">
         <h1 className="text-2xl font-bold">Your booking</h1>
-        {loading && <p className="text-slate-400">Loading...</p>}
+        {loading && <p className="text-secondary-500">Loading...</p>}
         {error && <p className="rounded-md bg-red-950 p-2.5 text-sm text-red-300">{error}</p>}
 
         {booking && (
           <>
             <p className="text-lg">{booking.serviceName}</p>
-            <p className="text-slate-400">
+            <p className="text-secondary-500">
               {new Date(booking.startTime).toLocaleString()} -{" "}
               {new Date(booking.endTime).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
             </p>
-            <p className="text-sm text-slate-500">{booking.resource.name}</p>
+            <p className="text-sm text-secondary-500">{booking.resource.name}</p>
             <p className="text-sm uppercase tracking-wide text-amber-400">{booking.status.replace("_", " ")}</p>
 
             {cancelError && <p className="rounded-md bg-red-950 p-2.5 text-sm text-red-300">{cancelError}</p>}
@@ -116,7 +116,7 @@ export default function ManageBookingPage() {
                 {cancelBusy ? "Cancelling..." : "Cancel this booking"}
               </button>
             ) : (
-              <p className="text-sm text-slate-500">
+              <p className="text-sm text-secondary-500">
                 {booking.status === "CANCELLED"
                   ? "This booking has been cancelled."
                   : "This booking can no longer be changed online - contact the business directly."}

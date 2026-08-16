@@ -150,26 +150,26 @@ export default function ProductsPage() {
   if (!session) return null;
 
   return (
-    <div className="min-h-screen bg-slate-900 text-slate-100">
+    <div className="min-h-screen bg-background text-foreground">
       <Nav session={session} />
       <PageHeader />
       <main className="mx-auto max-w-4xl p-6">
         <h1 className="mb-4 text-xl font-bold">Products</h1>
         {error && <p className="mb-4 rounded-md bg-red-950 p-3 text-sm text-red-300">{error}</p>}
 
-        <section className="mb-6 rounded-lg border border-slate-800 p-4">
+        <section className="mb-6 rounded-lg border border-border p-4">
           <h2 className="mb-3 font-semibold">New product</h2>
           <div className="flex flex-wrap gap-2">
             <input
               placeholder="Name"
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
-              className="flex-1 rounded-md border border-slate-700 bg-slate-800 p-2 text-sm"
+              className="flex-1 rounded-md border border-border bg-surface p-2 text-sm"
             />
             <select
               value={newCategoryId}
               onChange={(e) => setNewCategoryId(e.target.value)}
-              className="rounded-md border border-slate-700 bg-slate-800 p-2 text-sm"
+              className="rounded-md border border-border bg-surface p-2 text-sm"
             >
               <option value="">No category</option>
               {categories.map((c) => (
@@ -181,7 +181,7 @@ export default function ProductsPage() {
             <select
               value={newTaxClassId}
               onChange={(e) => setNewTaxClassId(e.target.value)}
-              className="rounded-md border border-slate-700 bg-slate-800 p-2 text-sm"
+              className="rounded-md border border-border bg-surface p-2 text-sm"
             >
               <option value="">No tax class</option>
               {taxClasses.map((t) => (
@@ -201,22 +201,22 @@ export default function ProductsPage() {
           {createError && <p className="mt-2 text-sm text-red-400">{createError}</p>}
         </section>
 
-        {loading && <p className="text-slate-400">Loading...</p>}
-        {!loading && sortedProducts.length === 0 && !error && <p className="text-slate-400">No products yet.</p>}
+        {loading && <p className="text-secondary-500">Loading...</p>}
+        {!loading && sortedProducts.length === 0 && !error && <p className="text-secondary-500">No products yet.</p>}
 
         <div className="space-y-3">
           {sortedProducts.map((product) => (
-            <div key={product.id} className="rounded-lg border border-slate-800 p-4">
+            <div key={product.id} className="rounded-lg border border-border p-4">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="font-semibold">{product.name}</p>
-                  <p className="text-xs text-slate-400">
+                  <p className="text-xs text-secondary-500">
                     {product.category?.name ?? "No category"} · {product.taxClass?.name ?? "No tax class"}
                   </p>
                 </div>
                 <button
                   onClick={() => setVariantForProductId(variantForProductId === product.id ? null : product.id)}
-                  className="rounded-md bg-slate-800 px-3 py-1.5 text-sm hover:bg-slate-700"
+                  className="rounded-md bg-surface px-3 py-1.5 text-sm hover:bg-border"
                 >
                   + Variant
                 </button>
@@ -226,7 +226,7 @@ export default function ProductsPage() {
                 <table className="mt-3 w-full text-left text-sm">
                   <tbody>
                     {product.variants.map((v) => (
-                      <tr key={v.id} className="border-t border-slate-800">
+                      <tr key={v.id} className="border-t border-border">
                         <td className="py-1.5">
                           {v.sku}
                           {v.quantityMode === "WEIGHT" && (
@@ -237,7 +237,7 @@ export default function ProductsPage() {
                         </td>
                         <td className="py-1.5 text-right font-mono">
                           KES {Number(v.price).toFixed(2)}
-                          {v.quantityMode === "WEIGHT" && <span className="text-slate-500"> /unit</span>}
+                          {v.quantityMode === "WEIGHT" && <span className="text-secondary-500"> /unit</span>}
                         </td>
                         <td className="py-1.5 pl-3 text-right">
                           <Link href={`/products/recipe/${v.id}`} className="text-xs text-primary-400 hover:underline">
@@ -251,24 +251,24 @@ export default function ProductsPage() {
               )}
 
               {variantForProductId === product.id && (
-                <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-slate-800 pt-3">
+                <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-border pt-3">
                   <input
                     placeholder="SKU"
                     value={variantSku}
                     onChange={(e) => setVariantSku(e.target.value)}
-                    className="rounded-md border border-slate-700 bg-slate-900 p-2 text-sm"
+                    className="rounded-md border border-border bg-background p-2 text-sm"
                   />
                   <input
                     type="number"
                     placeholder="Price"
                     value={variantPrice}
                     onChange={(e) => setVariantPrice(e.target.value)}
-                    className="w-28 rounded-md border border-slate-700 bg-slate-900 p-2 text-sm"
+                    className="w-28 rounded-md border border-border bg-background p-2 text-sm"
                   />
                   <select
                     value={variantMode}
                     onChange={(e) => setVariantMode(e.target.value as QuantityMode)}
-                    className="rounded-md border border-slate-700 bg-slate-900 p-2 text-sm"
+                    className="rounded-md border border-border bg-background p-2 text-sm"
                     title="Count: sold in whole units (each, pack, box). Weight: sold in fractional quantities (kg, litre) - price is per unit."
                   >
                     <option value="COUNT">Sold by count</option>

@@ -107,26 +107,26 @@ export default function BranchesPage() {
   if (!session) return null;
 
   return (
-    <div className="min-h-screen bg-slate-900 text-slate-100">
+    <div className="min-h-screen bg-background text-foreground">
       <Nav session={session} />
       <PageHeader />
       <main className="mx-auto max-w-3xl p-6">
         <h1 className="mb-4 text-xl font-bold">Branches</h1>
 
-        <section className="mb-6 rounded-lg border border-slate-800 p-4">
+        <section className="mb-6 rounded-lg border border-border p-4">
           <h2 className="mb-3 font-semibold">New branch</h2>
           <div className="flex flex-wrap gap-2">
             <input
               placeholder="Name"
               value={newBranchName}
               onChange={(e) => setNewBranchName(e.target.value)}
-              className="flex-1 rounded-md border border-slate-700 bg-slate-900 p-2 text-sm"
+              className="flex-1 rounded-md border border-border bg-background p-2 text-sm"
             />
             <input
               placeholder="County (optional)"
               value={newBranchCounty}
               onChange={(e) => setNewBranchCounty(e.target.value)}
-              className="rounded-md border border-slate-700 bg-slate-900 p-2 text-sm"
+              className="rounded-md border border-border bg-background p-2 text-sm"
             />
             <button
               onClick={() => void createBranch()}
@@ -140,26 +140,26 @@ export default function BranchesPage() {
         </section>
 
         {error && <p className="mb-4 rounded-md bg-red-950 p-3 text-sm text-red-300">{error}</p>}
-        {loading && <p className="text-slate-400">Loading...</p>}
+        {loading && <p className="text-secondary-500">Loading...</p>}
 
         <div className="space-y-3">
           {branches.map((branch) => (
-            <div key={branch.id} className="rounded-lg border border-slate-800 p-4">
+            <div key={branch.id} className="rounded-lg border border-border p-4">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="font-semibold">{branch.name}</p>
-                  <p className="text-xs text-slate-400">{branch.county ?? "No county set"}</p>
+                  <p className="text-xs text-secondary-500">{branch.county ?? "No county set"}</p>
                 </div>
                 <button
                   onClick={() => setTerminalForBranchId(terminalForBranchId === branch.id ? null : branch.id)}
-                  className="rounded-md bg-slate-800 px-3 py-1.5 text-sm hover:bg-slate-700"
+                  className="rounded-md bg-surface px-3 py-1.5 text-sm hover:bg-border"
                 >
                   + Terminal
                 </button>
               </div>
 
               {terminals.filter((t) => t.branchId === branch.id).length > 0 && (
-                <ul className="mt-2 space-y-1 text-sm text-slate-400">
+                <ul className="mt-2 space-y-1 text-sm text-secondary-500">
                   {terminals
                     .filter((t) => t.branchId === branch.id)
                     .map((t) => (
@@ -176,12 +176,12 @@ export default function BranchesPage() {
               )}
 
               {terminalForBranchId === branch.id && (
-                <div className="mt-3 flex items-center gap-2 border-t border-slate-800 pt-3">
+                <div className="mt-3 flex items-center gap-2 border-t border-border pt-3">
                   <input
                     placeholder="Terminal name"
                     value={newTerminalLabel}
                     onChange={(e) => setNewTerminalLabel(e.target.value)}
-                    className="rounded-md border border-slate-700 bg-slate-900 p-2 text-sm"
+                    className="rounded-md border border-border bg-background p-2 text-sm"
                   />
                   <button
                     onClick={() => void createTerminal(branch.id)}

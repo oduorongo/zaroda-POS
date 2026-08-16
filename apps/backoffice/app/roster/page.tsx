@@ -179,12 +179,12 @@ export default function RosterPage() {
   });
 
   return (
-    <div className="min-h-screen bg-slate-900 text-slate-100">
+    <div className="min-h-screen bg-background text-foreground">
       <Nav session={session} />
       <PageHeader />
       <main className="mx-auto max-w-4xl p-6">
         <h1 className="mb-1 text-xl font-bold">Duty Roster</h1>
-        <p className="mb-4 text-sm text-slate-400">
+        <p className="mb-4 text-sm text-secondary-500">
           Plan staff shifts ahead of time. Draft shifts are only visible here until published - publish a shift once
           the week&apos;s schedule is final.
         </p>
@@ -195,7 +195,7 @@ export default function RosterPage() {
           <select
             value={branchId}
             onChange={(e) => setBranchId(e.target.value)}
-            className="rounded-md border border-slate-700 bg-slate-800 p-2 text-sm"
+            className="rounded-md border border-border bg-surface p-2 text-sm"
           >
             {branches.length === 0 && <option value="">No branches found</option>}
             {branches.map((b) => (
@@ -206,16 +206,16 @@ export default function RosterPage() {
           </select>
           <button
             onClick={() => setWeekStart((d) => { const n = new Date(d); n.setDate(n.getDate() - 7); return n; })}
-            className="rounded-md bg-slate-800 px-3 py-2 text-sm hover:bg-slate-700"
+            className="rounded-md bg-surface px-3 py-2 text-sm hover:bg-border"
           >
             &larr; Prev week
           </button>
-          <span className="text-sm text-slate-400">
+          <span className="text-sm text-secondary-500">
             {weekStart.toLocaleDateString()} - {new Date(weekEnd.getTime() - 1).toLocaleDateString()}
           </span>
           <button
             onClick={() => setWeekStart((d) => { const n = new Date(d); n.setDate(n.getDate() + 7); return n; })}
-            className="rounded-md bg-slate-800 px-3 py-2 text-sm hover:bg-slate-700"
+            className="rounded-md bg-surface px-3 py-2 text-sm hover:bg-border"
           >
             Next week &rarr;
           </button>
@@ -226,15 +226,15 @@ export default function RosterPage() {
           )}
         </div>
 
-        <div className="mb-6 rounded-lg border border-slate-800 p-4">
+        <div className="mb-6 rounded-lg border border-border p-4">
           <h2 className="mb-3 font-semibold">Add a shift</h2>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
-              <label className="block text-xs text-slate-400">Staff member</label>
+              <label className="block text-xs text-secondary-500">Staff member</label>
               <select
                 value={formOrgUserId}
                 onChange={(e) => setFormOrgUserId(e.target.value)}
-                className="mt-1 w-full rounded-md border border-slate-700 bg-slate-900 p-2 text-sm"
+                className="mt-1 w-full rounded-md border border-border bg-background p-2 text-sm"
               >
                 <option value="">Select...</option>
                 {orgUsers.filter((u) => u.isActive).map((u) => (
@@ -246,30 +246,30 @@ export default function RosterPage() {
             </div>
             <div className="sm:col-span-2 grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs text-slate-400">Start</label>
+                <label className="block text-xs text-secondary-500">Start</label>
                 <input
                   type="datetime-local"
                   value={formStart}
                   onChange={(e) => setFormStart(e.target.value)}
-                  className="mt-1 w-full rounded-md border border-slate-700 bg-slate-900 p-2 text-sm"
+                  className="mt-1 w-full rounded-md border border-border bg-background p-2 text-sm"
                 />
               </div>
               <div>
-                <label className="block text-xs text-slate-400">End</label>
+                <label className="block text-xs text-secondary-500">End</label>
                 <input
                   type="datetime-local"
                   value={formEnd}
                   onChange={(e) => setFormEnd(e.target.value)}
-                  className="mt-1 w-full rounded-md border border-slate-700 bg-slate-900 p-2 text-sm"
+                  className="mt-1 w-full rounded-md border border-border bg-background p-2 text-sm"
                 />
               </div>
             </div>
             <div className="sm:col-span-2">
-              <label className="block text-xs text-slate-400">Notes (optional)</label>
+              <label className="block text-xs text-secondary-500">Notes (optional)</label>
               <input
                 value={formNotes}
                 onChange={(e) => setFormNotes(e.target.value)}
-                className="mt-1 w-full rounded-md border border-slate-700 bg-slate-900 p-2 text-sm"
+                className="mt-1 w-full rounded-md border border-border bg-background p-2 text-sm"
               />
             </div>
           </div>
@@ -285,12 +285,12 @@ export default function RosterPage() {
           </button>
         </div>
 
-        <div className="rounded-lg border border-slate-800 p-4">
+        <div className="rounded-lg border border-border p-4">
           <h2 className="mb-3 font-semibold">This week</h2>
           {loading ? (
-            <p className="text-sm text-slate-400">Loading...</p>
+            <p className="text-sm text-secondary-500">Loading...</p>
           ) : shifts.length === 0 ? (
-            <p className="text-sm text-slate-500">No shifts rostered this week.</p>
+            <p className="text-sm text-secondary-500">No shifts rostered this week.</p>
           ) : (
             <div className="space-y-4">
               {days.map((day) => {
@@ -301,27 +301,27 @@ export default function RosterPage() {
                 if (dayShifts.length === 0) return null;
                 return (
                   <div key={day.toISOString()}>
-                    <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-secondary-500">
                       {day.toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric" })}
                     </p>
                     <div className="space-y-1">
                       {dayShifts.map((s) => (
-                        <div key={s.id} className="flex items-center justify-between rounded-md bg-slate-900 p-2 text-sm">
+                        <div key={s.id} className="flex items-center justify-between rounded-md bg-background p-2 text-sm">
                           <div>
                             <p>
                               {s.orgUser.user.fullName} ·{" "}
                               {new Date(s.startTime).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}-
                               {new Date(s.endTime).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                             </p>
-                            {s.notes && <p className="text-xs text-slate-500">{s.notes}</p>}
+                            {s.notes && <p className="text-xs text-secondary-500">{s.notes}</p>}
                           </div>
                           <div className="flex items-center gap-2">
-                            <span className={`text-xs uppercase tracking-wide ${s.published ? "text-green-400" : "text-slate-500"}`}>
+                            <span className={`text-xs uppercase tracking-wide ${s.published ? "text-green-400" : "text-secondary-500"}`}>
                               {s.published ? "Published" : "Draft"}
                             </span>
                             <button
                               onClick={() => void togglePublish(s)}
-                              className="rounded-md bg-slate-700 px-2 py-1 text-xs hover:bg-slate-600"
+                              className="rounded-md bg-border px-2 py-1 text-xs hover:bg-secondary-500"
                             >
                               {s.published ? "Unpublish" : "Publish"}
                             </button>

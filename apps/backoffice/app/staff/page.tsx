@@ -171,7 +171,7 @@ export default function StaffPage() {
   if (!session) return null;
 
   return (
-    <div className="min-h-screen bg-slate-900 text-slate-100">
+    <div className="min-h-screen bg-background text-foreground">
       <Nav session={session} />
       <PageHeader />
       <main className="mx-auto max-w-3xl p-6">
@@ -182,15 +182,15 @@ export default function StaffPage() {
           </button>
         </div>
 
-        <label className="mb-4 flex items-center gap-2 text-sm text-slate-400">
+        <label className="mb-4 flex items-center gap-2 text-sm text-secondary-500">
           <input type="checkbox" checked={includeInactive} onChange={(e) => setIncludeInactive(e.target.checked)} />
           Show deactivated
         </label>
 
         {newOpen && (
-          <div className="mb-6 rounded-lg border border-slate-800 p-4">
+          <div className="mb-6 rounded-lg border border-border p-4">
             <h2 className="mb-3 font-semibold">Add person</h2>
-            <p className="mb-3 text-xs text-slate-400">
+            <p className="mb-3 text-xs text-secondary-500">
               If this email already has an account (e.g. someone contracted to more than one shop), fullName/password
               are ignored and they just get a new membership here.
             </p>
@@ -199,25 +199,25 @@ export default function StaffPage() {
                 placeholder="Email"
                 value={newEmail}
                 onChange={(e) => setNewEmail(e.target.value)}
-                className="rounded-md border border-slate-700 bg-slate-900 p-2 text-sm"
+                className="rounded-md border border-border bg-background p-2 text-sm"
               />
               <input
                 placeholder="Full name (new account only)"
                 value={newFullName}
                 onChange={(e) => setNewFullName(e.target.value)}
-                className="rounded-md border border-slate-700 bg-slate-900 p-2 text-sm"
+                className="rounded-md border border-border bg-background p-2 text-sm"
               />
               <input
                 type="password"
                 placeholder="Password, min 8 chars (new account only)"
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
-                className="rounded-md border border-slate-700 bg-slate-900 p-2 text-sm"
+                className="rounded-md border border-border bg-background p-2 text-sm"
               />
               <select
                 value={newRole}
                 onChange={(e) => setNewRole(e.target.value as Role)}
-                className="rounded-md border border-slate-700 bg-slate-900 p-2 text-sm"
+                className="rounded-md border border-border bg-background p-2 text-sm"
               >
                 {ROLES.map((r) => (
                   <option key={r} value={r}>
@@ -229,7 +229,7 @@ export default function StaffPage() {
                 placeholder="Branch ID (optional - blank = all branches)"
                 value={newBranchId}
                 onChange={(e) => setNewBranchId(e.target.value)}
-                className="rounded-md border border-slate-700 bg-slate-900 p-2 text-sm sm:col-span-2"
+                className="rounded-md border border-border bg-background p-2 text-sm sm:col-span-2"
               />
             </div>
             {createError && <p className="mt-2 text-sm text-red-400">{createError}</p>}
@@ -244,23 +244,23 @@ export default function StaffPage() {
         )}
 
         {error && <p className="mb-4 rounded-md bg-red-950 p-3 text-sm text-red-300">{error}</p>}
-        {loading && <p className="text-slate-400">Loading...</p>}
+        {loading && <p className="text-secondary-500">Loading...</p>}
 
         {!loading && orgUsers.length > 0 && (
           <div className="space-y-2">
             {orgUsers.map((u) => (
-              <div key={u.id} className={`rounded-lg border p-3 ${u.isActive ? "border-slate-800" : "border-red-900 opacity-70"}`}>
+              <div key={u.id} className={`rounded-lg border p-3 ${u.isActive ? "border-border" : "border-red-900 opacity-70"}`}>
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="font-medium">
                       {u.user.fullName} {!u.isActive && <span className="text-xs font-normal text-red-400">(deactivated)</span>}
                     </p>
-                    <p className="text-xs text-slate-400">
+                    <p className="text-xs text-secondary-500">
                       {u.role} · {u.branchId ? `Branch ${u.branchId.slice(0, 8)}...` : "All branches"}
                     </p>
                   </div>
                   <div className="flex gap-2">
-                    <button onClick={() => startEdit(u)} className="rounded-md bg-slate-800 px-3 py-1.5 text-sm hover:bg-slate-700">
+                    <button onClick={() => startEdit(u)} className="rounded-md bg-surface px-3 py-1.5 text-sm hover:bg-border">
                       Edit role
                     </button>
                     <button
@@ -269,7 +269,7 @@ export default function StaffPage() {
                         setPinValue("");
                         setPinError(null);
                       }}
-                      className="rounded-md bg-slate-800 px-3 py-1.5 text-sm hover:bg-slate-700"
+                      className="rounded-md bg-surface px-3 py-1.5 text-sm hover:bg-border"
                     >
                       Set PIN
                     </button>
@@ -285,11 +285,11 @@ export default function StaffPage() {
                 {pinSuccessId === u.id && <p className="mt-2 text-sm text-green-400">PIN updated.</p>}
 
                 {editingId === u.id && (
-                  <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-slate-800 pt-3">
+                  <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-border pt-3">
                     <select
                       value={editRole}
                       onChange={(e) => setEditRole(e.target.value as Role)}
-                      className="rounded-md border border-slate-700 bg-slate-900 p-2 text-sm"
+                      className="rounded-md border border-border bg-background p-2 text-sm"
                     >
                       {ROLES.map((r) => (
                         <option key={r} value={r}>
@@ -301,7 +301,7 @@ export default function StaffPage() {
                       placeholder="Branch ID (blank = all)"
                       value={editBranchId}
                       onChange={(e) => setEditBranchId(e.target.value)}
-                      className="rounded-md border border-slate-700 bg-slate-900 p-2 text-sm"
+                      className="rounded-md border border-border bg-background p-2 text-sm"
                     />
                     <button
                       onClick={() => void saveEdit()}
@@ -310,7 +310,7 @@ export default function StaffPage() {
                     >
                       Save
                     </button>
-                    <button onClick={() => setEditingId(null)} className="rounded-md bg-slate-700 px-3 py-2 text-sm">
+                    <button onClick={() => setEditingId(null)} className="rounded-md bg-border px-3 py-2 text-sm">
                       Cancel
                     </button>
                     {editError && <p className="w-full text-sm text-red-400">{editError}</p>}
@@ -318,13 +318,13 @@ export default function StaffPage() {
                 )}
 
                 {pinForId === u.id && (
-                  <div className="mt-3 flex items-center gap-2 border-t border-slate-800 pt-3">
+                  <div className="mt-3 flex items-center gap-2 border-t border-border pt-3">
                     <input
                       type="password"
                       placeholder="New PIN (4-8 digits)"
                       value={pinValue}
                       onChange={(e) => setPinValue(e.target.value)}
-                      className="rounded-md border border-slate-700 bg-slate-900 p-2 text-sm"
+                      className="rounded-md border border-border bg-background p-2 text-sm"
                     />
                     <button
                       onClick={() => void savePin()}
@@ -333,7 +333,7 @@ export default function StaffPage() {
                     >
                       Set
                     </button>
-                    <button onClick={() => setPinForId(null)} className="rounded-md bg-slate-700 px-3 py-2 text-sm">
+                    <button onClick={() => setPinForId(null)} className="rounded-md bg-border px-3 py-2 text-sm">
                       Cancel
                     </button>
                     {pinError && <p className="w-full text-sm text-red-400">{pinError}</p>}

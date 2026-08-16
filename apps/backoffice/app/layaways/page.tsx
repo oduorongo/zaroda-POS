@@ -177,7 +177,7 @@ export default function LayawaysPage() {
   if (!session) return null;
 
   return (
-    <div className="min-h-screen bg-slate-900 text-slate-100">
+    <div className="min-h-screen bg-background text-foreground">
       <Nav session={session} />
       <PageHeader />
       <main className="mx-auto max-w-4xl p-6">
@@ -193,7 +193,7 @@ export default function LayawaysPage() {
             <button
               key={s || "all"}
               onClick={() => setStatusFilter(s)}
-              className={`rounded-md px-3 py-1.5 text-sm ${statusFilter === s ? "bg-primary-600" : "bg-slate-800 hover:bg-slate-700"}`}
+              className={`rounded-md px-3 py-1.5 text-sm ${statusFilter === s ? "bg-primary-600" : "bg-surface hover:bg-border"}`}
             >
               {s || "All"}
             </button>
@@ -201,13 +201,13 @@ export default function LayawaysPage() {
         </div>
 
         {newOpen && (
-          <div className="mb-6 rounded-lg border border-slate-800 p-4">
+          <div className="mb-6 rounded-lg border border-border p-4">
             <h2 className="mb-3 font-semibold">New layaway</h2>
-            <label className="block text-xs text-slate-400">Branch</label>
+            <label className="block text-xs text-secondary-500">Branch</label>
             <select
               value={branchId}
               onChange={(e) => setBranchId(e.target.value)}
-              className="mt-1 mb-3 w-full max-w-md rounded-md border border-slate-700 bg-slate-900 p-2 text-sm"
+              className="mt-1 mb-3 w-full max-w-md rounded-md border border-border bg-background p-2 text-sm"
             >
               {branches.length === 0 && <option value="">No branches found</option>}
               {branches.map((b) => (
@@ -218,7 +218,7 @@ export default function LayawaysPage() {
             </select>
 
             {selectedCustomer ? (
-              <div className="mb-3 flex items-center justify-between rounded-md bg-slate-900 p-2 text-sm">
+              <div className="mb-3 flex items-center justify-between rounded-md bg-background p-2 text-sm">
                 <span>{selectedCustomer.name}</span>
                 <button onClick={() => setSelectedCustomer(null)} className="text-xs text-red-400">
                   Remove
@@ -230,7 +230,7 @@ export default function LayawaysPage() {
                   placeholder="Search customer by name or phone..."
                   value={customerSearch}
                   onChange={(e) => void searchCustomers(e.target.value)}
-                  className="mb-2 w-full max-w-md rounded-md border border-slate-700 bg-slate-900 p-2 text-sm"
+                  className="mb-2 w-full max-w-md rounded-md border border-border bg-background p-2 text-sm"
                 />
                 <div className="mb-3 max-h-32 max-w-md space-y-1 overflow-y-auto">
                   {customerResults.map((c) => (
@@ -241,24 +241,24 @@ export default function LayawaysPage() {
                         setCustomerSearch("");
                         setCustomerResults([]);
                       }}
-                      className="flex w-full items-center justify-between rounded-md bg-slate-900 p-2 text-left text-sm hover:bg-slate-800"
+                      className="flex w-full items-center justify-between rounded-md bg-background p-2 text-left text-sm hover:bg-surface"
                     >
                       <span>{c.name}</span>
-                      <span className="text-xs text-slate-400">{c.phone ?? "no phone"}</span>
+                      <span className="text-xs text-secondary-500">{c.phone ?? "no phone"}</span>
                     </button>
                   ))}
                 </div>
               </>
             )}
 
-            <p className="mb-2 text-xs text-slate-400">Items:</p>
+            <p className="mb-2 text-xs text-secondary-500">Items:</p>
             <div className="mb-3 grid max-h-40 grid-cols-2 gap-2 overflow-y-auto sm:grid-cols-3">
               {products.flatMap((p) =>
                 p.variants.map((v) => (
                   <button
                     key={v.id}
                     onClick={() => addLine(p, v)}
-                    className="rounded-md bg-slate-900 p-2 text-left text-xs hover:bg-slate-800"
+                    className="rounded-md bg-background p-2 text-left text-xs hover:bg-surface"
                   >
                     {p.name} ({v.sku}) - KES {Number(v.price).toFixed(2)}
                   </button>
@@ -279,7 +279,7 @@ export default function LayawaysPage() {
 
             {createError && <p className="mb-2 text-sm text-red-400">{createError}</p>}
             <div className="flex gap-3">
-              <button onClick={() => setNewOpen(false)} className="rounded-md bg-slate-700 px-4 py-2 text-sm">
+              <button onClick={() => setNewOpen(false)} className="rounded-md bg-border px-4 py-2 text-sm">
                 Cancel
               </button>
               <button
@@ -294,13 +294,13 @@ export default function LayawaysPage() {
         )}
 
         {error && <p className="mb-4 rounded-md bg-red-950 p-3 text-sm text-red-300">{error}</p>}
-        {loading && <p className="text-slate-400">Loading...</p>}
-        {!loading && layaways.length === 0 && !error && <p className="text-slate-400">No layaways found.</p>}
+        {loading && <p className="text-secondary-500">Loading...</p>}
+        {!loading && layaways.length === 0 && !error && <p className="text-secondary-500">No layaways found.</p>}
 
         {layaways.length > 0 && (
-          <div className="overflow-x-auto rounded-lg border border-slate-800">
+          <div className="overflow-x-auto rounded-lg border border-border">
             <table className="w-full text-left text-sm">
-              <thead className="bg-slate-800 text-slate-400">
+              <thead className="bg-surface text-secondary-500">
                 <tr>
                   <th className="p-3">Customer</th>
                   <th className="p-3">Created</th>
@@ -311,7 +311,7 @@ export default function LayawaysPage() {
               </thead>
               <tbody>
                 {layaways.map((l) => (
-                  <tr key={l.id} className="border-t border-slate-800 hover:bg-slate-800/50">
+                  <tr key={l.id} className="border-t border-border hover:bg-surface/50">
                     <td className="p-3">{l.customer.name}</td>
                     <td className="p-3">{new Date(l.createdAt).toLocaleString()}</td>
                     <td className={`p-3 ${STATUS_COLOR[l.status]}`}>{l.status}</td>

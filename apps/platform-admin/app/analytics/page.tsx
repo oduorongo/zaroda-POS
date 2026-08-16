@@ -16,10 +16,10 @@ interface Analytics {
 
 function StatCard({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
   return (
-    <Card className="border-primary-700 bg-primary-800">
+    <Card className="border-border bg-surface">
       <CardContent>
-        <p className="text-sm text-zinc-500">{label}</p>
-        <p className={`mt-1 text-3xl font-bold ${accent ? "text-amber-400" : "text-zinc-100"}`}>{value}</p>
+        <p className="text-sm text-secondary-500">{label}</p>
+        <p className={`mt-1 text-3xl font-bold ${accent ? "text-amber-400" : "text-foreground"}`}>{value}</p>
       </CardContent>
     </Card>
   );
@@ -54,7 +54,7 @@ export default function AnalyticsPage() {
   if (!session) return null;
 
   return (
-    <div className="min-h-screen bg-primary-900 text-zinc-100">
+    <div className="min-h-screen bg-background text-foreground">
       <Nav session={session} />
       <main className="mx-auto max-w-5xl space-y-6 p-6">
         <h1 className="text-xl font-bold">Platform Analytics</h1>
@@ -71,20 +71,20 @@ export default function AnalyticsPage() {
               <StatCard label="Suspended" value={String(data.subscriptionsByStatus.SUSPENDED ?? 0)} />
             </div>
 
-            <Card className="border-primary-700 bg-primary-800">
+            <Card className="border-border bg-surface">
               <CardContent>
-                <p className="mb-3 text-sm font-semibold text-zinc-300">Subscriptions by status</p>
+                <p className="mb-3 text-sm font-semibold text-secondary-600">Subscriptions by status</p>
                 <div className="space-y-2">
                   {(["TRIAL", "ACTIVE", "GRACE", "SUSPENDED"] as const).map((status) => {
                     const count = data.subscriptionsByStatus[status] ?? 0;
                     const pct = data.tenantCount > 0 ? Math.round((count / data.tenantCount) * 100) : 0;
                     return (
                       <div key={status} className="flex items-center gap-3">
-                        <span className="w-24 text-sm text-zinc-400">{status}</span>
-                        <div className="h-2 flex-1 overflow-hidden rounded-full bg-primary-700">
+                        <span className="w-24 text-sm text-secondary-500">{status}</span>
+                        <div className="h-2 flex-1 overflow-hidden rounded-full bg-border">
                           <div className="h-full bg-amber-500" style={{ width: `${pct}%` }} />
                         </div>
-                        <span className="w-10 text-right text-sm text-zinc-400">{count}</span>
+                        <span className="w-10 text-right text-sm text-secondary-500">{count}</span>
                       </div>
                     );
                   })}

@@ -216,13 +216,13 @@ export default function ReceiveStockPage() {
   if (!session) return null;
 
   return (
-    <div className="min-h-screen bg-slate-900 text-slate-100">
+    <div className="min-h-screen bg-background text-foreground">
       <Nav session={session} />
       <PageHeader />
       <main className="mx-auto max-w-3xl p-6">
         <div className="mb-4 flex items-center justify-between">
           <h1 className="text-xl font-bold">Receive stock</h1>
-          <Link href="/inventory" className="text-sm text-slate-400 hover:text-slate-200">
+          <Link href="/inventory" className="text-sm text-secondary-500 hover:text-secondary-600">
             &larr; Back to inventory
           </Link>
         </div>
@@ -231,11 +231,11 @@ export default function ReceiveStockPage() {
 
         <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div>
-            <label className="block text-xs text-slate-400">Branch receiving the stock</label>
+            <label className="block text-xs text-secondary-500">Branch receiving the stock</label>
             <select
               value={branchId}
               onChange={(e) => setBranchId(e.target.value)}
-              className="mt-1 w-full rounded-md border border-slate-700 bg-slate-800 p-2 text-sm"
+              className="mt-1 w-full rounded-md border border-border bg-surface p-2 text-sm"
             >
               {branches.length === 0 && <option value="">No branches found</option>}
               {branches.map((b) => (
@@ -246,20 +246,20 @@ export default function ReceiveStockPage() {
             </select>
           </div>
           <div>
-            <label className="block text-xs text-slate-400">Delivery reference (optional)</label>
+            <label className="block text-xs text-secondary-500">Delivery reference (optional)</label>
             <input
               placeholder="e.g. supplier invoice # - applies to non-batch lines"
               value={deliveryRef}
               onChange={(e) => setDeliveryRef(e.target.value)}
-              className="mt-1 w-full rounded-md border border-slate-700 bg-slate-800 p-2 text-sm"
+              className="mt-1 w-full rounded-md border border-border bg-surface p-2 text-sm"
             />
           </div>
         </div>
 
-        <div className="mb-4 rounded-lg border border-slate-800 p-4">
-          <h2 className="mb-3 text-sm font-semibold text-slate-300">Add item</h2>
+        <div className="mb-4 rounded-lg border border-border p-4">
+          <h2 className="mb-3 text-sm font-semibold text-secondary-600">Add item</h2>
 
-          <label className="block text-xs text-slate-400">Product</label>
+          <label className="block text-xs text-secondary-500">Product</label>
           <input
             placeholder="Search by product name or SKU"
             value={selectedVariant ? `${selectedVariant.product.name} (${selectedVariant.sku})` : search}
@@ -267,12 +267,12 @@ export default function ReceiveStockPage() {
               setSearch(e.target.value);
               setSelectedVariantId("");
             }}
-            className="mt-1 w-full rounded-md border border-slate-700 bg-slate-900 p-2 text-sm"
+            className="mt-1 w-full rounded-md border border-border bg-background p-2 text-sm"
           />
           {!selectedVariantId && search.trim() && (
-            <div className="mt-1 max-h-48 overflow-y-auto rounded-md border border-slate-700 bg-slate-900">
+            <div className="mt-1 max-h-48 overflow-y-auto rounded-md border border-border bg-background">
               {variantOptions.length === 0 ? (
-                <p className="p-2 text-sm text-slate-500">No matching products.</p>
+                <p className="p-2 text-sm text-secondary-500">No matching products.</p>
               ) : (
                 variantOptions.map((v) => (
                   <button
@@ -281,9 +281,9 @@ export default function ReceiveStockPage() {
                       setSelectedVariantId(v.id);
                       setSearch("");
                     }}
-                    className="block w-full px-2 py-1.5 text-left text-sm hover:bg-slate-800"
+                    className="block w-full px-2 py-1.5 text-left text-sm hover:bg-surface"
                   >
-                    {v.product.name} <span className="text-slate-500">({v.sku})</span>
+                    {v.product.name} <span className="text-secondary-500">({v.sku})</span>
                   </button>
                 ))
               )}
@@ -292,7 +292,7 @@ export default function ReceiveStockPage() {
 
           <div className="mt-3 flex flex-wrap items-end gap-2">
             <div>
-              <label className="block text-xs text-slate-400">
+              <label className="block text-xs text-secondary-500">
                 Quantity received{selectedVariant?.quantityMode === "WEIGHT" ? " (e.g. kg)" : ""}
               </label>
               <input
@@ -302,37 +302,37 @@ export default function ReceiveStockPage() {
                 placeholder="0"
                 value={quantity}
                 onChange={(e) => setQuantity(e.target.value)}
-                className="mt-1 w-28 rounded-md border border-slate-700 bg-slate-900 p-2 text-sm"
+                className="mt-1 w-28 rounded-md border border-border bg-background p-2 text-sm"
               />
             </div>
-            <label className="mb-2 flex items-center gap-2 text-sm text-slate-400">
+            <label className="mb-2 flex items-center gap-2 text-sm text-secondary-500">
               <input type="checkbox" checked={trackBatch} onChange={(e) => setTrackBatch(e.target.checked)} />
               Track batch / expiry
             </label>
             {trackBatch && (
               <>
                 <div>
-                  <label className="block text-xs text-slate-400">Batch number</label>
+                  <label className="block text-xs text-secondary-500">Batch number</label>
                   <input
                     value={batchNumber}
                     onChange={(e) => setBatchNumber(e.target.value)}
-                    className="mt-1 w-32 rounded-md border border-slate-700 bg-slate-900 p-2 text-sm"
+                    className="mt-1 w-32 rounded-md border border-border bg-background p-2 text-sm"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs text-slate-400">Expiry date (optional)</label>
+                  <label className="block text-xs text-secondary-500">Expiry date (optional)</label>
                   <input
                     type="date"
                     value={expiryDate}
                     onChange={(e) => setExpiryDate(e.target.value)}
-                    className="mt-1 rounded-md border border-slate-700 bg-slate-900 p-2 text-sm"
+                    className="mt-1 rounded-md border border-border bg-background p-2 text-sm"
                   />
                 </div>
               </>
             )}
             <button
               onClick={addLine}
-              className="rounded-md bg-slate-700 px-3 py-2 text-sm font-semibold hover:bg-slate-600"
+              className="rounded-md bg-border px-3 py-2 text-sm font-semibold hover:bg-secondary-500"
             >
               + Add to delivery
             </button>
@@ -340,21 +340,21 @@ export default function ReceiveStockPage() {
           {lineError && <p className="mt-2 text-sm text-red-400">{lineError}</p>}
         </div>
 
-        <div className="mb-4 rounded-lg border border-slate-800 p-4">
-          <h2 className="mb-3 text-sm font-semibold text-slate-300">
+        <div className="mb-4 rounded-lg border border-border p-4">
+          <h2 className="mb-3 text-sm font-semibold text-secondary-600">
             This delivery {lines.length > 0 && `(${lines.length} line(s), ${totalUnits} unit(s))`}
           </h2>
           {lines.length === 0 ? (
-            <p className="text-sm text-slate-500">No items added yet.</p>
+            <p className="text-sm text-secondary-500">No items added yet.</p>
           ) : (
             <div className="space-y-2">
               {lines.map((l) => (
-                <div key={l.key} className="flex items-center justify-between rounded-md bg-slate-800/60 px-3 py-2 text-sm">
+                <div key={l.key} className="flex items-center justify-between rounded-md bg-surface/60 px-3 py-2 text-sm">
                   <div>
                     <span className="font-medium">{l.label}</span>{" "}
-                    <span className="font-mono text-slate-400">+{l.quantity}</span>
+                    <span className="font-mono text-secondary-500">+{l.quantity}</span>
                     {l.batchNumber && (
-                      <span className="ml-2 text-xs text-slate-500">
+                      <span className="ml-2 text-xs text-secondary-500">
                         batch {l.batchNumber}
                         {l.expiryDate ? ` · exp ${l.expiryDate}` : ""}
                       </span>
@@ -381,14 +381,14 @@ export default function ReceiveStockPage() {
           )}
         </div>
 
-        <div className="rounded-lg border border-slate-800 p-4">
-          <h2 className="mb-3 text-sm font-semibold text-slate-300">Recently received at this branch</h2>
+        <div className="rounded-lg border border-border p-4">
+          <h2 className="mb-3 text-sm font-semibold text-secondary-600">Recently received at this branch</h2>
           {recent.length === 0 ? (
-            <p className="text-sm text-slate-500">Nothing received recently.</p>
+            <p className="text-sm text-secondary-500">Nothing received recently.</p>
           ) : (
             <div className="space-y-1">
               {recent.map((t) => (
-                <p key={t.id} className="text-sm text-slate-400">
+                <p key={t.id} className="text-sm text-secondary-500">
                   {t.variant.product.name} ({t.variant.sku}){" "}
                   <span className="font-mono text-emerald-400">+{t.quantityDelta}</span> ·{" "}
                   {new Date(t.createdAt).toLocaleString()}

@@ -62,11 +62,11 @@ function VariantPicker({
 
   return (
     <div>
-      <label className="block text-xs text-slate-400">{label}</label>
+      <label className="block text-xs text-secondary-500">{label}</label>
       {selected ? (
-        <div className="mt-1 flex items-center justify-between rounded-md bg-slate-900 p-2 text-sm">
+        <div className="mt-1 flex items-center justify-between rounded-md bg-background p-2 text-sm">
           <span>
-            {selected.product.name} <span className="text-slate-500">({selected.sku})</span>
+            {selected.product.name} <span className="text-secondary-500">({selected.sku})</span>
           </span>
           <button
             onClick={() => onSelect({ id: "", sku: "", quantityMode: "COUNT", product: { name: "" } })}
@@ -81,12 +81,12 @@ function VariantPicker({
             placeholder="Search by product name or SKU"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="mt-1 w-full rounded-md border border-slate-700 bg-slate-900 p-2 text-sm"
+            className="mt-1 w-full rounded-md border border-border bg-background p-2 text-sm"
           />
           {search.trim() && (
-            <div className="mt-1 max-h-40 overflow-y-auto rounded-md border border-slate-700 bg-slate-900">
+            <div className="mt-1 max-h-40 overflow-y-auto rounded-md border border-border bg-background">
               {options.length === 0 ? (
-                <p className="p-2 text-sm text-slate-500">No matching products.</p>
+                <p className="p-2 text-sm text-secondary-500">No matching products.</p>
               ) : (
                 options.map((v) => (
                   <button
@@ -95,9 +95,9 @@ function VariantPicker({
                       onSelect(v);
                       setSearch("");
                     }}
-                    className="block w-full px-2 py-1.5 text-left text-sm hover:bg-slate-800"
+                    className="block w-full px-2 py-1.5 text-left text-sm hover:bg-surface"
                   >
-                    {v.product.name} <span className="text-slate-500">({v.sku})</span>
+                    {v.product.name} <span className="text-secondary-500">({v.sku})</span>
                   </button>
                 ))
               )}
@@ -225,12 +225,12 @@ export default function RepackagingPage() {
   if (!session) return null;
 
   return (
-    <div className="min-h-screen bg-slate-900 text-slate-100">
+    <div className="min-h-screen bg-background text-foreground">
       <Nav session={session} />
       <PageHeader />
       <main className="mx-auto max-w-3xl p-6">
         <h1 className="mb-1 text-xl font-bold">Repackaging</h1>
-        <p className="mb-4 text-sm text-slate-400">
+        <p className="mb-4 text-sm text-secondary-500">
           Break bulk stock (a jerrycan, a sack) down into smaller resale units (scoops, portions). Decrements the bulk
           item and credits the resale item in one move.
         </p>
@@ -238,11 +238,11 @@ export default function RepackagingPage() {
         {loadError && <p className="mb-4 rounded-md bg-red-950 p-3 text-sm text-red-300">{loadError}</p>}
 
         <div className="mb-4">
-          <label className="block text-xs text-slate-400">Branch</label>
+          <label className="block text-xs text-secondary-500">Branch</label>
           <select
             value={branchId}
             onChange={(e) => setBranchId(e.target.value)}
-            className="mt-1 w-full max-w-md rounded-md border border-slate-700 bg-slate-800 p-2 text-sm"
+            className="mt-1 w-full max-w-md rounded-md border border-border bg-surface p-2 text-sm"
           >
             {branches.length === 0 && <option value="">No branches found</option>}
             {branches.map((b) => (
@@ -253,7 +253,7 @@ export default function RepackagingPage() {
           </select>
         </div>
 
-        <div className="mb-6 rounded-lg border border-slate-800 p-4">
+        <div className="mb-6 rounded-lg border border-border p-4">
           <h2 className="mb-3 font-semibold">Record a repackaging</h2>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <VariantPicker
@@ -271,7 +271,7 @@ export default function RepackagingPage() {
               exclude={fromVariant?.id}
             />
             <div>
-              <label className="block text-xs text-slate-400">
+              <label className="block text-xs text-secondary-500">
                 Bulk quantity broken down{fromVariant?.quantityMode === "WEIGHT" ? " (e.g. kg)" : ""}
               </label>
               <input
@@ -280,11 +280,11 @@ export default function RepackagingPage() {
                 step={fromVariant?.quantityMode === "WEIGHT" ? "0.001" : "1"}
                 value={fromQuantity}
                 onChange={(e) => setFromQuantity(e.target.value)}
-                className="mt-1 w-full rounded-md border border-slate-700 bg-slate-900 p-2 text-sm"
+                className="mt-1 w-full rounded-md border border-border bg-background p-2 text-sm"
               />
             </div>
             <div>
-              <label className="block text-xs text-slate-400">
+              <label className="block text-xs text-secondary-500">
                 Resale quantity produced (total yield){toVariant?.quantityMode === "WEIGHT" ? " (e.g. kg)" : ""}
               </label>
               <input
@@ -294,21 +294,21 @@ export default function RepackagingPage() {
                 placeholder="e.g. 100 scoops, or 12.5 (kg)"
                 value={toQuantity}
                 onChange={(e) => setToQuantity(e.target.value)}
-                className="mt-1 w-full rounded-md border border-slate-700 bg-slate-900 p-2 text-sm"
+                className="mt-1 w-full rounded-md border border-border bg-background p-2 text-sm"
               />
             </div>
             <div className="sm:col-span-2">
-              <label className="block text-xs text-slate-400">Notes (optional)</label>
+              <label className="block text-xs text-secondary-500">Notes (optional)</label>
               <input
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
-                className="mt-1 w-full rounded-md border border-slate-700 bg-slate-900 p-2 text-sm"
+                className="mt-1 w-full rounded-md border border-border bg-background p-2 text-sm"
               />
             </div>
           </div>
 
           {yieldPerUnit !== null && (
-            <p className="mt-2 text-xs text-slate-500">
+            <p className="mt-2 text-xs text-secondary-500">
               = {yieldPerUnit.toFixed(2)} resale unit(s) per bulk unit
             </p>
           )}
@@ -324,21 +324,21 @@ export default function RepackagingPage() {
           </button>
         </div>
 
-        <div className="rounded-lg border border-slate-800 p-4">
+        <div className="rounded-lg border border-border p-4">
           <h2 className="mb-3 font-semibold">History at this branch</h2>
           {loading ? (
-            <p className="text-sm text-slate-400">Loading...</p>
+            <p className="text-sm text-secondary-500">Loading...</p>
           ) : history.length === 0 ? (
-            <p className="text-sm text-slate-500">No repackaging recorded yet.</p>
+            <p className="text-sm text-secondary-500">No repackaging recorded yet.</p>
           ) : (
             <div className="space-y-2">
               {history.map((r) => (
-                <div key={r.id} className="rounded-md bg-slate-900 p-2 text-sm">
+                <div key={r.id} className="rounded-md bg-background p-2 text-sm">
                   <p>
                     -{r.fromQuantity} {r.fromVariant.product.name} ({r.fromVariant.sku}) &rarr; +{r.toQuantity}{" "}
                     {r.toVariant.product.name} ({r.toVariant.sku})
                   </p>
-                  <p className="text-xs text-slate-500">
+                  <p className="text-xs text-secondary-500">
                     {new Date(r.createdAt).toLocaleString()}
                     {r.notes ? ` · ${r.notes}` : ""}
                   </p>

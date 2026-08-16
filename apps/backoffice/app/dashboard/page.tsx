@@ -28,7 +28,7 @@ import {
 } from "lucide-react";
 import { getSession, clearSession, isBackofficeRole, type Session } from "../../lib/auth";
 import { useIdleLogout } from "../../hooks/use-idle-logout";
-import { Badge, Button } from "@zaroda/ui";
+import { Badge, Button, ThemeToggle } from "@zaroda/ui";
 
 const MARKETING_URL = process.env.NEXT_PUBLIC_MARKETING_URL ?? "http://localhost:3005";
 
@@ -64,7 +64,7 @@ const MANAGER_TILE: Tile = {
   label: "Tax Settings",
   description: "VAT rates and tax-class configuration.",
   icon: Receipt,
-  tone: "bg-slate-600",
+  tone: "bg-secondary-500",
 };
 const MANAGER_ROLES = ["MANAGER", "OWNER"];
 
@@ -135,11 +135,11 @@ export default function DashboardPage() {
   if (verticalTile) tiles.push(verticalTile);
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100">
-      <header className="border-b border-slate-800 px-4 py-3 sm:px-6">
+    <div className="min-h-screen bg-background text-foreground">
+      <header className="border-b border-border px-4 py-3 sm:px-6">
         <div className="flex items-center justify-between gap-3">
           <div className="flex flex-col">
-            <a href={MARKETING_URL} className="text-xs text-slate-500 hover:text-slate-300">
+            <a href={MARKETING_URL} className="text-xs text-secondary-500 hover:text-secondary-300">
               ← zarodashop.com
             </a>
             <span className="font-bold">
@@ -148,9 +148,10 @@ export default function DashboardPage() {
           </div>
           <div className="flex items-center gap-3 text-sm">
             <Badge variant="neutral">{session.industryType || "?"}</Badge>
-            <span className="hidden text-slate-400 sm:inline">
+            <span className="hidden text-secondary-400 sm:inline">
               {session.email} · {session.role}
             </span>
+            <ThemeToggle />
             <Button
               onClick={() => {
                 clearSession();
@@ -166,8 +167,8 @@ export default function DashboardPage() {
       </header>
 
       <main className="mx-auto max-w-6xl px-4 py-8 sm:px-6">
-        <h1 className="text-2xl font-bold text-white">Welcome back{session.email ? `, ${session.email.split("@")[0]}` : ""}</h1>
-        <p className="mt-1 text-sm text-slate-400">Everything for your shop, in one place.</p>
+        <h1 className="text-2xl font-bold text-foreground">Welcome back{session.email ? `, ${session.email.split("@")[0]}` : ""}</h1>
+        <p className="mt-1 text-sm text-secondary-400">Everything for your shop, in one place.</p>
 
         <div className="mt-8 grid grid-cols-2 gap-4 sm:gap-5 md:grid-cols-3 lg:grid-cols-4">
           {tiles.map((tile) => {
@@ -176,13 +177,13 @@ export default function DashboardPage() {
               <Link
                 key={tile.href}
                 href={tile.href}
-                className="group flex flex-col rounded-xl border border-slate-800 bg-slate-900 p-5 transition-colors hover:border-slate-700 hover:bg-slate-800"
+                className="group flex flex-col rounded-xl border border-border bg-surface p-5 transition-colors hover:border-secondary-500"
               >
                 <div className={`flex h-11 w-11 items-center justify-center rounded-lg ${tile.tone} text-white`}>
                   <Icon size={22} strokeWidth={2} />
                 </div>
-                <h2 className="mt-4 font-semibold text-white">{tile.label}</h2>
-                <p className="mt-1 text-sm text-slate-400">{tile.description}</p>
+                <h2 className="mt-4 font-semibold text-foreground">{tile.label}</h2>
+                <p className="mt-1 text-sm text-secondary-400">{tile.description}</p>
               </Link>
             );
           })}

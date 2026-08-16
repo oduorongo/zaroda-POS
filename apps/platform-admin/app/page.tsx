@@ -12,7 +12,7 @@ export default function RootPage() {
   }, [router]);
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-primary-900 text-zinc-100">
+    <div className="flex min-h-screen items-center justify-center bg-background text-foreground">
       <p>Loading...</p>
     </div>
   );

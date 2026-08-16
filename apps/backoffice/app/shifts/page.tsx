@@ -72,26 +72,26 @@ export default function ShiftsPage() {
   if (!session) return null;
 
   return (
-    <div className="min-h-screen bg-slate-900 text-slate-100">
+    <div className="min-h-screen bg-background text-foreground">
       <Nav session={session} />
       <PageHeader />
       <main className="mx-auto max-w-4xl p-6">
         <div className="mb-4 flex items-center justify-between">
           <h1 className="text-xl font-bold">Shifts</h1>
-          <label className="flex items-center gap-2 text-sm text-slate-400">
+          <label className="flex items-center gap-2 text-sm text-secondary-500">
             <input type="checkbox" checked={openOnly} onChange={(e) => setOpenOnly(e.target.checked)} />
             Open only
           </label>
         </div>
 
         {error && <p className="mb-4 rounded-md bg-red-950 p-3 text-sm text-red-300">{error}</p>}
-        {loading && <p className="text-slate-400">Loading...</p>}
-        {!loading && shifts.length === 0 && !error && <p className="text-slate-400">No shifts found.</p>}
+        {loading && <p className="text-secondary-500">Loading...</p>}
+        {!loading && shifts.length === 0 && !error && <p className="text-secondary-500">No shifts found.</p>}
 
         {shifts.length > 0 && (
-          <div className="overflow-x-auto rounded-lg border border-slate-800">
+          <div className="overflow-x-auto rounded-lg border border-border">
             <table className="w-full text-left text-sm">
-              <thead className="bg-slate-800 text-slate-400">
+              <thead className="bg-surface text-secondary-500">
                 <tr>
                   <th className="p-3">Opened</th>
                   <th className="p-3">Closed</th>
@@ -102,7 +102,7 @@ export default function ShiftsPage() {
               </thead>
               <tbody>
                 {shifts.map((shift) => (
-                  <tr key={shift.id} className="border-t border-slate-800 hover:bg-slate-800/50">
+                  <tr key={shift.id} className="border-t border-border hover:bg-surface/50">
                     <td className="p-3">{new Date(shift.openedAt).toLocaleString()}</td>
                     <td className="p-3">{shift.closedAt ? new Date(shift.closedAt).toLocaleString() : <span className="text-amber-400">Open</span>}</td>
                     <td className="p-3 text-right font-mono">{Number(shift.openingFloat).toFixed(2)}</td>

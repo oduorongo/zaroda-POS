@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { db, getDeviceConfig, type CachedOrgUser } from "../../lib/db";
 import { apiPost, ApiError, OfflineError } from "../../lib/api";
-import { Button } from "@zaroda/ui";
+import { Button, ThemeToggle } from "@zaroda/ui";
 
 interface PinLoginResponse {
   accessToken: string;
@@ -77,34 +77,40 @@ export default function LoginPage() {
 
   if (!selected) {
     return (
-      <div className="flex min-h-screen flex-col items-center bg-secondary-900 p-6 text-secondary-50">
-        <h1 className="mt-8 text-2xl font-bold">Nani anauza? · Who&apos;s selling?</h1>
+      <div className="flex min-h-screen flex-col items-center bg-background p-6 text-foreground">
+        <div className="self-end">
+          <ThemeToggle />
+        </div>
+        <h1 className="mt-4 text-2xl font-bold">Nani anauza? · Who&apos;s selling?</h1>
         <div className="mt-8 grid w-full max-w-sm grid-cols-2 gap-4">
           {cashiers.map((cashier) => (
             <button
               key={cashier.id}
               onClick={() => setSelected(cashier)}
-              className="flex min-h-touch flex-col items-center gap-2 rounded-xl bg-secondary-800 p-6 text-center transition-colors hover:bg-secondary-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+              className="flex min-h-touch flex-col items-center gap-2 rounded-xl bg-surface p-6 text-center transition-colors hover:bg-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
             >
               <span className="flex h-14 w-14 items-center justify-center rounded-full bg-primary-600 text-xl font-bold">
                 {cashier.fullName.charAt(0).toUpperCase()}
               </span>
               <span className="font-medium">{cashier.fullName}</span>
-              <span className="text-xs text-secondary-400">{cashier.role}</span>
+              <span className="text-xs text-secondary-500">{cashier.role}</span>
             </button>
           ))}
           {cashiers.length === 0 && (
-            <p className="col-span-2 text-center text-secondary-400">
+            <p className="col-span-2 text-center text-secondary-500">
               No cashiers cached yet - run terminal setup while online first.
             </p>
           )}
         </div>
+        <p className="mt-auto pt-8 text-center text-xs text-secondary-600">
+          Powered by Zaroda Solutions. Innovative. Reliable. Forward.
+        </p>
       </div>
     );
   }
 
   return (
-    <div className="flex min-h-screen flex-col items-center bg-secondary-900 p-6 text-secondary-50">
+    <div className="flex min-h-screen flex-col items-center bg-background p-6 text-foreground">
       <button
         onClick={() => { setSelected(null); setPin(""); setError(null); }}
         className="min-h-touch self-start px-2 text-primary-400 hover:text-primary-300"
@@ -117,14 +123,14 @@ export default function LoginPage() {
         <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary-600 text-base font-bold text-white">
           Z
         </div>
-        <span className="mt-1.5 text-xs font-bold tracking-tight text-secondary-300">
+        <span className="mt-1.5 text-xs font-bold tracking-tight text-secondary-600">
           Zaroda <span className="text-primary-400">POS</span>
         </span>
       </div>
 
-      <p className="mt-4 text-secondary-400">{selected.fullName}</p>
+      <p className="mt-4 text-secondary-500">{selected.fullName}</p>
       <h1 className="text-xl font-bold">Enter your PIN</h1>
-      <p className="text-secondary-400">Tap your PIN to start your shift.</p>
+      <p className="text-secondary-500">Tap your PIN to start your shift.</p>
 
       <div className="mt-6 flex gap-3" aria-hidden="true">
         {Array.from({ length: Math.max(pin.length, 4) }).map((_, i) => (
@@ -147,7 +153,7 @@ export default function LoginPage() {
             key={digit}
             onClick={() => pressDigit(digit)}
             disabled={busy}
-            className="h-touch rounded-xl bg-secondary-800 text-2xl font-semibold transition-colors hover:bg-secondary-700 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+            className="h-touch rounded-xl bg-surface text-2xl font-semibold transition-colors hover:bg-border disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
           >
             {digit}
           </button>
@@ -156,14 +162,14 @@ export default function LoginPage() {
           onClick={backspace}
           disabled={busy}
           aria-label="Backspace"
-          className="h-touch rounded-xl bg-secondary-800 text-lg hover:bg-secondary-700 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+          className="h-touch rounded-xl bg-surface text-lg hover:bg-border disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
         >
           ⌫
         </button>
         <button
           onClick={() => pressDigit("0")}
           disabled={busy}
-          className="h-touch rounded-xl bg-secondary-800 text-2xl font-semibold hover:bg-secondary-700 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+          className="h-touch rounded-xl bg-surface text-2xl font-semibold hover:bg-border disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
         >
           0
         </button>

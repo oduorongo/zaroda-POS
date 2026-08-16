@@ -151,18 +151,18 @@ export default function InventoryPage() {
   if (!session) return null;
 
   return (
-    <div className="min-h-screen bg-slate-900 text-slate-100">
+    <div className="min-h-screen bg-background text-foreground">
       <Nav session={session} />
       <PageHeader />
       <main className="mx-auto max-w-4xl p-6">
         <h1 className="mb-4 text-xl font-bold">Inventory</h1>
 
         <div className="mb-4">
-          <label className="block text-xs text-slate-400">Branch</label>
+          <label className="block text-xs text-secondary-500">Branch</label>
           <select
             value={branchId}
             onChange={(e) => setBranchId(e.target.value)}
-            className="mt-1 w-full max-w-md rounded-md border border-slate-700 bg-slate-800 p-2 text-sm"
+            className="mt-1 w-full max-w-md rounded-md border border-border bg-surface p-2 text-sm"
           >
             {branches.length === 0 && <option value="">No branches found</option>}
             {branches.map((b) => (
@@ -174,26 +174,26 @@ export default function InventoryPage() {
         </div>
 
         {!branchId.trim() ? (
-          <p className="text-slate-400">No branch selected.</p>
+          <p className="text-secondary-500">No branch selected.</p>
         ) : (
           <>
             <div className="mb-4 flex items-center justify-between">
               <div className="flex gap-2">
                 <button
                   onClick={() => setTab("items")}
-                  className={`rounded-md px-3 py-1.5 text-sm ${tab === "items" ? "bg-primary-600" : "bg-slate-800 hover:bg-slate-700"}`}
+                  className={`rounded-md px-3 py-1.5 text-sm ${tab === "items" ? "bg-primary-600" : "bg-surface hover:bg-border"}`}
                 >
                   Stock levels{lowStockCount > 0 && tab === "items" ? ` (${lowStockCount} low)` : ""}
                 </button>
                 <button
                   onClick={() => setTab("alerts")}
-                  className={`rounded-md px-3 py-1.5 text-sm ${tab === "alerts" ? "bg-primary-600" : "bg-slate-800 hover:bg-slate-700"}`}
+                  className={`rounded-md px-3 py-1.5 text-sm ${tab === "alerts" ? "bg-primary-600" : "bg-surface hover:bg-border"}`}
                 >
                   Low-stock alerts
                 </button>
                 <button
                   onClick={() => setTab("conflicts")}
-                  className={`rounded-md px-3 py-1.5 text-sm ${tab === "conflicts" ? "bg-primary-600" : "bg-slate-800 hover:bg-slate-700"}`}
+                  className={`rounded-md px-3 py-1.5 text-sm ${tab === "conflicts" ? "bg-primary-600" : "bg-surface hover:bg-border"}`}
                 >
                   Conflicts
                 </button>
@@ -205,24 +205,24 @@ export default function InventoryPage() {
                 >
                   + Receive stock
                 </Link>
-                <button onClick={() => setAdjOpen((v) => !v)} className="rounded-md bg-slate-800 px-3 py-1.5 text-sm hover:bg-slate-700">
+                <button onClick={() => setAdjOpen((v) => !v)} className="rounded-md bg-surface px-3 py-1.5 text-sm hover:bg-border">
                   + Record adjustment
                 </button>
               </div>
             </div>
 
             {adjOpen && (
-              <div className="mb-4 flex flex-wrap items-center gap-2 rounded-lg border border-slate-800 p-3">
+              <div className="mb-4 flex flex-wrap items-center gap-2 rounded-lg border border-border p-3">
                 <input
                   placeholder="Variant ID"
                   value={adjVariantId}
                   onChange={(e) => setAdjVariantId(e.target.value)}
-                  className="flex-1 rounded-md border border-slate-700 bg-slate-900 p-2 text-sm"
+                  className="flex-1 rounded-md border border-border bg-background p-2 text-sm"
                 />
                 <select
                   value={adjType}
                   onChange={(e) => setAdjType(e.target.value)}
-                  className="rounded-md border border-slate-700 bg-slate-900 p-2 text-sm"
+                  className="rounded-md border border-border bg-background p-2 text-sm"
                 >
                   {ADJUSTMENT_TYPES.map((t) => (
                     <option key={t} value={t}>
@@ -236,7 +236,7 @@ export default function InventoryPage() {
                   placeholder="Delta (+/-, decimals ok for weighted items)"
                   value={adjDelta}
                   onChange={(e) => setAdjDelta(e.target.value)}
-                  className="w-32 rounded-md border border-slate-700 bg-slate-900 p-2 text-sm"
+                  className="w-32 rounded-md border border-border bg-background p-2 text-sm"
                 />
                 <button
                   onClick={() => void submitAdjustment()}
@@ -250,16 +250,16 @@ export default function InventoryPage() {
             )}
 
             {error && <p className="mb-4 rounded-md bg-red-950 p-3 text-sm text-red-300">{error}</p>}
-            {loading && <p className="text-slate-400">Loading...</p>}
+            {loading && <p className="text-secondary-500">Loading...</p>}
 
             {!loading && tab === "items" && (
               <>
-                <label className="mb-2 flex items-center gap-2 text-sm text-slate-400">
+                <label className="mb-2 flex items-center gap-2 text-sm text-secondary-500">
                   <input type="checkbox" checked={lowStockOnly} onChange={(e) => setLowStockOnly(e.target.checked)} />
                   Low stock only
                 </label>
                 {items.length === 0 ? (
-                  <p className="text-slate-400">No inventory records for this branch.</p>
+                  <p className="text-secondary-500">No inventory records for this branch.</p>
                 ) : (
                   <Table
                     columns={["Product", "SKU", "Qty", "Threshold"]}
@@ -277,7 +277,7 @@ export default function InventoryPage() {
 
             {!loading && tab === "alerts" && (
               alerts.length === 0 ? (
-                <p className="text-slate-400">No open low-stock alerts.</p>
+                <p className="text-secondary-500">No open low-stock alerts.</p>
               ) : (
                 <Table
                   columns={["Product", "SKU", "Status", "Since"]}
@@ -288,7 +288,7 @@ export default function InventoryPage() {
 
             {!loading && tab === "conflicts" && (
               conflicts.length === 0 ? (
-                <p className="text-slate-400">No stock conflicts (oversells) for this branch.</p>
+                <p className="text-secondary-500">No stock conflicts (oversells) for this branch.</p>
               ) : (
                 <div className="space-y-3">
                   {conflicts.map((c) => (
@@ -296,9 +296,9 @@ export default function InventoryPage() {
                       <p className="font-semibold">
                         {c.variant.product.name} ({c.variant.sku}) - quantity {c.quantity}
                       </p>
-                      <p className="mt-1 text-xs text-slate-400">Recent ledger entries:</p>
+                      <p className="mt-1 text-xs text-secondary-500">Recent ledger entries:</p>
                       {c.recentTransactions.map((t) => (
-                        <p key={t.id} className="text-xs text-slate-400">
+                        <p key={t.id} className="text-xs text-secondary-500">
                           {t.type} {t.quantityDelta > 0 ? "+" : ""}
                           {t.quantityDelta} - {new Date(t.createdAt).toLocaleString()}
                         </p>
@@ -325,9 +325,9 @@ function Table({
   highlightRow?: (index: number) => boolean;
 }) {
   return (
-    <div className="overflow-x-auto rounded-lg border border-slate-800">
+    <div className="overflow-x-auto rounded-lg border border-border">
       <table className="w-full text-left text-sm">
-        <thead className="bg-slate-800 text-slate-400">
+        <thead className="bg-surface text-secondary-500">
           <tr>
             {columns.map((c) => (
               <th key={c} className="p-3">
@@ -338,7 +338,7 @@ function Table({
         </thead>
         <tbody>
           {rows.map((row, i) => (
-            <tr key={i} className={`border-t border-slate-800 ${highlightRow?.(i) ? "bg-amber-950/40" : ""}`}>
+            <tr key={i} className={`border-t border-border ${highlightRow?.(i) ? "bg-amber-950/40" : ""}`}>
               {row.map((cell, j) => (
                 <td key={j} className={`p-3 ${j > 0 ? "text-right font-mono" : ""}`}>
                   {cell}

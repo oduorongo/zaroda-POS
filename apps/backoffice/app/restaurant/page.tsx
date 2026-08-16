@@ -132,7 +132,7 @@ export default function RestaurantPage() {
   if (!session) return null;
 
   return (
-    <div className="min-h-screen bg-slate-900 text-slate-100">
+    <div className="min-h-screen bg-background text-foreground">
       <Nav session={session} />
       <PageHeader />
       <main className="mx-auto max-w-5xl p-6">
@@ -141,7 +141,7 @@ export default function RestaurantPage() {
           <select
             value={branchId}
             onChange={(e) => setBranchId(e.target.value)}
-            className="rounded-md border border-slate-700 bg-slate-800 p-2 text-sm"
+            className="rounded-md border border-border bg-surface p-2 text-sm"
           >
             {branches.map((b) => (
               <option key={b.id} value={b.id}>
@@ -152,41 +152,41 @@ export default function RestaurantPage() {
         </div>
 
         {error && <p className="mb-4 rounded-md bg-red-950 p-3 text-sm text-red-300">{error}</p>}
-        {loading && <p className="text-slate-400">Loading...</p>}
+        {loading && <p className="text-secondary-500">Loading...</p>}
 
         {!loading && (
           <>
             <h2 className="mb-2 font-semibold">Tables</h2>
             <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
               {tables.map((t) => (
-                <div key={t.id} className={`rounded-lg border-2 bg-slate-800 p-3 text-center ${STATUS_COLOR[t.status]}`}>
+                <div key={t.id} className={`rounded-lg border-2 bg-surface p-3 text-center ${STATUS_COLOR[t.status]}`}>
                   <p className="font-bold">{t.label}</p>
-                  <p className="text-xs text-slate-400">{t.seats} seats</p>
+                  <p className="text-xs text-secondary-500">{t.seats} seats</p>
                   <p className="mt-1 text-xs uppercase tracking-wide">{t.status.replace("_", " ")}</p>
                   {t.status === "NEEDS_CLEANING" && (
                     <button
                       onClick={() => void markAvailable(t)}
-                      className="mt-2 rounded bg-slate-900/60 px-2 py-1 text-xs hover:bg-slate-900"
+                      className="mt-2 rounded bg-background/60 px-2 py-1 text-xs hover:bg-background"
                     >
                       Mark clean
                     </button>
                   )}
                 </div>
               ))}
-              {tables.length === 0 && <p className="col-span-full text-sm text-slate-500">No tables at this branch.</p>}
+              {tables.length === 0 && <p className="col-span-full text-sm text-secondary-500">No tables at this branch.</p>}
             </div>
 
             <h2 className="mb-2 font-semibold">
-              Kitchen queue <span className="text-xs font-normal text-slate-500">({stations.length} station{stations.length === 1 ? "" : "s"})</span>
+              Kitchen queue <span className="text-xs font-normal text-secondary-500">({stations.length} station{stations.length === 1 ? "" : "s"})</span>
             </h2>
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
               {tickets.map((ticket) => (
-                <div key={ticket.id} className="rounded-lg border border-slate-800 bg-slate-800 p-3">
-                  <div className="flex items-center justify-between text-xs text-slate-400">
+                <div key={ticket.id} className="rounded-lg border border-border bg-surface p-3">
+                  <div className="flex items-center justify-between text-xs text-secondary-500">
                     <span>{ticket.station.name}</span>
                     <span>Course {ticket.courseNumber}</span>
                   </div>
-                  <p className="mt-1 text-xs uppercase tracking-wide text-slate-400">{ticket.status.replace("_", " ")}</p>
+                  <p className="mt-1 text-xs uppercase tracking-wide text-secondary-500">{ticket.status.replace("_", " ")}</p>
                   {ticket.lines.map((line) => (
                     <p key={line.id} className="mt-1 text-sm">
                       {line.quantity}x {line.variant.product.name}
@@ -194,7 +194,7 @@ export default function RestaurantPage() {
                   ))}
                 </div>
               ))}
-              {tickets.length === 0 && <p className="col-span-full text-sm text-slate-500">No active tickets.</p>}
+              {tickets.length === 0 && <p className="col-span-full text-sm text-secondary-500">No active tickets.</p>}
             </div>
           </>
         )}

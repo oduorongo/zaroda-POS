@@ -44,7 +44,7 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen bg-slate-950 text-slate-100">
+    <div className="flex min-h-screen bg-background text-foreground">
       {/* Hero panel — hidden on mobile, brand + tagline on desktop.
           Background photo: apps/backoffice/public/login-hero.png
           (glossy-navy POS hardware shot). Falls back to the plain navy
@@ -62,14 +62,16 @@ export default function LoginPage() {
         </div>
         <div className="relative">
           <h2 className="text-3xl font-bold leading-tight text-white">
-            Run your Kenyan shop with confidence
+            Let Zarodashop help you run your hustle like a Pro.
           </h2>
-          <p className="mt-3 max-w-sm text-sm text-slate-400">
-            Sales, stock, staff, and reporting for your whole business — in one back office built for
-            Kenyan retail.
+          <p className="mt-3 max-w-sm text-sm text-secondary-500">
+            Purchases, sales, stock, staff and reports for your business in one back office designed for
+            the Kenyan Hustles.
           </p>
         </div>
-        <p className="relative text-xs text-slate-600">© {new Date().getFullYear()} Zaroda POS</p>
+        <p className="relative text-xs text-secondary-500">
+          © {new Date().getFullYear()} Zaroda POS · Powered by Zaroda Solutions. Innovative. Reliable. Forward.
+        </p>
       </div>
 
       {/* Form panel */}
@@ -82,15 +84,15 @@ export default function LoginPage() {
 
           <div className="text-center lg:text-left">
             <h1 className="text-2xl font-bold text-white">Welcome back</h1>
-            <p className="mt-1 text-sm text-slate-400">Sign in to your Zaroda back office.</p>
+            <p className="mt-1 text-sm text-secondary-500">Sign in to your Zaroda back office.</p>
           </div>
 
           <div className="space-y-4">
             <div>
-              <label className="mb-1.5 block text-sm font-medium text-slate-300">Email</label>
+              <label className="mb-1.5 block text-sm font-medium text-secondary-600">Email</label>
               <input
                 type="email"
-                className="w-full rounded-lg border border-slate-700 bg-slate-900 p-3 text-sm text-slate-100 placeholder:text-slate-500 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/40"
+                className="w-full rounded-lg border border-border bg-background p-3 text-sm text-foreground placeholder:text-secondary-500 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/40"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="you@yourshop.co.ke"
@@ -98,10 +100,10 @@ export default function LoginPage() {
               />
             </div>
             <div>
-              <label className="mb-1.5 block text-sm font-medium text-slate-300">Password</label>
+              <label className="mb-1.5 block text-sm font-medium text-secondary-600">Password</label>
               <input
                 type="password"
-                className="w-full rounded-lg border border-slate-700 bg-slate-900 p-3 text-sm text-slate-100 placeholder:text-slate-500 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/40"
+                className="w-full rounded-lg border border-border bg-background p-3 text-sm text-foreground placeholder:text-secondary-500 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/40"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
@@ -136,7 +138,7 @@ export default function LoginPage() {
           <button
             type="button"
             onClick={() => router.push("/register")}
-            className="w-full text-center text-sm text-slate-400 hover:text-primary-400 hover:underline"
+            className="w-full text-center text-sm text-secondary-500 hover:text-primary-400 hover:underline"
           >
             New here? Set up your organization
           </button>

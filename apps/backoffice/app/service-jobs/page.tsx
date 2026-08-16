@@ -26,7 +26,7 @@ interface ServiceJob {
 }
 
 const STATUS_COLOR: Record<JobStatus, string> = {
-  OPEN: "text-slate-400",
+  OPEN: "text-secondary-500",
   IN_PROGRESS: "text-amber-400",
   WAITING_PARTS: "text-orange-400",
   COMPLETED: "text-green-400",
@@ -137,12 +137,12 @@ export default function ServiceJobsPage() {
   if (!session) return null;
 
   return (
-    <div className="min-h-screen bg-slate-900 text-slate-100">
+    <div className="min-h-screen bg-background text-foreground">
       <Nav session={session} />
       <PageHeader />
       <main className="mx-auto max-w-3xl p-6">
         <h1 className="mb-1 text-xl font-bold">Job Orders</h1>
-        <p className="mb-4 text-sm text-slate-400">
+        <p className="mb-4 text-sm text-secondary-500">
           Track work against a customer&apos;s vehicle, route, or other asset. Invoicing a completed job (billing
           parts and labor) happens at the terminal.
         </p>
@@ -150,11 +150,11 @@ export default function ServiceJobsPage() {
         {error && <p className="mb-4 rounded-md bg-red-950 p-3 text-sm text-red-300">{error}</p>}
 
         <div className="mb-4">
-          <label className="block text-xs text-slate-400">Branch</label>
+          <label className="block text-xs text-secondary-500">Branch</label>
           <select
             value={branchId}
             onChange={(e) => setBranchId(e.target.value)}
-            className="mt-1 w-full max-w-md rounded-md border border-slate-700 bg-slate-800 p-2 text-sm"
+            className="mt-1 w-full max-w-md rounded-md border border-border bg-surface p-2 text-sm"
           >
             {branches.length === 0 && <option value="">No branches found</option>}
             {branches.map((b) => (
@@ -165,23 +165,23 @@ export default function ServiceJobsPage() {
           </select>
         </div>
 
-        <div className="mb-6 rounded-lg border border-slate-800 p-4">
+        <div className="mb-6 rounded-lg border border-border p-4">
           <h2 className="mb-3 font-semibold">Open a job</h2>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
-              <label className="block text-xs text-slate-400">Asset (plate, route...) - optional</label>
+              <label className="block text-xs text-secondary-500">Asset (plate, route...) - optional</label>
               <input
                 value={assetLabel}
                 onChange={(e) => setAssetLabel(e.target.value)}
-                className="mt-1 w-full rounded-md border border-slate-700 bg-slate-900 p-2 text-sm"
+                className="mt-1 w-full rounded-md border border-border bg-background p-2 text-sm"
               />
             </div>
             <div className="sm:col-span-2">
-              <label className="block text-xs text-slate-400">Description</label>
+              <label className="block text-xs text-secondary-500">Description</label>
               <input
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                className="mt-1 w-full rounded-md border border-slate-700 bg-slate-900 p-2 text-sm"
+                className="mt-1 w-full rounded-md border border-border bg-background p-2 text-sm"
               />
             </div>
           </div>
@@ -197,16 +197,16 @@ export default function ServiceJobsPage() {
           </button>
         </div>
 
-        <div className="rounded-lg border border-slate-800 p-4">
+        <div className="rounded-lg border border-border p-4">
           <h2 className="mb-3 font-semibold">Jobs at this branch</h2>
           {loading ? (
-            <p className="text-sm text-slate-400">Loading...</p>
+            <p className="text-sm text-secondary-500">Loading...</p>
           ) : jobs.length === 0 ? (
-            <p className="text-sm text-slate-500">No jobs yet.</p>
+            <p className="text-sm text-secondary-500">No jobs yet.</p>
           ) : (
             <div className="space-y-2">
               {jobs.map((j) => (
-                <div key={j.id} className="rounded-md bg-slate-900 p-3 text-sm">
+                <div key={j.id} className="rounded-md bg-background p-3 text-sm">
                   <div className="flex items-center justify-between">
                     <p>
                       {j.description}
@@ -217,7 +217,7 @@ export default function ServiceJobsPage() {
                       {j.status.replace("_", " ")}
                     </span>
                   </div>
-                  <p className="text-xs text-slate-500">
+                  <p className="text-xs text-secondary-500">
                     {new Date(j.createdAt).toLocaleString()}
                     {j.notes ? ` · ${j.notes}` : ""}
                     {j.sale ? " · invoiced" : ""}
@@ -229,7 +229,7 @@ export default function ServiceJobsPage() {
                         <button
                           key={next}
                           onClick={() => void setStatus(j.id, next)}
-                          className="rounded-md bg-slate-700 px-3 py-1 text-xs hover:bg-slate-600"
+                          className="rounded-md bg-border px-3 py-1 text-xs hover:bg-secondary-500"
                         >
                           Mark {next.replace("_", " ").toLowerCase()}
                         </button>

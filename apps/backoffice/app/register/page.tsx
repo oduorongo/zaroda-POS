@@ -77,14 +77,14 @@ export default function RegisterPage() {
 
   if (result) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-900 p-4 text-slate-100">
-        <div className="w-full max-w-lg space-y-4 rounded-xl bg-slate-800 p-6 shadow-xl">
+      <div className="flex min-h-screen items-center justify-center bg-background p-4 text-foreground">
+        <div className="w-full max-w-lg space-y-4 rounded-xl bg-surface p-6 shadow-xl">
           <h1 className="text-2xl font-bold text-green-400">Organization created</h1>
-          <p className="text-sm text-slate-400">
+          <p className="text-sm text-secondary-500">
             Save these IDs - the terminal PWA&apos;s setup screen and any additional back-office device will need
             them. You&apos;re already signed in here.
           </p>
-          <dl className="space-y-2 rounded-md bg-slate-900 p-4 text-sm">
+          <dl className="space-y-2 rounded-md bg-background p-4 text-sm">
             <Row label="Organization ID" value={result.organizationId} />
             <Row label="Branch ID" value={result.branchId} />
             <Row label="Terminal ID" value={result.terminalId} />
@@ -101,25 +101,25 @@ export default function RegisterPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-slate-900 p-4 text-slate-100">
-      <form onSubmit={handleSubmit} className="w-full max-w-md space-y-4 rounded-xl bg-slate-800 p-6 shadow-xl">
+    <div className="flex min-h-screen items-center justify-center bg-background p-4 text-foreground">
+      <form onSubmit={handleSubmit} className="w-full max-w-md space-y-4 rounded-xl bg-surface p-6 shadow-xl">
         <h1 className="text-2xl font-bold">Set up a new organization</h1>
-        <p className="text-sm text-slate-400">
+        <p className="text-sm text-secondary-500">
           Creates your organization, its first branch and terminal, and your owner account in one step.
         </p>
         <div>
-          <label className="block text-sm font-medium text-slate-300">Business name</label>
+          <label className="block text-sm font-medium text-secondary-600">Business name</label>
           <input
-            className="mt-1 w-full rounded-md border border-slate-600 bg-slate-900 p-2.5"
+            className="mt-1 w-full rounded-md border border-secondary-500 bg-background p-2.5"
             value={organizationName}
             onChange={(e) => setOrganizationName(e.target.value)}
             required
           />
         </div>
         <div>
-          <label className="block text-sm font-medium text-slate-300">Industry</label>
+          <label className="block text-sm font-medium text-secondary-600">Industry</label>
           <select
-            className="mt-1 w-full rounded-md border border-slate-600 bg-slate-900 p-2.5"
+            className="mt-1 w-full rounded-md border border-secondary-500 bg-background p-2.5"
             value={industryType}
             onChange={(e) => setIndustryType(e.target.value)}
           >
@@ -132,48 +132,48 @@ export default function RegisterPage() {
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="block text-sm font-medium text-slate-300">First branch name</label>
+            <label className="block text-sm font-medium text-secondary-600">First branch name</label>
             <input
-              className="mt-1 w-full rounded-md border border-slate-600 bg-slate-900 p-2.5"
+              className="mt-1 w-full rounded-md border border-secondary-500 bg-background p-2.5"
               value={branchName}
               onChange={(e) => setBranchName(e.target.value)}
               required
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-slate-300">First terminal name</label>
+            <label className="block text-sm font-medium text-secondary-600">First terminal name</label>
             <input
-              className="mt-1 w-full rounded-md border border-slate-600 bg-slate-900 p-2.5"
+              className="mt-1 w-full rounded-md border border-secondary-500 bg-background p-2.5"
               value={terminalLabel}
               onChange={(e) => setTerminalLabel(e.target.value)}
             />
           </div>
         </div>
-        <hr className="border-slate-700" />
+        <hr className="border-border" />
         <div>
-          <label className="block text-sm font-medium text-slate-300">Your name</label>
+          <label className="block text-sm font-medium text-secondary-600">Your name</label>
           <input
-            className="mt-1 w-full rounded-md border border-slate-600 bg-slate-900 p-2.5"
+            className="mt-1 w-full rounded-md border border-secondary-500 bg-background p-2.5"
             value={ownerFullName}
             onChange={(e) => setOwnerFullName(e.target.value)}
             required
           />
         </div>
         <div>
-          <label className="block text-sm font-medium text-slate-300">Your email</label>
+          <label className="block text-sm font-medium text-secondary-600">Your email</label>
           <input
             type="email"
-            className="mt-1 w-full rounded-md border border-slate-600 bg-slate-900 p-2.5"
+            className="mt-1 w-full rounded-md border border-secondary-500 bg-background p-2.5"
             value={ownerEmail}
             onChange={(e) => setOwnerEmail(e.target.value)}
             required
           />
         </div>
         <div>
-          <label className="block text-sm font-medium text-slate-300">Password (min 8 characters)</label>
+          <label className="block text-sm font-medium text-secondary-600">Password (min 8 characters)</label>
           <input
             type="password"
-            className="mt-1 w-full rounded-md border border-slate-600 bg-slate-900 p-2.5"
+            className="mt-1 w-full rounded-md border border-secondary-500 bg-background p-2.5"
             value={ownerPassword}
             onChange={(e) => setOwnerPassword(e.target.value)}
             minLength={8}
@@ -203,7 +203,7 @@ export default function RegisterPage() {
 function Row({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-center justify-between gap-2">
-      <dt className="text-slate-400">{label}</dt>
+      <dt className="text-secondary-500">{label}</dt>
       <dd className="font-mono text-xs">{value}</dd>
     </div>
   );

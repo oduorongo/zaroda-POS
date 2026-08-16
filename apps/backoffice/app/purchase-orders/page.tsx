@@ -51,7 +51,7 @@ interface NewLine {
 }
 
 const STATUS_COLOR: Record<Status, string> = {
-  DRAFT: "text-slate-400",
+  DRAFT: "text-secondary-500",
   ORDERED: "text-amber-400",
   PARTIALLY_RECEIVED: "text-primary-400",
   RECEIVED: "text-green-400",
@@ -182,14 +182,14 @@ export default function PurchaseOrdersPage() {
   if (!session) return null;
 
   return (
-    <div className="min-h-screen bg-slate-900 text-slate-100">
+    <div className="min-h-screen bg-background text-foreground">
       <Nav session={session} />
       <PageHeader />
       <main className="mx-auto max-w-4xl p-6">
         <div className="mb-4 flex items-center justify-between">
           <h1 className="text-xl font-bold">Purchase orders</h1>
           <div className="flex gap-2">
-            <Link href="/suppliers" className="rounded-md bg-slate-800 px-3 py-2 text-sm hover:bg-slate-700">
+            <Link href="/suppliers" className="rounded-md bg-surface px-3 py-2 text-sm hover:bg-border">
               Suppliers
             </Link>
             <button onClick={() => void openNew()} className="rounded-md bg-primary-600 px-3 py-2 text-sm font-semibold hover:bg-primary-500">
@@ -203,7 +203,7 @@ export default function PurchaseOrdersPage() {
             <button
               key={s || "all"}
               onClick={() => setStatusFilter(s)}
-              className={`rounded-md px-3 py-1.5 text-sm ${statusFilter === s ? "bg-primary-600" : "bg-slate-800 hover:bg-slate-700"}`}
+              className={`rounded-md px-3 py-1.5 text-sm ${statusFilter === s ? "bg-primary-600" : "bg-surface hover:bg-border"}`}
             >
               {s || "All"}
             </button>
@@ -211,16 +211,16 @@ export default function PurchaseOrdersPage() {
         </div>
 
         {formOpen && (
-          <div className="mb-6 rounded-lg border border-slate-800 p-4">
+          <div className="mb-6 rounded-lg border border-border p-4">
             <h2 className="mb-3 font-semibold">New purchase order</h2>
 
             <div className="mb-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
               <div>
-                <label className="block text-xs text-slate-400">Receiving branch</label>
+                <label className="block text-xs text-secondary-500">Receiving branch</label>
                 <select
                   value={branchId}
                   onChange={(e) => setBranchId(e.target.value)}
-                  className="mt-1 w-full rounded-md border border-slate-700 bg-slate-900 p-2 text-sm"
+                  className="mt-1 w-full rounded-md border border-border bg-background p-2 text-sm"
                 >
                   {branches.length === 0 && <option value="">No branches found</option>}
                   {branches.map((b) => (
@@ -231,11 +231,11 @@ export default function PurchaseOrdersPage() {
                 </select>
               </div>
               <div>
-                <label className="block text-xs text-slate-400">Supplier</label>
+                <label className="block text-xs text-secondary-500">Supplier</label>
                 <select
                   value={supplierId}
                   onChange={(e) => setSupplierId(e.target.value)}
-                  className="mt-1 w-full rounded-md border border-slate-700 bg-slate-900 p-2 text-sm"
+                  className="mt-1 w-full rounded-md border border-border bg-background p-2 text-sm"
                 >
                   {suppliers.length === 0 && <option value="">No suppliers - add one first</option>}
                   {suppliers.map((s) => (
@@ -246,34 +246,34 @@ export default function PurchaseOrdersPage() {
                 </select>
               </div>
               <div>
-                <label className="block text-xs text-slate-400">Reference (optional)</label>
+                <label className="block text-xs text-secondary-500">Reference (optional)</label>
                 <input
                   value={reference}
                   onChange={(e) => setReference(e.target.value)}
-                  className="mt-1 w-full rounded-md border border-slate-700 bg-slate-900 p-2 text-sm"
+                  className="mt-1 w-full rounded-md border border-border bg-background p-2 text-sm"
                 />
               </div>
             </div>
 
-            <label className="block text-xs text-slate-400">Add product</label>
+            <label className="block text-xs text-secondary-500">Add product</label>
             <input
               placeholder="Search by product name or SKU"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="mt-1 w-full rounded-md border border-slate-700 bg-slate-900 p-2 text-sm"
+              className="mt-1 w-full rounded-md border border-border bg-background p-2 text-sm"
             />
             {search.trim() && (
-              <div className="mt-1 max-h-40 overflow-y-auto rounded-md border border-slate-700 bg-slate-900">
+              <div className="mt-1 max-h-40 overflow-y-auto rounded-md border border-border bg-background">
                 {variantOptions.length === 0 ? (
-                  <p className="p-2 text-sm text-slate-500">No matching products.</p>
+                  <p className="p-2 text-sm text-secondary-500">No matching products.</p>
                 ) : (
                   variantOptions.map((v) => (
                     <button
                       key={v.id}
                       onClick={() => addLine(v)}
-                      className="block w-full px-2 py-1.5 text-left text-sm hover:bg-slate-800"
+                      className="block w-full px-2 py-1.5 text-left text-sm hover:bg-surface"
                     >
-                      {v.product.name} <span className="text-slate-500">({v.sku})</span>
+                      {v.product.name} <span className="text-secondary-500">({v.sku})</span>
                     </button>
                   ))
                 )}
@@ -283,7 +283,7 @@ export default function PurchaseOrdersPage() {
             {lines.length > 0 && (
               <div className="mt-3 space-y-2">
                 {lines.map((l) => (
-                  <div key={l.variantId} className="flex items-center justify-between gap-2 rounded-md bg-slate-900 p-2 text-sm">
+                  <div key={l.variantId} className="flex items-center justify-between gap-2 rounded-md bg-background p-2 text-sm">
                     <span>{l.label}</span>
                     <div className="flex items-center gap-2">
                       <input
@@ -295,7 +295,7 @@ export default function PurchaseOrdersPage() {
                           const min = l.quantityMode === "WEIGHT" ? 0.001 : 1;
                           updateLineQty(l.variantId, Math.max(min, Number(e.target.value) || min));
                         }}
-                        className="w-24 rounded-md border border-slate-700 bg-slate-800 p-1 text-sm"
+                        className="w-24 rounded-md border border-border bg-surface p-1 text-sm"
                       />
                       <button onClick={() => removeLine(l.variantId)} className="text-xs text-red-400 hover:text-red-300">
                         Remove
@@ -308,7 +308,7 @@ export default function PurchaseOrdersPage() {
 
             {createError && <p className="mt-2 text-sm text-red-400">{createError}</p>}
             <div className="mt-3 flex gap-3">
-              <button onClick={() => setFormOpen(false)} className="rounded-md bg-slate-700 px-4 py-2 text-sm">
+              <button onClick={() => setFormOpen(false)} className="rounded-md bg-border px-4 py-2 text-sm">
                 Cancel
               </button>
               <button
@@ -323,13 +323,13 @@ export default function PurchaseOrdersPage() {
         )}
 
         {error && <p className="mb-4 rounded-md bg-red-950 p-3 text-sm text-red-300">{error}</p>}
-        {loading && <p className="text-slate-400">Loading...</p>}
-        {!loading && orders.length === 0 && !error && <p className="text-slate-400">No purchase orders found.</p>}
+        {loading && <p className="text-secondary-500">Loading...</p>}
+        {!loading && orders.length === 0 && !error && <p className="text-secondary-500">No purchase orders found.</p>}
 
         {orders.length > 0 && (
-          <div className="overflow-x-auto rounded-lg border border-slate-800">
+          <div className="overflow-x-auto rounded-lg border border-border">
             <table className="w-full text-left text-sm">
-              <thead className="bg-slate-800 text-slate-400">
+              <thead className="bg-surface text-secondary-500">
                 <tr>
                   <th className="p-3">Supplier</th>
                   <th className="p-3">Branch</th>
@@ -345,7 +345,7 @@ export default function PurchaseOrdersPage() {
                   const ordered = o.lineItems.reduce((sum, l) => sum + l.quantityOrdered, 0);
                   const received = o.lineItems.reduce((sum, l) => sum + l.quantityReceived, 0);
                   return (
-                    <tr key={o.id} className="border-t border-slate-800 hover:bg-slate-800/50">
+                    <tr key={o.id} className="border-t border-border hover:bg-surface/50">
                       <td className="p-3">{o.supplier.name}</td>
                       <td className="p-3">{o.branch.name}</td>
                       <td className="p-3">{o.reference ?? "-"}</td>

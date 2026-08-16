@@ -134,7 +134,7 @@ export default function SaleDetailPage() {
   if (!session) return null;
 
   return (
-    <div className="min-h-screen bg-slate-900 text-slate-100">
+    <div className="min-h-screen bg-background text-foreground">
       <Nav session={session} />
       <PageHeader />
       <main className="mx-auto max-w-3xl p-6">
@@ -142,31 +142,31 @@ export default function SaleDetailPage() {
           &larr; Sales
         </button>
         {error && <p className="mb-4 rounded-md bg-red-950 p-3 text-sm text-red-300">{error}</p>}
-        {!sale && !error && <p className="text-slate-400">Loading...</p>}
+        {!sale && !error && <p className="text-secondary-500">Loading...</p>}
         {sale && (
           <>
             <h1 className="text-xl font-bold">Sale {sale.id}</h1>
-            <p className="mt-1 text-sm text-slate-400">
+            <p className="mt-1 text-sm text-secondary-500">
               {new Date(sale.createdAt).toLocaleString()} · {sale.status}
             </p>
 
-            <section className="mt-6 rounded-lg border border-slate-800">
-              <h2 className="border-b border-slate-800 bg-slate-800 p-3 font-semibold">Line items</h2>
+            <section className="mt-6 rounded-lg border border-border">
+              <h2 className="border-b border-border bg-surface p-3 font-semibold">Line items</h2>
               <table className="w-full text-left text-sm">
                 <tbody>
                   {sale.lineItems.map((li) => (
-                    <tr key={li.id} className="border-b border-slate-800 last:border-b-0">
+                    <tr key={li.id} className="border-b border-border last:border-b-0">
                       <td className="p-3">{li.variantId}</td>
                       <td className="p-3 text-right">{li.quantity}</td>
                       <td className="p-3 text-right font-mono">{Number(li.unitPrice).toFixed(2)}</td>
-                      <td className="p-3 text-right font-mono text-slate-400">+{Number(li.taxAmount).toFixed(2)} tax</td>
+                      <td className="p-3 text-right font-mono text-secondary-500">+{Number(li.taxAmount).toFixed(2)} tax</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </section>
 
-            <section className="mt-4 rounded-lg border border-slate-800 p-3">
+            <section className="mt-4 rounded-lg border border-border p-3">
               <h2 className="font-semibold">Payments</h2>
               {sale.payments.map((p) => (
                 <p key={p.id} className="mt-1 text-sm">
@@ -176,7 +176,7 @@ export default function SaleDetailPage() {
             </section>
 
             {sale.discounts.length > 0 && (
-              <section className="mt-4 rounded-lg border border-slate-800 p-3">
+              <section className="mt-4 rounded-lg border border-border p-3">
                 <h2 className="font-semibold">Discounts</h2>
                 {sale.discounts.map((d) => (
                   <p key={d.id} className="mt-1 text-sm">
@@ -187,9 +187,9 @@ export default function SaleDetailPage() {
               </section>
             )}
 
-            <section className="mt-4 rounded-lg border border-slate-800 p-3">
+            <section className="mt-4 rounded-lg border border-border p-3">
               <h2 className="font-semibold">Refunds</h2>
-              {sale.refunds.length === 0 && <p className="mt-1 text-sm text-slate-400">None yet.</p>}
+              {sale.refunds.length === 0 && <p className="mt-1 text-sm text-secondary-500">None yet.</p>}
               {sale.refunds.map((r) => (
                 <p key={r.id} className="mt-1 text-sm">
                   KES {Number(r.amount).toFixed(2)} - {r.reason} ({new Date(r.createdAt).toLocaleString()})
@@ -197,26 +197,26 @@ export default function SaleDetailPage() {
               ))}
 
               {remainingRefundable > 0 ? (
-                <div className="mt-4 space-y-2 border-t border-slate-800 pt-3">
-                  <p className="text-xs text-slate-400">Remaining refundable: KES {remainingRefundable.toFixed(2)}</p>
+                <div className="mt-4 space-y-2 border-t border-border pt-3">
+                  <p className="text-xs text-secondary-500">Remaining refundable: KES {remainingRefundable.toFixed(2)}</p>
                   <input
                     type="number"
                     max={remainingRefundable}
                     placeholder="Amount"
                     value={refundAmount}
                     onChange={(e) => setRefundAmount(e.target.value)}
-                    className="w-full rounded-md border border-slate-700 bg-slate-900 p-2 text-sm"
+                    className="w-full rounded-md border border-border bg-background p-2 text-sm"
                   />
                   <input
                     placeholder="Reason"
                     value={refundReason}
                     onChange={(e) => setRefundReason(e.target.value)}
-                    className="w-full rounded-md border border-slate-700 bg-slate-900 p-2 text-sm"
+                    className="w-full rounded-md border border-border bg-background p-2 text-sm"
                   />
                   <select
                     value={refundApproverId}
                     onChange={(e) => setRefundApproverId(e.target.value)}
-                    className="w-full rounded-md border border-slate-700 bg-slate-900 p-2 text-sm"
+                    className="w-full rounded-md border border-border bg-background p-2 text-sm"
                   >
                     <option value="">Approved by...</option>
                     {approvers.map((a) => (
@@ -241,7 +241,7 @@ export default function SaleDetailPage() {
                   </button>
                 </div>
               ) : (
-                <p className="mt-3 text-sm text-slate-500">Fully refunded.</p>
+                <p className="mt-3 text-sm text-secondary-500">Fully refunded.</p>
               )}
             </section>
           </>

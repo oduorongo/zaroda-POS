@@ -92,12 +92,12 @@ export default function PharmacyPage() {
   const controlledCount = products.filter((p) => p.pharmacyFlag?.isControlledSubstance).length;
 
   return (
-    <div className="min-h-screen bg-slate-900 text-slate-100">
+    <div className="min-h-screen bg-background text-foreground">
       <Nav session={session} />
       <PageHeader />
       <main className="mx-auto max-w-3xl p-6">
         <h1 className="mb-1 text-xl font-bold">Pharmacy</h1>
-        <p className="mb-4 text-sm text-slate-400">
+        <p className="mb-4 text-sm text-secondary-500">
           {controlledCount} of {products.length} products flagged as controlled substances (require a prescription at
           checkout).
         </p>
@@ -106,15 +106,15 @@ export default function PharmacyPage() {
           placeholder="Search products..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="mb-4 w-full max-w-md rounded-md border border-slate-700 bg-slate-800 p-2 text-sm"
+          className="mb-4 w-full max-w-md rounded-md border border-border bg-surface p-2 text-sm"
         />
 
         {error && <p className="mb-4 rounded-md bg-red-950 p-3 text-sm text-red-300">{error}</p>}
-        {loading && <p className="text-slate-400">Loading...</p>}
+        {loading && <p className="text-secondary-500">Loading...</p>}
 
-        <div className="overflow-x-auto rounded-lg border border-slate-800">
+        <div className="overflow-x-auto rounded-lg border border-border">
           <table className="w-full text-left text-sm">
-            <thead className="bg-slate-800 text-slate-400">
+            <thead className="bg-surface text-secondary-500">
               <tr>
                 <th className="p-3">Product</th>
                 <th className="p-3">Controlled substance</th>
@@ -125,7 +125,7 @@ export default function PharmacyPage() {
               {filtered.map((p) => {
                 const isControlled = p.pharmacyFlag?.isControlledSubstance ?? false;
                 return (
-                  <tr key={p.id} className="border-t border-slate-800">
+                  <tr key={p.id} className="border-t border-border">
                     <td className="p-3">{p.name}</td>
                     <td className="p-3">
                       {isControlled ? (
@@ -133,14 +133,14 @@ export default function PharmacyPage() {
                           Yes{p.pharmacyFlag?.schedule ? ` (Schedule ${p.pharmacyFlag.schedule})` : ""}
                         </span>
                       ) : (
-                        <span className="text-slate-500">No</span>
+                        <span className="text-secondary-500">No</span>
                       )}
                     </td>
                     <td className="p-3 text-right">
                       <button
                         onClick={() => void toggleControlled(p)}
                         disabled={busyId === p.id}
-                        className="rounded-md bg-slate-700 px-3 py-1.5 text-xs hover:bg-slate-600 disabled:opacity-40"
+                        className="rounded-md bg-border px-3 py-1.5 text-xs hover:bg-secondary-500 disabled:opacity-40"
                       >
                         {busyId === p.id ? "..." : isControlled ? "Unflag" : "Flag as controlled"}
                       </button>
@@ -150,7 +150,7 @@ export default function PharmacyPage() {
               })}
               {filtered.length === 0 && !loading && (
                 <tr>
-                  <td colSpan={3} className="p-3 text-center text-slate-500">
+                  <td colSpan={3} className="p-3 text-center text-secondary-500">
                     No products found.
                   </td>
                 </tr>

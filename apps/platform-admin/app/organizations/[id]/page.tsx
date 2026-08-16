@@ -180,14 +180,14 @@ export default function OrganizationDetailPage() {
   if (!session) return null;
 
   return (
-    <div className="min-h-screen bg-primary-900 text-zinc-100">
+    <div className="min-h-screen bg-background text-foreground">
       <Nav session={session} />
       <main className="mx-auto max-w-3xl p-6">
         <button onClick={() => router.push("/organizations")} className="mb-4 text-amber-400 hover:underline">
           &larr; Tenants
         </button>
         {error && <p className="mb-4 rounded-md bg-red-950 p-3 text-sm text-red-300">{error}</p>}
-        {!org && !error && <p className="text-zinc-400">Loading...</p>}
+        {!org && !error && <p className="text-secondary-500">Loading...</p>}
         {org && (
           <>
             <div className="flex items-start justify-between gap-3">
@@ -196,7 +196,7 @@ export default function OrganizationDetailPage() {
                   <h1 className="text-xl font-bold">{org.name}</h1>
                   {!org.isActive && <Badge variant="error">Deactivated</Badge>}
                 </div>
-                <p className="mt-1 text-sm text-zinc-500">
+                <p className="mt-1 text-sm text-secondary-500">
                   {org.industryType} · {org.country} · {org.baseCurrency} · created {new Date(org.createdAt).toLocaleString()}
                 </p>
               </div>
@@ -204,7 +204,7 @@ export default function OrganizationDetailPage() {
                 {org.subscription && <Badge variant={STATUS_VARIANT[org.subscription.status]}>{org.subscription.status}</Badge>}
                 <button
                   onClick={() => setEditing((v) => !v)}
-                  className="rounded-md bg-primary-700 px-3 py-1.5 text-sm hover:bg-primary-600"
+                  className="rounded-md bg-border px-3 py-1.5 text-sm hover:bg-primary-600"
                 >
                   {editing ? "Cancel" : "Edit"}
                 </button>
@@ -212,23 +212,23 @@ export default function OrganizationDetailPage() {
             </div>
 
             {editing && (
-              <section className="mt-4 rounded-lg border border-primary-700 p-4">
+              <section className="mt-4 rounded-lg border border-border p-4">
                 <h2 className="font-semibold">Edit tenant</h2>
                 <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
                   <div className="col-span-2">
-                    <label className="mb-1 block text-xs text-zinc-500">Business name</label>
+                    <label className="mb-1 block text-xs text-secondary-500">Business name</label>
                     <input
                       value={editName}
                       onChange={(e) => setEditName(e.target.value)}
-                      className="w-full rounded-md border border-primary-600 bg-primary-950 p-2"
+                      className="w-full rounded-md border border-border bg-background p-2"
                     />
                   </div>
                   <div>
-                    <label className="mb-1 block text-xs text-zinc-500">Industry</label>
+                    <label className="mb-1 block text-xs text-secondary-500">Industry</label>
                     <select
                       value={editIndustryType}
                       onChange={(e) => setEditIndustryType(e.target.value)}
-                      className="w-full rounded-md border border-primary-600 bg-primary-950 p-2"
+                      className="w-full rounded-md border border-border bg-background p-2"
                     >
                       {INDUSTRY_TYPES.map((t) => (
                         <option key={t} value={t}>{t}</option>
@@ -236,29 +236,29 @@ export default function OrganizationDetailPage() {
                     </select>
                   </div>
                   <div>
-                    <label className="mb-1 block text-xs text-zinc-500">Country</label>
+                    <label className="mb-1 block text-xs text-secondary-500">Country</label>
                     <input
                       value={editCountry}
                       onChange={(e) => setEditCountry(e.target.value)}
                       maxLength={2}
-                      className="w-full rounded-md border border-primary-600 bg-primary-950 p-2"
+                      className="w-full rounded-md border border-border bg-background p-2"
                     />
                   </div>
                   <div>
-                    <label className="mb-1 block text-xs text-zinc-500">Currency</label>
+                    <label className="mb-1 block text-xs text-secondary-500">Currency</label>
                     <input
                       value={editBaseCurrency}
                       onChange={(e) => setEditBaseCurrency(e.target.value)}
                       maxLength={3}
-                      className="w-full rounded-md border border-primary-600 bg-primary-950 p-2"
+                      className="w-full rounded-md border border-border bg-background p-2"
                     />
                   </div>
                   <div>
-                    <label className="mb-1 block text-xs text-zinc-500">KRA PIN</label>
+                    <label className="mb-1 block text-xs text-secondary-500">KRA PIN</label>
                     <input
                       value={editKraPin}
                       onChange={(e) => setEditKraPin(e.target.value)}
-                      className="w-full rounded-md border border-primary-600 bg-primary-950 p-2"
+                      className="w-full rounded-md border border-border bg-background p-2"
                     />
                   </div>
                   <div className="flex items-end pb-2">
@@ -290,17 +290,17 @@ export default function OrganizationDetailPage() {
               <Stat label="Sales" value={String(org.saleCount)} />
             </div>
 
-            <section className="mt-6 rounded-lg border border-primary-700">
-              <h2 className="border-b border-primary-700 bg-primary-800 p-3 font-semibold">Subscription</h2>
+            <section className="mt-6 rounded-lg border border-border">
+              <h2 className="border-b border-border bg-surface p-3 font-semibold">Subscription</h2>
               {!org.subscription ? (
-                <p className="p-3 text-sm text-zinc-500">No subscription on record.</p>
+                <p className="p-3 text-sm text-secondary-500">No subscription on record.</p>
               ) : (
                 <div className="p-3 text-sm">
                   <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                    <div><p className="text-xs text-zinc-500">Plan</p><p>{org.subscription.plan.name}</p></div>
-                    <div><p className="text-xs text-zinc-500">Price</p><p>KES {Number(org.subscription.plan.priceKes).toLocaleString()}</p></div>
-                    <div><p className="text-xs text-zinc-500">Billed through</p><p>{new Date(org.subscription.currentPeriodEnd).toLocaleDateString()}</p></div>
-                    <div><p className="text-xs text-zinc-500">Grace period</p><p>{org.subscription.graceDays} days</p></div>
+                    <div><p className="text-xs text-secondary-500">Plan</p><p>{org.subscription.plan.name}</p></div>
+                    <div><p className="text-xs text-secondary-500">Price</p><p>KES {Number(org.subscription.plan.priceKes).toLocaleString()}</p></div>
+                    <div><p className="text-xs text-secondary-500">Billed through</p><p>{new Date(org.subscription.currentPeriodEnd).toLocaleDateString()}</p></div>
+                    <div><p className="text-xs text-secondary-500">Grace period</p><p>{org.subscription.graceDays} days</p></div>
                   </div>
                   <button
                     onClick={() => void toggleSuspend()}
@@ -313,13 +313,13 @@ export default function OrganizationDetailPage() {
                   </button>
 
                   {org.subscription.payments.length > 0 && (
-                    <div className="mt-4 border-t border-primary-700 pt-3">
-                      <p className="mb-2 text-xs uppercase tracking-wide text-zinc-500">Payment history</p>
+                    <div className="mt-4 border-t border-border pt-3">
+                      <p className="mb-2 text-xs uppercase tracking-wide text-secondary-500">Payment history</p>
                       <div className="space-y-1">
                         {org.subscription.payments.map((p) => (
-                          <div key={p.id} className="flex justify-between text-xs text-zinc-400">
+                          <div key={p.id} className="flex justify-between text-xs text-secondary-500">
                             <span>{new Date(p.paidAt).toLocaleDateString()} · {p.method}{p.reference ? ` (${p.reference})` : ""}</span>
-                            <span className="font-mono text-zinc-200">KES {Number(p.amount).toLocaleString()}</span>
+                            <span className="font-mono text-secondary-600">KES {Number(p.amount).toLocaleString()}</span>
                           </div>
                         ))}
                       </div>
@@ -329,25 +329,25 @@ export default function OrganizationDetailPage() {
               )}
             </section>
 
-            <section className="mt-4 rounded-lg border border-primary-700">
-              <h2 className="border-b border-primary-700 bg-primary-800 p-3 font-semibold">Branches</h2>
-              {org.branches.length === 0 && <p className="p-3 text-sm text-zinc-500">None yet.</p>}
+            <section className="mt-4 rounded-lg border border-border">
+              <h2 className="border-b border-border bg-surface p-3 font-semibold">Branches</h2>
+              {org.branches.length === 0 && <p className="p-3 text-sm text-secondary-500">None yet.</p>}
               {org.branches.map((b) => (
-                <div key={b.id} className="border-b border-primary-700 p-3 text-sm last:border-b-0">
-                  {b.name} {b.county && <span className="text-zinc-500">({b.county})</span>}
+                <div key={b.id} className="border-b border-border p-3 text-sm last:border-b-0">
+                  {b.name} {b.county && <span className="text-secondary-500">({b.county})</span>}
                 </div>
               ))}
             </section>
 
-            <section className="mt-4 rounded-lg border border-primary-700">
-              <h2 className="border-b border-primary-700 bg-primary-800 p-3 font-semibold">Staff</h2>
-              {org.orgUsers.length === 0 && <p className="p-3 text-sm text-zinc-500">None yet.</p>}
+            <section className="mt-4 rounded-lg border border-border">
+              <h2 className="border-b border-border bg-surface p-3 font-semibold">Staff</h2>
+              {org.orgUsers.length === 0 && <p className="p-3 text-sm text-secondary-500">None yet.</p>}
               {org.orgUsers.map((u) => (
-                <div key={u.id} className="border-b border-primary-700 p-3 text-sm last:border-b-0">
-                  <span className={u.isActive ? "" : "text-zinc-500 line-through"}>
+                <div key={u.id} className="border-b border-border p-3 text-sm last:border-b-0">
+                  <span className={u.isActive ? "" : "text-secondary-500 line-through"}>
                     {u.user.fullName} ({u.user.email})
                   </span>{" "}
-                  <span className="text-zinc-500">- {u.role}</span>
+                  <span className="text-secondary-500">- {u.role}</span>
                   {!u.isActive && <span className="ml-2 text-xs text-red-400">deactivated</span>}
                 </div>
               ))}
@@ -358,18 +358,18 @@ export default function OrganizationDetailPage() {
               <div className="p-3 text-sm">
                 {org.isActive ? (
                   <>
-                    <p className="text-zinc-400">
+                    <p className="text-secondary-500">
                       Deactivating blocks every login for this tenant - owner, managers, and cashiers alike -
                       immediately. Nothing is deleted; all sales, staff, and audit history stay intact and this
                       can be reversed at any time.
                     </p>
-                    <label className="mb-1 mt-3 block text-xs text-zinc-500">
-                      Type <span className="font-mono text-zinc-300">{org.name}</span> to confirm
+                    <label className="mb-1 mt-3 block text-xs text-secondary-500">
+                      Type <span className="font-mono text-secondary-600">{org.name}</span> to confirm
                     </label>
                     <input
                       value={deactivateConfirm}
                       onChange={(e) => setDeactivateConfirm(e.target.value)}
-                      className="w-full max-w-sm rounded-md border border-primary-600 bg-primary-950 p-2"
+                      className="w-full max-w-sm rounded-md border border-border bg-background p-2"
                     />
                     <div className="mt-3">
                       <button
@@ -383,7 +383,7 @@ export default function OrganizationDetailPage() {
                   </>
                 ) : (
                   <>
-                    <p className="text-zinc-400">
+                    <p className="text-secondary-500">
                       This tenant is deactivated
                       {org.deactivatedAt && ` since ${new Date(org.deactivatedAt).toLocaleString()}`}. No one can
                       log in until it&apos;s reactivated.
@@ -408,8 +408,8 @@ export default function OrganizationDetailPage() {
 
 function Stat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-lg border border-primary-700 p-3">
-      <p className="text-xs text-zinc-500">{label}</p>
+    <div className="rounded-lg border border-border p-3">
+      <p className="text-xs text-secondary-500">{label}</p>
       <p className="mt-1 font-mono text-lg">{value}</p>
     </div>
   );

@@ -54,7 +54,7 @@ export default function ShiftReportPage() {
   if (!session) return null;
 
   return (
-    <div className="min-h-screen bg-slate-900 text-slate-100">
+    <div className="min-h-screen bg-background text-foreground">
       <Nav session={session} />
       <PageHeader />
       <main className="mx-auto max-w-2xl p-6">
@@ -62,13 +62,13 @@ export default function ShiftReportPage() {
           &larr; Shifts
         </button>
         {error && <p className="mb-4 rounded-md bg-red-950 p-3 text-sm text-red-300">{error}</p>}
-        {!report && !error && <p className="text-slate-400">Loading...</p>}
+        {!report && !error && <p className="text-secondary-500">Loading...</p>}
         {report && (
           <>
             <h1 className="text-xl font-bold">
               {report.closedAt ? "Z-report" : "X-report"} - Shift {report.shiftId}
             </h1>
-            <p className="mt-1 text-sm text-slate-400">
+            <p className="mt-1 text-sm text-secondary-500">
               Opened {new Date(report.openedAt).toLocaleString()}
               {report.closedAt ? ` · Closed ${new Date(report.closedAt).toLocaleString()}` : " · Still open"}
             </p>
@@ -91,9 +91,9 @@ export default function ShiftReportPage() {
               </div>
             )}
 
-            <section className="mt-6 rounded-lg border border-slate-800 p-4">
+            <section className="mt-6 rounded-lg border border-border p-4">
               <h2 className="mb-2 font-semibold">Payments by method</h2>
-              {Object.entries(report.paymentsByMethod).length === 0 && <p className="text-sm text-slate-400">No completed sales.</p>}
+              {Object.entries(report.paymentsByMethod).length === 0 && <p className="text-sm text-secondary-500">No completed sales.</p>}
               {Object.entries(report.paymentsByMethod).map(([method, amount]) => (
                 <p key={method} className="text-sm">
                   {method}: KES {amount.toFixed(2)}
@@ -109,8 +109,8 @@ export default function ShiftReportPage() {
 
 function Stat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-lg border border-slate-800 p-3">
-      <p className="text-xs text-slate-400">{label}</p>
+    <div className="rounded-lg border border-border p-3">
+      <p className="text-xs text-secondary-500">{label}</p>
       <p className="mt-1 font-mono text-lg">{value}</p>
     </div>
   );

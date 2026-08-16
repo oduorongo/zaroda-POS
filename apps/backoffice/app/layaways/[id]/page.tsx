@@ -127,7 +127,7 @@ export default function LayawayDetailPage() {
   if (!session) return null;
 
   return (
-    <div className="min-h-screen bg-slate-900 text-slate-100">
+    <div className="min-h-screen bg-background text-foreground">
       <Nav session={session} />
       <PageHeader />
       <main className="mx-auto max-w-2xl p-6">
@@ -135,21 +135,21 @@ export default function LayawayDetailPage() {
           &larr; Layaways
         </button>
         {error && <p className="mb-4 rounded-md bg-red-950 p-3 text-sm text-red-300">{error}</p>}
-        {!layaway && !error && <p className="text-slate-400">Loading...</p>}
+        {!layaway && !error && <p className="text-secondary-500">Loading...</p>}
         {layaway && (
           <>
             <h1 className="text-xl font-bold">{layaway.customer.name}</h1>
-            <p className="mt-1 text-sm text-slate-400">
+            <p className="mt-1 text-sm text-secondary-500">
               {new Date(layaway.createdAt).toLocaleString()} · {layaway.status}
               {layaway.customer.phone && ` · ${layaway.customer.phone}`}
             </p>
 
-            <section className="mt-6 rounded-lg border border-slate-800">
-              <h2 className="border-b border-slate-800 bg-slate-800 p-3 font-semibold">Items</h2>
+            <section className="mt-6 rounded-lg border border-border">
+              <h2 className="border-b border-border bg-surface p-3 font-semibold">Items</h2>
               <table className="w-full text-left text-sm">
                 <tbody>
                   {layaway.lineItems.map((li) => (
-                    <tr key={li.id} className="border-b border-slate-800 last:border-b-0">
+                    <tr key={li.id} className="border-b border-border last:border-b-0">
                       <td className="p-3">
                         {li.variant.product.name} ({li.variant.sku})
                       </td>
@@ -167,9 +167,9 @@ export default function LayawayDetailPage() {
               <Stat label="Balance" value={`KES ${balance.toFixed(2)}`} />
             </div>
 
-            <section className="mt-4 rounded-lg border border-slate-800 p-3">
+            <section className="mt-4 rounded-lg border border-border p-3">
               <h2 className="font-semibold">Payments</h2>
-              {layaway.payments.length === 0 && <p className="mt-1 text-sm text-slate-400">None yet.</p>}
+              {layaway.payments.length === 0 && <p className="mt-1 text-sm text-secondary-500">None yet.</p>}
               {layaway.payments.map((p) => (
                 <p key={p.id} className="mt-1 text-sm">
                   KES {Number(p.amount).toFixed(2)} ({p.method}) - {new Date(p.createdAt).toLocaleString()}
@@ -188,7 +188,7 @@ export default function LayawayDetailPage() {
                     placeholder={`Amount (max ${balance.toFixed(2)})`}
                     value={paymentAmount}
                     onChange={(e) => setPaymentAmount(e.target.value)}
-                    className="rounded-md border border-slate-700 bg-slate-800 p-2 text-sm"
+                    className="rounded-md border border-border bg-surface p-2 text-sm"
                   />
                   <button
                     onClick={() => void recordPayment()}
@@ -218,7 +218,7 @@ export default function LayawayDetailPage() {
                       placeholder="Reason"
                       value={cancelReason}
                       onChange={(e) => setCancelReason(e.target.value)}
-                      className="flex-1 rounded-md border border-slate-700 bg-slate-800 p-2 text-sm"
+                      className="flex-1 rounded-md border border-border bg-surface p-2 text-sm"
                     />
                     <button
                       onClick={() => void cancel()}
@@ -240,8 +240,8 @@ export default function LayawayDetailPage() {
 
 function Stat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-lg border border-slate-800 p-3">
-      <p className="text-xs text-slate-400">{label}</p>
+    <div className="rounded-lg border border-border p-3">
+      <p className="text-xs text-secondary-500">{label}</p>
       <p className="mt-1 font-mono">{value}</p>
     </div>
   );

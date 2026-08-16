@@ -77,7 +77,8 @@ export default function Footer() {
       </div>
 
       <div className="mx-auto mt-10 max-w-6xl border-t border-border px-6 pt-6 text-xs text-secondary-400">
-        © {year} Zaroda POS. All rights reserved.
+        <p>© {year} Zaroda POS. All rights reserved.</p>
+        <p className="mt-1">Powered by Zaroda Solutions. Innovative. Reliable. Forward.</p>
       </div>
     </footer>
   );

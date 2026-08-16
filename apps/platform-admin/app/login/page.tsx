@@ -38,29 +38,29 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-primary-900 p-4 text-zinc-100">
-      <form onSubmit={handleSubmit} className="w-full max-w-md space-y-4 rounded-xl border border-primary-700 bg-primary-800 p-6 shadow-xl">
+    <div className="flex min-h-screen items-center justify-center bg-background p-4 text-foreground">
+      <form onSubmit={handleSubmit} className="w-full max-w-md space-y-4 rounded-xl border border-border bg-surface p-6 shadow-xl">
         <h1 className="text-2xl font-bold">
           ZARODA <span className="text-amber-400">Platform Admin</span>
         </h1>
-        <p className="text-sm text-zinc-400">
+        <p className="text-sm text-secondary-500">
           Cross-tenant access - this is not a tenant login. Every action here is logged.
         </p>
         <div>
-          <label className="block text-sm font-medium text-zinc-300">Email</label>
+          <label className="block text-sm font-medium text-secondary-600">Email</label>
           <input
             type="email"
-            className="mt-1 w-full rounded-md border border-primary-600 bg-primary-900 p-2.5"
+            className="mt-1 w-full rounded-md border border-border bg-background p-2.5"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             required
           />
         </div>
         <div>
-          <label className="block text-sm font-medium text-zinc-300">Password</label>
+          <label className="block text-sm font-medium text-secondary-600">Password</label>
           <input
             type="password"
-            className="mt-1 w-full rounded-md border border-primary-600 bg-primary-900 p-2.5"
+            className="mt-1 w-full rounded-md border border-border bg-background p-2.5"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required

@@ -8,3 +8,5 @@ export * from "./components/Modal";
 export * from "./components/Input";
 export * from "./components/PinPad";
 export * from "./components/EmptyState";
+export * from "./components/ThemeToggle";
+export * from "./components/PoweredByFooter";
