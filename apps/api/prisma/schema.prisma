@@ -974,7 +974,9 @@ model SalePayment {
   saleId              String
   method              PaymentMethod
   amount              Decimal       @db.Decimal(12, 2) // in org.baseCurrency
-  providerReference   String?
+  // Unique: one provider transaction (e.g. an M-Pesa checkoutRequestId)
+  // settles at most one sale. Nulls (cash) don't collide in Postgres.
+  providerReference   String?       @unique
   // M-Pesa always settles in KES regardless of org.baseCurrency - see
   // DESIGN.md §9. Both null for cash/card-in-base-currency payments.
   settlementCurrency  String?
