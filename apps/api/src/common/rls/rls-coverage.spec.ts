@@ -31,6 +31,9 @@ const INTENTIONALLY_EXCLUDED = new Set([
   // that connects as a separate BYPASSRLS role, never tenant-facing.
   'platform_admins',
   'platform_audit_log',
+  // A global price list with no organizationId - see rls.sql's "platform
+  // billing tables" comment.
+  'plans',
 ]);
 
 function extractMappedTables(schemaSource: string): string[] {

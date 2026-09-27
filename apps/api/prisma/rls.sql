@@ -564,13 +564,52 @@ CREATE POLICY tenant_isolation ON organizations
 -- by only ever looking users up via an org_users row already filtered by
 -- the policies above - never by scanning `users` directly with tenant trust.
 
--- ── platform billing tables (plans, subscriptions, subscription_payments) ──
--- Deliberately NO RLS policy, same reasoning as platform_admins/
--- platform_audit_log (never given a policy in this file at all): these are
--- the platform owner's own rental-business records, not tenant data, and
--- are only ever queried by PlatformAdminController behind
--- PlatformAdminAuthGuard - a completely separate identity from a tenant
--- JWT. No tenant-facing controller may read or write them; that boundary
--- is enforced at the application layer (which endpoints exist), not by a
--- database policy, because RLS's "current_tenant" model has no meaningful
--- value to scope these rows by.
+-- ── platform billing tables ───────────────────────────────────────────────
+-- plans: deliberately NO RLS policy - a global price list with no
+-- organizationId, read by the public pricing endpoint and platform admin.
+--
+-- subscriptions / subscription_payments: platform-owned records, but each
+-- row belongs to exactly one tenant, so they get the same shape of policy
+-- as organizations above. Platform admin never sets app.current_tenant for
+-- billing (recordPayment, setSuspension, the billing list), so the
+-- "no tenant set" arm keeps its full access, for writes too - unlike
+-- organizations, whose writes platform admin always makes with the tenant
+-- set. What this adds is defence in depth: any transaction that HAS a
+-- tenant set (every tenant-facing request, plus self-registration and
+-- platform onboarding, which set it before creating the subscription) can
+-- only see or write that tenant's own billing rows, instead of relying
+-- solely on "no tenant-facing endpoint queries these".
+
+ALTER TABLE subscriptions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE subscriptions FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON subscriptions;
+CREATE POLICY tenant_isolation ON subscriptions
+  USING (
+    "organizationId" = current_setting('app.current_tenant', true)
+    OR NULLIF(current_setting('app.current_tenant', true), '') IS NULL
+  )
+  WITH CHECK (
+    "organizationId" = current_setting('app.current_tenant', true)
+    OR NULLIF(current_setting('app.current_tenant', true), '') IS NULL
+  );
+
+ALTER TABLE subscription_payments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE subscription_payments FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON subscription_payments;
+CREATE POLICY tenant_isolation ON subscription_payments
+  USING (
+    NULLIF(current_setting('app.current_tenant', true), '') IS NULL
+    OR EXISTS (
+      SELECT 1 FROM subscriptions s
+      WHERE s.id = subscription_payments."subscriptionId"
+        AND s."organizationId" = current_setting('app.current_tenant', true)
+    )
+  )
+  WITH CHECK (
+    NULLIF(current_setting('app.current_tenant', true), '') IS NULL
+    OR EXISTS (
+      SELECT 1 FROM subscriptions s
+      WHERE s.id = subscription_payments."subscriptionId"
+        AND s."organizationId" = current_setting('app.current_tenant', true)
+    )
+  );
