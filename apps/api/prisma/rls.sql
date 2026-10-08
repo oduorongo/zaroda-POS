@@ -180,6 +180,15 @@ CREATE POLICY tenant_isolation ON product_variants
   WITH CHECK (EXISTS (SELECT 1 FROM products p WHERE p.id = product_variants."productId"
                  AND p."organizationId" = current_setting('app.current_tenant', true)));
 
+ALTER TABLE product_images ENABLE ROW LEVEL SECURITY;
+ALTER TABLE product_images FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON product_images;
+CREATE POLICY tenant_isolation ON product_images
+  USING (EXISTS (SELECT 1 FROM products p WHERE p.id = product_images."productId"
+                 AND p."organizationId" = current_setting('app.current_tenant', true)))
+  WITH CHECK (EXISTS (SELECT 1 FROM products p WHERE p.id = product_images."productId"
+                 AND p."organizationId" = current_setting('app.current_tenant', true)));
+
 -- ── Scoped via variantId -> products."organizationId" ──────────────────────
 
 ALTER TABLE batches ENABLE ROW LEVEL SECURITY;

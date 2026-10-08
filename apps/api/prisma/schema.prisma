@@ -388,6 +388,14 @@ model Product {
   taxClassId     String?
   name           String
   baseUnit       String   @default("each")
+  // Online Shop add-on: whether this product appears in the business's
+  // public shop (only once the shop itself is live - see OnlineStore), and
+  // the buyer-facing description shown there. Online price and stock are
+  // NOT separate fields - they come from the variants' price and the
+  // fulfilment branch's inventory, so the counter and the web never
+  // disagree.
+  onlineVisible     Boolean  @default(false)
+  onlineDescription String?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
@@ -396,6 +404,7 @@ model Product {
   taxClass     TaxClass?         @relation(fields: [taxClassId], references: [id], onDelete: SetNull)
   variants     ProductVariant[]
   pharmacyFlag PharmacyProductFlag?
+  images       ProductImage[]
 
   @@index([organizationId])
   @@map("products")
@@ -1795,4 +1804,27 @@ model OnlineStore {
 
   @@index([fulfilmentBranchId])
   @@map("online_stores")
+}
+
+// Product photos for the online shop. The file itself lives in object
+// storage (Cloudflare R2 / any S3-compatible bucket - see
+// common/storage/object-storage.service.ts); this row records where.
+// Uploaded browser -> bucket directly via a short-lived presigned URL, then
+// confirmed with the API (ProductImagesService), so large files never pass
+// through the API process. Lowest sortOrder is the cover photo.
+model ProductImage {
+  id         String   @id @default(uuid())
+  productId  String
+  // Object key in the bucket, always under
+  // orgs/<organizationId>/products/<productId>/ - ProductImagesService
+  // refuses to confirm a key outside that prefix, so one tenant can't
+  // attach another tenant's upload.
+  storageKey String   @unique
+  sortOrder  Int      @default(0)
+  createdAt  DateTime @default(now())
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId, sortOrder])
+  @@map("product_images")
 }
