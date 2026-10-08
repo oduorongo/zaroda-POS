@@ -20,7 +20,7 @@ import { PlatformAdminLoginDto } from './dto/platform-admin-login.dto';
 import { CreatePlanDto, UpdatePlanDto } from './dto/create-plan.dto';
 import { OnboardTenantDto } from './dto/onboard-tenant.dto';
 import { RecordPaymentDto, SetSuspensionDto } from './dto/record-payment.dto';
-import { SetOrganizationActiveDto, UpdateOrganizationDto } from './dto/update-organization.dto';
+import { SetOnlineStoreAddonDto, SetOrganizationActiveDto, UpdateOrganizationDto } from './dto/update-organization.dto';
 import { ResetUserPasswordDto } from './dto/reset-user-password.dto';
 
 // Same throttle shape as tenant login (auth.controller.ts) - this is the
@@ -241,6 +241,27 @@ export class PlatformAdminController {
         : 'platform_admin.reactivated_tenant',
       entityType: 'Subscription',
       entityId: result.id,
+      organizationId: id,
+    });
+    return result;
+  }
+
+  @Public()
+  @UseGuards(PlatformAdminAuthGuard)
+  @Patch('organizations/:id/online-store')
+  async setOnlineStoreAddon(
+    @Req() req: PlatformAdminRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: SetOnlineStoreAddonDto,
+  ) {
+    const result = await this.platformAdmin.setOnlineStoreAddon(id, dto);
+    await this.auditLog.log({
+      platformAdminId: req.user!.platformAdminId,
+      action: dto.addonActive
+        ? 'platform_admin.enabled_online_store'
+        : 'platform_admin.disabled_online_store',
+      entityType: 'OnlineStore',
+      entityId: id,
       organizationId: id,
     });
     return result;

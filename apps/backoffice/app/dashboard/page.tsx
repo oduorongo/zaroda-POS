@@ -20,6 +20,7 @@ import {
   Trash2,
   PackageOpen,
   Receipt,
+  Store,
   UtensilsCrossed,
   Pill,
   Scissors,
@@ -59,13 +60,22 @@ const TILES: Tile[] = [
 
 // Mirrors components/nav.tsx exactly - owner/manager only, though the real
 // authorization boundary is the API's @Roles() guard, not this UI check.
-const MANAGER_TILE: Tile = {
-  href: "/settings/tax",
-  label: "Tax Settings",
-  description: "VAT rates and tax-class configuration.",
-  icon: Receipt,
-  tone: "bg-secondary-500",
-};
+const MANAGER_TILES: Tile[] = [
+  {
+    href: "/settings/tax",
+    label: "Tax Settings",
+    description: "VAT rates and tax-class configuration.",
+    icon: Receipt,
+    tone: "bg-secondary-500",
+  },
+  {
+    href: "/settings/online-shop",
+    label: "Online Shop",
+    description: "Your public shop link, payments, and pickup/delivery.",
+    icon: Store,
+    tone: "bg-emerald-600",
+  },
+];
 const MANAGER_ROLES = ["MANAGER", "OWNER"];
 
 // Same industryType gating as components/nav.tsx's VERTICAL_LINKS.
@@ -130,7 +140,7 @@ export default function DashboardPage() {
 
   const verticalTile = VERTICAL_TILES[session.industryType];
   const tiles = MANAGER_ROLES.includes(session.role)
-    ? [...TILES, MANAGER_TILE]
+    ? [...TILES, ...MANAGER_TILES]
     : TILES;
   if (verticalTile) tiles.push(verticalTile);
 

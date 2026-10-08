@@ -1,12 +1,13 @@
 import { randomUUID } from 'crypto';
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import { Prisma, Role } from '@prisma/client';
+import { OnlineStore, Prisma, Role } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '../common/prisma/prisma.service';
 import { CreatePlanDto, UpdatePlanDto } from './dto/create-plan.dto';
 import { OnboardTenantDto } from './dto/onboard-tenant.dto';
 import { RecordPaymentDto } from './dto/record-payment.dto';
-import { UpdateOrganizationDto } from './dto/update-organization.dto';
+import { SetOnlineStoreAddonDto, UpdateOrganizationDto } from './dto/update-organization.dto';
+import { DEFAULT_COMMISSION_RATE } from '../online-store/online-store.constants';
 import { effectiveStatus } from './subscriptions.util';
 
 const SALT_ROUNDS = 10;
@@ -49,6 +50,20 @@ const SALT_ROUNDS = 10;
  * problem, it's the identical bug freshly reintroduced.
  */
 const TX_OPTIONS = { timeout: 15_000, maxWait: 15_000 };
+
+/** Platform admin's view of a tenant's shop - status and commission, never the tenant's TUMA credential. */
+function toPlatformOnlineStoreView(store: OnlineStore | null) {
+  const commissionRate = store?.commissionRate != null ? Number(store.commissionRate) : null;
+  return {
+    addonActive: store?.addonActive ?? false,
+    commissionRate,
+    effectiveCommissionRate: commissionRate ?? DEFAULT_COMMISSION_RATE,
+    isPublished: store?.isPublished ?? false,
+    slug: store?.slug ?? null,
+    displayName: store?.displayName ?? null,
+    tumaConnected: Boolean(store?.tumaApiKeyEncrypted),
+  };
+}
 
 @Injectable()
 export class PlatformAdminService {
@@ -108,12 +123,17 @@ export class PlatformAdminService {
       where: { organizationId: id },
       include: { plan: true, payments: { orderBy: { paidAt: 'desc' }, take: 20 } },
     });
+    const onlineStore = await this.prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT set_config('app.current_tenant', ${id}, true)`;
+      return tx.onlineStore.findUnique({ where: { organizationId: id } });
+    }, TX_OPTIONS);
 
     return {
       ...org,
       ...counts,
       branches,
       orgUsers,
+      onlineStore: toPlatformOnlineStoreView(onlineStore),
       subscription: subscription
         ? { ...subscription, status: effectiveStatus(subscription) }
         : null,
@@ -352,6 +372,35 @@ export class PlatformAdminService {
       include: { plan: true },
     });
     return { ...updated, status: effectiveStatus(updated) };
+  }
+
+  /**
+   * Switches the paid Online Shop add-on on or off for one tenant - the
+   * only way an online_stores row is ever created (a tenant can only
+   * update an existing, active one). Switching off keeps every setting so
+   * switching back on restores the shop exactly as it was; the storefront
+   * hides any shop whose add-on is off regardless of isPublished.
+   */
+  async setOnlineStoreAddon(organizationId: string, dto: SetOnlineStoreAddonDto) {
+    const org = await this.prisma.organization.findUnique({ where: { id: organizationId } });
+    if (!org) throw new NotFoundException('Organization not found');
+
+    const store = await this.prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT set_config('app.current_tenant', ${organizationId}, true)`;
+      return tx.onlineStore.upsert({
+        where: { organizationId },
+        create: {
+          organizationId,
+          addonActive: dto.addonActive,
+          commissionRate: dto.commissionRate ?? null,
+        },
+        update: {
+          addonActive: dto.addonActive,
+          commissionRate: dto.commissionRate,
+        },
+      });
+    }, TX_OPTIONS);
+    return toPlatformOnlineStoreView(store);
   }
 
   // ── Platform analytics ──────────────────────────────────────────────

@@ -79,6 +79,7 @@ model Organization {
   rosterShifts     RosterShift[]
   mpesaStkRequests MpesaStkRequest[]
   subscription     Subscription?
+  onlineStore      OnlineStore?
 
   @@map("organizations")
 }
@@ -113,6 +114,7 @@ model Branch {
   productionOrders     ProductionOrder[]
   serviceJobs          ServiceJob[]
   rosterShifts         RosterShift[]
+  onlineStores         OnlineStore[]
 
   @@index([organizationId])
   @@map("branches")
@@ -1741,4 +1743,56 @@ model SubscriptionPayment {
 
   @@index([subscriptionId])
   @@map("subscription_payments")
+}
+
+// Online shop add-on (marketplace Phase 1) - a tenant's public storefront
+// settings, one row per organization. Two groups of fields with different
+// owners:
+// - addonActive / commissionRate are set ONLY by a platform admin
+//   (PlatformAdminService.setOnlineStoreAddon) - the add-on is a paid
+//   extra, so a tenant must never be able to switch it on for itself.
+//   OnlineStoreService's tenant-facing update deliberately has no DTO
+//   field for either.
+// - Everything else is the tenant's own shop configuration.
+// The shop is publicly visible only when BOTH addonActive (platform says
+// it's paid for) and isPublished (tenant says it's ready) are true - the
+// platform switching the add-on off hides the shop without erasing the
+// tenant's settings, so switching it back on restores it as it was.
+//
+// Buyers pay the business directly through the business's OWN TUMA
+// (tuma.co.ke) merchant account - Zaroda never holds buyer money, it
+// bills commission monthly instead. The TUMA API key is stored encrypted
+// (common/crypto/secret-box.ts) and is never returned by any endpoint.
+model OnlineStore {
+  id                  String   @id @default(uuid())
+  organizationId      String   @unique
+  addonActive         Boolean  @default(false)
+  // Fraction, e.g. 0.0300 = 3%. Null = the platform default
+  // (DEFAULT_COMMISSION_RATE in online-store.constants.ts) - a per-tenant
+  // override for a negotiated rate, not a copy of the default.
+  commissionRate      Decimal? @db.Decimal(5, 4)
+  isPublished         Boolean  @default(false)
+  // The business's own shop link, e.g. /s/mama-mboga. Globally unique
+  // across tenants - enforced by this index, since RLS hides every other
+  // tenant's row from an application-level pre-check.
+  slug                String?  @unique
+  displayName         String?
+  description         String?
+  contactPhone        String?
+  // Which branch's stock online orders are sold from and where pickup
+  // happens. SetNull if that branch is deleted - OnlineStoreService then
+  // treats the shop as not ready (see isReadyToPublish).
+  fulfilmentBranchId  String?
+  pickupEnabled       Boolean  @default(true)
+  deliveryEnabled     Boolean  @default(false)
+  tumaEmail           String?
+  tumaApiKeyEncrypted String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  fulfilmentBranch Branch?      @relation(fields: [fulfilmentBranchId], references: [id], onDelete: SetNull)
+
+  @@index([fulfilmentBranchId])
+  @@map("online_stores")
 }

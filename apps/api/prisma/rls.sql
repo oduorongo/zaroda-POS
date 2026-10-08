@@ -541,6 +541,17 @@ CREATE POLICY tenant_isolation ON roster_shifts
   USING ("organizationId" = current_setting('app.current_tenant', true))
   WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
 
+-- Online shop settings (marketplace add-on). Tenant-only for now - the
+-- public storefront (a later step) will need a deliberate, narrow
+-- read exception for published shops, added here with its own comment
+-- when that endpoint exists, not pre-emptively.
+ALTER TABLE online_stores ENABLE ROW LEVEL SECURITY;
+ALTER TABLE online_stores FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON online_stores;
+CREATE POLICY tenant_isolation ON online_stores
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
 -- ── organizations itself ─────────────────────────────────────────────────
 -- A tenant may only ever see its own organization row (not a child table,
 -- so it filters on id directly rather than organizationId). Same pre-auth
