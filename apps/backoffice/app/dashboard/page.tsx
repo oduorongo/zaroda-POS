@@ -21,6 +21,7 @@ import {
   PackageOpen,
   Receipt,
   Store,
+  ShoppingBag,
   UtensilsCrossed,
   Pill,
   Scissors,
@@ -67,6 +68,13 @@ const MANAGER_TILES: Tile[] = [
     description: "VAT rates and tax-class configuration.",
     icon: Receipt,
     tone: "bg-secondary-500",
+  },
+  {
+    href: "/online-orders",
+    label: "Online Orders",
+    description: "Accept, prepare, and hand over orders from your online shop.",
+    icon: ShoppingBag,
+    tone: "bg-emerald-600",
   },
   {
     href: "/settings/online-shop",

@@ -1,0 +1,161 @@
+import { Injectable, NotFoundException } from '@nestjs/common';
+import { OnlineOrderStatus } from '@prisma/client';
+import { PrismaService } from '../common/prisma/prisma.service';
+import { TenantTx } from '../common/prisma/tenant-scoped-prisma.service';
+import { ObjectStorageService } from '../common/storage/object-storage.service';
+
+const TX_OPTIONS = { timeout: 15_000, maxWait: 15_000 };
+
+export interface LiveShop {
+  organizationId: string;
+  slug: string;
+  displayName: string;
+  description: string | null;
+  contactPhone: string | null;
+  fulfilmentBranchId: string;
+  pickupEnabled: boolean;
+  deliveryEnabled: boolean;
+  commissionRate: number | null;
+  tumaEmail: string;
+  tumaApiKeyEncrypted: string;
+}
+
+/**
+ * Reads a live shop's catalog for unauthenticated/buyer callers - the one
+ * place that enters a tenant from a public slug. Inside one transaction:
+ * opt in to the narrow public_catalog_read policy (rls.sql) to resolve the
+ * slug, then set app.current_tenant to THAT shop's organization, so every
+ * further query is ordinary tenant-scoped RLS - another business's data is
+ * unreachable even if a query below were wrong.
+ */
+@Injectable()
+export class ShopCatalogService {
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly storage: ObjectStorageService,
+  ) {}
+
+  runForShop<T>(slug: string, fn: (tx: TenantTx, shop: LiveShop) => Promise<T>, extra?: { buyerId?: string }): Promise<T> {
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT set_config('app.public_catalog', 'on', true)`;
+      const store = await tx.onlineStore.findUnique({ where: { slug: slug.toLowerCase() } });
+      // Policy already hides unpublished/unpaid shops; the field checks
+      // here also cover a half-configured shop that slipped through.
+      if (!store || !store.fulfilmentBranchId || !store.displayName || !store.tumaEmail || !store.tumaApiKeyEncrypted) {
+        throw new NotFoundException('Shop not found');
+      }
+      await tx.$executeRaw`SELECT set_config('app.current_tenant', ${store.organizationId}, true)`;
+      if (extra?.buyerId) {
+        await tx.$executeRaw`SELECT set_config('app.current_buyer', ${extra.buyerId}, true)`;
+      }
+      return fn(tx, {
+        organizationId: store.organizationId,
+        slug: store.slug!,
+        displayName: store.displayName,
+        description: store.description,
+        contactPhone: store.contactPhone,
+        fulfilmentBranchId: store.fulfilmentBranchId,
+        pickupEnabled: store.pickupEnabled,
+        deliveryEnabled: store.deliveryEnabled,
+        commissionRate: store.commissionRate != null ? Number(store.commissionRate) : null,
+        tumaEmail: store.tumaEmail,
+        tumaApiKeyEncrypted: store.tumaApiKeyEncrypted,
+      });
+    }, TX_OPTIONS);
+  }
+
+  /**
+   * Quantity that can still be sold online per variant at a branch:
+   * stock on hand minus what open online orders are holding (unpaid
+   * orders still inside their payment window, and paid orders the
+   * business hasn't accepted yet - accepting deducts the real stock, so
+   * accepted orders are already reflected in on-hand).
+   */
+  async availableQuantities(tx: TenantTx, branchId: string, variantIds: string[]): Promise<Map<string, number>> {
+    if (variantIds.length === 0) return new Map();
+    const [items, held] = await Promise.all([
+      tx.inventoryItem.findMany({ where: { branchId, variantId: { in: variantIds } } }),
+      tx.onlineOrderLine.groupBy({
+        by: ['variantId'],
+        where: {
+          variantId: { in: variantIds },
+          order: {
+            branchId,
+            OR: [
+              { status: OnlineOrderStatus.PAID },
+              { status: OnlineOrderStatus.PENDING_PAYMENT, paymentDeadline: { gt: new Date() } },
+            ],
+          },
+        },
+        _sum: { quantity: true },
+      }),
+    ]);
+    const heldBy = new Map(held.map((h) => [h.variantId, Number(h._sum.quantity ?? 0)]));
+    const result = new Map<string, number>();
+    for (const id of variantIds) {
+      const onHand = Number(items.find((i) => i.variantId === id)?.quantity ?? 0);
+      result.set(id, Math.max(0, onHand - (heldBy.get(id) ?? 0)));
+    }
+    return result;
+  }
+
+  /**
+   * Products a buyer can see: marked onlineVisible, with at least one
+   * variant. Variants made from a recipe (a restaurant dish built from
+   * ingredients at cook time) have no stock of their own and aren't
+   * sellable online yet, so they're left out.
+   */
+  sellableProducts(tx: TenantTx, productIds?: string[]) {
+    return tx.product.findMany({
+      where: {
+        onlineVisible: true,
+        ...(productIds ? { id: { in: productIds } } : {}),
+        variants: { some: { recipeIngredients: { none: {} } } },
+      },
+      include: {
+        category: { select: { id: true, name: true } },
+        variants: { where: { recipeIngredients: { none: {} } }, orderBy: { price: 'asc' } },
+        images: { orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }] },
+      },
+      orderBy: { name: 'asc' },
+    });
+  }
+
+  async getShop(slug: string) {
+    return this.runForShop(slug, async (tx, shop) => {
+      const products = await this.sellableProducts(tx);
+      const available = await this.availableQuantities(
+        tx,
+        shop.fulfilmentBranchId,
+        products.flatMap((p) => p.variants.map((v) => v.id)),
+      );
+      const branch = await tx.branch.findUnique({
+        where: { id: shop.fulfilmentBranchId },
+        select: { name: true, county: true, subCounty: true },
+      });
+      return {
+        slug: shop.slug,
+        name: shop.displayName,
+        description: shop.description,
+        contactPhone: shop.contactPhone,
+        pickupEnabled: shop.pickupEnabled,
+        deliveryEnabled: shop.deliveryEnabled,
+        location: branch ? { branchName: branch.name, county: branch.county, subCounty: branch.subCounty } : null,
+        products: products.map((p) => ({
+          id: p.id,
+          name: p.name,
+          description: p.onlineDescription,
+          category: p.category,
+          images: p.images.map((i) => this.storage.publicUrl(i.storageKey)),
+          variants: p.variants.map((v) => ({
+            id: v.id,
+            sku: v.sku,
+            price: Number(v.price),
+            quantityMode: v.quantityMode,
+            available: available.get(v.id) ?? 0,
+          })),
+        })),
+      };
+    });
+  }
+}
