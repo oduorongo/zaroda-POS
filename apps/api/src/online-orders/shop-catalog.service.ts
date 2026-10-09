@@ -3,6 +3,7 @@ import { OnlineOrderStatus } from '@prisma/client';
 import { PrismaService } from '../common/prisma/prisma.service';
 import { TenantTx } from '../common/prisma/tenant-scoped-prisma.service';
 import { ObjectStorageService } from '../common/storage/object-storage.service';
+import { hasOverdueCommission } from '../online-store/commission.service';
 
 const TX_OPTIONS = { timeout: 15_000, maxWait: 15_000 };
 const MAX_DIRECTORY_SHOPS = 60;
@@ -46,6 +47,11 @@ export class ShopCatalogService {
         throw new NotFoundException('Shop not found');
       }
       await tx.$executeRaw`SELECT set_config('app.current_tenant', ${store.organizationId}, true)`;
+      // A shop with commission unpaid past its grace period is closed to
+      // buyers: same "not found" as an offline shop, so no new orders can be
+      // placed. Orders already in progress are untouched (they don't come
+      // through here).
+      if (await hasOverdueCommission(tx)) throw new NotFoundException('Shop not found');
       if (extra?.buyerId) {
         await tx.$executeRaw`SELECT set_config('app.current_buyer', ${extra.buyerId}, true)`;
       }
@@ -150,6 +156,7 @@ export class ShopCatalogService {
       const shops = [];
       for (const store of stores) {
         await tx.$executeRaw`SELECT set_config('app.current_tenant', ${store.organizationId}, true)`;
+        if (await hasOverdueCommission(tx)) continue;
         const [branch, products] = await Promise.all([
           tx.branch.findUnique({
             where: { id: store.fulfilmentBranchId! },

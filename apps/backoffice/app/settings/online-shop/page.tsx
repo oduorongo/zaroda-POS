@@ -24,12 +24,37 @@ interface OnlineStore {
   publishBlockers: string[];
 }
 
+interface CommissionInvoice {
+  id: string;
+  invoiceNumber: string;
+  periodMonth: string;
+  orderCount: number;
+  salesTotal: number;
+  commissionTotal: number;
+  status: "ISSUED" | "PAID" | "WAIVED";
+  dueDate: string;
+  pauseDate: string;
+  pastDue: boolean;
+  causesPause: boolean;
+  paidAt: string | null;
+}
+
+interface Commission {
+  commissionRate: number;
+  unbilled: { orderCount: number; salesTotal: number; commissionTotal: number };
+  invoices: CommissionInvoice[];
+  outstandingTotal: number;
+  paused: boolean;
+}
+
+const kes = (n: number) => `KES ${n.toLocaleString("en-KE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
 interface Branch {
   id: string;
   name: string;
 }
 
-const STOREFRONT_URL = (process.env.NEXT_PUBLIC_STOREFRONT_URL ?? "https://zarodashop.com").replace(/\/+$/, "");
+const STOREFRONT_URL = (process.env.NEXT_PUBLIC_STOREFRONT_URL ?? "https://shop.zarodashop.com").replace(/\/+$/, "");
 
 /**
  * Online Shop add-on settings. The add-on itself is switched on by Zaroda
@@ -63,6 +88,7 @@ export default function OnlineShopSettingsPage() {
 
   const [publishBusy, setPublishBusy] = useState(false);
   const [publishError, setPublishError] = useState<string | null>(null);
+  const [commission, setCommission] = useState<Commission | null>(null);
 
   useEffect(() => {
     const s = getSession();
@@ -102,6 +128,10 @@ export default function OnlineShopSettingsPage() {
       ]);
       applyStore(storeResult);
       setBranches(branchResult);
+      // Commission is informational - the page still works without it.
+      if (storeResult.addonActive) {
+        apiGet<Commission>("/online-store/me/commission").then(setCommission).catch(() => setCommission(null));
+      }
     } catch (err) {
       setLoadError(err instanceof ApiError ? err.message : "Could not load online shop settings.");
     } finally {
@@ -215,7 +245,13 @@ export default function OnlineShopSettingsPage() {
               </CardHeader>
               <CardContent className="space-y-3">
                 <div className="flex flex-wrap items-center gap-3">
-                  {store.isPublished ? <Badge variant="success">Live</Badge> : <Badge variant="neutral">Offline</Badge>}
+                  {commission?.paused && store.isPublished ? (
+                    <Badge variant="error">Hidden - commission unpaid</Badge>
+                  ) : store.isPublished ? (
+                    <Badge variant="success">Live</Badge>
+                  ) : (
+                    <Badge variant="neutral">Offline</Badge>
+                  )}
                   {store.slug && (
                     <span className="break-all text-sm text-secondary-600">
                       {STOREFRONT_URL}/s/{store.slug}
@@ -232,9 +268,14 @@ export default function OnlineShopSettingsPage() {
                     </ul>
                   </div>
                 )}
+                {commission?.paused && (
+                  <p className="rounded-md bg-error-50 p-3 text-sm text-error-700">
+                    Buyers can&apos;t see or order from your shop because a commission invoice is overdue. Pay it to Zaroda and ask them to record it, and your shop reappears straight away. Orders already placed are not affected.
+                  </p>
+                )}
                 <p className="text-xs text-secondary-500">
                   Zaroda commission: {Number((store.commissionRate * 100).toFixed(2))}% of each completed online
-                  order&apos;s product total (delivery excluded), billed monthly with your subscription.
+                  order&apos;s product total (delivery excluded), invoiced monthly. See below.
                 </p>
                 {publishError && <p className="text-sm text-error-600">{publishError}</p>}
                 {store.isPublished ? (
@@ -248,6 +289,53 @@ export default function OnlineShopSettingsPage() {
                 )}
               </CardContent>
             </Card>
+
+            {commission && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Commission</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="grid grid-cols-2 gap-3 text-sm">
+                    <div>
+                      <p className="text-xs text-secondary-500">You owe Zaroda now</p>
+                      <p className={`text-xl font-bold ${commission.outstandingTotal > 0 ? "text-warning-700" : ""}`}>{kes(commission.outstandingTotal)}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-secondary-500">Building up this month</p>
+                      <p className="text-xl font-bold">{kes(commission.unbilled.commissionTotal)}</p>
+                      <p className="text-xs text-secondary-500">
+                        from {commission.unbilled.orderCount} completed {commission.unbilled.orderCount === 1 ? "order" : "orders"}
+                      </p>
+                    </div>
+                  </div>
+                  <p className="text-xs text-secondary-500">
+                    Completed orders are added up when each month ends and invoiced, due 14 days later. If an invoice stays unpaid a further 7 days, your shop is hidden from buyers until it&apos;s settled.
+                  </p>
+                  {commission.invoices.length === 0 ? (
+                    <p className="text-sm text-secondary-500">No invoices yet.</p>
+                  ) : (
+                    <ul className="divide-y divide-border text-sm">
+                      {commission.invoices.map((inv) => (
+                        <li key={inv.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
+                          <div>
+                            <span className="font-mono text-xs">{inv.invoiceNumber}</span>
+                            <span className="ml-2 text-secondary-500">{inv.periodMonth} · {inv.orderCount} orders</span>
+                            {inv.status === "ISSUED" && <span className="block text-xs text-secondary-500">Due {new Date(inv.dueDate).toLocaleDateString("en-KE")}</span>}
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono font-semibold">{kes(inv.commissionTotal)}</span>
+                            {inv.status === "PAID" && <Badge variant="success">Paid</Badge>}
+                            {inv.status === "WAIVED" && <Badge variant="neutral">Waived</Badge>}
+                            {inv.status === "ISSUED" && (inv.causesPause ? <Badge variant="error">Overdue</Badge> : inv.pastDue ? <Badge variant="warning">Past due</Badge> : <Badge variant="primary">Due</Badge>)}
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </CardContent>
+              </Card>
+            )}
 
             <Card>
               <CardHeader>

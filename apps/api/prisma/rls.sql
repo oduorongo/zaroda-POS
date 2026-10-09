@@ -595,6 +595,16 @@ CREATE POLICY tenant_isolation ON online_order_lines
                  AND (o."organizationId" = current_setting('app.current_tenant', true)
                       OR o."buyerId" = current_setting('app.current_buyer', true))));
 
+-- Commission invoices: the business sees its own; a platform admin reads
+-- and records payments across tenants one tenant at a time (set_config per
+-- tenant), the same way it reads branches.
+ALTER TABLE commission_invoices ENABLE ROW LEVEL SECURITY;
+ALTER TABLE commission_invoices FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON commission_invoices;
+CREATE POLICY tenant_isolation ON commission_invoices
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
 -- buyers / buyer_otps: deliberately NOT tenant-scoped, same reasoning as
 -- `users` below - one buyer shops at many businesses with one login, and
 -- an OTP is checked before any business is involved. The application

@@ -10,6 +10,7 @@ const LINKS = [
   { href: "/organizations", label: "Tenants" },
   { href: "/tenants/new", label: "+ New tenant" },
   { href: "/billing", label: "Billing" },
+  { href: "/commission", label: "Commission" },
   { href: "/analytics", label: "Analytics" },
 ];
 

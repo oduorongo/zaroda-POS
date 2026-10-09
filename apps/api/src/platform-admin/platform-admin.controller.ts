@@ -6,6 +6,7 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Query,
   Req,
   UseGuards,
 } from '@nestjs/common';
@@ -22,6 +23,13 @@ import { OnboardTenantDto } from './dto/onboard-tenant.dto';
 import { RecordPaymentDto, SetSuspensionDto } from './dto/record-payment.dto';
 import { SetOnlineStoreAddonDto, SetOrganizationActiveDto, UpdateOrganizationDto } from './dto/update-organization.dto';
 import { ResetUserPasswordDto } from './dto/reset-user-password.dto';
+import { CommissionService } from '../online-store/commission.service';
+import {
+  GenerateInvoicesDto,
+  ListInvoicesQueryDto,
+  RecordInvoicePaymentDto,
+  WaiveInvoiceDto,
+} from './dto/commission.dto';
 
 // Same throttle shape as tenant login (auth.controller.ts) - this is the
 // one public, pre-JWT endpoint on this controller.
@@ -42,6 +50,7 @@ export class PlatformAdminController {
     private readonly auth: PlatformAdminAuthService,
     private readonly platformAdmin: PlatformAdminService,
     private readonly auditLog: PlatformAuditLogService,
+    private readonly commission: CommissionService,
   ) {}
 
   @Public()
@@ -262,6 +271,70 @@ export class PlatformAdminController {
         : 'platform_admin.disabled_online_store',
       entityType: 'OnlineStore',
       entityId: id,
+      organizationId: id,
+    });
+    return result;
+  }
+
+  // ── Online Shop commission ───────────────────────────────────────────
+
+  @Public()
+  @UseGuards(PlatformAdminAuthGuard)
+  @Get('commission/invoices')
+  listCommissionInvoices(@Query() query: ListInvoicesQueryDto) {
+    return this.commission.listInvoices(query);
+  }
+
+  // Idempotent: creates invoices for finished months that don't have one
+  // yet and never bills an order twice, so it's safe to run any time.
+  @Public()
+  @UseGuards(PlatformAdminAuthGuard)
+  @Post('commission/generate')
+  async generateCommissionInvoices(@Req() req: PlatformAdminRequest, @Body() dto: GenerateInvoicesDto) {
+    const result = await this.commission.generateInvoices({ month: dto.month });
+    await this.auditLog.log({
+      platformAdminId: req.user!.platformAdminId,
+      action: 'platform_admin.generated_commission_invoices',
+      entityType: 'CommissionInvoice',
+    });
+    return result;
+  }
+
+  @Public()
+  @UseGuards(PlatformAdminAuthGuard)
+  @Post('organizations/:id/commission-invoices/:invoiceId/payment')
+  async recordCommissionPayment(
+    @Req() req: PlatformAdminRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('invoiceId', ParseUUIDPipe) invoiceId: string,
+    @Body() dto: RecordInvoicePaymentDto,
+  ) {
+    const result = await this.commission.recordPayment(id, invoiceId, dto, req.user!.platformAdminId);
+    await this.auditLog.log({
+      platformAdminId: req.user!.platformAdminId,
+      action: 'platform_admin.recorded_commission_payment',
+      entityType: 'CommissionInvoice',
+      entityId: invoiceId,
+      organizationId: id,
+    });
+    return result;
+  }
+
+  @Public()
+  @UseGuards(PlatformAdminAuthGuard)
+  @Post('organizations/:id/commission-invoices/:invoiceId/waive')
+  async waiveCommissionInvoice(
+    @Req() req: PlatformAdminRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('invoiceId', ParseUUIDPipe) invoiceId: string,
+    @Body() dto: WaiveInvoiceDto,
+  ) {
+    const result = await this.commission.waive(id, invoiceId, dto.reason, req.user!.platformAdminId);
+    await this.auditLog.log({
+      platformAdminId: req.user!.platformAdminId,
+      action: 'platform_admin.waived_commission_invoice',
+      entityType: 'CommissionInvoice',
+      entityId: invoiceId,
       organizationId: id,
     });
     return result;

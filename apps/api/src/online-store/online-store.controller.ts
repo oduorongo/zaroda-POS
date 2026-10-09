@@ -2,6 +2,7 @@ import { Body, Controller, Delete, Get, Patch, Post } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { Role } from '@prisma/client';
 import { Roles } from '../auth/roles.decorator';
+import { CommissionService } from './commission.service';
 import { OnlineStoreService } from './online-store.service';
 import { ConnectTumaDto, UpdateOnlineStoreDto } from './dto/update-online-store.dto';
 
@@ -14,11 +15,21 @@ const TUMA_THROTTLE = { default: { limit: 5, ttl: 60_000 } };
 @Controller('online-store/me')
 @Roles(Role.MANAGER, Role.OWNER)
 export class OnlineStoreController {
-  constructor(private readonly onlineStore: OnlineStoreService) {}
+  constructor(
+    private readonly onlineStore: OnlineStoreService,
+    private readonly commission: CommissionService,
+  ) {}
 
   @Get()
   getMine() {
     return this.onlineStore.getMine();
+  }
+
+  // What the business owes Zaroda: unbilled completed orders, monthly
+  // invoices, and whether the shop is currently paused for non-payment.
+  @Get('commission')
+  getCommission() {
+    return this.commission.getMine();
   }
 
   @Patch()

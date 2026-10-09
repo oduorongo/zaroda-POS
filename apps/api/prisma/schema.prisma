@@ -81,6 +81,7 @@ model Organization {
   subscription     Subscription?
   onlineStore      OnlineStore?
   onlineOrders     OnlineOrder[]
+  commissionInvoices CommissionInvoice[]
 
   @@map("organizations")
 }
@@ -1924,6 +1925,9 @@ model OnlineOrder {
   amountDue       Int
   commissionRate  Decimal           @db.Decimal(5, 4)
   commissionAmount Decimal?         @db.Decimal(12, 2)
+  // Set when this order's commission is rolled into a monthly invoice -
+  // an order can only ever be billed once.
+  commissionInvoiceId String?
 
   // Payment (TUMA STK push into the business's account)
   paymentPhone        String
@@ -1951,8 +1955,10 @@ model OnlineOrder {
   buyer        Buyer             @relation(fields: [buyerId], references: [id])
   branch       Branch            @relation(fields: [branchId], references: [id])
   lines        OnlineOrderLine[]
+  commissionInvoice CommissionInvoice? @relation(fields: [commissionInvoiceId], references: [id])
 
   @@index([organizationId, status])
+  @@index([commissionInvoiceId])
   @@index([buyerId, createdAt])
   @@index([branchId, status])
   @@map("online_orders")
@@ -1975,4 +1981,53 @@ model OnlineOrderLine {
   @@index([orderId])
   @@index([variantId])
   @@map("online_order_lines")
+}
+
+// ── Online Shop commission billing ────────────────────────────────────────
+
+enum CommissionInvoiceStatus {
+  ISSUED // sent to the business, unpaid
+  PAID
+  WAIVED // written off by a platform admin
+}
+
+// Zaroda's commission on a business's COMPLETED online orders for one
+// calendar month (Africa/Nairobi), billed after the month closes. Buyers
+// pay the business directly, so this is invoiced rather than deducted -
+// the business pays Zaroda the same way it pays its subscription, and a
+// platform admin records it (PlatformAdminController). Tenant-scoped RLS:
+// the business sees its own invoices; the platform admin reads across
+// tenants the same per-tenant way it reads branches.
+//
+// An overdue ISSUED invoice hides the shop from buyers (not stored - worked
+// out when a shop is viewed, see commission.util.ts isOverdue and
+// ShopCatalogService.runForShop), like subscription status.
+model CommissionInvoice {
+  id                     String                  @id @default(uuid())
+  organizationId         String
+  invoiceNumber          String                  @unique
+  // "2026-10" - one invoice per business per month.
+  periodMonth            String
+  periodStart            DateTime
+  periodEnd              DateTime
+  orderCount             Int
+  salesTotal             Decimal                 @db.Decimal(12, 2)
+  commissionTotal        Decimal                 @db.Decimal(12, 2)
+  status                 CommissionInvoiceStatus @default(ISSUED)
+  issuedAt               DateTime                @default(now())
+  dueDate                DateTime
+  paidAt                 DateTime?
+  paymentMethod          String? // "MPESA" | "BANK" | "CASH" - recorded manually, like SubscriptionPayment
+  paymentReference       String?
+  recordedByPlatformAdminId String?
+  waivedReason           String?
+  createdAt              DateTime                @default(now())
+  updatedAt              DateTime                @updatedAt
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  orders       OnlineOrder[]
+
+  @@unique([organizationId, periodMonth])
+  @@index([organizationId, status])
+  @@map("commission_invoices")
 }
