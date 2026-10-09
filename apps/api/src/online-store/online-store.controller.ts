@@ -1,7 +1,8 @@
-import { Body, Controller, Delete, Get, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { Role } from '@prisma/client';
 import { Roles } from '../auth/roles.decorator';
+import { PAY_THROTTLE, PayInvoiceDto } from './commission.controller';
 import { CommissionService } from './commission.service';
 import { OnlineStoreService } from './online-store.service';
 import { ConnectTumaDto, UpdateOnlineStoreDto } from './dto/update-online-store.dto';
@@ -30,6 +31,21 @@ export class OnlineStoreController {
   @Get('commission')
   getCommission() {
     return this.commission.getMine();
+  }
+
+  // Pay an invoice with M-Pesa through ZARODA's own Tuma account.
+  @Throttle(PAY_THROTTLE)
+  @Post('commission/invoices/:id/pay')
+  @HttpCode(200)
+  payInvoice(@Param('id', ParseUUIDPipe) id: string, @Body() dto: PayInvoiceDto) {
+    return this.commission.payOnline(id, dto.phone);
+  }
+
+  // The page polls this while it waits for the PIN.
+  @Post('commission/invoices/:id/check')
+  @HttpCode(200)
+  checkInvoice(@Param('id', ParseUUIDPipe) id: string) {
+    return this.commission.checkPayment(id);
   }
 
   @Patch()

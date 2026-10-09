@@ -24,7 +24,6 @@ import {
   ListOnlineOrdersQueryDto,
   RequestBuyerCodeDto,
   RetryPaymentDto,
-  TumaCallbackDto,
   UpdateBuyerDto,
   VerifyBuyerCodeDto,
 } from './dto/online-order.dto';
@@ -64,7 +63,7 @@ export class TumaCallbackController {
     @Param('organizationId', ParseUUIDPipe) organizationId: string,
     @Param('orderId', ParseUUIDPipe) orderId: string,
     @Param('token') token: string,
-    @Body() body: TumaCallbackDto,
+    @Body() body: Record<string, unknown>,
   ) {
     return this.orders.handleTumaCallback(organizationId, orderId, token, body);
   }

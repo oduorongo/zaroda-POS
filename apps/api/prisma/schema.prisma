@@ -1932,10 +1932,11 @@ model OnlineOrder {
   // Payment (TUMA STK push into the business's account)
   paymentPhone        String
   paymentDeadline     DateTime
-  // The most recent STK push. Not unique - a retried payment replaces it,
-  // and a late callback for an earlier prompt is still honoured (see
-  // OnlineOrdersService.handleTumaCallback).
-  tumaPaymentId       String?
+  // Tuma's merchant request id for the most recent STK push - what its
+  // /payment/status is asked about. Not unique: a retried payment replaces
+  // it, and a late callback for an earlier prompt can still be checked
+  // (OnlineOrdersService.handleTumaCallback).
+  tumaMerchantRequestId String?
   paymentAttemptedAt  DateTime?
   mpesaReceiptNumber  String?       @unique
   paidAt              DateTime?
@@ -2013,6 +2014,9 @@ model CommissionInvoice {
   orderCount             Int
   salesTotal             Decimal                 @db.Decimal(12, 2)
   commissionTotal        Decimal                 @db.Decimal(12, 2)
+  // What the business pays online: the commission rounded UP to a whole
+  // shilling (M-Pesa only moves whole shillings), set when issued.
+  amountDue              Int                     @default(0)
   status                 CommissionInvoiceStatus @default(ISSUED)
   issuedAt               DateTime                @default(now())
   dueDate                DateTime
@@ -2021,6 +2025,21 @@ model CommissionInvoice {
   paymentReference       String?
   recordedByPlatformAdminId String?
   waivedReason           String?
+
+  // Online payment through ZARODA's own Tuma account (like a school's
+  // subscription): the latest STK push, and why the last attempt failed.
+  tumaMerchantRequestId  String?
+  payPhone               String?
+  payAttemptedAt         DateTime?
+  lastPaymentError       String?
+
+  // Automatic invoicing: when the invoice was emailed, and the furthest
+  // reminder sent (0 none, 1 issued, 2 due soon, 3 overdue, 4 shop hidden)
+  // - see commission.util.ts reminderStageFor. Keeps the daily run from
+  // ever emailing the same notice twice.
+  emailedAt              DateTime?
+  reminderStage          Int                     @default(0)
+
   createdAt              DateTime                @default(now())
   updatedAt              DateTime                @updatedAt
 

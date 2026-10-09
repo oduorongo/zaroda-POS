@@ -37,6 +37,12 @@ interface CommissionInvoice {
   pastDue: boolean;
   causesPause: boolean;
   paidAt: string | null;
+  paymentMethod: string | null;
+  paymentReference: string | null;
+  amountDue: number;
+  payPhone: string | null;
+  paymentPending: boolean;
+  lastPaymentError: string | null;
 }
 
 interface Commission {
@@ -45,6 +51,8 @@ interface Commission {
   invoices: CommissionInvoice[];
   outstandingTotal: number;
   paused: boolean;
+  canPayOnline: boolean;
+  contactPhone: string | null;
 }
 
 const kes = (n: number) => `KES ${n.toLocaleString("en-KE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -89,6 +97,10 @@ export default function OnlineShopSettingsPage() {
   const [publishBusy, setPublishBusy] = useState(false);
   const [publishError, setPublishError] = useState<string | null>(null);
   const [commission, setCommission] = useState<Commission | null>(null);
+  const [payingId, setPayingId] = useState<string | null>(null);
+  const [payPhone, setPayPhone] = useState("");
+  const [payBusy, setPayBusy] = useState(false);
+  const [payError, setPayError] = useState<string | null>(null);
 
   useEffect(() => {
     const s = getSession();
@@ -202,6 +214,51 @@ export default function OnlineShopSettingsPage() {
     }
   }
 
+  function replaceInvoice(updated: CommissionInvoice) {
+    setCommission((current) => (current ? { ...current, invoices: current.invoices.map((i) => (i.id === updated.id ? updated : i)) } : current));
+  }
+
+  async function reloadCommission() {
+    try {
+      setCommission(await apiGet<Commission>("/online-store/me/commission"));
+    } catch {
+      /* informational - keep what we have */
+    }
+  }
+
+  async function payInvoice(invoice: CommissionInvoice) {
+    setPayBusy(true);
+    setPayError(null);
+    try {
+      replaceInvoice(await apiPost<CommissionInvoice>(`/online-store/me/commission/invoices/${invoice.id}/pay`, { phone: payPhone.trim() }));
+      setPayingId(null);
+    } catch (err) {
+      setPayError(err instanceof ApiError ? err.message : "Could not start the payment.");
+    } finally {
+      setPayBusy(false);
+    }
+  }
+
+  // While an M-Pesa prompt is out, ask the server every few seconds whether
+  // it went through - it checks with Tuma itself, so this works even if
+  // Tuma's callback is slow. When an invoice settles, reload everything (the
+  // shop may reappear if it was hidden for this invoice).
+  useEffect(() => {
+    const pending = commission?.invoices.filter((i) => i.paymentPending) ?? [];
+    if (pending.length === 0) return;
+    const timer = setInterval(() => {
+      for (const invoice of pending) {
+        apiPost<CommissionInvoice>(`/online-store/me/commission/invoices/${invoice.id}/check`, {})
+          .then((updated) => {
+            replaceInvoice(updated);
+            if (updated.status !== "ISSUED") void reloadCommission();
+          })
+          .catch(() => undefined);
+      }
+    }, 5000);
+    return () => clearInterval(timer);
+  }, [commission]);
+
   if (!session) return null;
 
   const isManager = session.role === "MANAGER" || session.role === "OWNER";
@@ -310,25 +367,67 @@ export default function OnlineShopSettingsPage() {
                     </div>
                   </div>
                   <p className="text-xs text-secondary-500">
-                    Completed orders are added up when each month ends and invoiced, due 14 days later. If an invoice stays unpaid a further 7 days, your shop is hidden from buyers until it&apos;s settled.
+                    Completed orders are added up when each month ends. We email you the invoice automatically, due 14 days later, and you can pay it here with M-Pesa. If an invoice stays unpaid a further 7 days, your shop is hidden from buyers until it&apos;s settled.
                   </p>
                   {commission.invoices.length === 0 ? (
                     <p className="text-sm text-secondary-500">No invoices yet.</p>
                   ) : (
                     <ul className="divide-y divide-border text-sm">
                       {commission.invoices.map((inv) => (
-                        <li key={inv.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
-                          <div>
-                            <span className="font-mono text-xs">{inv.invoiceNumber}</span>
-                            <span className="ml-2 text-secondary-500">{inv.periodMonth} · {inv.orderCount} orders</span>
-                            {inv.status === "ISSUED" && <span className="block text-xs text-secondary-500">Due {new Date(inv.dueDate).toLocaleDateString("en-KE")}</span>}
+                        <li key={inv.id} className="space-y-2 py-2">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div>
+                              <span className="font-mono text-xs">{inv.invoiceNumber}</span>
+                              <span className="ml-2 text-secondary-500">{inv.periodMonth} · {inv.orderCount} orders</span>
+                              {inv.status === "ISSUED" && <span className="block text-xs text-secondary-500">Due {new Date(inv.dueDate).toLocaleDateString("en-KE")}</span>}
+                              {inv.status === "PAID" && inv.paymentReference && (
+                                <span className="block text-xs text-secondary-500">Paid {inv.paidAt ? new Date(inv.paidAt).toLocaleDateString("en-KE") : ""} · {inv.paymentMethod} {inv.paymentReference}</span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span className="font-mono font-semibold">{inv.status === "ISSUED" ? kes(inv.amountDue) : kes(inv.commissionTotal)}</span>
+                              {inv.status === "PAID" && <Badge variant="success">Paid</Badge>}
+                              {inv.status === "WAIVED" && <Badge variant="neutral">Waived</Badge>}
+                              {inv.status === "ISSUED" && (inv.causesPause ? <Badge variant="error">Overdue</Badge> : inv.pastDue ? <Badge variant="warning">Past due</Badge> : <Badge variant="primary">Due</Badge>)}
+                              {inv.status === "ISSUED" && commission.canPayOnline && !inv.paymentPending && payingId !== inv.id && (
+                                <Button
+                                  size="sm"
+                                  onClick={() => {
+                                    setPayingId(inv.id);
+                                    setPayError(null);
+                                    setPayPhone(inv.payPhone ? `0${inv.payPhone.slice(3)}` : (commission.contactPhone ?? ""));
+                                  }}
+                                >
+                                  Pay with M-Pesa
+                                </Button>
+                              )}
+                            </div>
                           </div>
-                          <div className="flex items-center gap-2">
-                            <span className="font-mono font-semibold">{kes(inv.commissionTotal)}</span>
-                            {inv.status === "PAID" && <Badge variant="success">Paid</Badge>}
-                            {inv.status === "WAIVED" && <Badge variant="neutral">Waived</Badge>}
-                            {inv.status === "ISSUED" && (inv.causesPause ? <Badge variant="error">Overdue</Badge> : inv.pastDue ? <Badge variant="warning">Past due</Badge> : <Badge variant="primary">Due</Badge>)}
-                          </div>
+
+                          {inv.paymentPending && (
+                            <p className="rounded-md bg-primary-50 p-2 text-xs text-primary-700">
+                              Check your phone ({inv.payPhone ? `0${inv.payPhone.slice(3)}` : ""}) for the M-Pesa prompt for {kes(inv.amountDue)} and enter your PIN. This updates by itself.
+                            </p>
+                          )}
+                          {inv.status === "ISSUED" && inv.lastPaymentError && !inv.paymentPending && payingId !== inv.id && (
+                            <p className="text-xs text-error-600">{inv.lastPaymentError}</p>
+                          )}
+
+                          {payingId === inv.id && (
+                            <div className="flex flex-wrap items-end gap-2 rounded-md border border-border p-3">
+                              <div>
+                                <Label>M-Pesa number</Label>
+                                <Input type="tel" value={payPhone} onChange={(e) => setPayPhone(e.target.value)} placeholder="0712 345 678" />
+                              </div>
+                              <Button size="sm" onClick={() => void payInvoice(inv)} disabled={payBusy || !payPhone.trim()}>
+                                {payBusy ? "Sending..." : `Pay ${kes(inv.amountDue)}`}
+                              </Button>
+                              <Button size="sm" variant="ghost" onClick={() => setPayingId(null)}>
+                                Cancel
+                              </Button>
+                              {payError && <p className="w-full text-xs text-error-600">{payError}</p>}
+                            </div>
+                          )}
                         </li>
                       ))}
                     </ul>

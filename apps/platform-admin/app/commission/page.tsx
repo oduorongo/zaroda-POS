@@ -34,11 +34,13 @@ const day = (iso: string) => new Date(iso).toLocaleDateString("en-KE");
 
 /**
  * Online Shop commission invoices. Buyers pay businesses directly, so
- * Zaroda bills its 3% monthly: opening this page creates any missing
- * invoices for finished months (safe to repeat - an order is only ever
- * billed once). A business that stays unpaid past the due date plus the
- * grace period is hidden from buyers until it settles; nothing here needs
- * a scheduled job to keep that truthful.
+ * Zaroda bills its 3% monthly - and it all happens by itself: the API's
+ * scheduler creates each month's invoices, emails them and the
+ * reminders, and businesses pay online through Tuma, which settles the
+ * invoice automatically. This page is the overview, plus the manual
+ * exceptions: money that arrived another way (bank, cash), waiving an
+ * invoice, and "run it now". A business unpaid past the due date plus the
+ * grace period is hidden from buyers until it settles.
  */
 export default function CommissionPage() {
   const router = useRouter();
@@ -65,7 +67,7 @@ export default function CommissionPage() {
       return;
     }
     setSession(s);
-    void generateThenLoad();
+    void loadAll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router]);
 
@@ -73,13 +75,10 @@ export default function CommissionPage() {
     setInvoices(await apiGet<Invoice[]>("/platform-admin/commission/invoices"));
   }
 
-  // Opening the page bills any finished months that haven't been yet.
-  async function generateThenLoad() {
+  async function loadAll() {
     setLoading(true);
     setError(null);
     try {
-      const result = await apiPost<{ created: number }>("/platform-admin/commission/generate", {});
-      if (result.created > 0) setNotice(`Created ${result.created} new invoice${result.created === 1 ? "" : "s"} and texted the shops.`);
       await load();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not load commission invoices.");
@@ -93,11 +92,16 @@ export default function CommissionPage() {
     setError(null);
     setNotice(null);
     try {
-      const result = await apiPost<{ created: number }>("/platform-admin/commission/generate", {});
-      setNotice(result.created > 0 ? `Created ${result.created} new invoice${result.created === 1 ? "" : "s"}.` : "Nothing new to bill - every finished month is already invoiced.");
+      const result = await apiPost<{ invoicesCreated: number; paymentsConfirmed: number; emailsSent: number; emailsSkipped: number }>("/platform-admin/commission/run", {});
+      const parts = [
+        `${result.invoicesCreated} new invoice${result.invoicesCreated === 1 ? "" : "s"}`,
+        `${result.paymentsConfirmed} payment${result.paymentsConfirmed === 1 ? "" : "s"} confirmed`,
+        `${result.emailsSent} email${result.emailsSent === 1 ? "" : "s"} sent`,
+      ];
+      setNotice(`Billing run complete: ${parts.join(", ")}.${result.emailsSkipped > 0 ? ` ${result.emailsSkipped} could not be emailed (no email address, or email is not set up).` : ""}`);
       await load();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not create invoices.");
+      setError(err instanceof ApiError ? err.message : "Could not run billing.");
     } finally {
       setGenerating(false);
     }
@@ -151,7 +155,7 @@ export default function CommissionPage() {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h1 className="text-xl font-bold">Online Shop commission</h1>
           <Button variant="outline" onClick={() => void generateNow()} disabled={generating}>
-            {generating ? "Checking..." : "Create missing invoices"}
+            {generating ? "Running..." : "Run billing now"}
           </Button>
         </div>
 
@@ -194,7 +198,7 @@ export default function CommissionPage() {
         {loading ? (
           <LoadingState label="Loading invoices..." />
         ) : visible.length === 0 ? (
-          <EmptyState title="No invoices here" description={filter === "UNPAID" ? "Nothing is waiting to be paid." : "Invoices appear once a month with completed online orders has ended."} />
+          <EmptyState title="No invoices here" description={filter === "UNPAID" ? "Nothing is waiting to be paid." : "Invoices are created automatically once a month with completed online orders has ended."} />
         ) : (
           <div className="overflow-x-auto rounded-lg border border-border">
             <table className="w-full text-left text-sm">

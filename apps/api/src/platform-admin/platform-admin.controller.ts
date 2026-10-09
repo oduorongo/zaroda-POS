@@ -285,6 +285,22 @@ export class PlatformAdminController {
     return this.commission.listInvoices(query);
   }
 
+  // Runs the whole daily automation on demand: invoices, emails, and
+  // confirming payments. The scheduler does this by itself every hour -
+  // this is for "do it now" and for a server where the scheduler is off.
+  @Public()
+  @UseGuards(PlatformAdminAuthGuard)
+  @Post('commission/run')
+  async runCommissionAutomation(@Req() req: PlatformAdminRequest) {
+    const result = await this.commission.runAutomation();
+    await this.auditLog.log({
+      platformAdminId: req.user!.platformAdminId,
+      action: 'platform_admin.ran_commission_billing',
+      entityType: 'CommissionInvoice',
+    });
+    return result;
+  }
+
   // Idempotent: creates invoices for finished months that don't have one
   // yet and never bills an order twice, so it's safe to run any time.
   @Public()

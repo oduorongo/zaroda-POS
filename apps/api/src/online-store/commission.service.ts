@@ -1,16 +1,21 @@
+import { createHmac, timingSafeEqual } from 'crypto';
 import {
   BadRequestException,
   ConflictException,
   Injectable,
   Logger,
   NotFoundException,
+  ServiceUnavailableException,
 } from '@nestjs/common';
-import { CommissionInvoice, CommissionInvoiceStatus, OnlineOrderStatus, Prisma } from '@prisma/client';
+import { ConfigService } from '@nestjs/config';
+import { CommissionInvoice, CommissionInvoiceStatus, OnlineOrderStatus, Prisma, Role } from '@prisma/client';
+import { parseEncryptionKey } from '../common/crypto/secret-box';
 import { PrismaService } from '../common/prisma/prisma.service';
 import { TenantScopedPrismaService, TenantTx } from '../common/prisma/tenant-scoped-prisma.service';
 import { getTenantStore } from '../common/tenant/tenant-context';
-import { AfricasTalkingSmsProvider } from '../notifications/africas-talking-sms.provider';
-import { DEFAULT_COMMISSION_RATE } from './online-store.constants';
+import { ResendEmailProvider } from '../notifications/resend-email.provider';
+import { normalizeKenyanPhone } from '../online-orders/online-orders.util';
+import { buildInvoiceEmail, buildReceiptEmail, nextReminderStage } from './commission-email';
 import {
   PAUSE_GRACE_DAYS,
   invoiceDueDate,
@@ -25,16 +30,25 @@ import {
   randomInvoiceCode,
   roundMoney,
 } from './commission.util';
+import { DEFAULT_COMMISSION_RATE } from './online-store.constants';
+import { TumaClient } from './tuma.client';
+import { parseCallback } from './tuma.util';
 
 const TX_OPTIONS = { timeout: 15_000, maxWait: 15_000 };
 const DAY_MS = 24 * 60 * 60 * 1000;
+// A second prompt before this would risk two live M-Pesa prompts for one invoice.
+const PAY_RETRY_COOLDOWN_MS = 60_000;
+// How often a business's page may re-ask Tuma about the same invoice.
+const RECHECK_INTERVAL_MS = 8_000;
+// A payment prompt older than this is no longer worth re-checking.
+const RECONCILE_WINDOW_MS = DAY_MS;
 
 /**
  * True when the current tenant has an unpaid invoice past due date + grace.
  * Used by ShopCatalogService to hide the shop and refuse new orders -
  * deliberately worked out on every look (one indexed count), like
- * subscription status, so there's no scheduled job to keep a flag truthful.
- * Orders already placed carry on; only NEW checkouts are blocked.
+ * subscription status, so there's no flag to keep truthful. Orders already
+ * placed carry on; only NEW checkouts are blocked.
  */
 export async function hasOverdueCommission(tx: TenantTx, now: Date = new Date()): Promise<boolean> {
   const cutoff = new Date(now.getTime() - PAUSE_GRACE_DAYS * DAY_MS);
@@ -52,6 +66,7 @@ export function toInvoiceView(invoice: CommissionInvoice, now: Date = new Date()
     orderCount: invoice.orderCount,
     salesTotal: Number(invoice.salesTotal),
     commissionTotal: Number(invoice.commissionTotal),
+    amountDue: invoice.amountDue,
     status: invoice.status,
     issuedAt: invoice.issuedAt,
     dueDate: invoice.dueDate,
@@ -63,17 +78,29 @@ export function toInvoiceView(invoice: CommissionInvoice, now: Date = new Date()
     paymentMethod: invoice.paymentMethod,
     paymentReference: invoice.paymentReference,
     waivedReason: invoice.waivedReason,
+    // Online payment: an M-Pesa prompt is out for this invoice.
+    payPhone: invoice.payPhone,
+    paymentPending:
+      invoice.status === CommissionInvoiceStatus.ISSUED &&
+      Boolean(invoice.tumaMerchantRequestId) &&
+      Boolean(invoice.payAttemptedAt) &&
+      now.getTime() - invoice.payAttemptedAt!.getTime() < 15 * 60_000 &&
+      !invoice.lastPaymentError,
+    lastPaymentError: invoice.lastPaymentError,
   };
 }
 
 @Injectable()
 export class CommissionService {
   private readonly logger = new Logger(CommissionService.name);
+  private readonly lastChecked = new Map<string, number>();
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly tenantPrisma: TenantScopedPrismaService,
-    private readonly sms: AfricasTalkingSmsProvider,
+    private readonly tuma: TumaClient,
+    private readonly email: ResendEmailProvider,
+    private readonly config: ConfigService,
   ) {}
 
   private runAsTenant<T>(organizationId: string, fn: (tx: TenantTx) => Promise<T>): Promise<T> {
@@ -83,6 +110,25 @@ export class CommissionService {
     }, TX_OPTIONS);
   }
 
+  // ── Callback URL (same trust model as online-order payments) ──────────
+
+  private callbackToken(invoiceId: string): string {
+    const key = parseEncryptionKey(this.config.get<string>('SECRETS_ENCRYPTION_KEY'));
+    return createHmac('sha256', key).update(`commission-callback:${invoiceId}`).digest('base64url');
+  }
+
+  private callbackUrl(organizationId: string, invoiceId: string): string {
+    const base = this.config.get<string>('PUBLIC_API_BASE_URL');
+    if (!base) throw new ServiceUnavailableException('Online payments are not configured on this server yet');
+    return `${base.replace(/\/+$/, '')}/public/commission/${organizationId}/${invoiceId}/tuma-callback/${this.callbackToken(invoiceId)}`;
+  }
+
+  /** Where the emails send a business to pay. Null (no button) if the back office address isn't configured. */
+  private payUrl(): string | null {
+    const base = this.config.get<string>('BACKOFFICE_BASE_URL') ?? this.config.get<string>('PUBLIC_BOOKING_BASE_URL');
+    return base ? `${base.replace(/\/+$/, '')}/settings/online-shop` : null;
+  }
+
   // ── The business's own view ───────────────────────────────────────────
 
   async getMine() {
@@ -90,7 +136,7 @@ export class CommissionService {
     const now = new Date();
     return this.tenantPrisma.run(async (tx) => {
       const [store, unbilled, invoices] = await Promise.all([
-        tx.onlineStore.findUnique({ where: { organizationId }, select: { commissionRate: true } }),
+        tx.onlineStore.findUnique({ where: { organizationId }, select: { commissionRate: true, contactPhone: true } }),
         tx.onlineOrder.aggregate({
           where: { status: OnlineOrderStatus.COMPLETED, commissionInvoiceId: null },
           _count: true,
@@ -109,14 +155,290 @@ export class CommissionService {
         },
         invoices: views,
         outstandingTotal: roundMoney(
-          views.filter((v) => v.status === CommissionInvoiceStatus.ISSUED).reduce((sum, v) => sum + v.commissionTotal, 0),
+          views.filter((v) => v.status === CommissionInvoiceStatus.ISSUED).reduce((sum, v) => sum + v.amountDue, 0),
         ),
         paused: views.some((v) => v.causesPause),
+        // False until ZARODA's Tuma account is configured on this server.
+        canPayOnline: this.tuma.hasPlatformCredentials(),
+        contactPhone: store?.contactPhone ?? null,
       };
     });
   }
 
-  // ── Platform admin ────────────────────────────────────────────────────
+  // ── Paying an invoice online (through ZARODA's own Tuma account) ──────
+
+  /**
+   * Sends an M-Pesa prompt for the invoice. The money lands in ZARODA's
+   * Tuma account; the callback (or a re-check) marks the invoice PAID once
+   * Tuma confirms it - exactly how a school's subscription is paid.
+   */
+  async payOnline(invoiceId: string, phoneInput: string) {
+    const { organizationId } = getTenantStore();
+    const phone = normalizeKenyanPhone(phoneInput);
+    if (!phone) throw new BadRequestException('Enter a valid M-Pesa number, e.g. 0712 345 678');
+    const credentials = this.tuma.platformCredentials();
+
+    const invoice = await this.tenantPrisma.run(async (tx) => {
+      const current = await tx.commissionInvoice.findUnique({ where: { id: invoiceId } });
+      if (!current) throw new NotFoundException('Invoice not found');
+      if (current.status !== CommissionInvoiceStatus.ISSUED) {
+        throw new ConflictException(`This invoice is already ${current.status.toLowerCase()}`);
+      }
+      if (current.amountDue < 1) throw new BadRequestException('This invoice has nothing to pay');
+      if (
+        current.payAttemptedAt &&
+        !current.lastPaymentError &&
+        Date.now() - current.payAttemptedAt.getTime() < PAY_RETRY_COOLDOWN_MS
+      ) {
+        throw new BadRequestException('Check your phone for the M-Pesa prompt - you can retry in a minute');
+      }
+      return current;
+    });
+
+    let merchantRequestId: string | null = null;
+    let lastPaymentError: string | null = null;
+    try {
+      const result = await this.tuma.stkPush(credentials, {
+        amount: invoice.amountDue,
+        phone,
+        description: `ZARODA commission ${invoice.invoiceNumber}`,
+        callbackUrl: this.callbackUrl(organizationId, invoice.id),
+      });
+      merchantRequestId = result.merchantRequestId;
+    } catch (e) {
+      lastPaymentError = e instanceof Error ? e.message : 'Could not start the payment';
+      this.logger.warn({ err: e, invoiceId }, 'Commission invoice STK push failed');
+    }
+
+    const updated = await this.tenantPrisma.run((tx) =>
+      tx.commissionInvoice.update({
+        where: { id: invoiceId },
+        data: {
+          payPhone: phone,
+          payAttemptedAt: new Date(),
+          lastPaymentError,
+          ...(merchantRequestId ? { tumaMerchantRequestId: merchantRequestId } : {}),
+        },
+      }),
+    );
+    return toInvoiceView(updated);
+  }
+
+  /** The business's page polling while it waits for the PIN - asks Tuma, at most every few seconds. */
+  async checkPayment(invoiceId: string) {
+    const { organizationId } = getTenantStore();
+    const find = () => this.tenantPrisma.run((tx) => tx.commissionInvoice.findUnique({ where: { id: invoiceId } }));
+    let invoice = await find();
+    if (!invoice) throw new NotFoundException('Invoice not found');
+    const last = this.lastChecked.get(invoice.id) ?? 0;
+    if (invoice.status === CommissionInvoiceStatus.ISSUED && invoice.tumaMerchantRequestId && Date.now() - last >= RECHECK_INTERVAL_MS) {
+      this.lastChecked.set(invoice.id, Date.now());
+      await this.verifyAndSettle(organizationId, invoice.id).catch(() => undefined);
+      invoice = (await find()) ?? invoice;
+    }
+    return toInvoiceView(invoice);
+  }
+
+  /** Tuma's webhook. Authenticated by the HMAC in the URL, and even then only a prompt to ask Tuma. */
+  async handleTumaCallback(organizationId: string, invoiceId: string, token: string, body: Record<string, unknown>) {
+    const expected = Buffer.from(this.callbackToken(invoiceId));
+    const actual = Buffer.from(token);
+    if (expected.length !== actual.length || !timingSafeEqual(expected, actual)) throw new NotFoundException();
+
+    const { merchantRequestId, success } = parseCallback(body);
+    const outcome = await this.verifyAndSettle(organizationId, invoiceId, merchantRequestId);
+    if (!success && outcome !== 'paid') {
+      await this.runAsTenant(organizationId, async (tx) => {
+        const invoice = await tx.commissionInvoice.findUnique({ where: { id: invoiceId } });
+        if (!invoice || invoice.status !== CommissionInvoiceStatus.ISSUED) return;
+        if (merchantRequestId && invoice.tumaMerchantRequestId && merchantRequestId !== invoice.tumaMerchantRequestId) return;
+        await tx.commissionInvoice.update({
+          where: { id: invoiceId },
+          data: { lastPaymentError: 'The M-Pesa payment was cancelled or failed - try again' },
+        });
+      });
+    }
+    return { ok: true };
+  }
+
+  /** Asks Tuma (with ZARODA's own account) whether the invoice's payment went through; only a confirmed full payment settles it. */
+  private async verifyAndSettle(
+    organizationId: string,
+    invoiceId: string,
+    merchantRequestId?: string,
+  ): Promise<'paid' | 'review' | 'unconfirmed' | 'skipped'> {
+    const invoice = await this.runAsTenant(organizationId, (tx) => tx.commissionInvoice.findUnique({ where: { id: invoiceId } }));
+    if (!invoice || invoice.status !== CommissionInvoiceStatus.ISSUED) return 'skipped';
+    const requestId = merchantRequestId ?? invoice.tumaMerchantRequestId;
+    if (!requestId || !this.tuma.hasPlatformCredentials()) return 'skipped';
+
+    const confirmation = await this.tuma.confirmPayment(this.tuma.platformCredentials(), requestId, invoice.amountDue);
+    if (confirmation.outcome === 'review') {
+      this.logger.error({ invoiceId, detail: confirmation.detail }, 'Tuma reported a commission payment that does not match the invoice - needs manual review');
+      await this.runAsTenant(organizationId, (tx) =>
+        tx.commissionInvoice.update({
+          where: { id: invoiceId },
+          data: { lastPaymentError: `A payment was received that doesn't match this invoice (${confirmation.detail}). Contact Zaroda.` },
+        }),
+      );
+      return 'review';
+    }
+    if (confirmation.outcome !== 'paid') return 'unconfirmed';
+
+    const receipt = confirmation.mpesaReceipt?.trim() || `TUMA:${requestId}`;
+    const settled = await this.runAsTenant(organizationId, async (tx) => {
+      // Conditional on still being ISSUED, so a callback and a page re-check
+      // racing each other (or a platform admin recording it by hand at the
+      // same moment) settle the invoice, and send the receipt, only once.
+      const result = await tx.commissionInvoice.updateMany({
+        where: { id: invoiceId, status: CommissionInvoiceStatus.ISSUED },
+        data: {
+          status: CommissionInvoiceStatus.PAID,
+          paidAt: new Date(),
+          paymentMethod: 'MPESA',
+          paymentReference: receipt,
+          tumaMerchantRequestId: requestId,
+          lastPaymentError: null,
+        },
+      });
+      return result.count === 1 ? tx.commissionInvoice.findUniqueOrThrow({ where: { id: invoiceId } }) : null;
+    });
+    if (settled) await this.sendReceipt(organizationId, settled, receipt);
+    return 'paid';
+  }
+
+  // ── Emails ────────────────────────────────────────────────────────────
+
+  /** Active owners' emails (managers if there is no owner), and the shop's display name. */
+  private async recipientsFor(organizationId: string): Promise<{ emails: string[]; shopName: string }> {
+    return this.runAsTenant(organizationId, async (tx) => {
+      const [org, store, staff] = await Promise.all([
+        tx.organization.findUnique({ where: { id: organizationId }, select: { name: true } }),
+        tx.onlineStore.findUnique({ where: { organizationId }, select: { displayName: true } }),
+        tx.orgUser.findMany({
+          where: { isActive: true, role: { in: [Role.OWNER, Role.MANAGER] } },
+          select: { role: true, user: { select: { email: true } } },
+        }),
+      ]);
+      const owners = staff.filter((s) => s.role === Role.OWNER);
+      const chosen = owners.length > 0 ? owners : staff;
+      const emails = Array.from(new Set(chosen.map((s) => s.user.email.trim().toLowerCase()).filter(Boolean)));
+      return { emails, shopName: store?.displayName ?? org?.name ?? 'your shop' };
+    });
+  }
+
+  private emailInvoice(invoice: CommissionInvoice) {
+    return {
+      invoiceNumber: invoice.invoiceNumber,
+      periodMonth: invoice.periodMonth,
+      orderCount: invoice.orderCount,
+      salesTotal: Number(invoice.salesTotal),
+      commissionTotal: Number(invoice.commissionTotal),
+      amountDue: invoice.amountDue,
+      dueDate: invoice.dueDate,
+    };
+  }
+
+  private async sendReceipt(organizationId: string, invoice: CommissionInvoice, receipt: string) {
+    try {
+      const { emails, shopName } = await this.recipientsFor(organizationId);
+      const built = buildReceiptEmail(this.emailInvoice(invoice), shopName, receipt.startsWith('TUMA:') ? null : receipt, false);
+      for (const to of emails) await this.email.sendEmail({ to, ...built });
+    } catch (e) {
+      this.logger.warn({ err: e, organizationId }, 'Could not send the commission receipt email');
+    }
+  }
+
+  // ── The daily automation ──────────────────────────────────────────────
+
+  /**
+   * Everything that used to need a person: roll finished months into
+   * invoices, email each invoice (and the due-soon / overdue / shop-hidden
+   * reminders), and catch payments whose callback never arrived. Safe to
+   * run as often as you like - every step is idempotent (see
+   * generateInvoices, nextReminderStage).
+   */
+  async runAutomation(opts: { sendEmails?: boolean } = {}) {
+    const generated = await this.generateInvoices();
+    const reconciled = await this.reconcilePendingPayments();
+    const notices = opts.sendEmails === false ? { sent: 0, skipped: 0 } : await this.sendDueNotices();
+    return { invoicesCreated: generated.created, paymentsConfirmed: reconciled, emailsSent: notices.sent, emailsSkipped: notices.skipped };
+  }
+
+  /** Invoices with an M-Pesa prompt out in the last day whose callback never arrived. */
+  private async reconcilePendingPayments(): Promise<number> {
+    if (!this.tuma.hasPlatformCredentials()) return 0;
+    const since = new Date(Date.now() - RECONCILE_WINDOW_MS);
+    const organizations = await this.prisma.organization.findMany({ select: { id: true } });
+    let confirmed = 0;
+    for (const org of organizations) {
+      const pending = await this.runAsTenant(org.id, (tx) =>
+        tx.commissionInvoice.findMany({
+          where: { status: CommissionInvoiceStatus.ISSUED, tumaMerchantRequestId: { not: null }, payAttemptedAt: { gt: since } },
+          select: { id: true },
+        }),
+      );
+      for (const { id } of pending) {
+        const outcome = await this.verifyAndSettle(org.id, id).catch(() => 'unconfirmed' as const);
+        if (outcome === 'paid') confirmed++;
+      }
+    }
+    return confirmed;
+  }
+
+  /** Emails each unpaid invoice's next notice, once. A failed send is left to try again next run. */
+  private async sendDueNotices(): Promise<{ sent: number; skipped: number }> {
+    if (!this.email.isConfigured()) {
+      this.logger.warn('RESEND_API_KEY is not set - commission invoice emails are not being sent');
+      return { sent: 0, skipped: 0 };
+    }
+    const now = new Date();
+    const organizations = await this.prisma.organization.findMany({ select: { id: true } });
+    let sent = 0;
+    let skipped = 0;
+    for (const org of organizations) {
+      const due = await this.runAsTenant(org.id, async (tx) => {
+        const open = await tx.commissionInvoice.findMany({
+          where: { status: CommissionInvoiceStatus.ISSUED, reminderStage: { lt: 4 } },
+        });
+        return open.flatMap((invoice) => {
+          const stage = nextReminderStage(invoice, now);
+          return stage ? [{ invoice, stage }] : [];
+        });
+      });
+      if (due.length === 0) continue;
+
+      const { emails, shopName } = await this.recipientsFor(org.id);
+      if (emails.length === 0) {
+        this.logger.warn({ organizationId: org.id }, 'No owner or manager email to send commission invoices to');
+        skipped += due.length;
+        continue;
+      }
+      for (const { invoice, stage } of due) {
+        const built = buildInvoiceEmail(stage, this.emailInvoice(invoice), shopName, this.payUrl());
+        let anySent = false;
+        for (const to of emails) {
+          const result = await this.email.sendEmail({ to, ...built });
+          anySent = anySent || result.sent;
+        }
+        if (!anySent) {
+          skipped++;
+          continue;
+        }
+        sent++;
+        await this.runAsTenant(org.id, (tx) =>
+          tx.commissionInvoice.update({
+            where: { id: invoice.id },
+            // Never move backwards if a newer stage was recorded in the meantime.
+            data: { reminderStage: Math.max(invoice.reminderStage, stage), emailedAt: invoice.emailedAt ?? new Date() },
+          }),
+        );
+      }
+    }
+    return { sent, skipped };
+  }
+
+  // ── Invoice generation ────────────────────────────────────────────────
 
   /**
    * Rolls each business's completed-but-unbilled orders into one invoice
@@ -140,7 +462,6 @@ export class CommissionService {
     const organizations = await this.prisma.organization.findMany({ select: { id: true, name: true } });
 
     const created: { organizationName: string; invoiceNumber: string; periodMonth: string; commissionTotal: number }[] = [];
-    const toNotify: { organizationId: string; invoice: CommissionInvoice }[] = [];
 
     for (const org of organizations) {
       const invoices = await this.runAsTenant(org.id, async (tx) => {
@@ -180,6 +501,7 @@ export class CommissionService {
                 orderCount: { increment: orderIds.length },
                 salesTotal: { increment: salesTotal },
                 commissionTotal: { increment: commissionTotal },
+                amountDue: Math.ceil(roundMoney(Number(existing.commissionTotal) + commissionTotal)),
               },
             });
             continue;
@@ -200,6 +522,7 @@ export class CommissionService {
                   orderCount: orderIds.length,
                   salesTotal,
                   commissionTotal,
+                  amountDue: Math.ceil(commissionTotal),
                   issuedAt,
                   dueDate: invoiceDueDate(issuedAt),
                 },
@@ -227,34 +550,12 @@ export class CommissionService {
           periodMonth: invoice.periodMonth,
           commissionTotal: Number(invoice.commissionTotal),
         });
-        toNotify.push({ organizationId: org.id, invoice });
       }
-    }
-
-    // Texts go out after everything is saved - a failed SMS never undoes billing.
-    for (const { organizationId, invoice } of toNotify) {
-      await this.notifyIssued(organizationId, invoice);
     }
     return { created: created.length, invoices: created };
   }
 
-  private async notifyIssued(organizationId: string, invoice: CommissionInvoice) {
-    try {
-      const store = await this.runAsTenant(organizationId, (tx) =>
-        tx.onlineStore.findUnique({ where: { organizationId }, select: { contactPhone: true, displayName: true } }),
-      );
-      if (!store?.contactPhone) return;
-      const digits = store.contactPhone.replace(/[\s\-()]/g, '').replace(/^\+/, '');
-      const phone = /^(?:254|0)?([17]\d{8})$/.exec(digits);
-      if (!phone) return;
-      await this.sms.sendSms({
-        to: `+254${phone[1]}`,
-        message: `Zaroda: commission invoice ${invoice.invoiceNumber} for ${invoice.periodMonth} is KES ${Number(invoice.commissionTotal).toLocaleString('en-KE')}, due ${invoice.dueDate.toLocaleDateString('en-KE')}. Pay on time to keep your online shop open.`,
-      });
-    } catch (e) {
-      this.logger.warn({ err: e, organizationId }, 'Could not send the commission invoice SMS');
-    }
-  }
+  // ── Platform admin ────────────────────────────────────────────────────
 
   /** Every invoice, newest first - optionally one status, or one business. */
   async listInvoices(filter: { status?: CommissionInvoiceStatus; organizationId?: string } = {}) {
@@ -285,6 +586,7 @@ export class CommissionService {
     return invoice;
   }
 
+  /** For money that arrived outside Tuma (bank transfer, cash) - the online route settles itself. */
   async recordPayment(
     organizationId: string,
     invoiceId: string,
@@ -307,6 +609,7 @@ export class CommissionService {
       if (result.count === 0) throw new ConflictException('This invoice was just updated by someone else - refresh');
       return tx.commissionInvoice.findUniqueOrThrow({ where: { id: invoiceId } });
     });
+    await this.sendReceipt(organizationId, invoice, dto.reference?.trim() ?? '');
     return toInvoiceView(invoice);
   }
 

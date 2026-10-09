@@ -107,21 +107,3 @@ export class ListOnlineOrdersQueryDto {
   @IsOptional()
   status?: OnlineOrderStatus;
 }
-
-/** Body TUMA posts to the callback URL (from TUMA's published docs). Loosely typed on purpose - validated field by field in the service. */
-export class TumaCallbackDto {
-  @IsOptional()
-  payment_id?: unknown;
-
-  @IsOptional()
-  merchant_request_id?: unknown;
-
-  @IsOptional()
-  status?: unknown;
-
-  @IsOptional()
-  amount?: unknown;
-
-  @IsOptional()
-  mpesa_receipt_number?: unknown;
-}
