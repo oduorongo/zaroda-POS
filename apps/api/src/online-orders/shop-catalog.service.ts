@@ -5,6 +5,7 @@ import { TenantTx } from '../common/prisma/tenant-scoped-prisma.service';
 import { ObjectStorageService } from '../common/storage/object-storage.service';
 
 const TX_OPTIONS = { timeout: 15_000, maxWait: 15_000 };
+const MAX_DIRECTORY_SHOPS = 60;
 
 export interface LiveShop {
   organizationId: string;
@@ -119,6 +120,63 @@ export class ShopCatalogService {
       },
       orderBy: { name: 'asc' },
     });
+  }
+
+  /**
+   * The marketplace's shop directory: every live shop, optionally filtered
+   * by a name/county search. Same opt-in as runForShop to read online_stores
+   * (public_catalog_read: paid for AND published only), then, one shop at a
+   * time, that shop's tenant context for its branch location and cover
+   * photo - sequential on purpose, like PlatformAdminService's per-tenant
+   * loops (concurrent interactive transactions exhaust the pool). Capped
+   * at MAX_DIRECTORY_SHOPS; fine at this scale, revisit with a denormalized
+   * listing table if the marketplace grows past it.
+   */
+  async listShops(search?: string) {
+    const needle = search?.trim().toLowerCase() ?? '';
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT set_config('app.public_catalog', 'on', true)`;
+      const stores = await tx.onlineStore.findMany({
+        where: {
+          slug: { not: null },
+          displayName: { not: null },
+          fulfilmentBranchId: { not: null },
+          tumaApiKeyEncrypted: { not: null },
+        },
+        orderBy: { displayName: 'asc' },
+        take: MAX_DIRECTORY_SHOPS,
+      });
+
+      const shops = [];
+      for (const store of stores) {
+        await tx.$executeRaw`SELECT set_config('app.current_tenant', ${store.organizationId}, true)`;
+        const [branch, products] = await Promise.all([
+          tx.branch.findUnique({
+            where: { id: store.fulfilmentBranchId! },
+            select: { county: true, subCounty: true },
+          }),
+          this.sellableProducts(tx),
+        ]);
+        // A shop with nothing to buy isn't worth a card yet.
+        if (products.length === 0) continue;
+        const cover = products.flatMap((p) => p.images).at(0);
+        shops.push({
+          slug: store.slug!,
+          name: store.displayName!,
+          description: store.description,
+          county: branch?.county ?? null,
+          subCounty: branch?.subCounty ?? null,
+          productCount: products.length,
+          coverImage: cover ? this.storage.publicUrl(cover.storageKey) : null,
+          pickupEnabled: store.pickupEnabled,
+          deliveryEnabled: store.deliveryEnabled,
+        });
+      }
+      if (!needle) return shops;
+      return shops.filter((s) =>
+        [s.name, s.description, s.county, s.subCounty].some((v) => v?.toLowerCase().includes(needle)),
+      );
+    }, { timeout: 30_000, maxWait: 15_000 });
   }
 
   async getShop(slug: string) {

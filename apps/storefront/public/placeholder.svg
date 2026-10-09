@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300" width="400" height="300" role="img" aria-label="Zaroda">
+  <rect width="400" height="300" rx="16" fill="#eff6ff"/>
+  <circle cx="330" cy="40" r="90" fill="#dbeafe" opacity="0.6"/>
+  <circle cx="50" cy="270" r="110" fill="#dbeafe" opacity="0.5"/>
+  <g transform="translate(150,105)" fill="none" stroke="#2563eb" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="0" y="16" width="100" height="70" rx="6" fill="#ffffff"/>
+    <path d="M6 16l5-16h78l5 16"/>
+    <path d="M14 32h72M14 44h48M14 56h58"/>
+  </g>
+  <circle cx="200" cy="150" r="3.5" fill="#00a651"/>
+</svg>

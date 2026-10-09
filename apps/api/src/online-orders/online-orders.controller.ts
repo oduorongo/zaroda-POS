@@ -40,6 +40,12 @@ export class PublicShopsController {
   constructor(private readonly catalog: ShopCatalogService) {}
 
   @Public()
+  @Get()
+  listShops(@Query('q') q?: string) {
+    return this.catalog.listShops(q?.slice(0, 80));
+  }
+
+  @Public()
   @Get(':slug')
   getShop(@Param('slug') slug: string) {
     return this.catalog.getShop(slug);
