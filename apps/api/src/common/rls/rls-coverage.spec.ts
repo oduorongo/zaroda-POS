@@ -35,6 +35,9 @@ const INTENTIONALLY_EXCLUDED = new Set([
   // rls.sql's "buyers / buyer_otps" comment.
   'buyers',
   'buyer_otps',
+  // Riders sign in across businesses like buyers - see rls.sql's "riders" comment.
+  'riders',
+  'rider_otps',
   // A global price list with no organizationId - see rls.sql's "platform
   // billing tables" comment.
   'plans',

@@ -1,4 +1,4 @@
-import type { Buyer, Order, OrderCheck, Shop, ShopSummary } from "./types";
+import type { Buyer, Order, OrderCheck, Rider, Shop, ShopSummary, VehicleType } from "./types";
 
 export class ApiError extends Error {
   status: number;
@@ -93,3 +93,24 @@ export const payOrder = (token: string, id: string, paymentPhone?: string) =>
 
 export const cancelOrder = (token: string, id: string) =>
   request<Order>(`/buyer/orders/${id}/cancel`, { method: "POST", token, body: "{}" });
+
+// ── Rider ────────────────────────────────────────────────────────────────
+
+export const requestRiderCode = (email: string) =>
+  request<{ sent: boolean; email: string }>("/rider-auth/request-code", { method: "POST", body: JSON.stringify({ email }) });
+
+export const verifyRiderCode = (email: string, code: string) =>
+  request<{ accessToken: string; rider: Rider }>("/rider-auth/verify", { method: "POST", body: JSON.stringify({ email, code }) });
+
+export const getRiderMe = (token: string) => request<Rider>("/rider/me", { token });
+
+export interface RiderProfileInput {
+  fullName?: string;
+  phone?: string;
+  vehicleType?: VehicleType;
+  plateNumber?: string;
+  area?: string;
+}
+
+export const updateRiderMe = (token: string, input: RiderProfileInput) =>
+  request<Rider>("/rider/me", { method: "PATCH", token, body: JSON.stringify(input) });

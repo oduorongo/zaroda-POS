@@ -167,9 +167,14 @@ Enter the M-Pesa confirmation code, e.g. SJK1ABC2DE:`);
       <main className="mx-auto max-w-4xl space-y-4 p-6">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h1 className="text-xl font-bold">Online Orders</h1>
-          <Link href="/settings/online-shop" className="text-sm text-primary-600 hover:underline">
-            Shop settings
-          </Link>
+          <div className="flex gap-4 text-sm">
+            <Link href="/settings/online-shop/riders" className="text-primary-600 hover:underline">
+              My riders
+            </Link>
+            <Link href="/settings/online-shop" className="text-primary-600 hover:underline">
+              Shop settings
+            </Link>
+          </div>
         </div>
 
         <div className="flex gap-1 overflow-x-auto border-b border-border">

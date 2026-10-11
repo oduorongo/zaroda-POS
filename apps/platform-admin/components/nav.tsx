@@ -11,6 +11,7 @@ const LINKS = [
   { href: "/tenants/new", label: "+ New tenant" },
   { href: "/billing", label: "Billing" },
   { href: "/commission", label: "Commission" },
+  { href: "/riders", label: "Riders" },
   { href: "/analytics", label: "Analytics" },
 ];
 

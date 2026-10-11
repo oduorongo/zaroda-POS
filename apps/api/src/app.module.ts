@@ -47,6 +47,7 @@ import { RecipesModule } from './recipes/recipes.module';
 import { WasteModule } from './waste/waste.module';
 import { OnlineStoreModule } from './online-store/online-store.module';
 import { OnlineOrdersModule } from './online-orders/online-orders.module';
+import { RidersModule } from './riders/riders.module';
 
 // Phase 1+ will import vertical module packages here and register their
 // manifests on ModuleRegistryService at bootstrap (see DESIGN.md §3) - none
@@ -126,6 +127,7 @@ import { OnlineOrdersModule } from './online-orders/online-orders.module';
     PublicBookingModule,
     OnlineStoreModule,
     OnlineOrdersModule,
+    RidersModule,
     LayawaysModule,
     RestaurantModule,
     PharmacyModule,

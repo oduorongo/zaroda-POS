@@ -85,6 +85,17 @@ async function buyerLogin(who) {
   return { code, identifier: request.json.identifier };
 }
 
+async function riderLogin(email) {
+  const request = await api('POST', '/rider-auth/request-code', { body: { email } });
+  check(`rider ${email}: code requested by email`, request.status === 200 && request.json.email === email, request);
+  await sleep(500);
+  const log = fs.readFileSync(API_LOG, 'utf8');
+  const codes = [...log.matchAll(/Dev rider login code for (\S+): (\d{6})/g)].filter((m) => m[1] === email);
+  const code = codes.length ? codes[codes.length - 1][2] : null;
+  check(`rider ${email}: code found in the API log (dev mode, nothing really sent)`, Boolean(code));
+  return code;
+}
+
 (async () => {
   await sql.connect();
 
@@ -416,6 +427,86 @@ async function buyerLogin(who) {
   check('the demo shop (a different business) sees NONE of it', (await subsSeenBy(orgId)) === 0);
   check('platform admin work (no business selected) still sees billing records', (await subsSeenBy(null)) >= 1);
   await appDb.end();
+
+  section('17. Delivery riders');
+  const RA = 'rider.a@example.test';
+  const RB = 'rider.b@example.test';
+  const codeA = await riderLogin(RA);
+  const wrongA = await api('POST', '/rider-auth/verify', { body: { email: RA, code: codeA === '000000' ? '111111' : '000000' } });
+  check('a wrong emailed code is refused for a rider', wrongA.status === 401, wrongA);
+  const verifyA = await api('POST', '/rider-auth/verify', { body: { email: RA, code: codeA } });
+  const riderA = verifyA.json.accessToken;
+  check('a new rider signs in with the right code: pending, in the shared pool, profile not finished', Boolean(riderA) && verifyA.json.rider.status === 'PENDING' && verifyA.json.rider.kind === 'POOL' && verifyA.json.rider.profileComplete === false, verifyA);
+  const reuseA = await api('POST', '/rider-auth/verify', { body: { email: RA, code: codeA } });
+  check('a rider code cannot be used twice', reuseA.status === 401, reuseA);
+
+  const riderMeA = await api('GET', '/rider/me', { token: riderA });
+  check('the rider can read their own profile', riderMeA.status === 200 && riderMeA.json.email === RA, riderMeA);
+  const noToken = await api('GET', '/rider/me', {});
+  check('no token: refused', noToken.status === 401, noToken);
+  const staffOnRider = await api('GET', '/rider/me', { token: owner });
+  check('a shop staff token does NOT work as a rider', staffOnRider.status === 401, staffOnRider);
+  const buyerOnRider = await api('GET', '/rider/me', { token: buyerA });
+  check('a shopper token does NOT work as a rider', buyerOnRider.status === 401, buyerOnRider);
+  const riderOnBuyer = await api('GET', '/buyer/me', { token: riderA });
+  check('a rider token does NOT work as a shopper', riderOnBuyer.status === 401, riderOnBuyer);
+  const riderOnStaff = await api('GET', '/riders', { token: riderA });
+  check('a rider token does NOT work on the shop\'s staff pages', riderOnStaff.status === 401, riderOnStaff);
+  const riderOnAdmin = await api('GET', '/platform-admin/riders', { token: riderA });
+  check('a rider token does NOT work for the platform admin', riderOnAdmin.status === 401, riderOnAdmin);
+
+  const badPhone = await api('PATCH', '/rider/me', { token: riderA, body: { phone: '123' } });
+  check('a made-up phone number is refused', badPhone.status === 400, badPhone);
+  const profileA = await api('PATCH', '/rider/me', { token: riderA, body: { fullName: 'Juma Otieno', phone: '0712 000 111', vehicleType: 'BODA', plateNumber: 'kmfa 123a', area: 'Milimani, Kisumu' } });
+  check('the rider fills in their profile (phone normalized, plate in capitals) - still waiting for approval', profileA.json.profileComplete === true && profileA.json.phone === '254712000111' && profileA.json.plateNumber === 'KMFA 123A' && profileA.json.status === 'PENDING', profileA);
+
+  const adminNoAuth = await api('GET', '/platform-admin/riders', {});
+  const adminWithShop = await api('GET', '/platform-admin/riders', { token: owner });
+  check('only a platform admin can see the approval queue', adminNoAuth.status === 401 && adminWithShop.status === 401, { adminNoAuth: adminNoAuth.status, adminWithShop: adminWithShop.status });
+  const riderQueue = await api('GET', '/platform-admin/riders?status=PENDING', { token: admin });
+  check('the platform admin sees the waiting rider', Array.isArray(riderQueue.json) && riderQueue.json.some((r) => r.email === RA), riderQueue);
+  const approveA = await api('POST', `/platform-admin/riders/${verifyA.json.rider.id}/status`, { token: admin, body: { status: 'APPROVED' } });
+  check('the platform admin approves the rider', (approveA.status === 200 || approveA.status === 201) && approveA.json.status === 'APPROVED', approveA);
+  const riderMeA2 = await api('GET', '/rider/me', { token: riderA });
+  check('the rider now sees they are approved', riderMeA2.json.status === 'APPROVED', riderMeA2.json);
+
+  await sql.query("INSERT INTO riders (id, email, \"updatedAt\") VALUES (gen_random_uuid()::text, 'incomplete.rider@example.test', now())");
+  const incompleteId = (await sql.query("SELECT id FROM riders WHERE email = 'incomplete.rider@example.test'")).rows[0].id;
+  const approveIncomplete = await api('POST', `/platform-admin/riders/${incompleteId}/status`, { token: admin, body: { status: 'APPROVED' } });
+  check('a rider who has not filled in their profile cannot be approved', approveIncomplete.status === 400, approveIncomplete);
+
+  const newRiderBody = { email: RB, fullName: 'Achieng Ouma', phone: '0733 222 111', vehicleType: 'TUK_TUK', plateNumber: 'kcb 456z', area: 'Town' };
+  const addB = await api('POST', '/riders', { token: owner, body: newRiderBody });
+  check('the shop adds its own rider: approved at once, marked as the shop\'s own', addB.status === 201 && addB.json.status === 'APPROVED' && addB.json.kind === 'SHOP' && addB.json.plateNumber === 'KCB 456Z', addB);
+  const dupEmail = await api('POST', '/riders', { token: owner, body: newRiderBody });
+  check('adding the same rider again is refused plainly', dupEmail.status === 409, dupEmail);
+  const takenByPool = await api('POST', '/riders', { token: owner, body: { ...newRiderBody, email: RA, phone: '0744 555 666' } });
+  check('an email already in the shared pool cannot be taken by a shop', takenByPool.status === 409, takenByPool);
+  const takenPhone = await api('POST', '/riders', { token: owner, body: { ...newRiderBody, email: 'other.rider@example.test', phone: '0712000111' } });
+  check('a phone number already used by another rider is refused', takenPhone.status === 409, takenPhone);
+  const shopList = await api('GET', '/riders', { token: owner });
+  check('the shop sees ONLY its own riders (not the shared pool\'s)', Array.isArray(shopList.json) && shopList.json.length === 1 && shopList.json[0].email === RB, shopList.json);
+  const poke = await api('POST', `/riders/${verifyA.json.rider.id}/status`, { token: owner, body: { status: 'SUSPENDED' } });
+  check('a shop cannot suspend a pool rider (not found for it)', poke.status === 404, poke);
+  const pokeEdit = await api('PATCH', `/riders/${verifyA.json.rider.id}`, { token: owner, body: { area: 'hacked' } });
+  check('a shop cannot edit a pool rider either', pokeEdit.status === 404, pokeEdit);
+  const otherShopList = await api('GET', '/riders', { token: ownTenant.json.accessToken });
+  const otherShopAdd = await api('POST', '/riders', { token: ownTenant.json.accessToken, body: { ...newRiderBody, email: 'third@example.test', phone: '0755 000 999' } });
+  check('another business sees none of this shop\'s riders', Array.isArray(otherShopList.json) && otherShopList.json.length === 0, otherShopList.json);
+  check('and a business without the Online Shop add-on cannot add riders', otherShopAdd.status === 403, otherShopAdd);
+
+  const codeB = await riderLogin(RB);
+  const verifyB = await api('POST', '/rider-auth/verify', { body: { email: RB, code: codeB } });
+  check('the shop\'s own rider signs in with their email (already approved, no second account)', verifyB.status === 200 && verifyB.json.rider.status === 'APPROVED' && verifyB.json.rider.kind === 'SHOP' && verifyB.json.rider.id === addB.json.id, verifyB);
+  const rowsB = await sql.query('SELECT count(*)::int AS n FROM riders WHERE email = $1', [RB]);
+  check('still exactly one account for that email', rowsB.rows[0].n === 1, rowsB.rows);
+  const suspendB = await api('POST', `/riders/${addB.json.id}/status`, { token: owner, body: { status: 'SUSPENDED' } });
+  const riderMeB = await api('GET', '/rider/me', { token: verifyB.json.accessToken });
+  check('the shop suspends its rider and the rider sees it', suspendB.json.status === 'SUSPENDED' && riderMeB.json.status === 'SUSPENDED', { s: suspendB.json.status, me: riderMeB.json.status });
+  const suspendA = await api('POST', `/platform-admin/riders/${verifyA.json.rider.id}/status`, { token: admin, body: { status: 'SUSPENDED' } });
+  check('the platform admin can suspend a pool rider', suspendA.json.status === 'SUSPENDED', suspendA);
+  const otpRows = await sql.query("SELECT count(*)::int AS n FROM rider_otps WHERE \"codeHash\" = $1 OR \"codeHash\" = $2", [codeA, codeB]);
+  check('login codes are stored only as hashes, never as the code itself', otpRows.rows[0].n === 0, otpRows.rows);
 
   console.log(`\n${failures.length === 0 ? 'ALL GOOD' : 'PROBLEMS FOUND'}: ${passed} checks passed, ${failures.length} failed.`);
   if (failures.length) console.log('Failed:\n - ' + failures.join('\n - '));
