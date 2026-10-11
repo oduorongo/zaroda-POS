@@ -46,7 +46,11 @@ function issuedInvoice(overrides: Record<string, unknown> = {}) {
   };
 }
 
-type Confirmation = { outcome: 'paid'; mpesaReceipt?: string } | { outcome: 'review'; detail: string } | { outcome: 'unconfirmed'; detail: string };
+type Confirmation =
+  | { outcome: 'paid'; mpesaReceipt?: string }
+  | { outcome: 'review'; detail: string }
+  | { outcome: 'unconfirmed'; detail: string }
+  | { outcome: 'unavailable'; detail: string };
 
 function setup(opts: { existing?: Record<string, unknown> | null; invoice?: Record<string, unknown>; confirmation?: Confirmation; emailSent?: boolean } = {}) {
   const invoice = opts.invoice ?? issuedInvoice();
@@ -200,20 +204,22 @@ describe('paying an invoice online (through the platform Tuma account)', () => {
   });
 });
 
-describe("Tuma's callback for an invoice (Tuma decides, the callback only prompts)", () => {
+describe("Tuma's callback for an invoice (the free webhook is how a payment is learned)", () => {
   const pending = () => issuedInvoice({ tumaMerchantRequestId: 'mr-1', payAttemptedAt: new Date() });
+  // What a complete, successful Tuma callback looks like for the KES 91 invoice.
+  const goodCallback = { merchant_request_id: 'mr-1', status: 'completed', amount: 91, mpesa_receipt_number: 'QAB1' };
 
-  it('rejects a callback without the right URL token and never asks Tuma', async () => {
+  it('rejects a callback without the right URL token and never touches Tuma', async () => {
     const { service, tuma } = setup({ invoice: pending() });
-    await expect(service.handleTumaCallback(ORG, INVOICE, 'forged', { status: 'completed' })).rejects.toThrow(NotFoundException);
+    await expect(service.handleTumaCallback(ORG, INVOICE, 'forged', goodCallback)).rejects.toThrow(NotFoundException);
     expect(tuma.confirmPayment).not.toHaveBeenCalled();
   });
 
-  it('marks the invoice paid only because Tuma confirmed it, then emails a receipt', async () => {
+  it('settles a complete callback straight away, spends nothing on a paid check, and emails a receipt', async () => {
     const { service, tuma, tx, email } = setup({ invoice: pending() });
-    await service.handleTumaCallback(ORG, INVOICE, goodToken, { merchant_request_id: 'mr-1', status: 'completed' });
+    await service.handleTumaCallback(ORG, INVOICE, goodToken, goodCallback);
 
-    expect(tuma.confirmPayment).toHaveBeenCalledWith({ email: 'platform@zaroda.test', apiKey: 'platform-key' }, 'mr-1', 91);
+    expect(tuma.confirmPayment).not.toHaveBeenCalled();
     expect(tx.commissionInvoice.updateMany).toHaveBeenCalledWith({
       where: { id: INVOICE, status: 'ISSUED' },
       data: expect.objectContaining({ status: 'PAID', paymentMethod: 'MPESA', paymentReference: 'QAB1' }),
@@ -221,37 +227,80 @@ describe("Tuma's callback for an invoice (Tuma decides, the callback only prompt
     expect(email.sendEmail).toHaveBeenCalledWith(expect.objectContaining({ to: 'owner@example.com', subject: expect.stringContaining('Payment received') }));
   });
 
-  it('ignores a callback that claims success when Tuma does not confirm it', async () => {
-    const { service, tx, email } = setup({ invoice: pending(), confirmation: { outcome: 'unconfirmed', detail: 'pending' } });
-    await service.handleTumaCallback(ORG, INVOICE, goodToken, { merchant_request_id: 'mr-1', status: 'completed', amount: 91 });
-    expect(tx.commissionInvoice.updateMany).not.toHaveBeenCalled();
-    expect(email.sendEmail).not.toHaveBeenCalled();
-  });
-
   it('flags a payment for the wrong amount for review instead of settling', async () => {
-    const { service, tx } = setup({ invoice: pending(), confirmation: { outcome: 'review', detail: 'Tuma reported KES 10, expected KES 91' } });
-    await service.handleTumaCallback(ORG, INVOICE, goodToken, { status: 'completed' });
+    const { service, tx } = setup({ invoice: pending() });
+    await service.handleTumaCallback(ORG, INVOICE, goodToken, { ...goodCallback, amount: 10 });
     expect(tx.commissionInvoice.updateMany).not.toHaveBeenCalled();
     expect(tx.commissionInvoice.update.mock.calls[0][0].data.lastPaymentError).toMatch(/doesn't match/);
   });
 
+  it('does not trust a "completed" callback with no receipt: it asks Tuma instead (KES 1)', async () => {
+    const { service, tuma, tx } = setup({ invoice: pending(), confirmation: { outcome: 'paid', mpesaReceipt: 'FROMTUMA1' } });
+    const { mpesa_receipt_number: _r, ...noReceipt } = goodCallback;
+    await service.handleTumaCallback(ORG, INVOICE, goodToken, noReceipt);
+    expect(tuma.confirmPayment).toHaveBeenCalledWith({ email: 'platform@zaroda.test', apiKey: 'platform-key' }, 'mr-1', 91);
+    expect(tx.commissionInvoice.updateMany).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ paymentReference: 'FROMTUMA1' }) }));
+  });
+
+  it('leaves the invoice unpaid when that check says it has not been paid', async () => {
+    const { service, tx, email } = setup({ invoice: pending(), confirmation: { outcome: 'unconfirmed', detail: 'pending' } });
+    const { mpesa_receipt_number: _r, ...noReceipt } = goodCallback;
+    await service.handleTumaCallback(ORG, INVOICE, goodToken, noReceipt);
+    expect(tx.commissionInvoice.updateMany).not.toHaveBeenCalled();
+    expect(email.sendEmail).not.toHaveBeenCalled();
+  });
+
   it('does nothing for an invoice that is already settled', async () => {
-    const { service, tuma } = setup({ invoice: issuedInvoice({ status: 'PAID' }) });
-    await service.handleTumaCallback(ORG, INVOICE, goodToken, { status: 'completed' });
+    const { service, tuma, tx } = setup({ invoice: issuedInvoice({ status: 'PAID' }) });
+    await service.handleTumaCallback(ORG, INVOICE, goodToken, goodCallback);
     expect(tuma.confirmPayment).not.toHaveBeenCalled();
+    expect(tx.commissionInvoice.updateMany).not.toHaveBeenCalled();
   });
 
   it('does not send two receipts when two settlements race', async () => {
     const { service, tx, email } = setup({ invoice: pending() });
     tx.commissionInvoice.updateMany.mockResolvedValue({ count: 0 });
-    await service.handleTumaCallback(ORG, INVOICE, goodToken, { status: 'completed' });
+    await service.handleTumaCallback(ORG, INVOICE, goodToken, goodCallback);
     expect(email.sendEmail).not.toHaveBeenCalled();
   });
 
-  it("records a reported failure for the current prompt so the business can retry", async () => {
-    const { service, tx } = setup({ invoice: pending(), confirmation: { outcome: 'unconfirmed', detail: 'failed' } });
+  it('records a reported failure for the current prompt so the business can retry', async () => {
+    const { service, tx } = setup({ invoice: pending() });
     await service.handleTumaCallback(ORG, INVOICE, goodToken, { merchant_request_id: 'mr-1', status: 'failed' });
     expect(tx.commissionInvoice.update.mock.calls[0][0].data.lastPaymentError).toMatch(/cancelled or failed/);
+  });
+});
+
+describe('"check now" on an invoice (a paid backup, so it is limited)', () => {
+  const pending = (id = INVOICE) => issuedInvoice({ id, tumaMerchantRequestId: 'mr-1', payAttemptedAt: new Date() });
+
+  it('asks Tuma once, and refuses to again within the cooldown', async () => {
+    const { service, tuma } = setup({ invoice: pending('inv-a'), confirmation: { outcome: 'unconfirmed', detail: 'pending' } });
+    const first = await asTenant(() => service.checkPayment('inv-a'));
+    expect(first.checkResult).toBe('not-paid-yet');
+    await expect(asTenant(() => service.checkPayment('inv-a'))).rejects.toThrow(/wait about 30 seconds/);
+    expect(tuma.confirmPayment).toHaveBeenCalledTimes(1);
+  });
+
+  it('settles the invoice when Tuma confirms it', async () => {
+    const { service, tx } = setup({ invoice: pending('inv-b'), confirmation: { outcome: 'paid', mpesaReceipt: 'QCHK1' } });
+    tx.commissionInvoice.findUnique.mockResolvedValue(pending('inv-b'));
+    await asTenant(() => service.checkPayment('inv-b'));
+    expect(tx.commissionInvoice.updateMany).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ paymentReference: 'QCHK1' }) }));
+  });
+
+  it("reports honestly when Tuma can't answer (for example no credits), without calling it unpaid", async () => {
+    const { service, tx } = setup({ invoice: pending('inv-c'), confirmation: { outcome: 'unavailable', detail: 'no credits' } });
+    const result = await asTenant(() => service.checkPayment('inv-c'));
+    expect(result.checkResult).toBe('unavailable');
+    expect(tx.commissionInvoice.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('does not call Tuma for an invoice with no payment started', async () => {
+    const { service, tuma } = setup({ invoice: issuedInvoice({ id: 'inv-d' }) });
+    const result = await asTenant(() => service.checkPayment('inv-d'));
+    expect(result.checkResult).toBe('not-needed');
+    expect(tuma.confirmPayment).not.toHaveBeenCalled();
   });
 });
 
@@ -321,7 +370,14 @@ describe('the daily automation: emails', () => {
     expect(night.email.sendEmail).not.toHaveBeenCalled();
   });
 
-  it('confirms a payment whose callback never arrived', async () => {
+  it('the hourly scheduler never spends on a paid re-check (reconcile: false)', async () => {
+    const s = setup({ invoice: issuedInvoice({ tumaMerchantRequestId: 'mr-1', payAttemptedAt: new Date(issuedAt.getTime() - 60_000), reminderStage: 1 }) });
+    noOrders(s);
+    await s.service.runAutomation({ sendEmails: false, reconcile: false });
+    expect(s.tuma.confirmPayment).not.toHaveBeenCalled();
+  });
+
+  it('a person pressing Run billing now does re-check a payment whose callback never arrived', async () => {
     const s = setup({ invoice: issuedInvoice({ tumaMerchantRequestId: 'mr-1', payAttemptedAt: new Date(issuedAt.getTime() - 60_000), reminderStage: 1 }) });
     noOrders(s);
     const result = await s.service.runAutomation({ sendEmails: false });

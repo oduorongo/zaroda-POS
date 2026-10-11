@@ -116,8 +116,21 @@ export default function OnlineOrdersPage() {
   );
   const visible = orders.filter((o) => TABS.find((t) => t.key === tab)!.statuses.includes(o.status));
 
-  async function act(order: OnlineOrder, action: "accept" | "ready" | "complete" | "cancel") {
+  async function act(order: OnlineOrder, action: "accept" | "ready" | "complete" | "cancel" | "confirm-payment") {
     let body: unknown = {};
+    if (action === "confirm-payment") {
+      // The shop's own money, so its word is enough - but the M-Pesa code is kept so the payment can be traced.
+      const receipt = prompt(`Mark ${order.orderNumber} as paid.
+
+Only do this if you can see the M-Pesa payment of KES ${order.amountDue} (in your M-Pesa messages or the Tuma portal).
+
+Enter the M-Pesa confirmation code, e.g. SJK1ABC2DE:`);
+      if (!receipt || !/^[A-Za-z0-9]{8,20}$/.test(receipt.trim())) {
+        if (receipt) setActionError("That doesn't look like an M-Pesa confirmation code (8-20 letters and numbers).");
+        return;
+      }
+      body = { receipt: receipt.trim() };
+    }
     if (action === "cancel") {
       const warning = order.paidAt
         ? `The buyer paid KES ${order.amountDue}. If you cancel, you must refund them yourself via M-Pesa.\n\nReason for cancelling:`
@@ -254,6 +267,11 @@ export default function OnlineOrdersPage() {
                   {(order.status === "ACCEPTED" || order.status === "READY") && (
                     <Button size="sm" variant={order.status === "READY" ? "primary" : "outline"} onClick={() => void act(order, "complete")} disabled={busy}>
                       {order.fulfilmentType === "PICKUP" ? "Collected" : "Delivered"}
+                    </Button>
+                  )}
+                  {canCancel && (order.status === "PENDING_PAYMENT" || order.status === "EXPIRED") && (
+                    <Button size="sm" variant="outline" onClick={() => void act(order, "confirm-payment")} disabled={busy}>
+                      Mark as paid
                     </Button>
                   )}
                   {canCancel && ["PENDING_PAYMENT", "PAID", "ACCEPTED", "READY"].includes(order.status) && (

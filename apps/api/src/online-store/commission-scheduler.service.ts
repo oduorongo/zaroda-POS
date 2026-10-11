@@ -72,7 +72,7 @@ export class CommissionSchedulerService implements OnModuleInit, OnModuleDestroy
         async (tx) => {
           const rows = await tx.$queryRaw<{ locked: boolean }[]>`SELECT pg_try_advisory_xact_lock(hashtext('zaroda-commission-automation')) AS locked`;
           if (!rows[0]?.locked) return null; // another instance is already on it
-          return this.commission.runAutomation({ sendEmails });
+          return this.commission.runAutomation({ sendEmails, reconcile: false });
         },
         { timeout: RUN_TIMEOUT_MS, maxWait: 15_000 },
       );

@@ -164,18 +164,31 @@ async function buyerLogin(phone) {
   check('the 2 units are held, so only 18 show as available', held.json.products[0].variants[0].available === 18);
 
   section('7. An attacker tries to fake a payment');
+  const statusCalls = async () => (await mock('GET', '/_test/status-calls')).json.count;
+  const checksBefore = await statusCalls();
   const forgedBadToken = await call('POST', push1.callback_url.replace(/[^/]+$/, 'not-the-real-token'), { body: { status: 'completed', amount: 500, mpesa_receipt_number: 'FAKE1' } });
-  check('a callback with a made-up address token is rejected', forgedBadToken.status === 404, forgedBadToken);
-  const forged = await mock('POST', `/_test/forge/${push1.merchant_request_id}`);
-  check('(the pretend Tuma sent a "completed" callback without any payment)', forged.status === 200);
-  const afterForge = await api('GET', `/buyer/orders/${o1.id}`, { token: buyerA });
-  check('the API asked Tuma, was told "not paid", and left the order UNPAID', afterForge.json.status === 'PENDING_PAYMENT', afterForge.json);
+  check('a callback on a made-up address is rejected outright', forgedBadToken.status === 404, forgedBadToken);
+  const claim = await mock('POST', `/_test/forge/${push1.merchant_request_id}?mode=no-receipt`);
+  check('(a callback arrives claiming success - with no M-Pesa receipt and nothing paid)', claim.status === 200);
+  const afterClaim = await api('GET', `/buyer/orders/${o1.id}`, { token: buyerA });
+  check('the API did not believe it: the order is still UNPAID', afterClaim.json.status === 'PENDING_PAYMENT', afterClaim.json);
+  check('it asked Tuma once (the paid backup), and Tuma said "not paid"', (await statusCalls()) === checksBefore + 1);
+  const under = await mock('POST', `/_test/forge/${push1.merchant_request_id}?mode=underpay`);
+  check('(a callback arrives with a receipt but only KES 1 of the KES 500)', under.status === 200);
+  const afterUnder = await api('GET', `/buyer/orders/${o1.id}`, { token: buyerA });
+  check('an underpayment does not release the order, and is flagged', afterUnder.json.status === 'PENDING_PAYMENT' && /doesn't match/.test(afterUnder.json.lastPaymentError || ''), afterUnder.json);
+  const opened = await statusCalls();
+  await api('GET', `/buyer/orders/${o1.id}`, { token: buyerA });
+  await api('GET', '/buyer/orders', { token: buyerA });
+  check('merely opening the order or the order list spends nothing with Tuma', (await statusCalls()) === opened);
 
   section('8. The real payment arrives');
+  const checksBeforePay = await statusCalls();
   const paid = await mock('POST', `/_test/pay/${push1.merchant_request_id}`);
   check('shopper pays; Tuma calls back and the API accepts it', paid.status === 200 && paid.json.callbackAnsweredWith === 200, paid.json);
   const afterPay = await api('GET', `/buyer/orders/${o1.id}`, { token: buyerA });
   check('the order is now PAID with the M-Pesa receipt', afterPay.json.status === 'PAID' && /^QTEST/.test(afterPay.json.mpesaReceiptNumber || ''), afterPay.json);
+  check('the normal payment path made NO paid status checks (Tuma callbacks are free)', (await statusCalls()) === checksBeforePay);
   await mock('POST', `/_test/pay/${push1.merchant_request_id}`);
   const afterReplay = await api('GET', `/buyer/orders/${o1.id}`, { token: buyerA });
   check('the same payment replayed changes nothing', afterReplay.json.status === 'PAID' && afterReplay.json.mpesaReceiptNumber === afterPay.json.mpesaReceiptNumber);
@@ -208,22 +221,43 @@ async function buyerLogin(phone) {
   const again = await api('POST', `/online-orders/${o1.id}/accept`, { token: owner });
   check('an order cannot be accepted twice', again.status === 400, again);
 
-  section('11. Payment whose callback never arrives (fallback re-check)');
+  section('11. Payment whose callback never arrives (the buyer\'s "check now" backup)');
   const order2 = await api('POST', '/buyer/orders', { token: buyerB, body: { shopSlug: 'demo-shop', lines: [{ variantId, quantity: 1 }], fulfilmentType: 'PICKUP' } });
   const o2 = order2.json;
   check('shopper B places a KES 250 order', order2.status === 201 && o2.amountDue === 250, order2);
   const pushes2 = (await mock('GET', '/_test/pushes')).json;
   const push2 = pushes2[pushes2.length - 1];
   await mock('POST', `/_test/pay-silent/${push2.merchant_request_id}`);
-  const recheck = await api('GET', `/buyer/orders/${o2.id}`, { token: buyerB });
-  check('Tuma never called back, yet opening the order finds it paid', recheck.json.status === 'PAID', recheck.json);
+  const quiet = await statusCalls();
+  const idle = await api('GET', `/buyer/orders/${o2.id}`, { token: buyerB });
+  check('Tuma never called back, and just opening the order does NOT find the payment (and costs nothing)', idle.json.status === 'PENDING_PAYMENT' && (await statusCalls()) === quiet, idle.json);
+  const press = await api('POST', `/buyer/orders/${o2.id}/check`, { token: buyerB });
+  check('pressing "I\'ve paid - check now" finds it (one paid check)', press.json.status === 'PAID' && press.json.checkResult === 'paid' && (await statusCalls()) === quiet + 1, press.json);
   await api('POST', `/online-orders/${o2.id}/accept`, { token: owner });
   const complete2 = await api('POST', `/online-orders/${o2.id}/complete`, { token: owner });
   check('second order completed (commission KES 7.50)', complete2.json.status === 'COMPLETED' && complete2.json.commissionAmount === 7.5, complete2.json);
 
+  section('11b. The shop confirms a payment by hand');
+  const order4 = await api('POST', '/buyer/orders', { token: buyerB, body: { shopSlug: 'demo-shop', lines: [{ variantId, quantity: 1 }], fulfilmentType: 'PICKUP' } });
+  const manual4 = await api('POST', `/online-orders/${order4.json.id}/confirm-payment`, { token: owner, body: { receipt: 'abc' } });
+  check('a made-up short code is refused', manual4.status === 400, manual4);
+  const confirmed = await api('POST', `/online-orders/${order4.json.id}/confirm-payment`, { token: owner, body: { receipt: 'sjk1abc2de' } });
+  check('the shop marks it paid with the M-Pesa code from its message', confirmed.json.status === 'PAID' && confirmed.json.mpesaReceiptNumber === 'SJK1ABC2DE', confirmed.json);
+  const order5 = await api('POST', '/buyer/orders', { token: buyerB, body: { shopSlug: 'demo-shop', lines: [{ variantId, quantity: 1 }], fulfilmentType: 'PICKUP' } });
+  const reused = await api('POST', `/online-orders/${order5.json.id}/confirm-payment`, { token: owner, body: { receipt: 'SJK1ABC2DE' } });
+  check('the same M-Pesa code cannot release a second order', reused.status === 409, reused);
+  const alreadyPaid = await api('POST', `/online-orders/${order4.json.id}/confirm-payment`, { token: owner, body: { receipt: 'ZZZ9YYY8XX' } });
+  check('an order that is already paid cannot be marked paid again', alreadyPaid.status === 400, alreadyPaid);
+  await api('POST', `/online-orders/${order4.json.id}/cancel`, { token: owner, body: { reason: 'test clean-up' } });
+  await api('POST', `/online-orders/${order5.json.id}/cancel`, { token: owner, body: { reason: 'test clean-up' } });
+
   section('12. Cancelling');
   const order3 = await api('POST', '/buyer/orders', { token: buyerB, body: { shopSlug: 'demo-shop', lines: [{ variantId, quantity: 3 }], fulfilmentType: 'PICKUP' } });
   const heldBefore = (await api('GET', '/public/shops/demo-shop')).json.products[0].variants[0].available;
+  const firstCheck = await api('POST', `/buyer/orders/${order3.json.id}/check`, { token: buyerB });
+  check('"check now" on an unpaid order says "not received yet"', firstCheck.json.checkResult === 'not-paid-yet', firstCheck.json);
+  const secondCheck = await api('POST', `/buyer/orders/${order3.json.id}/check`, { token: buyerB });
+  check('pressing it again straight away is refused (each check costs the shop KES 1)', secondCheck.status === 400 && /wait about 30 seconds/.test(secondCheck.json.message || ''), secondCheck);
   const cancel = await api('POST', `/buyer/orders/${order3.json.id}/cancel`, { token: buyerB });
   check('shopper cancels an unpaid order', cancel.json.status === 'CANCELLED', cancel);
   const heldAfter = (await api('GET', '/public/shops/demo-shop')).json.products[0].variants[0].available;
@@ -254,12 +288,15 @@ async function buyerLogin(phone) {
   const push3 = pushes3[pushes3.length - 1];
   check('the prompt is for KES 23 and names the invoice', push3.amount === 23 && /ZARODA commission/.test(push3.description || ''), push3);
   check('the callback address is the commission one', /\/public\/commission\//.test(push3.callback_url));
-  await mock('POST', `/_test/forge/${push3.merchant_request_id}`);
-  const afterForge3 = await api('POST', `/online-store/me/commission/invoices/${invoice.id}/check`, { token: owner });
-  check('a forged "paid" callback does NOT settle the invoice', afterForge3.json.status === 'ISSUED', afterForge3.json);
+  await mock('POST', `/_test/forge/${push3.merchant_request_id}?mode=no-receipt`);
+  const afterClaim3 = await api('GET', '/online-store/me/commission', { token: owner });
+  check('a callback claiming success with no receipt does NOT settle the invoice', afterClaim3.json.invoices[0].status === 'ISSUED', afterClaim3.json.invoices[0]);
   await mock('POST', `/_test/pay/${push3.merchant_request_id}`);
-  const afterPay3 = await api('POST', `/online-store/me/commission/invoices/${invoice.id}/check`, { token: owner });
-  check('the real payment settles it: PAID by M-Pesa with a receipt', afterPay3.json.status === 'PAID' && afterPay3.json.paymentMethod === 'MPESA' && /^QTEST/.test(afterPay3.json.paymentReference || ''), afterPay3.json);
+  const afterPay3 = await api('GET', '/online-store/me/commission', { token: owner });
+  const settled3 = afterPay3.json.invoices[0];
+  check('the real payment settles it by itself: PAID by M-Pesa with a receipt', settled3.status === 'PAID' && settled3.paymentMethod === 'MPESA' && /^QTEST/.test(settled3.paymentReference || ''), settled3);
+  const checkPaid = await api('POST', `/online-store/me/commission/invoices/${invoice.id}/check`, { token: owner });
+  check('"check now" on an invoice that is already paid costs nothing', checkPaid.json.checkResult === 'not-needed', checkPaid.json);
 
   section('15. Unpaid commission hides the shop');
   // Turn the invoice back into an unpaid one that is 30 days overdue.

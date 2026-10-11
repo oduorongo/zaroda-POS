@@ -110,9 +110,15 @@ export class TumaClient {
 
   /**
    * Asks Tuma whether a payment really went through, and for how much.
-   * Only a 'paid' outcome may settle anything. Never throws on a Tuma-side
-   * failure: 'unconfirmed' just means "not proven yet" and the caller
-   * leaves the payment pending.
+   * Only a 'paid' outcome may settle anything.
+   *
+   * THIS COSTS KES 1 PER CALL (Tuma's status endpoint is paid; its webhooks
+   * are free), charged to the account whose credentials are passed. So it is
+   * only ever used as a backup - when a callback was incomplete, or when
+   * someone explicitly asks "check now" - never in a polling loop.
+   *
+   * Never throws on a Tuma-side failure: 'unconfirmed' means Tuma answered
+   * "not paid (yet)", 'unavailable' means it couldn't answer at all.
    */
   async confirmPayment(
     credentials: TumaCredentials,
@@ -129,12 +135,15 @@ export class TumaClient {
       });
       const body: unknown = await response.json().catch(() => ({}));
       if (!response.ok) {
-        return { outcome: 'unconfirmed', detail: `Tuma status check failed (${response.status})` };
+        return {
+          outcome: 'unavailable',
+          detail: response.status === 402 ? 'Tuma says this account has no credits left for status checks' : `Tuma status check failed (${response.status})`,
+        };
       }
       return judgePayment(parseStatusResponse(body), expectedAmount);
     } catch (e) {
       this.logger.warn({ err: e, merchantRequestId }, 'Tuma status check failed');
-      return { outcome: 'unconfirmed', detail: 'Could not reach Tuma to confirm the payment' };
+      return { outcome: 'unavailable', detail: 'Could not reach Tuma to confirm the payment' };
     }
   }
 

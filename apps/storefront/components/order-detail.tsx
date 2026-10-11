@@ -3,17 +3,20 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Check } from "lucide-react";
-import { ApiError, cancelOrder, getOrder, payOrder } from "../lib/api";
+import { ApiError, cancelOrder, checkOrderPayment, getOrder, payOrder } from "../lib/api";
 import { displayPhone, formatQty, kes } from "../lib/format";
 import type { Order } from "../lib/types";
 import AuthForm from "./auth-form";
 import OrderStatusBadge, { PROGRESS_STEPS, progressIndex } from "./order-status";
 import { useStore } from "./store-provider";
 
-// While the buyer is looking at the page, check often when we're waiting on
-// their M-Pesa PIN, and occasionally while the shop works on the order.
+// While the buyer is looking at the page, refresh often when we're waiting on their
+// M-Pesa PIN, and occasionally while the shop works on the order. These are plain,
+// free reads of OUR order - the payment itself arrives by M-Pesa's own notification.
 const POLL_WAITING_PAYMENT_MS = 4_000;
 const POLL_IN_PROGRESS_MS = 20_000;
+// Only after this long without a confirmation do we offer the manual check (it costs the shop KES 1).
+const SHOW_CHECK_AFTER_MS = 45_000;
 
 export default function OrderDetail({ orderId }: { orderId: string }) {
   const { ready, buyer, token, signOut } = useStore();
@@ -22,6 +25,8 @@ export default function OrderDetail({ orderId }: { orderId: string }) {
   const [actionError, setActionError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [retryPhone, setRetryPhone] = useState("");
+  const [canCheck, setCanCheck] = useState(false);
+  const [checkMessage, setCheckMessage] = useState<string | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const load = useCallback(async () => {
@@ -55,6 +60,34 @@ export default function OrderDetail({ orderId }: { orderId: string }) {
   useEffect(() => {
     if (order && !retryPhone) setRetryPhone(displayPhone(order.paymentPhone));
   }, [order, retryPhone]);
+
+  // Offer "I've paid, check now" only after a wait.
+  const waiting = order?.status === "PENDING_PAYMENT";
+  useEffect(() => {
+    if (!waiting) {
+      setCanCheck(false);
+      return;
+    }
+    const t = setTimeout(() => setCanCheck(true), SHOW_CHECK_AFTER_MS);
+    return () => clearTimeout(t);
+  }, [waiting]);
+
+  async function checkNow() {
+    if (!token || !order) return;
+    setBusy(true);
+    setActionError(null);
+    setCheckMessage(null);
+    try {
+      const result = await checkOrderPayment(token, order.id);
+      setOrder(result);
+      if (result.checkResult === "not-paid-yet") setCheckMessage("We haven't received your payment yet. If you've just entered your PIN, give it a minute and try again.");
+      if (result.checkResult === "unavailable") setCheckMessage("We couldn't check just now. If you've paid, the shop will confirm it - you can also contact them with your M-Pesa message.");
+    } catch (err) {
+      setActionError(err instanceof ApiError ? err.message : "Something went wrong. Please try again.");
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function act(fn: () => Promise<Order>) {
     setBusy(true);
@@ -92,7 +125,6 @@ export default function OrderDetail({ orderId }: { orderId: string }) {
 
   if (!order) return <p className="py-10 text-center text-secondary-500">Loading your order...</p>;
 
-  const waiting = order.status === "PENDING_PAYMENT";
   const progress = progressIndex(order.status);
 
   return (
@@ -154,6 +186,19 @@ export default function OrderDetail({ orderId }: { orderId: string }) {
               Cancel order
             </button>
           </div>
+          {canCheck && (
+            <div className="border-t border-warning-500/40 pt-3">
+              <p className="text-sm">Paid, but this page hasn't changed?</p>
+              <button
+                onClick={() => void checkNow()}
+                disabled={busy}
+                className="mt-2 rounded-md border border-border bg-surface px-4 py-2 text-sm font-semibold hover:bg-secondary-50 disabled:opacity-50"
+              >
+                {busy ? "Checking..." : "I've paid - check now"}
+              </button>
+              {checkMessage && <p className="mt-2 text-sm text-secondary-700">{checkMessage}</p>}
+            </div>
+          )}
           {actionError && <p className="text-sm text-error-600">{actionError}</p>}
         </section>
       )}

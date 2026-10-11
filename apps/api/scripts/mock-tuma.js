@@ -13,9 +13,13 @@
 //   POST /_test/pay-silent/:merchantRequestId  mark it paid but send NO callback (tests the
 //                                        API's own re-check when a callback never arrives)
 //   POST /_test/fail/:merchantRequestId  mark it failed (then send the callback)
-//   POST /_test/forge/:merchantRequestId send a "completed" callback WITHOUT paying -
-//                                        what an attacker could do - to prove the API
-//                                        ignores it
+//   POST /_test/forge/:merchantRequestId?mode=no-receipt|underpay
+//                                        send a callback that CLAIMS success without a real
+//                                        payment behind it: no-receipt (success, nothing paid,
+//                                        no M-Pesa receipt) or underpay (a receipt, but too
+//                                        little money). The API must not settle either.
+//   GET  /_test/status-calls             how many paid status checks the API has made
+//                                        (Tuma charges KES 1 each; the normal path must make none)
 //   GET  /_test/pushes                   everything received so far
 //
 // Accounts: every api_key is accepted except the literal "wrong-key".
@@ -24,6 +28,7 @@ const http = require('http');
 const PORT = Number(process.env.MOCK_TUMA_PORT || 4010);
 const pushes = new Map(); // merchant_request_id -> push record
 let counter = 0;
+let statusCalls = 0;
 
 const send = (res, status, body) => {
   res.writeHead(status, { 'Content-Type': 'application/json' });
@@ -43,13 +48,13 @@ const readBody = (req) =>
     });
   });
 
-async function sendCallback(push, status) {
+async function sendCallback(push, status, mode) {
   const body = {
     merchant_request_id: push.merchant_request_id,
     payment_id: push.payment_id,
     status,
-    amount: push.amount,
-    ...(status === 'completed' ? { mpesa_receipt_number: push.receipt } : {}),
+    amount: mode === 'underpay' ? 1 : push.amount,
+    ...(status === 'completed' && mode !== 'no-receipt' ? { mpesa_receipt_number: push.receipt } : {}),
   };
   try {
     const response = await fetch(push.callback_url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
@@ -99,6 +104,7 @@ http
     }
 
     if (route === 'POST /payment/status') {
+      statusCalls += 1;
       const push = pushes.get(body.merchant_request_id);
       if (!push) return send(res, 404, { message: 'Unknown payment' });
       return send(res, 200, {
@@ -122,10 +128,12 @@ http
       if (!push) return send(res, 404, { message: 'Unknown payment' });
       if (test[1] === 'pay') push.status = 'completed';
       if (test[1] === 'fail') push.status = 'failed';
-      const callbackStatus = await sendCallback(push, test[1] === 'fail' ? 'failed' : 'completed');
+      const mode = url.searchParams.get('mode') || undefined;
+      const callbackStatus = await sendCallback(push, test[1] === 'fail' ? 'failed' : 'completed', mode);
       return send(res, 200, { ok: true, status: push.status, callbackAnsweredWith: callbackStatus });
     }
 
+    if (route === 'GET /_test/status-calls') return send(res, 200, { count: statusCalls });
     if (route === 'GET /_test/pushes') return send(res, 200, Array.from(pushes.values()));
     return send(res, 404, { message: `No route ${route}` });
   })

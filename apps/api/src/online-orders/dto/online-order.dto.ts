@@ -102,6 +102,14 @@ export class CancelOnlineOrderDto {
   reason!: string;
 }
 
+export class ConfirmOrderPaymentDto {
+  // The M-Pesa confirmation code from the SMS (e.g. SJK1ABC2DE) - kept so the
+  // payment can be traced, and unique across orders.
+  @IsString()
+  @Matches(/^[A-Za-z0-9]{8,20}$/, { message: 'Enter the M-Pesa code from the confirmation message, e.g. SJK1ABC2DE' })
+  receipt!: string;
+}
+
 export class ListOnlineOrdersQueryDto {
   @IsIn(Object.values(OnlineOrderStatus))
   @IsOptional()

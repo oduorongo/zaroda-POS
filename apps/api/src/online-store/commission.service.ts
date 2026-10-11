@@ -32,14 +32,15 @@ import {
 } from './commission.util';
 import { DEFAULT_COMMISSION_RATE } from './online-store.constants';
 import { TumaClient } from './tuma.client';
-import { parseCallback } from './tuma.util';
+import { evaluateCallback, parseCallback } from './tuma.util';
 
 const TX_OPTIONS = { timeout: 15_000, maxWait: 15_000 };
 const DAY_MS = 24 * 60 * 60 * 1000;
 // A second prompt before this would risk two live M-Pesa prompts for one invoice.
 const PAY_RETRY_COOLDOWN_MS = 60_000;
-// How often a business's page may re-ask Tuma about the same invoice.
-const RECHECK_INTERVAL_MS = 8_000;
+// "Check now" is a paid Tuma status check (KES 1, charged to ZARODA), so it is rate limited.
+const CHECK_COOLDOWN_MS = 30_000;
+const MAX_CHECKS_PER_INVOICE = 5;
 // A payment prompt older than this is no longer worth re-checking.
 const RECONCILE_WINDOW_MS = DAY_MS;
 
@@ -93,7 +94,7 @@ export function toInvoiceView(invoice: CommissionInvoice, now: Date = new Date()
 @Injectable()
 export class CommissionService {
   private readonly logger = new Logger(CommissionService.name);
-  private readonly lastChecked = new Map<string, number>();
+  private readonly checks = new Map<string, { last: number; count: number }>();
 
   constructor(
     private readonly prisma: PrismaService,
@@ -224,87 +225,136 @@ export class CommissionService {
     return toInvoiceView(updated);
   }
 
-  /** The business's page polling while it waits for the PIN - asks Tuma, at most every few seconds. */
+  /**
+   * "Check now" - the business's backup when Tuma's callback hasn't arrived.
+   * Each call is a paid Tuma status check (KES 1, charged to ZARODA's own
+   * account), so it has a cooldown and a cap per invoice. The page itself
+   * refreshes with plain, free reads.
+   */
   async checkPayment(invoiceId: string) {
     const { organizationId } = getTenantStore();
     const find = () => this.tenantPrisma.run((tx) => tx.commissionInvoice.findUnique({ where: { id: invoiceId } }));
     let invoice = await find();
     if (!invoice) throw new NotFoundException('Invoice not found');
-    const last = this.lastChecked.get(invoice.id) ?? 0;
-    if (invoice.status === CommissionInvoiceStatus.ISSUED && invoice.tumaMerchantRequestId && Date.now() - last >= RECHECK_INTERVAL_MS) {
-      this.lastChecked.set(invoice.id, Date.now());
-      await this.verifyAndSettle(organizationId, invoice.id).catch(() => undefined);
-      invoice = (await find()) ?? invoice;
+    if (invoice.status !== CommissionInvoiceStatus.ISSUED || !invoice.tumaMerchantRequestId) {
+      return { ...toInvoiceView(invoice), checkResult: 'not-needed' as const };
     }
-    return toInvoiceView(invoice);
+    const state = this.checks.get(invoice.id) ?? { last: 0, count: 0 };
+    if (Date.now() - state.last < CHECK_COOLDOWN_MS) throw new BadRequestException('Please wait about 30 seconds before checking again');
+    if (state.count >= MAX_CHECKS_PER_INVOICE) {
+      throw new BadRequestException('This invoice has been checked several times already - please contact Zaroda with your M-Pesa message');
+    }
+    this.checks.set(invoice.id, { last: Date.now(), count: state.count + 1 });
+
+    const outcome = await this.verifyWithTuma(organizationId, invoice.id).catch(() => 'unavailable' as const);
+    invoice = (await find()) ?? invoice;
+    return {
+      ...toInvoiceView(invoice),
+      checkResult: (outcome === 'paid' ? 'paid' : outcome === 'unconfirmed' ? 'not-paid-yet' : outcome === 'unavailable' ? 'unavailable' : 'not-needed') as
+        | 'paid'
+        | 'not-paid-yet'
+        | 'unavailable'
+        | 'not-needed',
+    };
   }
 
-  /** Tuma's webhook. Authenticated by the HMAC in the URL, and even then only a prompt to ask Tuma. */
+  /**
+   * Tuma's webhook (free) is how a payment is normally learned about: the
+   * HMAC in the URL proves it came from Tuma, and the body itself must be
+   * complete and consistent (evaluateCallback). An incomplete callback is
+   * never acted on as-is - it triggers one paid status check instead.
+   */
   async handleTumaCallback(organizationId: string, invoiceId: string, token: string, body: Record<string, unknown>) {
     const expected = Buffer.from(this.callbackToken(invoiceId));
     const actual = Buffer.from(token);
     if (expected.length !== actual.length || !timingSafeEqual(expected, actual)) throw new NotFoundException();
 
-    const { merchantRequestId, success } = parseCallback(body);
-    const outcome = await this.verifyAndSettle(organizationId, invoiceId, merchantRequestId);
-    if (!success && outcome !== 'paid') {
-      await this.runAsTenant(organizationId, async (tx) => {
-        const invoice = await tx.commissionInvoice.findUnique({ where: { id: invoiceId } });
-        if (!invoice || invoice.status !== CommissionInvoiceStatus.ISSUED) return;
-        if (merchantRequestId && invoice.tumaMerchantRequestId && merchantRequestId !== invoice.tumaMerchantRequestId) return;
-        await tx.commissionInvoice.update({
-          where: { id: invoiceId },
-          data: { lastPaymentError: 'The M-Pesa payment was cancelled or failed - try again' },
-        });
-      });
+    const invoice = await this.runAsTenant(organizationId, (tx) => tx.commissionInvoice.findUnique({ where: { id: invoiceId } }));
+    if (!invoice) throw new NotFoundException();
+    if (invoice.status !== CommissionInvoiceStatus.ISSUED) return { ok: true };
+
+    const verdict = evaluateCallback(body, { amount: invoice.amountDue, latestRequestId: invoice.tumaMerchantRequestId });
+    const { merchantRequestId } = parseCallback(body);
+    switch (verdict.kind) {
+      case 'paid':
+        await this.settle(organizationId, invoice, verdict.receipt, merchantRequestId ?? invoice.tumaMerchantRequestId ?? undefined);
+        break;
+      case 'review':
+        this.logger.error({ invoiceId, detail: verdict.detail }, 'Tuma reported a commission payment that does not match the invoice - needs manual review');
+        await this.flag(organizationId, invoiceId, `A payment was received that doesn't match this invoice (${verdict.detail}). Contact Zaroda.`);
+        break;
+      case 'failed':
+        if (!merchantRequestId || !invoice.tumaMerchantRequestId || merchantRequestId === invoice.tumaMerchantRequestId) {
+          await this.flag(organizationId, invoiceId, 'The M-Pesa payment was cancelled or failed - try again');
+        }
+        break;
+      case 'needs-check':
+        this.logger.warn({ invoiceId, reason: verdict.reason }, 'Callback was not complete enough to trust - asking Tuma (KES 1)');
+        await this.verifyWithTuma(organizationId, invoiceId).catch(() => undefined);
+        break;
+      case 'pending':
+        break;
     }
     return { ok: true };
   }
 
-  /** Asks Tuma (with ZARODA's own account) whether the invoice's payment went through; only a confirmed full payment settles it. */
-  private async verifyAndSettle(
-    organizationId: string,
-    invoiceId: string,
-    merchantRequestId?: string,
-  ): Promise<'paid' | 'review' | 'unconfirmed' | 'skipped'> {
-    const invoice = await this.runAsTenant(organizationId, (tx) => tx.commissionInvoice.findUnique({ where: { id: invoiceId } }));
-    if (!invoice || invoice.status !== CommissionInvoiceStatus.ISSUED) return 'skipped';
-    const requestId = merchantRequestId ?? invoice.tumaMerchantRequestId;
-    if (!requestId || !this.tuma.hasPlatformCredentials()) return 'skipped';
+  private flag(organizationId: string, invoiceId: string, message: string) {
+    return this.runAsTenant(organizationId, (tx) => tx.commissionInvoice.update({ where: { id: invoiceId }, data: { lastPaymentError: message } }));
+  }
 
-    const confirmation = await this.tuma.confirmPayment(this.tuma.platformCredentials(), requestId, invoice.amountDue);
-    if (confirmation.outcome === 'review') {
-      this.logger.error({ invoiceId, detail: confirmation.detail }, 'Tuma reported a commission payment that does not match the invoice - needs manual review');
-      await this.runAsTenant(organizationId, (tx) =>
-        tx.commissionInvoice.update({
-          where: { id: invoiceId },
-          data: { lastPaymentError: `A payment was received that doesn't match this invoice (${confirmation.detail}). Contact Zaroda.` },
-        }),
-      );
-      return 'review';
-    }
-    if (confirmation.outcome !== 'paid') return 'unconfirmed';
-
-    const receipt = confirmation.mpesaReceipt?.trim() || `TUMA:${requestId}`;
+  /**
+   * Marks the invoice PAID by M-Pesa and emails a receipt. Conditional on
+   * still being ISSUED, so a callback, a "check now", and a platform admin
+   * recording it by hand at the same moment settle it - and send the
+   * receipt - only once.
+   */
+  private async settle(organizationId: string, invoice: CommissionInvoice, receipt: string, requestId?: string): Promise<'paid' | 'skipped'> {
     const settled = await this.runAsTenant(organizationId, async (tx) => {
-      // Conditional on still being ISSUED, so a callback and a page re-check
-      // racing each other (or a platform admin recording it by hand at the
-      // same moment) settle the invoice, and send the receipt, only once.
       const result = await tx.commissionInvoice.updateMany({
-        where: { id: invoiceId, status: CommissionInvoiceStatus.ISSUED },
+        where: { id: invoice.id, status: CommissionInvoiceStatus.ISSUED },
         data: {
           status: CommissionInvoiceStatus.PAID,
           paidAt: new Date(),
           paymentMethod: 'MPESA',
           paymentReference: receipt,
-          tumaMerchantRequestId: requestId,
+          ...(requestId ? { tumaMerchantRequestId: requestId } : {}),
           lastPaymentError: null,
         },
       });
-      return result.count === 1 ? tx.commissionInvoice.findUniqueOrThrow({ where: { id: invoiceId } }) : null;
+      return result.count === 1 ? tx.commissionInvoice.findUniqueOrThrow({ where: { id: invoice.id } }) : null;
     });
-    if (settled) await this.sendReceipt(organizationId, settled, receipt);
+    if (!settled) return 'skipped';
+    await this.sendReceipt(organizationId, settled, receipt);
     return 'paid';
+  }
+
+  /**
+   * The paid backup: asks Tuma (with ZARODA's own account, KES 1 per call)
+   * whether the invoice's latest payment went through. Only a confirmed
+   * full payment settles it.
+   */
+  private async verifyWithTuma(
+    organizationId: string,
+    invoiceId: string,
+  ): Promise<'paid' | 'review' | 'unconfirmed' | 'unavailable' | 'skipped'> {
+    const invoice = await this.runAsTenant(organizationId, (tx) => tx.commissionInvoice.findUnique({ where: { id: invoiceId } }));
+    if (!invoice || invoice.status !== CommissionInvoiceStatus.ISSUED) return 'skipped';
+    const requestId = invoice.tumaMerchantRequestId;
+    if (!requestId || !this.tuma.hasPlatformCredentials()) return 'skipped';
+
+    const confirmation = await this.tuma.confirmPayment(this.tuma.platformCredentials(), requestId, invoice.amountDue);
+    if (confirmation.outcome === 'review') {
+      this.logger.error({ invoiceId, detail: confirmation.detail }, 'Tuma reported a commission payment that does not match the invoice - needs manual review');
+      await this.flag(organizationId, invoiceId, `A payment was received that doesn't match this invoice (${confirmation.detail}). Contact Zaroda.`);
+      return 'review';
+    }
+    if (confirmation.outcome === 'unavailable') {
+      this.logger.error({ invoiceId, detail: confirmation.detail }, "Could not check this commission payment with Tuma (is ZARODA's Tuma account out of credits?)");
+      await this.flag(organizationId, invoiceId, 'We could not confirm the payment just now. If you have paid, Zaroda will confirm it - or try again in a few minutes.');
+      return 'unavailable';
+    }
+    if (confirmation.outcome !== 'paid') return 'unconfirmed';
+    return (await this.settle(organizationId, invoice, confirmation.mpesaReceipt?.trim() || `TUMA:${requestId}`, requestId)) === 'paid' ? 'paid' : 'skipped';
   }
 
   // ── Emails ────────────────────────────────────────────────────────────
@@ -358,9 +408,12 @@ export class CommissionService {
    * run as often as you like - every step is idempotent (see
    * generateInvoices, nextReminderStage).
    */
-  async runAutomation(opts: { sendEmails?: boolean } = {}) {
+  async runAutomation(opts: { sendEmails?: boolean; reconcile?: boolean } = {}) {
     const generated = await this.generateInvoices();
-    const reconciled = await this.reconcilePendingPayments();
+    // Re-checking pending payments is a paid call (KES 1 each), so the hourly
+    // scheduler skips it (the free callback is the normal route); only a
+    // person pressing "Run billing now" asks for it.
+    const reconciled = opts.reconcile === false ? 0 : await this.reconcilePendingPayments();
     const notices = opts.sendEmails === false ? { sent: 0, skipped: 0 } : await this.sendDueNotices();
     return { invoicesCreated: generated.created, paymentsConfirmed: reconciled, emailsSent: notices.sent, emailsSkipped: notices.skipped };
   }
@@ -379,7 +432,7 @@ export class CommissionService {
         }),
       );
       for (const { id } of pending) {
-        const outcome = await this.verifyAndSettle(org.id, id).catch(() => 'unconfirmed' as const);
+        const outcome = await this.verifyWithTuma(org.id, id).catch(() => 'unconfirmed' as const);
         if (outcome === 'paid') confirmed++;
       }
     }

@@ -20,6 +20,7 @@ import { OnlineOrdersService } from './online-orders.service';
 import { ShopCatalogService } from './shop-catalog.service';
 import {
   CancelOnlineOrderDto,
+  ConfirmOrderPaymentDto,
   CreateOnlineOrderDto,
   ListOnlineOrdersQueryDto,
   RequestBuyerCodeDto,
@@ -32,6 +33,7 @@ import {
 // endpoints that send SMS or check codes.
 const AUTH_THROTTLE = { default: { limit: 5, ttl: 60_000 } };
 const CHECKOUT_THROTTLE = { default: { limit: 10, ttl: 60_000 } };
+const CHECK_THROTTLE = { default: { limit: 4, ttl: 60_000 } };
 
 /** Public, unauthenticated: a live shop's catalog. */
 @Controller('public/shops')
@@ -135,6 +137,16 @@ export class BuyerController {
     return this.orders.retryPayment(buyerId, id, dto.paymentPhone);
   }
 
+  // "I've paid, check now": the backup when no callback arrived. Each call
+  // costs the shop KES 1 (Tuma's status check), so it is throttled here and
+  // limited per order in the service.
+  @Throttle(CHECK_THROTTLE)
+  @Post('orders/:id/check')
+  @HttpCode(200)
+  checkPayment(@CurrentBuyerId() buyerId: string, @Param('id', ParseUUIDPipe) id: string) {
+    return this.orders.checkPaymentForBuyer(buyerId, id);
+  }
+
   @Post('orders/:id/cancel')
   @HttpCode(200)
   cancel(@CurrentBuyerId() buyerId: string, @Param('id', ParseUUIDPipe) id: string) {
@@ -174,6 +186,15 @@ export class OnlineOrdersController {
   @HttpCode(200)
   complete(@Param('id', ParseUUIDPipe) id: string) {
     return this.orders.complete(id);
+  }
+
+  // For when the shop can see the M-Pesa message but the automatic confirmation
+  // didn't come. Managers only: it releases an order for fulfilment.
+  @Roles(Role.MANAGER, Role.OWNER)
+  @Post(':id/confirm-payment')
+  @HttpCode(200)
+  confirmPayment(@Param('id', ParseUUIDPipe) id: string, @Body() dto: ConfirmOrderPaymentDto) {
+    return this.orders.confirmPaymentByBusiness(id, dto.receipt);
   }
 
   // Cancelling a paid order means the business owes a refund - managers only.

@@ -24,7 +24,7 @@ import { InventoryTransactionsService } from '../inventory/inventory-transaction
 import { AfricasTalkingSmsProvider } from '../notifications/africas-talking-sms.provider';
 import { DEFAULT_COMMISSION_RATE } from '../online-store/online-store.constants';
 import { TumaClient } from '../online-store/tuma.client';
-import { parseCallback } from '../online-store/tuma.util';
+import { evaluateCallback, parseCallback } from '../online-store/tuma.util';
 import { ShopCatalogService } from './shop-catalog.service';
 import { CancelOnlineOrderDto, CreateOnlineOrderDto } from './dto/online-order.dto';
 import { generateOrderNumber, normalizeKenyanPhone, roundMoney } from './online-orders.util';
@@ -35,8 +35,10 @@ const TX_OPTIONS = { timeout: 15_000, maxWait: 15_000 };
 const PAYMENT_WINDOW_MS = 15 * 60_000;
 // A retry before this would risk two live prompts for one order.
 const RETRY_COOLDOWN_MS = 60_000;
-// How often a buyer's page may re-ask Tuma about the same pending order.
-const RECHECK_INTERVAL_MS = 8_000;
+// "I've paid, check now" costs the shop KES 1 each time (Tuma's status check is
+// paid; its callbacks are free), so it is rate limited.
+const CHECK_COOLDOWN_MS = 30_000;
+const MAX_CHECKS_PER_ORDER = 5;
 
 type OrderWithLines = OnlineOrder & { lines: OnlineOrderLine[] };
 
@@ -97,8 +99,8 @@ export function toOrderView(order: OrderWithLines) {
 @Injectable()
 export class OnlineOrdersService {
   private readonly logger = new Logger(OnlineOrdersService.name);
-  // Best-effort per-process throttle on re-asking Tuma about a pending order.
-  private readonly lastChecked = new Map<string, number>();
+  // Per-process limits on paid "check now" presses (reset on restart; the cost is small).
+  private readonly checks = new Map<string, { last: number; count: number }>();
 
   constructor(
     private readonly prisma: PrismaService,
@@ -338,40 +340,22 @@ export class OnlineOrdersService {
     });
   }
 
+  // Plain reads. They never call Tuma: its status check costs KES 1 each,
+  // charged to the shop, so polling it from a page would burn money. A payment
+  // reaches us through Tuma's free callback (handleTumaCallback); the buyer's
+  // "I've paid, check now" button (checkPaymentForBuyer) is the rare backup.
   async listForBuyer(buyerId: string) {
-    let orders = await this.loadBuyerOrders(buyerId);
-    // A buyer who paid and closed the page, whose callback never arrived,
-    // is caught here the next time they open their orders.
-    const pending = orders.filter((o) => this.shouldRecheck(o)).slice(0, 5);
-    if (pending.length > 0) {
-      for (const order of pending) await this.verifyAndSettle(order.organizationId, order.id).catch(() => undefined);
-      orders = await this.loadBuyerOrders(buyerId);
-    }
-    return orders.map(toOrderView);
+    return (await this.loadBuyerOrders(buyerId)).map(toOrderView);
+  }
+
+  private findBuyerOrder(buyerId: string, orderId: string) {
+    return this.runAsBuyer(buyerId, (tx) => tx.onlineOrder.findFirst({ where: { id: orderId, buyerId }, include: { lines: true } }));
   }
 
   async getForBuyer(buyerId: string, orderId: string) {
-    const find = () =>
-      this.runAsBuyer(buyerId, (tx) => tx.onlineOrder.findFirst({ where: { id: orderId, buyerId }, include: { lines: true } }));
-    let order = await find();
+    const order = await this.findBuyerOrder(buyerId, orderId);
     if (!order) throw new NotFoundException('Order not found');
-    // The order page polls while waiting for the PIN; if Tuma's callback
-    // is slow or never comes, ask Tuma directly (like the school system's
-    // subscription payments do), at most every few seconds per order.
-    if (this.shouldRecheck(order)) {
-      await this.verifyAndSettle(order.organizationId, order.id).catch(() => undefined);
-      order = (await find()) ?? order;
-    }
     return toOrderView(order);
-  }
-
-  /** Pending, a prompt was sent, and we haven't asked Tuma in the last few seconds. */
-  private shouldRecheck(order: OnlineOrder): boolean {
-    if (order.status !== OnlineOrderStatus.PENDING_PAYMENT || !order.tumaMerchantRequestId) return false;
-    const last = this.lastChecked.get(order.id) ?? 0;
-    if (Date.now() - last < RECHECK_INTERVAL_MS) return false;
-    this.lastChecked.set(order.id, Date.now());
-    return true;
   }
 
   /** Buyers can only cancel before paying - once paid, the money is with the business, so the business handles it. */
@@ -391,17 +375,20 @@ export class OnlineOrdersService {
     return toOrderView(order);
   }
 
-  // ── TUMA payment callback ─────────────────────────────────────────────
+  // ── Paying: Tuma's callback (free) and the backup status check (KES 1) ─
 
   /**
-   * Trust model - the same one the school system uses for subscriptions:
-   * Tuma's callbacks are unsigned, so a callback never settles anything.
-   * 1. The URL token must be this order's HMAC - only Tuma was given it.
-   * 2. Even then the callback is only a prompt: we ask Tuma's status API
-   *    (with the shop's own credentials) whether the payment really went
-   *    through, and for how much. Only Tuma's answer can mark the order paid.
-   * 3. The M-Pesa receipt is unique across orders, so one payment can only
-   *    ever settle one order.
+   * How a payment is learned about. Tuma confirmed (support, Oct 2026) that
+   * webhooks are free and real-time while its status check costs KES 1 per
+   * request, so the callback does the work:
+   * 1. The URL token must be this order's HMAC - only Tuma was given the
+   *    address, which is what proves the callback is Tuma's.
+   * 2. The callback body must itself be complete and consistent
+   *    (evaluateCallback: success, full amount, an M-Pesa receipt, the
+   *    right payment request). The receipt is unique across orders, so one
+   *    payment can only ever settle one order.
+   * 3. A callback that is incomplete is never acted on as-is; it triggers
+   *    one (paid) status check instead, and Tuma's answer decides.
    * A payment that completes after the order expired is still honoured -
    * the buyer's money has moved, so the shop must see it (and can refund).
    */
@@ -412,45 +399,103 @@ export class OnlineOrdersService {
       throw new NotFoundException();
     }
 
-    const { merchantRequestId, success } = parseCallback(body);
-    const outcome = await this.verifyAndSettle(organizationId, orderId, merchantRequestId);
+    const order = await this.runAsTenant(organizationId, (tx) => tx.onlineOrder.findUnique({ where: { id: orderId } }));
+    if (!order) throw new NotFoundException();
+    // Already settled (e.g. a duplicate delivery) - nothing to do.
+    if (order.status !== OnlineOrderStatus.PENDING_PAYMENT && order.status !== OnlineOrderStatus.EXPIRED) return { ok: true };
 
-    // A reported failure for the CURRENT prompt lets the buyer retry at once.
-    // Tuma's own check wins: if it says paid we never get here.
-    if (!success && outcome !== 'paid') {
-      await this.runAsTenant(organizationId, async (tx) => {
-        const order = await tx.onlineOrder.findUnique({ where: { id: orderId } });
-        if (!order || order.status !== OnlineOrderStatus.PENDING_PAYMENT) return;
-        if (merchantRequestId && order.tumaMerchantRequestId && merchantRequestId !== order.tumaMerchantRequestId) return;
-        await tx.onlineOrder.update({
-          where: { id: orderId },
-          data: { lastPaymentError: 'The M-Pesa payment was cancelled or failed - try again' },
-        });
-      });
+    const verdict = evaluateCallback(body, { amount: order.amountDue, latestRequestId: order.tumaMerchantRequestId });
+    const { merchantRequestId } = parseCallback(body);
+
+    switch (verdict.kind) {
+      case 'paid':
+        await this.settle(organizationId, order, verdict.receipt, merchantRequestId ?? order.tumaMerchantRequestId ?? undefined);
+        break;
+      case 'review':
+        this.logger.error({ orderId, detail: verdict.detail }, 'Tuma reported a payment that does not match the order - needs manual review');
+        await this.flag(organizationId, orderId, `A payment was received that doesn't match this order (${verdict.detail}). Contact the shop.`);
+        break;
+      case 'failed':
+        // A failure for the CURRENT prompt lets the buyer retry at once; one for an earlier prompt is ignored.
+        if (order.status === OnlineOrderStatus.PENDING_PAYMENT && (!merchantRequestId || !order.tumaMerchantRequestId || merchantRequestId === order.tumaMerchantRequestId)) {
+          await this.flag(organizationId, orderId, 'The M-Pesa payment was cancelled or failed - try again');
+        }
+        break;
+      case 'needs-check':
+        this.logger.warn({ orderId, reason: verdict.reason }, 'Callback was not complete enough to trust - asking Tuma (KES 1)');
+        await this.verifyWithTuma(organizationId, orderId).catch(() => undefined);
+        break;
+      case 'pending':
+        break;
     }
     return { ok: true };
   }
 
+  /** A short note on the order, shown to the buyer and the shop. */
+  private flag(organizationId: string, orderId: string, message: string) {
+    return this.runAsTenant(organizationId, (tx) => tx.onlineOrder.update({ where: { id: orderId }, data: { lastPaymentError: message } }));
+  }
+
   /**
-   * Asks Tuma whether this order's payment went through and, only if it did
-   * for the full amount, marks the order PAID. `merchantRequestId` defaults
-   * to the latest prompt; a callback for an earlier prompt can name its own.
+   * Marks the order PAID. Conditional on still being unpaid, so a callback
+   * and a manual confirmation racing each other settle (and text the shop)
+   * only once.
    */
-  private async verifyAndSettle(
+  private async settle(
+    organizationId: string,
+    order: OnlineOrder,
+    receipt: string,
+    requestId?: string,
+  ): Promise<'paid' | 'skipped' | 'review'> {
+    try {
+      const settled = await this.runAsTenant(organizationId, async (tx) => {
+        const result = await tx.onlineOrder.updateMany({
+          where: { id: order.id, status: { in: [OnlineOrderStatus.PENDING_PAYMENT, OnlineOrderStatus.EXPIRED] } },
+          data: {
+            status: OnlineOrderStatus.PAID,
+            paidAt: new Date(),
+            mpesaReceiptNumber: receipt,
+            ...(requestId ? { tumaMerchantRequestId: requestId } : {}),
+            lastPaymentError: null,
+          },
+        });
+        if (result.count !== 1) return null;
+        const store = await tx.onlineStore.findUnique({ where: { organizationId }, select: { contactPhone: true } });
+        return { contactPhone: store?.contactPhone };
+      });
+      if (!settled) return 'skipped';
+      await this.notifySms(
+        settled.contactPhone,
+        `New Zaroda online order ${order.orderNumber}: KES ${order.amountDue} paid (M-Pesa ${receipt}). Open Online Orders to accept it.`,
+      );
+      return 'paid';
+    } catch (e) {
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
+        // Receipt already used on another order - never mark two orders paid with one payment.
+        this.logger.error({ orderId: order.id, receipt }, 'That M-Pesa receipt already settled a different order');
+        return 'review';
+      }
+      throw e;
+    }
+  }
+
+  /**
+   * Asks Tuma's status API whether this order's latest payment went through.
+   * KES 1 per call, charged to the SHOP's Tuma account - so only for the
+   * backup cases (incomplete callback, or someone pressing "check now").
+   */
+  private async verifyWithTuma(
     organizationId: string,
     orderId: string,
-    merchantRequestId?: string,
-  ): Promise<'paid' | 'review' | 'unconfirmed' | 'skipped'> {
+  ): Promise<'paid' | 'review' | 'unconfirmed' | 'unavailable' | 'skipped'> {
     const { order, store } = await this.runAsTenant(organizationId, async (tx) => ({
       order: await tx.onlineOrder.findUnique({ where: { id: orderId } }),
       store: await tx.onlineStore.findUnique({ where: { organizationId } }),
     }));
-    if (!order || !store?.tumaEmail || !store.tumaApiKeyEncrypted) return 'skipped';
-    const requestId = merchantRequestId ?? order.tumaMerchantRequestId;
-    if (!requestId) return 'skipped';
-    // Already settled (e.g. by a duplicate callback) - nothing to do.
+    if (!order || !store?.tumaEmail || !store.tumaApiKeyEncrypted || !order.tumaMerchantRequestId) return 'skipped';
     if (order.status !== OnlineOrderStatus.PENDING_PAYMENT && order.status !== OnlineOrderStatus.EXPIRED) return 'skipped';
 
+    const requestId = order.tumaMerchantRequestId;
     const confirmation = await this.tuma.confirmPayment(
       { email: store.tumaEmail, apiKey: decryptSecret(store.tumaApiKeyEncrypted, this.encryptionKey()) },
       requestId,
@@ -459,50 +504,84 @@ export class OnlineOrdersService {
 
     if (confirmation.outcome === 'review') {
       this.logger.error({ orderId, detail: confirmation.detail }, 'Tuma reported a payment that does not match the order - needs manual review');
-      await this.runAsTenant(organizationId, (tx) =>
-        tx.onlineOrder.update({
-          where: { id: orderId },
-          data: { lastPaymentError: `A payment was received that doesn't match this order (${confirmation.detail}). Contact the shop.` },
-        }),
-      );
+      await this.flag(organizationId, orderId, `A payment was received that doesn't match this order (${confirmation.detail}). Contact the shop.`);
       return 'review';
+    }
+    if (confirmation.outcome === 'unavailable') {
+      this.logger.error({ orderId, detail: confirmation.detail }, 'Could not check this payment with Tuma');
+      await this.flag(
+        organizationId,
+        orderId,
+        'We could not confirm the payment with Tuma just now. If you have paid, the shop can confirm it from its Online Orders page.',
+      );
+      return 'unavailable';
     }
     if (confirmation.outcome !== 'paid') return 'unconfirmed';
 
     // Tuma sometimes gives no receipt; the request id is just as unique a
     // guard against one payment settling two orders.
-    const receipt = confirmation.mpesaReceipt?.trim() || `TUMA:${requestId}`;
+    const outcome = await this.settle(organizationId, order, confirmation.mpesaReceipt?.trim() || `TUMA:${requestId}`, requestId);
+    return outcome === 'review' ? 'review' : 'paid';
+  }
+
+  /**
+   * "I've paid, check now" - the buyer's backup when no callback arrived.
+   * Each press costs the shop KES 1, so it is limited: a cooldown between
+   * presses and a cap per order.
+   */
+  async checkPaymentForBuyer(buyerId: string, orderId: string) {
+    const order = await this.findBuyerOrder(buyerId, orderId);
+    if (!order) throw new NotFoundException('Order not found');
+    if (order.status !== OnlineOrderStatus.PENDING_PAYMENT || !order.tumaMerchantRequestId) {
+      return { ...toOrderView(order), checkResult: 'not-needed' as const };
+    }
+    const state = this.checks.get(order.id) ?? { last: 0, count: 0 };
+    if (Date.now() - state.last < CHECK_COOLDOWN_MS) {
+      throw new BadRequestException('Please wait about 30 seconds before checking again');
+    }
+    if (state.count >= MAX_CHECKS_PER_ORDER) {
+      throw new BadRequestException('This order has been checked several times already - please contact the shop with your M-Pesa message');
+    }
+    this.checks.set(order.id, { last: Date.now(), count: state.count + 1 });
+
+    const result = await this.verifyWithTuma(order.organizationId, order.id);
+    const updated = (await this.findBuyerOrder(buyerId, orderId)) ?? order;
+    return {
+      ...toOrderView(updated),
+      checkResult: (result === 'paid' ? 'paid' : result === 'unconfirmed' ? 'not-paid-yet' : result === 'unavailable' ? 'unavailable' : 'not-needed') as
+        | 'paid'
+        | 'not-paid-yet'
+        | 'unavailable'
+        | 'not-needed',
+    };
+  }
+
+  /**
+   * The shop confirms a payment by hand - for when it can see the M-Pesa
+   * message (or the Tuma portal) but the automatic confirmation didn't come.
+   * It is the shop's own money, so the shop's word is enough; the receipt
+   * is required and, like any other, can only belong to one order.
+   */
+  async confirmPaymentByBusiness(id: string, receipt: string) {
+    const cleaned = receipt.trim().toUpperCase();
     try {
-      const paid = await this.runAsTenant(organizationId, async (tx) => {
-        // Conditional on still being unpaid, so a callback and a buyer-page
-        // re-check racing each other settle (and text the shop) only once.
+      const order = await this.tenantPrisma.run(async (tx) => {
+        const current = await tx.onlineOrder.findUnique({ where: { id } });
+        if (!current) throw new NotFoundException('Order not found');
         const result = await tx.onlineOrder.updateMany({
-          where: { id: orderId, status: { in: [OnlineOrderStatus.PENDING_PAYMENT, OnlineOrderStatus.EXPIRED] } },
-          data: {
-            status: OnlineOrderStatus.PAID,
-            paidAt: new Date(),
-            mpesaReceiptNumber: receipt,
-            tumaMerchantRequestId: requestId,
-            lastPaymentError: null,
-          },
+          where: { id, status: { in: [OnlineOrderStatus.PENDING_PAYMENT, OnlineOrderStatus.EXPIRED] } },
+          data: { status: OnlineOrderStatus.PAID, paidAt: new Date(), mpesaReceiptNumber: cleaned, lastPaymentError: null },
         });
-        return result.count === 1 ? tx.onlineOrder.findUnique({ where: { id: orderId } }) : null;
+        if (result.count !== 1) throw new BadRequestException('Only an order that is waiting for payment can be marked as paid');
+        return tx.onlineOrder.findUniqueOrThrow({ where: { id }, include: { lines: true } });
       });
-      if (paid) {
-        await this.notifySms(
-          store.contactPhone,
-          `New Zaroda online order ${paid.orderNumber}: KES ${paid.amountDue} paid (M-Pesa ${receipt}). Open Online Orders to accept it.`,
-        );
-      }
+      return toOrderView(order);
     } catch (e) {
       if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
-        // Receipt already used on another order - never mark two orders paid with one payment.
-        this.logger.error({ orderId, receipt }, 'Tuma payment already settled a different order');
-        return 'review';
+        throw new ConflictException('That M-Pesa receipt is already attached to another order');
       }
       throw e;
     }
-    return 'paid';
   }
 
   // ── Business: order handling ──────────────────────────────────────────

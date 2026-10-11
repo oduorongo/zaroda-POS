@@ -239,25 +239,30 @@ export default function OnlineShopSettingsPage() {
     }
   }
 
-  // While an M-Pesa prompt is out, ask the server every few seconds whether
-  // it went through - it checks with Tuma itself, so this works even if
-  // Tuma's callback is slow. When an invoice settles, reload everything (the
-  // shop may reappear if it was hidden for this invoice).
+  // While an M-Pesa prompt is out, re-read the invoices every few seconds. These
+  // are plain, free reads: Zaroda's server learns of the payment from Tuma's own
+  // notification and the invoice turns Paid by itself (and a shop that was hidden
+  // for it reappears). The paid "check now" button below is only the backup.
+  const hasPendingPayment = Boolean(commission?.invoices.some((i) => i.paymentPending));
   useEffect(() => {
-    const pending = commission?.invoices.filter((i) => i.paymentPending) ?? [];
-    if (pending.length === 0) return;
-    const timer = setInterval(() => {
-      for (const invoice of pending) {
-        apiPost<CommissionInvoice>(`/online-store/me/commission/invoices/${invoice.id}/check`, {})
-          .then((updated) => {
-            replaceInvoice(updated);
-            if (updated.status !== "ISSUED") void reloadCommission();
-          })
-          .catch(() => undefined);
-      }
-    }, 5000);
+    if (!hasPendingPayment) return;
+    const timer = setInterval(() => void reloadCommission(), 5000);
     return () => clearInterval(timer);
-  }, [commission]);
+  }, [hasPendingPayment]);
+
+  const [checkNote, setCheckNote] = useState<string | null>(null);
+  async function checkNow(invoice: CommissionInvoice) {
+    setCheckNote(null);
+    try {
+      const result = await apiPost<CommissionInvoice & { checkResult: string }>(`/online-store/me/commission/invoices/${invoice.id}/check`, {});
+      replaceInvoice(result);
+      if (result.status !== "ISSUED") void reloadCommission();
+      else if (result.checkResult === "not-paid-yet") setCheckNote("Not received yet. If you have just entered your PIN, give it a minute and try again.");
+      else if (result.checkResult === "unavailable") setCheckNote("We couldn't check just now. If you have paid, Zaroda will confirm it - or try again in a few minutes.");
+    } catch (err) {
+      setCheckNote(err instanceof ApiError ? err.message : "Could not check the payment.");
+    }
+  }
 
   if (!session) return null;
 
@@ -407,6 +412,10 @@ export default function OnlineShopSettingsPage() {
                           {inv.paymentPending && (
                             <p className="rounded-md bg-primary-50 p-2 text-xs text-primary-700">
                               Check your phone ({inv.payPhone ? `0${inv.payPhone.slice(3)}` : ""}) for the M-Pesa prompt for {kes(inv.amountDue)} and enter your PIN. This updates by itself.
+                              <button onClick={() => void checkNow(inv)} className="ml-2 underline">
+                                Paid already? Check now
+                              </button>
+                              {checkNote && <span className="mt-1 block text-secondary-700">{checkNote}</span>}
                             </p>
                           )}
                           {inv.status === "ISSUED" && inv.lastPaymentError && !inv.paymentPending && payingId !== inv.id && (

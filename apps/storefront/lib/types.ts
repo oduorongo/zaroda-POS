@@ -73,6 +73,9 @@ export interface Order {
   lines: OrderLine[];
 }
 
+/** What the "I've paid, check now" button gets back. */
+export type OrderCheck = Order & { checkResult: 'paid' | 'not-paid-yet' | 'unavailable' | 'not-needed' };
+
 export interface Buyer {
   id: string;
   phone: string;

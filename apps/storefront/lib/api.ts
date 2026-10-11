@@ -1,4 +1,4 @@
-import type { Buyer, Order, Shop, ShopSummary } from "./types";
+import type { Buyer, Order, OrderCheck, Shop, ShopSummary } from "./types";
 
 export class ApiError extends Error {
   status: number;
@@ -75,6 +75,12 @@ export const createOrder = (token: string, input: CreateOrderInput) =>
 export const listOrders = (token: string) => request<Order[]>("/buyer/orders", { token });
 
 export const getOrder = (token: string, id: string) => request<Order>(`/buyer/orders/${id}`, { token });
+
+// The backup for when the shop's payment confirmation hasn't arrived on its own. It asks
+// M-Pesa via Tuma, which costs the shop KES 1 a time - so the page only offers it after a
+// wait, and the server limits it.
+export const checkOrderPayment = (token: string, id: string) =>
+  request<OrderCheck>(`/buyer/orders/${id}/check`, { method: "POST", token, body: "{}" });
 
 export const payOrder = (token: string, id: string, paymentPhone?: string) =>
   request<Order>(`/buyer/orders/${id}/pay`, { method: "POST", token, body: JSON.stringify(paymentPhone ? { paymentPhone } : {}) });
