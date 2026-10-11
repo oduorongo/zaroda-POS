@@ -91,11 +91,12 @@ jobs:
       DATABASE_URL: postgresql://zaroda_app:ci_only_password@localhost:5432/zaroda_ci
       # app.e2e-spec.ts (which this job's `pnpm test:e2e` also runs, same
       # jest-e2e.json testRegex as rls-isolation.e2e-spec.ts) boots the full
-      # AppModule, and both AuthModule and PlatformAdminModule call
+      # AppModule, and AuthModule, PlatformAdminModule and OnlineOrdersModule call
       # config.getOrThrow on these - CI-only throwaway values, never real
       # secrets.
       JWT_SECRET: ci_only_jwt_secret
       PLATFORM_ADMIN_JWT_SECRET: ci_only_platform_admin_jwt_secret
+      BUYER_JWT_SECRET: ci_only_buyer_jwt_secret
     steps:
       - uses: actions/checkout@v4
 

@@ -8,3 +8,8 @@ build/
 .turbo/
 coverage/
 .DS_Store
+
+# TypeScript incremental build caches
+*.tsbuildinfo
+.env.*
+!.env.example

@@ -45,6 +45,8 @@ import { PurchasingModule } from './purchasing/purchasing.module';
 import { RepackagingModule } from './repackaging/repackaging.module';
 import { RecipesModule } from './recipes/recipes.module';
 import { WasteModule } from './waste/waste.module';
+import { OnlineStoreModule } from './online-store/online-store.module';
+import { OnlineOrdersModule } from './online-orders/online-orders.module';
 
 // Phase 1+ will import vertical module packages here and register their
 // manifests on ModuleRegistryService at bootstrap (see DESIGN.md §3) - none
@@ -122,6 +124,8 @@ import { WasteModule } from './waste/waste.module';
     PlatformAdminModule,
     PublicPlansModule,
     PublicBookingModule,
+    OnlineStoreModule,
+    OnlineOrdersModule,
     LayawaysModule,
     RestaurantModule,
     PharmacyModule,

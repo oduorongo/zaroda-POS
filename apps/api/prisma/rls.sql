@@ -180,6 +180,15 @@ CREATE POLICY tenant_isolation ON product_variants
   WITH CHECK (EXISTS (SELECT 1 FROM products p WHERE p.id = product_variants."productId"
                  AND p."organizationId" = current_setting('app.current_tenant', true)));
 
+ALTER TABLE product_images ENABLE ROW LEVEL SECURITY;
+ALTER TABLE product_images FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON product_images;
+CREATE POLICY tenant_isolation ON product_images
+  USING (EXISTS (SELECT 1 FROM products p WHERE p.id = product_images."productId"
+                 AND p."organizationId" = current_setting('app.current_tenant', true)))
+  WITH CHECK (EXISTS (SELECT 1 FROM products p WHERE p.id = product_images."productId"
+                 AND p."organizationId" = current_setting('app.current_tenant', true)));
+
 -- ── Scoped via variantId -> products."organizationId" ──────────────────────
 
 ALTER TABLE batches ENABLE ROW LEVEL SECURITY;
@@ -540,6 +549,67 @@ DROP POLICY IF EXISTS tenant_isolation ON roster_shifts;
 CREATE POLICY tenant_isolation ON roster_shifts
   USING ("organizationId" = current_setting('app.current_tenant', true))
   WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+-- Online shop settings (marketplace add-on).
+ALTER TABLE online_stores ENABLE ROW LEVEL SECURITY;
+ALTER TABLE online_stores FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON online_stores;
+CREATE POLICY tenant_isolation ON online_stores
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+-- Deliberate, narrow public exception: the storefront and buyer checkout
+-- must find a shop by its slug before any tenant is known. A transaction
+-- opts in with set_config('app.public_catalog', 'on', true) (only
+-- PublicShopService / OnlineOrdersService do), and even then sees only
+-- shops that are paid for AND published. SELECT only - permissive policies
+-- OR together, so this never widens what can be written. Callers select
+-- only public columns; the TUMA key is encrypted regardless.
+DROP POLICY IF EXISTS public_catalog_read ON online_stores;
+CREATE POLICY public_catalog_read ON online_stores
+  FOR SELECT
+  USING (current_setting('app.public_catalog', true) = 'on'
+         AND "addonActive" AND "isPublished");
+
+-- Online orders belong to two parties: the business (app.current_tenant)
+-- and the buyer who placed it (app.current_buyer, set by buyer-facing
+-- requests from the verified buyer JWT - see BuyerAuthGuard). Either may
+-- see the order; neither sees anyone else's.
+ALTER TABLE online_orders ENABLE ROW LEVEL SECURITY;
+ALTER TABLE online_orders FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON online_orders;
+CREATE POLICY tenant_isolation ON online_orders
+  USING ("organizationId" = current_setting('app.current_tenant', true)
+         OR "buyerId" = current_setting('app.current_buyer', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true)
+              OR "buyerId" = current_setting('app.current_buyer', true));
+
+ALTER TABLE online_order_lines ENABLE ROW LEVEL SECURITY;
+ALTER TABLE online_order_lines FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON online_order_lines;
+CREATE POLICY tenant_isolation ON online_order_lines
+  USING (EXISTS (SELECT 1 FROM online_orders o WHERE o.id = online_order_lines."orderId"
+                 AND (o."organizationId" = current_setting('app.current_tenant', true)
+                      OR o."buyerId" = current_setting('app.current_buyer', true))))
+  WITH CHECK (EXISTS (SELECT 1 FROM online_orders o WHERE o.id = online_order_lines."orderId"
+                 AND (o."organizationId" = current_setting('app.current_tenant', true)
+                      OR o."buyerId" = current_setting('app.current_buyer', true))));
+
+-- Commission invoices: the business sees its own; a platform admin reads
+-- and records payments across tenants one tenant at a time (set_config per
+-- tenant), the same way it reads branches.
+ALTER TABLE commission_invoices ENABLE ROW LEVEL SECURITY;
+ALTER TABLE commission_invoices FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON commission_invoices;
+CREATE POLICY tenant_isolation ON commission_invoices
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+-- buyers / buyer_otps: deliberately NOT tenant-scoped, same reasoning as
+-- `users` below - one buyer shops at many businesses with one login, and
+-- an OTP is checked before any business is involved. The application
+-- only ever reads a buyer row by the id in a verified buyer JWT or by the
+-- phone number being verified (BuyerAuthService).
 
 -- ── organizations itself ─────────────────────────────────────────────────
 -- A tenant may only ever see its own organization row (not a child table,

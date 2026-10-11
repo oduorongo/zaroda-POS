@@ -2,10 +2,16 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { TenantScopedPrismaService } from '../common/prisma/tenant-scoped-prisma.service';
 import { getTenantStore } from '../common/tenant/tenant-context';
 import { CreateProductDto, UpdateProductDto } from './dto/product.dto';
+import { ProductImagesService } from './product-images.service';
+import { ObjectStorageService } from '../common/storage/object-storage.service';
 
 @Injectable()
 export class ProductsService {
-  constructor(private readonly tenantPrisma: TenantScopedPrismaService) {}
+  constructor(
+    private readonly tenantPrisma: TenantScopedPrismaService,
+    private readonly images: ProductImagesService,
+    private readonly storage: ObjectStorageService,
+  ) {}
 
   create(dto: CreateProductDto) {
     const { organizationId } = getTenantStore();
@@ -53,6 +59,13 @@ export class ProductsService {
 
   async remove(id: string) {
     await this.findOne(id);
-    await this.tenantPrisma.run((tx) => tx.product.delete({ where: { id } }));
+    // Photo rows cascade away with the product; their files in the bucket
+    // don't, so collect the keys first and delete the files afterwards.
+    const imageKeys = await this.tenantPrisma.run(async (tx) => {
+      const keys = await this.images.keysForProduct(tx, id);
+      await tx.product.delete({ where: { id } });
+      return keys;
+    });
+    await this.storage.deleteMany(imageKeys);
   }
 }

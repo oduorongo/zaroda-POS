@@ -79,6 +79,9 @@ model Organization {
   rosterShifts     RosterShift[]
   mpesaStkRequests MpesaStkRequest[]
   subscription     Subscription?
+  onlineStore      OnlineStore?
+  onlineOrders     OnlineOrder[]
+  commissionInvoices CommissionInvoice[]
 
   @@map("organizations")
 }
@@ -113,6 +116,8 @@ model Branch {
   productionOrders     ProductionOrder[]
   serviceJobs          ServiceJob[]
   rosterShifts         RosterShift[]
+  onlineStores         OnlineStore[]
+  onlineOrders         OnlineOrder[]
 
   @@index([organizationId])
   @@map("branches")
@@ -386,6 +391,14 @@ model Product {
   taxClassId     String?
   name           String
   baseUnit       String   @default("each")
+  // Online Shop add-on: whether this product appears in the business's
+  // public shop (only once the shop itself is live - see OnlineStore), and
+  // the buyer-facing description shown there. Online price and stock are
+  // NOT separate fields - they come from the variants' price and the
+  // fulfilment branch's inventory, so the counter and the web never
+  // disagree.
+  onlineVisible     Boolean  @default(false)
+  onlineDescription String?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
@@ -394,6 +407,7 @@ model Product {
   taxClass     TaxClass?         @relation(fields: [taxClassId], references: [id], onDelete: SetNull)
   variants     ProductVariant[]
   pharmacyFlag PharmacyProductFlag?
+  images       ProductImage[]
 
   @@index([organizationId])
   @@map("products")
@@ -449,6 +463,7 @@ model ProductVariant {
   wasteLogs            WasteLog[]
   ingredientOfWaste    WasteIngredient[]
   productionOrders     ProductionOrder[]
+  onlineOrderLines     OnlineOrderLine[]
 
   @@unique([productId, sku])
   @@index([barcode])
@@ -568,6 +583,9 @@ enum InventoryTxnType {
   REPACK
   WASTE
   PRODUCTION
+  // Stock committed to an accepted online order (OnlineOrdersService) -
+  // separate from SALE so reports can tell counter and web sales apart.
+  ONLINE_SALE
 }
 
 model InventoryTransaction {
@@ -1740,4 +1758,301 @@ model SubscriptionPayment {
 
   @@index([subscriptionId])
   @@map("subscription_payments")
+}
+
+// Online shop add-on (marketplace Phase 1) - a tenant's public storefront
+// settings, one row per organization. Two groups of fields with different
+// owners:
+// - addonActive / commissionRate are set ONLY by a platform admin
+//   (PlatformAdminService.setOnlineStoreAddon) - the add-on is a paid
+//   extra, so a tenant must never be able to switch it on for itself.
+//   OnlineStoreService's tenant-facing update deliberately has no DTO
+//   field for either.
+// - Everything else is the tenant's own shop configuration.
+// The shop is publicly visible only when BOTH addonActive (platform says
+// it's paid for) and isPublished (tenant says it's ready) are true - the
+// platform switching the add-on off hides the shop without erasing the
+// tenant's settings, so switching it back on restores it as it was.
+//
+// Buyers pay the business directly through the business's OWN TUMA
+// (tuma.co.ke) merchant account - Zaroda never holds buyer money, it
+// bills commission monthly instead. The TUMA API key is stored encrypted
+// (common/crypto/secret-box.ts) and is never returned by any endpoint.
+model OnlineStore {
+  id                  String   @id @default(uuid())
+  organizationId      String   @unique
+  addonActive         Boolean  @default(false)
+  // Fraction, e.g. 0.0300 = 3%. Null = the platform default
+  // (DEFAULT_COMMISSION_RATE in online-store.constants.ts) - a per-tenant
+  // override for a negotiated rate, not a copy of the default.
+  commissionRate      Decimal? @db.Decimal(5, 4)
+  isPublished         Boolean  @default(false)
+  // The business's own shop link, e.g. /s/mama-mboga. Globally unique
+  // across tenants - enforced by this index, since RLS hides every other
+  // tenant's row from an application-level pre-check.
+  slug                String?  @unique
+  displayName         String?
+  description         String?
+  contactPhone        String?
+  // Which branch's stock online orders are sold from and where pickup
+  // happens. SetNull if that branch is deleted - OnlineStoreService then
+  // treats the shop as not ready (see isReadyToPublish).
+  fulfilmentBranchId  String?
+  pickupEnabled       Boolean  @default(true)
+  deliveryEnabled     Boolean  @default(false)
+  tumaEmail           String?
+  tumaApiKeyEncrypted String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  fulfilmentBranch Branch?      @relation(fields: [fulfilmentBranchId], references: [id], onDelete: SetNull)
+
+  @@index([fulfilmentBranchId])
+  @@map("online_stores")
+}
+
+// Product photos for the online shop. The file itself lives in object
+// storage (Cloudflare R2 / any S3-compatible bucket - see
+// common/storage/object-storage.service.ts); this row records where.
+// Uploaded browser -> bucket directly via a short-lived presigned URL, then
+// confirmed with the API (ProductImagesService), so large files never pass
+// through the API process. Lowest sortOrder is the cover photo.
+model ProductImage {
+  id         String   @id @default(uuid())
+  productId  String
+  // Object key in the bucket, always under
+  // orgs/<organizationId>/products/<productId>/ - ProductImagesService
+  // refuses to confirm a key outside that prefix, so one tenant can't
+  // attach another tenant's upload.
+  storageKey String   @unique
+  sortOrder  Int      @default(0)
+  createdAt  DateTime @default(now())
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId, sortOrder])
+  @@map("product_images")
+}
+
+// ── Online Shop buyers and orders ─────────────────────────────────────────
+
+// A member of the public who shops online. Deliberately NOT tenant-scoped
+// (same reasoning as `users`): one buyer shops at many businesses with one
+// login. Identified by phone (verified with an SMS code - BuyerOtp), since
+// that's also how they pay (M-Pesa).
+model Buyer {
+  id        String   @id @default(uuid())
+  // A shopper signs in with an EMAIL code (the default - free, no SMS needed) or an SMS code
+  // to their phone, so either may be what created the account. Lowercased.
+  email     String?  @unique
+  // Normalized 2547XXXXXXXX / 2541XXXXXXXX - see normalizeKenyanPhone(). Set by an SMS sign-in,
+  // or remembered from the M-Pesa number given at checkout.
+  phone     String?  @unique
+  name      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  orders OnlineOrder[]
+
+  @@map("buyers")
+}
+
+// One-time SMS login codes. Only a hash of the code is stored; codes
+// expire after a few minutes and lock after too many wrong attempts
+// (BuyerAuthService). Not tenant-scoped - a login happens before any
+// business is involved.
+model BuyerOtp {
+  id         String    @id @default(uuid())
+  // "EMAIL" or "SMS".
+  channel    String    @default("SMS")
+  // The email address or normalized phone number the code was sent to.
+  identifier String
+  codeHash   String
+  expiresAt  DateTime
+  attempts   Int       @default(0)
+  consumedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([identifier, createdAt])
+  @@map("buyer_otps")
+}
+
+enum OnlineOrderStatus {
+  PENDING_PAYMENT // created, M-Pesa prompt sent, waiting for TUMA's callback
+  PAID            // buyer paid the business; waiting for the business to accept
+  ACCEPTED        // business accepted - stock deducted from the fulfilment branch
+  READY           // ready for pickup / out for delivery
+  COMPLETED       // collected / delivered - commission is now owed
+  CANCELLED
+  EXPIRED         // never paid within the payment window
+}
+
+enum FulfilmentType {
+  PICKUP
+  DELIVERY
+}
+
+// An order placed in one business's online shop. Tenant-owned (the
+// business sees it) AND buyer-owned (the buyer sees it) - the RLS policy
+// admits either app.current_tenant or app.current_buyer, see rls.sql.
+//
+// Buyers pay the business directly through the business's own TUMA
+// account; Zaroda never holds the money. Commission is recorded on the
+// order (commissionAmount, once COMPLETED) and billed monthly.
+//
+// Stock: available-to-sell = branch quantity minus quantities on
+// PENDING_PAYMENT/PAID orders (held, not yet deducted). Accepting deducts
+// the stock through the normal inventory ledger (ONLINE_SALE); cancelling
+// an accepted order puts it back (RETURN).
+model OnlineOrder {
+  id              String            @id @default(uuid())
+  organizationId  String
+  buyerId         String
+  // Fulfilment branch at the time of ordering - a later change to the
+  // shop's setting doesn't move existing orders.
+  branchId        String
+  // Short human code for phone calls and SMS, e.g. "ZR-7K3Q9P".
+  orderNumber     String            @unique
+  status          OnlineOrderStatus @default(PENDING_PAYMENT)
+  fulfilmentType  FulfilmentType
+  deliveryAddress String?
+  buyerNote       String?
+  buyerName       String?
+  buyerPhone      String
+  // Snapshots, so a buyer's order history still reads correctly after
+  // the business renames its shop - and so buyer-side queries never need
+  // to read online_stores across tenants.
+  shopName        String
+  shopSlug        String
+  subtotal        Decimal           @db.Decimal(12, 2)
+  // M-Pesa only moves whole shillings - the subtotal rounded up. Shown to
+  // the buyer before paying.
+  amountDue       Int
+  commissionRate  Decimal           @db.Decimal(5, 4)
+  commissionAmount Decimal?         @db.Decimal(12, 2)
+  // Set when this order's commission is rolled into a monthly invoice -
+  // an order can only ever be billed once.
+  commissionInvoiceId String?
+
+  // Payment (TUMA STK push into the business's account)
+  paymentPhone        String
+  paymentDeadline     DateTime
+  // Tuma's merchant request id for the most recent STK push - what its
+  // /payment/status is asked about. Not unique: a retried payment replaces
+  // it, and a late callback for an earlier prompt can still be checked
+  // (OnlineOrdersService.handleTumaCallback).
+  tumaMerchantRequestId String?
+  paymentAttemptedAt  DateTime?
+  mpesaReceiptNumber  String?       @unique
+  paidAt              DateTime?
+  lastPaymentError    String?
+
+  stockCommitted  Boolean           @default(false)
+  acceptedAt      DateTime?
+  readyAt         DateTime?
+  completedAt     DateTime?
+  cancelledAt     DateTime?
+  cancelledBy     String? // "BUYER" | "BUSINESS"
+  cancelReason    String?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  buyer        Buyer             @relation(fields: [buyerId], references: [id])
+  branch       Branch            @relation(fields: [branchId], references: [id])
+  lines        OnlineOrderLine[]
+  commissionInvoice CommissionInvoice? @relation(fields: [commissionInvoiceId], references: [id])
+
+  @@index([organizationId, status])
+  @@index([commissionInvoiceId])
+  @@index([buyerId, createdAt])
+  @@index([branchId, status])
+  @@map("online_orders")
+}
+
+model OnlineOrderLine {
+  id          String  @id @default(uuid())
+  orderId     String
+  variantId   String
+  // Snapshots of what the buyer saw when ordering.
+  productName String
+  variantSku  String
+  quantity    Decimal @db.Decimal(14, 3)
+  unitPrice   Decimal @db.Decimal(12, 2)
+  lineTotal   Decimal @db.Decimal(12, 2)
+
+  order   OnlineOrder    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  variant ProductVariant @relation(fields: [variantId], references: [id])
+
+  @@index([orderId])
+  @@index([variantId])
+  @@map("online_order_lines")
+}
+
+// ── Online Shop commission billing ────────────────────────────────────────
+
+enum CommissionInvoiceStatus {
+  ISSUED // sent to the business, unpaid
+  PAID
+  WAIVED // written off by a platform admin
+}
+
+// Zaroda's commission on a business's COMPLETED online orders for one
+// calendar month (Africa/Nairobi), billed after the month closes. Buyers
+// pay the business directly, so this is invoiced rather than deducted -
+// the business pays Zaroda the same way it pays its subscription, and a
+// platform admin records it (PlatformAdminController). Tenant-scoped RLS:
+// the business sees its own invoices; the platform admin reads across
+// tenants the same per-tenant way it reads branches.
+//
+// An overdue ISSUED invoice hides the shop from buyers (not stored - worked
+// out when a shop is viewed, see commission.util.ts isOverdue and
+// ShopCatalogService.runForShop), like subscription status.
+model CommissionInvoice {
+  id                     String                  @id @default(uuid())
+  organizationId         String
+  invoiceNumber          String                  @unique
+  // "2026-10" - one invoice per business per month.
+  periodMonth            String
+  periodStart            DateTime
+  periodEnd              DateTime
+  orderCount             Int
+  salesTotal             Decimal                 @db.Decimal(12, 2)
+  commissionTotal        Decimal                 @db.Decimal(12, 2)
+  // What the business pays online: the commission rounded UP to a whole
+  // shilling (M-Pesa only moves whole shillings), set when issued.
+  amountDue              Int                     @default(0)
+  status                 CommissionInvoiceStatus @default(ISSUED)
+  issuedAt               DateTime                @default(now())
+  dueDate                DateTime
+  paidAt                 DateTime?
+  paymentMethod          String? // "MPESA" | "BANK" | "CASH" - recorded manually, like SubscriptionPayment
+  paymentReference       String?
+  recordedByPlatformAdminId String?
+  waivedReason           String?
+
+  // Online payment through ZARODA's own Tuma account (like a school's
+  // subscription): the latest STK push, and why the last attempt failed.
+  tumaMerchantRequestId  String?
+  payPhone               String?
+  payAttemptedAt         DateTime?
+  lastPaymentError       String?
+
+  // Automatic invoicing: when the invoice was emailed, and the furthest
+  // reminder sent (0 none, 1 issued, 2 due soon, 3 overdue, 4 shop hidden)
+  // - see commission.util.ts reminderStageFor. Keeps the daily run from
+  // ever emailing the same notice twice.
+  emailedAt              DateTime?
+  reminderStage          Int                     @default(0)
+
+  createdAt              DateTime                @default(now())
+  updatedAt              DateTime                @updatedAt
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  orders       OnlineOrder[]
+
+  @@unique([organizationId, periodMonth])
+  @@index([organizationId, status])
+  @@map("commission_invoices")
 }
