@@ -950,6 +950,7 @@ model Sale {
   pharmacyPrescription PharmacySalePrescription?
   salonAppointmentSale SalonAppointmentSale?
   serviceJobSale       ServiceJobSale?
+  onlineOrder          OnlineOrder?
 
   @@index([organizationId])
   @@index([branchId])
@@ -1949,6 +1950,9 @@ model OnlineOrder {
   lastPaymentError    String?
 
   stockCommitted  Boolean           @default(false)
+  // The ordinary till sale written when the order is accepted, so online
+  // revenue shows in Sales, Reports and profit like any other sale.
+  saleId          String?           @unique
   acceptedAt      DateTime?
   readyAt         DateTime?
   completedAt     DateTime?
@@ -1963,6 +1967,7 @@ model OnlineOrder {
   branch       Branch            @relation(fields: [branchId], references: [id])
   lines        OnlineOrderLine[]
   commissionInvoice CommissionInvoice? @relation(fields: [commissionInvoiceId], references: [id])
+  sale         Sale?             @relation(fields: [saleId], references: [id], onDelete: SetNull)
 
   @@index([organizationId, status])
   @@index([commissionInvoiceId])
