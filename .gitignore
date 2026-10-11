@@ -11,3 +11,5 @@ coverage/
 
 # TypeScript incremental build caches
 *.tsbuildinfo
+.env.*
+!.env.example

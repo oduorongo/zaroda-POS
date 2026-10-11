@@ -16,13 +16,27 @@ const path = require('path');
 const API_DIR = path.join(__dirname, '..');
 const { Client } = require(require.resolve('pg', { paths: [API_DIR, 'C:/Users/user/OneDrive/Desktop/zaroda  school/backend'] }));
 
-const env = {};
-for (const line of fs.readFileSync(path.join(API_DIR, '.env.local'), 'utf8').split(/\r?\n/)) {
-  const m = line.match(/^([A-Z_]+)=(.*)$/);
-  if (m) env[m[1]] = m[2].replace(/^"|"$/g, '');
+const readEnv = (file) => {
+  const out = {};
+  for (const line of fs.readFileSync(file, 'utf8').split(/\r?\n/)) {
+    const m = line.match(/^([A-Z_]+)=(.*)$/);
+    if (m) out[m[1]] = m[2].replace(/^"|"$/g, '');
+  }
+  return out;
+};
+// Same two switches as scripts/with-env-local.js: by default the database must be on this
+// computer; for a rehearsal against a COPY of the live database, name the copy's host.
+const ENV_FILE = process.env.ENV_FILE || '.env.local';
+const env = readEnv(path.join(API_DIR, ENV_FILE));
+const live = readEnv(path.join(API_DIR, '.env'));
+const hostOf = (url) => new URL(url).hostname.replace(/-pooler/, '');
+for (const key of ['DATABASE_URL', 'DIRECT_URL']) {
+  if (live[key] && hostOf(env[key]) === hostOf(live[key])) throw new Error(`REFUSING: ${key} in ${ENV_FILE} is the LIVE database`);
 }
-const dbHost = new URL(env.DIRECT_URL);
-if (dbHost.hostname !== 'localhost' || dbHost.port !== '5433') throw new Error('REFUSING: .env.local does not point at the local test database');
+const dbUrl = new URL(env.DIRECT_URL);
+const isLocal = dbUrl.hostname === 'localhost' && dbUrl.port === '5433';
+const isNamedCopy = Boolean(process.env.ALLOW_DB_HOST) && hostOf(env.DIRECT_URL) === process.env.ALLOW_DB_HOST.replace(/-pooler/, '');
+if (!isLocal && !isNamedCopy) throw new Error(`REFUSING: ${ENV_FILE} does not point at the local test database (or at the copy named in ALLOW_DB_HOST)`);
 if (!/^http:\/\/localhost:\d+$/.test(env.TUMA_BASE_URL || '')) throw new Error('REFUSING: TUMA_BASE_URL is not a local pretend Tuma');
 
 const API = 'http://localhost:3001';
