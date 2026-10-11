@@ -176,8 +176,17 @@ export class PlatformAdminService {
     return this.prisma.plan.findMany({ orderBy: { priceKes: 'asc' } });
   }
 
-  createPlan(dto: CreatePlanDto) {
-    return this.prisma.plan.create({ data: dto });
+  async createPlan(dto: CreatePlanDto) {
+    try {
+      return await this.prisma.plan.create({ data: dto });
+    } catch (e) {
+      // tier is unique - say so, instead of a bare 500 (found when rehearsing
+      // the launch against a copy of the live data, where BASIC already exists).
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
+        throw new ConflictException(`A plan with the tier "${dto.tier}" already exists`);
+      }
+      throw e;
+    }
   }
 
   async updatePlan(id: string, dto: UpdatePlanDto) {

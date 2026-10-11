@@ -27,18 +27,23 @@ each step, and how to undo it. **Nothing here has been done yet.**
 | Live database is **13 MB**: 10 businesses, 7 products, 44 sales, 2 subscriptions | Small. Copying, restoring and migrating are all quick |
 | **31** database changes ("migrations") applied, all finished cleanly | The new ones simply continue the list |
 | **0** online-shop tables exist on live | Nothing is half-done |
-| **6** migrations are waiting (below) | All are *additions* - new tables, new columns, one new list value. Nothing is removed or rewritten |
+| **5** migrations are waiting for the online shop (below), plus 1 for the parked M-Pesa fix | All are *additions* - new tables, new columns, one new list value, one unique index. Nothing is removed or rewritten |
 | Row-level security is **off** for `subscriptions` and `subscription_payments` | The parked `fix/billing-rls` branch turns it on |
 | No live payment carries an M-Pesa provider reference | The parked M-Pesa fix's unique index cannot clash with existing data |
 
-The 6 waiting migrations, in order:
+The 5 migrations for the online shop, in order:
 
-1. `20260927120000` unique M-Pesa provider reference *(parked M-Pesa fix)*
-2. `20261008090000` online shop settings
-3. `20261008120000` product online listing and photos
-4. `20261008150000` buyers and online orders
-5. `20261009100000` commission invoices
-6. `20261009120000` invoice online payment and Tuma request ids
+1. `20261008090000` online shop settings
+2. `20261008120000` product online listing and photos
+3. `20261008150000` buyers and online orders
+4. `20261009100000` commission invoices
+5. `20261009120000` invoice online payment and Tuma request ids
+
+The parked M-Pesa fix has one more, `20260927120000` (a unique index on the M-Pesa
+reference). Its date is **earlier** than the shop migrations, so **when it is merged,
+rename its folder to a date after the latest applied one** (for example
+`20261020120000_unique_sale_payment_provider_reference`) - Prisma expects new
+migrations to sort after applied ones.
 
 **Why additive changes matter:** the *old* live code ignores tables and columns it
 doesn't know about. So the database can be updated **first**, while the live
@@ -64,7 +69,21 @@ Each phase ends with a check. Don't start the next phase until the check passes.
 
 *Check:* the branch shows up in Neon with data in it.
 
-### Phase B - Rehearsal on a copy (recommended, about 30 minutes, you + Claude)
+### Phase B - Rehearsal on a copy - **DONE (2026-10-11)**
+
+Results, on a Neon copy holding identical data to live (10 businesses, 44 sales):
+
+- All 5 shop migrations applied; Prisma then reported the database up to date.
+- All **61 existing tables kept exactly the same row counts**; 7 new tables; row-level
+  security grew from 55 to 62 tables; the restricted app user could use every new table.
+- The API started on the copy; the **100-check end-to-end test passed except one check**,
+  which found a real (older) bug - creating an already-existing plan tier returned a 500;
+  it now returns a clear 409 (fixed in the release candidate).
+- **108 isolation checks passed** (every business sees exactly its own rows in 9 tables,
+  as the restricted app user) and a query with no business selected saw nothing.
+- The copy was proved to be a separate database from live before anything was applied.
+
+*Original plan for this phase:*
 
 Run the whole thing on the copy first, so any surprise happens there.
 
@@ -158,6 +177,16 @@ Do the three branches **one at a time**, smallest first, checking after each.
 3. Place a **KES 1** order from a phone, pay it, accept it, complete it. The real
    callback should reach the live API.
 4. When happy, switch it on for more businesses, one at a time.
+
+### Follow-ups found while rehearsing
+
+- **Demo account:** live still has `owner@demo.zaroda.pos` with the public default
+  password `password123` (it is in the seed file). Its business ("Demo Retail Co", holding
+  43 of the 44 sales, so test data) is deactivated, which is the only reason it cannot log
+  in. Change that password or remove the account on live, so a future reactivation cannot
+  expose it.
+- Plan creation duplicate tier: fixed (409 instead of 500).
+- Resend / teacher emails: see Phase C.
 
 ---
 
