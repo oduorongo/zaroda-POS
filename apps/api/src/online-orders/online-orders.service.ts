@@ -25,6 +25,7 @@ import { AfricasTalkingSmsProvider } from '../notifications/africas-talking-sms.
 import { DEFAULT_COMMISSION_RATE } from '../online-store/online-store.constants';
 import { TumaClient } from '../online-store/tuma.client';
 import { evaluateCallback, parseCallback } from '../online-store/tuma.util';
+import { recordOnlineSale, voidOnlineSale } from './online-order-sale';
 import { ShopCatalogService } from './shop-catalog.service';
 import { CancelOnlineOrderDto, CreateOnlineOrderDto } from './dto/online-order.dto';
 import { generateOrderNumber, normalizeKenyanPhone, roundMoney } from './online-orders.util';
@@ -625,7 +626,7 @@ export class OnlineOrdersService {
   private async transition(
     id: string,
     from: OnlineOrderStatus[],
-    apply: (tx: TenantTx, order: OrderWithLines) => Promise<Prisma.OnlineOrderUpdateInput>,
+    apply: (tx: TenantTx, order: OrderWithLines) => Promise<Prisma.OnlineOrderUncheckedUpdateManyInput>,
   ) {
     return this.tenantPrisma.run(async (tx) => {
       const order = await tx.onlineOrder.findUnique({ where: { id }, include: { lines: true } });
@@ -635,7 +636,7 @@ export class OnlineOrdersService {
       }
       const data = await apply(tx, order);
       // Conditional on status so two staff clicking at once can't both apply.
-      const result = await tx.onlineOrder.updateMany({ where: { id, status: order.status }, data: data as Prisma.OnlineOrderUpdateManyMutationInput });
+      const result = await tx.onlineOrder.updateMany({ where: { id, status: order.status }, data });
       if (result.count === 0) throw new ConflictException('This order was just updated by someone else - refresh');
       return tx.onlineOrder.findUniqueOrThrow({ where: { id }, include: { lines: true } });
     });
@@ -653,7 +654,8 @@ export class OnlineOrdersService {
           referenceId: current.id,
         });
       }
-      return { status: OnlineOrderStatus.ACCEPTED, acceptedAt: new Date(), stockCommitted: true };
+      const saleId = await recordOnlineSale(tx, current);
+      return { status: OnlineOrderStatus.ACCEPTED, acceptedAt: new Date(), stockCommitted: true, saleId };
     });
     return toOrderView(order);
   }
@@ -703,6 +705,7 @@ export class OnlineOrdersService {
             });
           }
         }
+        await voidOnlineSale(tx, current.saleId);
         return {
           status: OnlineOrderStatus.CANCELLED,
           cancelledAt: new Date(),

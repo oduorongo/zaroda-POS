@@ -247,12 +247,28 @@ async function buyerLogin(who) {
   check('shop accepts the order', accept.json.status === 'ACCEPTED', accept);
   const inv = await sql.query(`SELECT quantity::float AS q FROM inventory_items WHERE "variantId" = $1`, [variantId]);
   check('stock really drops from 20 to 18', inv.rows[0].q === 18, inv.rows);
+  const sale1 = await sql.query(
+    `SELECT s.id, s.status, s.total::float AS total, t."deviceLabel" AS terminal, p.method, p."providerReference" AS receipt, p.amount::float AS paid,
+            (SELECT count(*)::int FROM sale_line_items WHERE "saleId" = s.id) AS lines, o."saleId" AS linked
+       FROM sales s JOIN terminals t ON t.id = s."terminalId" JOIN sale_payments p ON p."saleId" = s.id
+       JOIN online_orders o ON o."saleId" = s.id
+      WHERE s."clientId" = $1`,
+    ['online-order-' + o1.id],
+  );
+  const s1 = sale1.rows[0];
+  check('accepting also records a normal completed sale, M-Pesa, KES 500, with the receipt, filed under "Online shop"',
+    sale1.rows.length === 1 && s1.status === 'COMPLETED' && s1.total === 500 && s1.paid === 500 && s1.method === 'MPESA' && s1.terminal === 'Online shop' && s1.lines === 1 && s1.receipt === accept.json.mpesaReceiptNumber && s1.linked === s1.id,
+    sale1.rows);
+  const salesList = await api('GET', '/sales', { token: owner });
+  check('the sale shows up in the normal Sales list the business already uses', Array.isArray(salesList.json) && salesList.json.some((s) => s.id === s1.id), { status: salesList.status });
   const markedReady = await api('POST', `/online-orders/${o1.id}/ready`, { token: owner });
   check('marked ready for pickup', markedReady.json.status === 'READY');
   const complete = await api('POST', `/online-orders/${o1.id}/complete`, { token: owner });
   check('collected: order completed, 3% commission recorded = KES 15', complete.json.status === 'COMPLETED' && complete.json.commissionAmount === 15, complete.json);
   const again = await api('POST', `/online-orders/${o1.id}/accept`, { token: owner });
   check('an order cannot be accepted twice', again.status === 400, again);
+  const salesFor1 = await sql.query(`SELECT count(*)::int AS n FROM sales WHERE "clientId" = $1`, ['online-order-' + o1.id]);
+  check('and it still has exactly one sale', salesFor1.rows[0].n === 1, salesFor1.rows);
 
   section('11. Payment whose callback never arrives (the buyer\'s "check now" backup)');
   const order2 = await api('POST', '/buyer/orders', { token: buyerB, body: { shopSlug: 'demo-shop', lines: [{ variantId, quantity: 1 }], fulfilmentType: 'PICKUP' } });
@@ -281,7 +297,16 @@ async function buyerLogin(who) {
   check('the same M-Pesa code cannot release a second order', reused.status === 409, reused);
   const alreadyPaid = await api('POST', `/online-orders/${order4.json.id}/confirm-payment`, { token: owner, body: { receipt: 'ZZZ9YYY8XX' } });
   check('an order that is already paid cannot be marked paid again', alreadyPaid.status === 400, alreadyPaid);
-  await api('POST', `/online-orders/${order4.json.id}/cancel`, { token: owner, body: { reason: 'test clean-up' } });
+  // Cancelling AFTER acceptance takes the sale back out (reuses this paid order - no extra checkout, which is rate limited).
+  const stockBefore4 = (await sql.query(`SELECT quantity::float AS q FROM inventory_items WHERE "variantId" = $1`, [variantId])).rows[0].q;
+  await api('POST', `/online-orders/${order4.json.id}/accept`, { token: owner });
+  const sale4 = await sql.query(`SELECT status FROM sales WHERE "clientId" = $1`, ['online-order-' + order4.json.id]);
+  const stockAccepted4 = (await sql.query(`SELECT quantity::float AS q FROM inventory_items WHERE "variantId" = $1`, [variantId])).rows[0].q;
+  check('an accepted order has a completed sale (and took 1 off the stock)', sale4.rows.length === 1 && sale4.rows[0].status === 'COMPLETED' && stockAccepted4 === stockBefore4 - 1, { sale: sale4.rows, stockBefore4, stockAccepted4 });
+  const cancel4 = await api('POST', `/online-orders/${order4.json.id}/cancel`, { token: owner, body: { reason: 'test clean-up' } });
+  const sale4b = await sql.query(`SELECT status FROM sales WHERE "clientId" = $1`, ['online-order-' + order4.json.id]);
+  const stockAfter4 = (await sql.query(`SELECT quantity::float AS q FROM inventory_items WHERE "variantId" = $1`, [variantId])).rows[0].q;
+  check('cancelling it voids the sale and puts the stock back', cancel4.json.status === 'CANCELLED' && sale4b.rows[0].status === 'VOIDED' && stockAfter4 === stockBefore4, { cancel: cancel4.json.status, sale: sale4b.rows, stockBefore4, stockAfter4 });
   await api('POST', `/online-orders/${order5.json.id}/cancel`, { token: owner, body: { reason: 'test clean-up' } });
 
   section('12. Cancelling');
