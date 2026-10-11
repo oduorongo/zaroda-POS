@@ -28,8 +28,10 @@ const SALT_ROUNDS = 10;
  *   org's id for one transaction, then querying normally within it - the
  *   exact same mechanism TenantScopedPrismaService.run() uses, just
  *   looped across N tenants here instead of fixed to one.
- * - plans/subscriptions/subscription_payments carry no RLS at all (see
- *   their schema.prisma comment) - queried directly, no set_config needed.
+ * - plans carries no RLS; subscriptions/subscription_payments have a
+ *   policy whose "no tenant set" arm allows reads and writes (see rls.sql's
+ *   "platform billing tables" comment) - so billing is queried directly,
+ *   no set_config needed.
  *
  * Documented pilot-scale limit: the loop is N *sequential* round trips
  * for an org-list-with-counts view (deliberately not fired concurrently

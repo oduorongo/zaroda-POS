@@ -1682,14 +1682,13 @@ model PlatformAuditLog {
 
 // ─────────────────────────────────────────────────────────────────────────
 // Platform billing (rental subscriptions) - the platform owner's own
-// business, not tenant data. Deliberately NOT row-level-secured like every
-// other table in this file: only PlatformAdminController (guarded by
+// business, not tenant data. Only PlatformAdminController (guarded by
 // PlatformAdminAuthGuard, a completely different identity from a tenant
-// JWT) ever queries these, the same trust boundary platform_admins itself
-// already relies on above. No tenant-facing endpoint may read or write
-// these tables - that's an application-level invariant, not a
-// database-enforced one, precisely because RLS's tenant model doesn't fit
-// "the platform owner's own revenue records" in the first place.
+// JWT) ever queries these. plans has no RLS (a global price list);
+// subscriptions/subscription_payments carry a policy that leaves
+// platform admin's no-tenant queries unrestricted but confines any
+// tenant-scoped transaction to its own rows - see rls.sql's "platform
+// billing tables" comment.
 
 model Plan {
   id               String   @id @default(uuid())
