@@ -48,11 +48,17 @@ export const getShop = (slug: string) =>
 
 // ── Buyer ────────────────────────────────────────────────────────────────
 
-export const requestCode = (phone: string) =>
-  request<{ sent: boolean; phone: string }>("/buyer-auth/request-code", { method: "POST", body: JSON.stringify({ phone }) });
+/** Who the code is for: an email address (the default) or a phone number (SMS). */
+export type LoginIdentity = { email: string } | { phone: string };
 
-export const verifyCode = (phone: string, code: string) =>
-  request<{ accessToken: string; buyer: Buyer }>("/buyer-auth/verify", { method: "POST", body: JSON.stringify({ phone, code }) });
+/** What the sign-in screen may offer - email always, SMS only once it is set up on the server. */
+export const getAuthMethods = () => request<{ email: boolean; sms: boolean }>("/buyer-auth/methods");
+
+export const requestCode = (who: LoginIdentity) =>
+  request<{ sent: boolean; channel: "EMAIL" | "SMS"; identifier: string }>("/buyer-auth/request-code", { method: "POST", body: JSON.stringify(who) });
+
+export const verifyCode = (who: LoginIdentity, code: string) =>
+  request<{ accessToken: string; buyer: Buyer }>("/buyer-auth/verify", { method: "POST", body: JSON.stringify({ ...who, code }) });
 
 export const getMe = (token: string) => request<Buyer>("/buyer/me", { token });
 

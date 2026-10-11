@@ -78,6 +78,9 @@ export type OrderCheck = Order & { checkResult: 'paid' | 'not-paid-yet' | 'unava
 
 export interface Buyer {
   id: string;
-  phone: string;
+  /** Set when they signed in by email. */
+  email: string | null;
+  /** Set when they signed in by SMS, or once they have given an M-Pesa number at checkout. */
+  phone: string | null;
   name: string | null;
 }

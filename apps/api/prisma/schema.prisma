@@ -1843,8 +1843,12 @@ model ProductImage {
 // that's also how they pay (M-Pesa).
 model Buyer {
   id        String   @id @default(uuid())
-  // Normalized 2547XXXXXXXX / 2541XXXXXXXX - see normalizeKenyanPhone().
-  phone     String   @unique
+  // A shopper signs in with an EMAIL code (the default - free, no SMS needed) or an SMS code
+  // to their phone, so either may be what created the account. Lowercased.
+  email     String?  @unique
+  // Normalized 2547XXXXXXXX / 2541XXXXXXXX - see normalizeKenyanPhone(). Set by an SMS sign-in,
+  // or remembered from the M-Pesa number given at checkout.
+  phone     String?  @unique
   name      String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1860,14 +1864,17 @@ model Buyer {
 // business is involved.
 model BuyerOtp {
   id         String    @id @default(uuid())
-  phone      String
+  // "EMAIL" or "SMS".
+  channel    String    @default("SMS")
+  // The email address or normalized phone number the code was sent to.
+  identifier String
   codeHash   String
   expiresAt  DateTime
   attempts   Int       @default(0)
   consumedAt DateTime?
   createdAt  DateTime  @default(now())
 
-  @@index([phone, createdAt])
+  @@index([identifier, createdAt])
   @@map("buyer_otps")
 }
 

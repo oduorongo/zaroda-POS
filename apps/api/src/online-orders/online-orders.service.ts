@@ -169,8 +169,14 @@ export class OnlineOrdersService {
   async createOrder(buyerId: string, dto: CreateOnlineOrderDto) {
     const buyer = await this.prisma.buyer.findUnique({ where: { id: buyerId } });
     if (!buyer) throw new NotFoundException('Buyer not found');
+    // A shopper who signed in by email has no phone on file until they give one here: it is
+    // both the number M-Pesa prompts and how the shop reaches them about the order.
     const paymentPhone = dto.paymentPhone ? normalizeKenyanPhone(dto.paymentPhone) : buyer.phone;
-    if (!paymentPhone) throw new BadRequestException('Enter a valid M-Pesa number, e.g. 0712 345 678');
+    if (!paymentPhone) {
+      throw new BadRequestException(
+        dto.paymentPhone ? 'Enter a valid M-Pesa number, e.g. 0712 345 678' : 'Enter the M-Pesa phone number you will pay with, e.g. 0712 345 678',
+      );
+    }
 
     // Same variant listed twice = one line with the combined quantity.
     const wanted = new Map<string, number>();
@@ -232,7 +238,7 @@ export class OnlineOrdersService {
                 deliveryAddress: dto.fulfilmentType === FulfilmentType.DELIVERY ? dto.deliveryAddress!.trim() : null,
                 buyerNote: dto.note?.trim() || null,
                 buyerName: dto.buyerName?.trim() || buyer.name,
-                buyerPhone: buyer.phone,
+                buyerPhone: paymentPhone,
                 shopName: shop.displayName,
                 shopSlug: shop.slug,
                 subtotal,
@@ -257,6 +263,12 @@ export class OnlineOrdersService {
       }
     }
     if (!created) throw new ServiceUnavailableException('Could not create the order - try again');
+
+    // Remember the number for next time. Best effort: a phone belongs to at most one
+    // shopper account, so if another account already has it we simply don't save it.
+    if (!buyer.phone) {
+      await this.prisma.buyer.update({ where: { id: buyerId }, data: { phone: paymentPhone } }).catch(() => undefined);
+    }
 
     return this.startPayment(created);
   }

@@ -76,12 +76,19 @@ export class TumaCallbackController {
 export class BuyerAuthController {
   constructor(private readonly auth: BuyerAuthService) {}
 
+  // What the sign-in screen may offer (email always; SMS only when it is set up).
+  @Public()
+  @Get('methods')
+  methods() {
+    return this.auth.methods();
+  }
+
   @Public()
   @Throttle(AUTH_THROTTLE)
   @Post('request-code')
   @HttpCode(200)
   requestCode(@Body() dto: RequestBuyerCodeDto) {
-    return this.auth.requestCode(dto.phone);
+    return this.auth.requestCode({ email: dto.email, phone: dto.phone });
   }
 
   @Public()
@@ -89,7 +96,7 @@ export class BuyerAuthController {
   @Post('verify')
   @HttpCode(200)
   verify(@Body() dto: VerifyBuyerCodeDto) {
-    return this.auth.verifyCode(dto.phone, dto.code);
+    return this.auth.verifyCode({ email: dto.email, phone: dto.phone, code: dto.code });
   }
 }
 

@@ -71,15 +71,18 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const sql = new Client({ connectionString: env.DIRECT_URL });
 
-async function buyerLogin(phone) {
-  const request = await api('POST', '/buyer-auth/request-code', { body: { phone } });
-  check(`buyer ${phone}: code requested`, request.status === 200, request);
+// `who` is { email } or { phone }. With no email/SMS provider configured the API (in development)
+// writes the code to its log, which is where this reads it from.
+async function buyerLogin(who) {
+  const label = who.email ?? who.phone;
+  const request = await api('POST', '/buyer-auth/request-code', { body: who });
+  check(`buyer ${label}: code requested by ${who.email ? 'email' : 'SMS'}`, request.status === 200 && request.json.channel === (who.email ? 'EMAIL' : 'SMS'), request);
   await sleep(500);
   const log = fs.readFileSync(API_LOG, 'utf8');
-  const codes = [...log.matchAll(/Dev login code for (\d+): (\d{6})/g)].filter((m) => m[1] === request.json.phone);
+  const codes = [...log.matchAll(/Dev login code for (\S+): (\d{6})/g)].filter((m) => m[1] === request.json.identifier);
   const code = codes.length ? codes[codes.length - 1][2] : null;
-  check(`buyer ${phone}: code found in the API log (dev mode, no SMS)`, Boolean(code));
-  return { code, normalized: request.json.phone };
+  check(`buyer ${label}: code found in the API log (dev mode, nothing really sent)`, Boolean(code));
+  return { code, identifier: request.json.identifier };
 }
 
 (async () => {
@@ -149,30 +152,46 @@ async function buyerLogin(phone) {
   const missing = await api('GET', '/public/shops/no-such-shop');
   check('an unknown shop is a clean 404', missing.status === 404);
 
-  section('6. Shopper A buys');
-  const a = await buyerLogin('0722000333');
-  const wrongCode = await api('POST', '/buyer-auth/verify', { body: { phone: '0722000333', code: a.code === '000000' ? '111111' : '000000' } });
-  check('a wrong SMS code is refused', wrongCode.status === 401, wrongCode);
-  const aVerify = await api('POST', '/buyer-auth/verify', { body: { phone: '0722000333', code: a.code } });
+  section('6. Shopper A buys (signs in by EMAIL)');
+  const methods = await api('GET', '/buyer-auth/methods');
+  check('the sign-in screen is told email is available, and SMS is not (not set up here)', methods.json.email === true && methods.json.sms === false, methods.json);
+  const badEmail = await api('POST', '/buyer-auth/request-code', { body: { email: 'not-an-email' } });
+  check('an invalid email address is refused', badEmail.status === 400, badEmail);
+  const both = await api('POST', '/buyer-auth/request-code', { body: { email: 'a@b.co', phone: '0712345678' } });
+  check('giving both an email and a phone number is refused', both.status === 400, both);
+  const A_EMAIL = 'shopper.a@example.test';
+  const a = await buyerLogin({ email: A_EMAIL });
+  const wrongCode = await api('POST', '/buyer-auth/verify', { body: { email: A_EMAIL, code: a.code === '000000' ? '111111' : '000000' } });
+  check('a wrong emailed code is refused', wrongCode.status === 401, wrongCode);
+  const otherAddress = await api('POST', '/buyer-auth/verify', { body: { email: 'someone.else@example.test', code: a.code } });
+  check('the same code does not work for a different email address', otherAddress.status === 401, otherAddress);
+  const aVerify = await api('POST', '/buyer-auth/verify', { body: { email: A_EMAIL, code: a.code } });
   const buyerA = aVerify.json.accessToken;
-  check('shopper A signs in with the right code', Boolean(buyerA), aVerify);
+  check('shopper A signs in with the right code (account made from the email, no phone yet)', Boolean(buyerA) && aVerify.json.buyer.email === A_EMAIL && aVerify.json.buyer.phone === null, aVerify);
+  const reuse = await api('POST', '/buyer-auth/verify', { body: { email: A_EMAIL, code: a.code } });
+  check('a code cannot be used twice', reuse.status === 401, reuse);
 
-  const tooMany = await api('POST', '/buyer/orders', { token: buyerA, body: { shopSlug: 'demo-shop', lines: [{ variantId, quantity: 25 }], fulfilmentType: 'PICKUP' } });
+  const noPhone = await api('POST', '/buyer/orders', { token: buyerA, body: { shopSlug: 'demo-shop', lines: [{ variantId, quantity: 1 }], fulfilmentType: 'PICKUP' } });
+  check('an email shopper must give the M-Pesa number they will pay with', noPhone.status === 400 && /M-Pesa phone number/.test(noPhone.json.message || ''), noPhone);
+  const tooMany = await api('POST', '/buyer/orders', { token: buyerA, body: { shopSlug: 'demo-shop', lines: [{ variantId, quantity: 25 }], fulfilmentType: 'PICKUP', paymentPhone: '0722000333' } });
   check('ordering more than the stock is refused', tooMany.status === 409, tooMany);
-  const delivery = await api('POST', '/buyer/orders', { token: buyerA, body: { shopSlug: 'demo-shop', lines: [{ variantId, quantity: 1 }], fulfilmentType: 'DELIVERY', deliveryAddress: 'Somewhere nice 12' } });
+  const delivery = await api('POST', '/buyer/orders', { token: buyerA, body: { shopSlug: 'demo-shop', lines: [{ variantId, quantity: 1 }], fulfilmentType: 'DELIVERY', deliveryAddress: 'Somewhere nice 12', paymentPhone: '0722000333' } });
   check('delivery is refused when the shop does not offer it', delivery.status === 400, delivery);
   const noAuth = await api('POST', '/buyer/orders', { body: { shopSlug: 'demo-shop', lines: [{ variantId, quantity: 1 }], fulfilmentType: 'PICKUP' } });
   check('ordering without signing in is refused', noAuth.status === 401, noAuth);
   const staffToken = await api('GET', '/buyer/me', { token: owner });
   check('a shop owner\'s staff token does not work on buyer routes', staffToken.status === 401, staffToken);
 
-  const order1 = await api('POST', '/buyer/orders', { token: buyerA, body: { shopSlug: 'demo-shop', lines: [{ variantId, quantity: 2 }], fulfilmentType: 'PICKUP' } });
+  const order1 = await api('POST', '/buyer/orders', { token: buyerA, body: { shopSlug: 'demo-shop', lines: [{ variantId, quantity: 2 }], fulfilmentType: 'PICKUP', paymentPhone: '0722000333' } });
   const o1 = order1.json;
   check('order for 2 units placed: KES 500, waiting for payment', order1.status === 201 && o1.status === 'PENDING_PAYMENT' && o1.amountDue === 500, order1);
   const pushes1 = (await mock('GET', '/_test/pushes')).json;
   const push1 = pushes1[pushes1.length - 1];
   check('an M-Pesa prompt for KES 500 was sent to the shopper\'s phone', push1?.amount === 500 && push1.phone === '254722000333', push1);
   check('the payment callback address is the secret, signed one', /\/public\/online-orders\/[0-9a-f-]+\/[0-9a-f-]+\/tuma-callback\/[A-Za-z0-9_-]{30,}$/.test(push1?.callback_url || ''), push1?.callback_url);
+
+  const meA = await api('GET', '/buyer/me', { token: buyerA });
+  check('the M-Pesa number given at checkout is remembered on the shopper\'s account', meA.json.phone === '254722000333', meA.json);
 
   const held = await api('GET', '/public/shops/demo-shop');
   check('the 2 units are held, so only 18 show as available', held.json.products[0].variants[0].available === 18);
@@ -210,7 +229,7 @@ async function buyerLogin(phone) {
   check('one M-Pesa receipt belongs to exactly one order', receipts.rows[0].n === 1);
 
   section('9. Privacy between shoppers');
-  const b = await buyerLogin('0733000444');
+  const b = await buyerLogin({ phone: '0733000444' }); // by SMS, so both sign-in routes stay covered
   const bVerify = await api('POST', '/buyer-auth/verify', { body: { phone: '0733000444', code: b.code } });
   const buyerB = bVerify.json.accessToken;
   check('shopper B signs in', Boolean(buyerB), bVerify);

@@ -27,17 +27,18 @@ each step, and how to undo it. **Nothing here has been done yet.**
 | Live database is **13 MB**: 10 businesses, 7 products, 44 sales, 2 subscriptions | Small. Copying, restoring and migrating are all quick |
 | **31** database changes ("migrations") applied, all finished cleanly | The new ones simply continue the list |
 | **0** online-shop tables exist on live | Nothing is half-done |
-| **5** migrations are waiting for the online shop (below), plus 1 for the parked M-Pesa fix | All are *additions* - new tables, new columns, one new list value, one unique index. Nothing is removed or rewritten |
+| **6** migrations are waiting for the online shop (below), plus 1 for the parked M-Pesa fix | All are *additions* - new tables, new columns, one new list value, one unique index. Nothing is removed or rewritten |
 | Row-level security is **off** for `subscriptions` and `subscription_payments` | The parked `fix/billing-rls` branch turns it on |
 | No live payment carries an M-Pesa provider reference | The parked M-Pesa fix's unique index cannot clash with existing data |
 
-The 5 migrations for the online shop, in order:
+The 6 migrations for the online shop, in order:
 
 1. `20261008090000` online shop settings
 2. `20261008120000` product online listing and photos
 3. `20261008150000` buyers and online orders
 4. `20261009100000` commission invoices
 5. `20261009120000` invoice online payment and Tuma request ids
+6. `20261011100000` shopper sign-in by email (email column, optional phone)
 
 The parked M-Pesa fix has one more, `20260927120000` (a unique index on the M-Pesa
 reference). Its date is **earlier** than the shop migrations, so **when it is merged,
@@ -97,7 +98,21 @@ Run the whole thing on the copy first, so any surprise happens there.
 *Check:* migrations apply, the end-to-end test passes, your existing 10 businesses'
 data still looks right.
 
-### Phase C - Accounts and settings (about 40 minutes, you)
+### Phase C - Accounts and settings - **DONE (2026-10-11)**
+
+- **Resend:** `zarodashop.com` verified; a real test email from `billing@zarodashop.com` was
+  accepted by Resend.
+- **Render:** the 8 new settings were pasted (their names should be visible in Render ->
+  Environment). The live API stayed healthy afterwards.
+- **Shopper sign-in no longer needs SMS:** shoppers sign in with an emailed 6-digit code
+  (default); an SMS option appears automatically once Africa's Talking is configured.
+- Still to do when ready: `CORS_ORIGIN` (only if it already exists on Render, append
+  `,https://shop.zarodashop.com`); the school system's own Resend sender for teachers.
+- Addresses: API `https://api.zarodashop.com`, back office `https://app.zarodashop.com`,
+  platform admin `https://admin.zarodashop.com`, terminal `https://pos.zarodashop.com`,
+  shop `https://shop.zarodashop.com` (new).
+
+*Original plan for this phase:*
 
 **Resend (email) - do this first, it takes DNS time.**
 - Verify a sending domain in Resend (for example `zarodashop.com`): Resend gives
@@ -205,9 +220,8 @@ Do the three branches **one at a time**, smallest first, checking after each.
 
 ## 4. Known gaps (not blockers, but know them)
 
-- **Text messages (SMS)** are untested: shop alerts and shopper login codes need
-  Africa's Talking configured. **Shopper login depends on SMS** - without it
-  shoppers cannot sign in (in testing, the code is read from the API's log).
+- **Text messages (SMS)** are untested: shop alerts to the shop (a new paid order) need
+  Africa's Talking configured. Shopper sign-in no longer depends on it (email codes).
 - **Photo storage** (Cloudflare R2) is untested.
 - **Tuma status checks cost KES 1 each**, so they are only a backup. If Tuma's
   callback is slow, a shopper can press "I've paid - check now" (limited), and the

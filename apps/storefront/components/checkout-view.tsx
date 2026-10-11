@@ -28,7 +28,9 @@ export default function CheckoutView({ shop }: { shop: Shop }) {
   useEffect(() => {
     if (buyer) {
       setName((current) => current || buyer.name || "");
-      setPaymentPhone((current) => current || displayPhone(buyer.phone));
+      // A shopper who signed in by email has no number yet - they type it once, and it is
+      // remembered for next time.
+      setPaymentPhone((current) => current || (buyer.phone ? displayPhone(buyer.phone) : ""));
     }
   }, [buyer]);
 
@@ -189,7 +191,9 @@ export default function CheckoutView({ shop }: { shop: Shop }) {
               onChange={(e) => setPaymentPhone(e.target.value)}
               className="mt-1 w-full rounded-md border border-border bg-surface p-3 text-base"
             />
-            <p className="mt-1 text-xs text-secondary-500">You&apos;ll get an M-Pesa prompt on this phone. Enter your PIN to pay the shop directly.</p>
+            <p className="mt-1 text-xs text-secondary-500">
+              You&apos;ll get an M-Pesa prompt on this phone. Enter your PIN to pay the shop directly. The shop may also use this number to reach you about your order.
+            </p>
           </div>
         </div>
 

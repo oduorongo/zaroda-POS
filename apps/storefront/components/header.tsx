@@ -22,7 +22,7 @@ export default function Header() {
                 My orders
               </Link>
               <span className="hidden items-center gap-1 text-secondary-500 sm:flex">
-                <UserRound size={14} aria-hidden /> {buyer.name ?? displayPhone(buyer.phone)}
+                <UserRound size={14} aria-hidden /> {buyer.name ?? buyer.email ?? (buyer.phone ? displayPhone(buyer.phone) : "My account")}
               </span>
               <button onClick={signOut} className="text-secondary-500 hover:text-foreground">
                 Sign out

@@ -17,16 +17,30 @@ import {
 } from 'class-validator';
 import { FulfilmentType, OnlineOrderStatus } from '@prisma/client';
 
+// Exactly one of email / phone - checked in BuyerAuthService so the message can
+// say so plainly.
 export class RequestBuyerCodeDto {
   @IsString()
+  @IsOptional()
+  @MaxLength(200)
+  email?: string;
+
+  @IsString()
+  @IsOptional()
   @MaxLength(20)
-  phone!: string;
+  phone?: string;
 }
 
 export class VerifyBuyerCodeDto {
   @IsString()
+  @IsOptional()
+  @MaxLength(200)
+  email?: string;
+
+  @IsString()
+  @IsOptional()
   @MaxLength(20)
-  phone!: string;
+  phone?: string;
 
   @Matches(/^\s*\d{6}\s*$/, { message: 'Enter the 6-digit code from the SMS' })
   code!: string;
