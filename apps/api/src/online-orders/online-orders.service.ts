@@ -399,6 +399,9 @@ export class OnlineOrdersService {
       throw new NotFoundException();
     }
 
+    // Field NAMES and the status word only - never amounts or receipts. Tuma publishes no
+    // callback schema, so this is how a surprise in its real payload shows up in the logs.
+    this.logger.log({ orderId, fields: Object.keys(body ?? {}), status: (body as { status?: unknown })?.status }, 'Tuma order callback received');
     const order = await this.runAsTenant(organizationId, (tx) => tx.onlineOrder.findUnique({ where: { id: orderId } }));
     if (!order) throw new NotFoundException();
     // Already settled (e.g. a duplicate delivery) - nothing to do.

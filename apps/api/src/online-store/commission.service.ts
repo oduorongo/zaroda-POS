@@ -269,6 +269,9 @@ export class CommissionService {
     const actual = Buffer.from(token);
     if (expected.length !== actual.length || !timingSafeEqual(expected, actual)) throw new NotFoundException();
 
+    // Field NAMES and the status word only - never amounts or receipts. Tuma publishes no
+    // callback schema, so this is how a surprise in its real payload shows up in the logs.
+    this.logger.log({ invoiceId, fields: Object.keys(body ?? {}), status: (body as { status?: unknown })?.status }, 'Tuma invoice callback received');
     const invoice = await this.runAsTenant(organizationId, (tx) => tx.commissionInvoice.findUnique({ where: { id: invoiceId } }));
     if (!invoice) throw new NotFoundException();
     if (invoice.status !== CommissionInvoiceStatus.ISSUED) return { ok: true };
