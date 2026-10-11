@@ -24,6 +24,8 @@ import { RecordPaymentDto, SetSuspensionDto } from './dto/record-payment.dto';
 import { SetOnlineStoreAddonDto, SetOrganizationActiveDto, UpdateOrganizationDto } from './dto/update-organization.dto';
 import { ResetUserPasswordDto } from './dto/reset-user-password.dto';
 import { CommissionService } from '../online-store/commission.service';
+import { RidersService } from '../riders/riders.service';
+import { ListRidersQueryDto, SetRiderStatusDto } from '../riders/dto/rider.dto';
 import {
   GenerateInvoicesDto,
   ListInvoicesQueryDto,
@@ -51,6 +53,7 @@ export class PlatformAdminController {
     private readonly platformAdmin: PlatformAdminService,
     private readonly auditLog: PlatformAuditLogService,
     private readonly commission: CommissionService,
+    private readonly riders: RidersService,
   ) {}
 
   @Public()
@@ -272,6 +275,30 @@ export class PlatformAdminController {
       entityType: 'OnlineStore',
       entityId: id,
       organizationId: id,
+    });
+    return result;
+  }
+
+  // ── Delivery riders ──────────────────────────────────────────────────
+
+  @Public()
+  @UseGuards(PlatformAdminAuthGuard)
+  @Get('riders')
+  listRiders(@Req() req: PlatformAdminRequest, @Query() query: ListRidersQueryDto) {
+    return this.riders.listForAdmin(query.status);
+  }
+
+  // Approve (needs a finished profile) or suspend a rider.
+  @Public()
+  @UseGuards(PlatformAdminAuthGuard)
+  @Post('riders/:id/status')
+  async setRiderStatus(@Req() req: PlatformAdminRequest, @Param('id', ParseUUIDPipe) id: string, @Body() dto: SetRiderStatusDto) {
+    const result = await this.riders.setStatusForAdmin(id, dto.status);
+    await this.auditLog.log({
+      platformAdminId: req.user!.platformAdminId,
+      action: dto.status === 'APPROVED' ? 'platform_admin.approved_rider' : 'platform_admin.suspended_rider',
+      entityType: 'Rider',
+      entityId: id,
     });
     return result;
   }

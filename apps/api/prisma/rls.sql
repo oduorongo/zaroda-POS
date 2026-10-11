@@ -683,3 +683,11 @@ CREATE POLICY tenant_isolation ON subscription_payments
         AND s."organizationId" = current_setting('app.current_tenant', true)
     )
   );
+
+-- ── riders / rider_otps ───────────────────────────────────────────────────
+-- Deliberately NO row-level security, same reason as buyers / buyer_otps: a rider
+-- signs in once and works for many businesses, so there is no single tenant to scope
+-- by. The access rules live in RidersService: a rider only ever reads or changes the
+-- row of their own verified id; a business only the riders whose organizationId is its
+-- own (plus, later, approved pool riders through a narrow view); a platform admin the
+-- rest. Both tables are on rls-coverage.spec.ts's exclusion list.

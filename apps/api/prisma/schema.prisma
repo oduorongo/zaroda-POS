@@ -82,6 +82,7 @@ model Organization {
   onlineStore      OnlineStore?
   onlineOrders     OnlineOrder[]
   commissionInvoices CommissionInvoice[]
+  riders           Rider[]
 
   @@map("organizations")
 }
@@ -2060,4 +2061,60 @@ model CommissionInvoice {
   @@unique([organizationId, periodMonth])
   @@index([organizationId, status])
   @@map("commission_invoices")
+}
+
+// ── Delivery riders ───────────────────────────────────────────────────────
+
+enum VehicleType {
+  BODA
+  TUK_TUK
+  VEHICLE
+}
+
+enum RiderStatus {
+  PENDING // signed up, waiting for a Zaroda admin (shared pool only)
+  APPROVED
+  SUSPENDED
+}
+
+// A delivery rider. One identity per email. organizationId null = the shared
+// pool (self-signed-up, approved by a platform admin); set = that business's own
+// rider (added by the business, approved on creation, invisible to everyone else).
+// Like buyers, riders sign in across businesses, so there is no row-level security
+// here: every query is filtered by the verified rider id, the business, or runs
+// as a platform admin (see rls.sql's "riders" comment).
+model Rider {
+  id             String      @id @default(uuid())
+  email          String      @unique
+  fullName       String?
+  phone          String?     @unique
+  vehicleType    VehicleType?
+  plateNumber    String?
+  // Free text, e.g. "Milimani, Kisumu CBD" - where they usually work.
+  area           String?
+  status         RiderStatus @default(PENDING)
+  organizationId String?
+  approvedAt     DateTime?
+  lastLoginAt    DateTime?
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([status])
+  @@map("riders")
+}
+
+model RiderOtp {
+  id         String    @id @default(uuid())
+  email      String
+  codeHash   String
+  expiresAt  DateTime
+  attempts   Int       @default(0)
+  consumedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([email, createdAt])
+  @@map("rider_otps")
 }

@@ -84,3 +84,20 @@ export interface Buyer {
   phone: string | null;
   name: string | null;
 }
+
+export type VehicleType = "BODA" | "TUK_TUK" | "VEHICLE";
+export type RiderStatus = "PENDING" | "APPROVED" | "SUSPENDED";
+
+/** A delivery rider's own account. SHOP = added by a business, POOL = signed up on their own. */
+export interface Rider {
+  id: string;
+  email: string;
+  fullName: string | null;
+  phone: string | null;
+  vehicleType: VehicleType | null;
+  plateNumber: string | null;
+  area: string | null;
+  status: RiderStatus;
+  kind: "SHOP" | "POOL";
+  profileComplete: boolean;
+}
