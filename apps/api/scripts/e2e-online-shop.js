@@ -320,6 +320,45 @@ async function buyerLogin(phone) {
   const doublePay = await api('POST', `/platform-admin/organizations/${orgId}/commission-invoices/${invoice.id}/payment`, { token: admin, body: { method: 'CASH' } });
   check('paying an already-paid invoice is refused', doublePay.status === 409, doublePay);
 
+  section('16. Signup and billing still work under the billing security rules');
+  // Row-level security now also covers subscriptions and subscription payments.
+  // These are the three flows that could have broken: a new business signing up
+  // (creates a subscription), the platform admin's billing list, and recording
+  // a subscription payment.
+  const plan = await api('POST', '/platform-admin/plans', { token: admin, body: { tier: 'BASIC', name: 'Basic', priceKes: 1500, maxDevices: 2, maxBranches: 1 } });
+  check('platform admin can create the BASIC plan', plan.status === 201 || plan.status === 200 || plan.status === 409, plan);
+  const stamp = Date.now();
+  const signup = await api('POST', '/auth/register', {
+    body: { organizationName: `Signup Check ${stamp}`, industryType: 'RETAIL', ownerFullName: 'Signup Owner', ownerEmail: `signup${stamp}@example.test`, ownerPassword: 'a-long-test-password', branchName: 'Main', county: 'Nairobi' },
+  });
+  check('a brand-new business can sign up (and gets its trial subscription)', signup.status === 201 || signup.status === 200, signup);
+  const orgs = await api('GET', '/platform-admin/organizations', { token: admin });
+  const newOrg = Array.isArray(orgs.json) ? orgs.json.find((o) => o.name === `Signup Check ${stamp}`) : null;
+  check('the platform admin billing list shows the new business with a TRIAL subscription', newOrg?.subscription?.status === 'TRIAL', newOrg);
+  const billed = await api('POST', `/platform-admin/organizations/${newOrg?.id}/payments`, { token: admin, body: { amount: 1500, method: 'MPESA', reference: 'E2E-TEST' } });
+  check('platform admin can record a subscription payment', billed.status === 201 || billed.status === 200, billed);
+  const after = await api('GET', `/platform-admin/organizations/${newOrg?.id}`, { token: admin });
+  check('the payment shows in that business\'s history and the subscription is no longer a trial', after.json.subscription?.payments?.length === 1 && after.json.subscription.isTrial === false, after.json.subscription);
+  const ownTenant = await api('POST', '/auth/login', { body: { email: `signup${stamp}@example.test`, password: 'a-long-test-password' } });
+  check('the new business owner can log in', Boolean(ownTenant.json.accessToken), ownTenant);
+  const demoProducts = await api('GET', '/products', { token: ownTenant.json.accessToken });
+  check('a business sees only its OWN data - none of the demo shop\'s products', Array.isArray(demoProducts.json) && demoProducts.json.length === 0, demoProducts.json);
+  // The security rule itself, as the restricted app user the live API connects as:
+  // the same table, three different views depending on whose request it is.
+  const appDb = new Client({ connectionString: env.DATABASE_URL });
+  await appDb.connect();
+  const subsSeenBy = async (tenant) => {
+    await appDb.query('BEGIN');
+    if (tenant) await appDb.query("SELECT set_config('app.current_tenant', $1, true)", [tenant]);
+    const r = await appDb.query('SELECT count(*)::int AS n FROM subscriptions');
+    await appDb.query('ROLLBACK');
+    return r.rows[0].n;
+  };
+  check('the new business sees exactly its own subscription', (await subsSeenBy(newOrg.id)) === 1);
+  check('the demo shop (a different business) sees NONE of it', (await subsSeenBy(orgId)) === 0);
+  check('platform admin work (no business selected) still sees billing records', (await subsSeenBy(null)) >= 1);
+  await appDb.end();
+
   console.log(`\n${failures.length === 0 ? 'ALL GOOD' : 'PROBLEMS FOUND'}: ${passed} checks passed, ${failures.length} failed.`);
   if (failures.length) console.log('Failed:\n - ' + failures.join('\n - '));
   await sql.end();
