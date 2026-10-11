@@ -500,6 +500,168 @@ async function riderLogin(email) {
   check('the shop\'s own rider signs in with their email (already approved, no second account)', verifyB.status === 200 && verifyB.json.rider.status === 'APPROVED' && verifyB.json.rider.kind === 'SHOP' && verifyB.json.rider.id === addB.json.id, verifyB);
   const rowsB = await sql.query('SELECT count(*)::int AS n FROM riders WHERE email = $1', [RB]);
   check('still exactly one account for that email', rowsB.rows[0].n === 1, rowsB.rows);
+  section('18. Delivery: asking for a rider, quotes, the code at the door');
+  const riderBToken = verifyB.json.accessToken;
+  const riderAId = verifyA.json.rider.id;
+  const riderBId = addB.json.id;
+  const dOn = await api('PATCH', '/online-store/me', { token: owner, body: { deliveryEnabled: true } });
+  check('the shop turns delivery on', dOn.status === 200 && dOn.json.deliveryEnabled === true, dOn);
+
+  let dSeq = 0;
+  const placeDelivery = async (address) => {
+    for (let i = 0; i < 4; i++) {
+      const r = await api('POST', '/buyer/orders', { token: buyerA, body: { shopSlug: 'demo-shop', lines: [{ variantId, quantity: 1 }], fulfilmentType: 'DELIVERY', deliveryAddress: address, paymentPhone: '0722000333' } });
+      if (r.status !== 429) return r;
+      await sleep(31000); // the checkout rate limit - wait it out
+    }
+    return null;
+  };
+  const payAndAccept = async (order) => {
+    dSeq++;
+    await api('POST', `/online-orders/${order.id}/confirm-payment`, { token: owner, body: { receipt: `DLV${Date.now()}${dSeq}` } });
+    return api('POST', `/online-orders/${order.id}/accept`, { token: owner });
+  };
+
+  const D = (await placeDelivery('Milimani, Kisumu, house 4 behind the blue gate')).json;
+  check('a delivery order is placed', D?.fulfilmentType === 'DELIVERY' && D.status === 'PENDING_PAYMENT', D);
+  const tooEarly = await api('POST', `/online-orders/${D.id}/delivery`, { token: owner, body: { audience: 'EVERYONE' } });
+  check('a rider cannot be requested before the order is paid and accepted', tooEarly.status === 400, tooEarly);
+  const dAccepted = await payAndAccept(D);
+  check('the delivery order is paid and accepted', dAccepted.json.status === 'ACCEPTED', dAccepted);
+  const pickupOrder = await api('POST', `/online-orders/${o1.id}/delivery`, { token: owner, body: { audience: 'EVERYONE' } });
+  check('a pickup order needs no rider', pickupOrder.status === 400, pickupOrder);
+  const noRider = await api('POST', `/online-orders/${D.id}/delivery`, { token: owner, body: { audience: 'ONE_RIDER' } });
+  check('choosing "one rider" without saying who is refused', noRider.status === 400, noRider);
+
+  const ownReq = await api('POST', `/online-orders/${D.id}/delivery`, { token: owner, body: { audience: 'SHOP_RIDERS' } });
+  check('the shop asks only its own riders: the request is open', ownReq.status === 201 && ownReq.json.status === 'OPEN' && ownReq.json.audience === 'SHOP_RIDERS', ownReq);
+  const dupReq = await api('POST', `/online-orders/${D.id}/delivery`, { token: owner, body: { audience: 'EVERYONE' } });
+  check('a second request for the same order is refused while one is open', dupReq.status === 409, dupReq);
+  const openA1 = await api('GET', '/rider/jobs/open', { token: riderA });
+  check('a pool rider does NOT see a job meant for the shop\'s own riders', Array.isArray(openA1.json) && openA1.json.length === 0, openA1.json);
+  const quoteA0 = await api('POST', `/rider/jobs/${ownReq.json.id}/quote`, { token: riderA, body: { fee: 300 } });
+  check('...and cannot quote on it', quoteA0.status === 404, quoteA0);
+  const openB1 = await api('GET', '/rider/jobs/open', { token: riderBToken });
+  check('the shop\'s own rider sees it: the area, but NOT the buyer\'s phone or full address',
+    Array.isArray(openB1.json) && openB1.json.length === 1 && openB1.json[0].dropoffSummary === 'Milimani, Kisumu' && !/blue gate|0722000333|254722000333/.test(JSON.stringify(openB1.json)), openB1.json);
+  const cancelReq = await api('POST', `/online-orders/${D.id}/delivery/cancel`, { token: owner, body: { reason: 'wider search' } });
+  check('the shop cancels that request', cancelReq.status === 200 && cancelReq.json.status === 'CANCELLED', cancelReq);
+
+  const allReq = await api('POST', `/online-orders/${D.id}/delivery`, { token: owner, body: { audience: 'EVERYONE' } });
+  const JOB = allReq.json.id;
+  check('the shop opens it to everyone', allReq.status === 201 && allReq.json.status === 'OPEN' && allReq.json.audience === 'EVERYONE', allReq);
+  const openA2 = await api('GET', '/rider/jobs/open', { token: riderA });
+  check('now the pool rider sees it', Array.isArray(openA2.json) && openA2.json.length === 1 && openA2.json[0].id === JOB, openA2.json);
+  const lowFee = await api('POST', `/rider/jobs/${JOB}/quote`, { token: riderA, body: { fee: 5 } });
+  const highFee = await api('POST', `/rider/jobs/${JOB}/quote`, { token: riderA, body: { fee: 20000 } });
+  check('an absurdly low or high delivery price is refused', lowFee.status === 400 && highFee.status === 400, { low: lowFee.status, high: highFee.status });
+  const qA = await api('POST', `/rider/jobs/${JOB}/quote`, { token: riderA, body: { fee: 250, etaMinutes: 20, note: 'I am near the shop' } });
+  check('the pool rider quotes KES 250', qA.status === 200 && qA.json.myQuote.fee === 250, qA);
+  const qB = await api('POST', `/rider/jobs/${JOB}/quote`, { token: riderBToken, body: { fee: 180 } });
+  const qB2 = await api('POST', `/rider/jobs/${JOB}/quote`, { token: riderBToken, body: { fee: 150, etaMinutes: 15 } });
+  check('the shop\'s rider quotes KES 180, then lowers it to KES 150', qB.status === 200 && qB2.status === 200 && qB2.json.myQuote.fee === 150, { qB: qB.status, qB2: qB2.json });
+  const openA3 = await api('GET', '/rider/jobs/open', { token: riderA });
+  check('a rider only ever sees their OWN quote, never a competitor\'s', openA3.json[0].myQuote.fee === 250 && !JSON.stringify(openA3.json).includes('150'), openA3.json);
+  const shopView1 = await api('GET', `/online-orders/${D.id}/delivery`, { token: owner });
+  check('the shop sees both quotes, cheapest first', shopView1.json.quotes.length === 2 && shopView1.json.quotes[0].fee === 150 && shopView1.json.quotes[1].fee === 250, shopView1.json);
+  const buyerView1 = await api('GET', `/buyer/orders/${D.id}/delivery`, { token: buyerA });
+  check('the buyer sees both quotes, cheapest first, and no code yet', buyerView1.json.quotes.length === 2 && buyerView1.json.quotes[0].fee === 150 && buyerView1.json.deliveryCode === null && buyerView1.json.rider === null, buyerView1.json);
+  const otherBuyerView = await api('GET', `/buyer/orders/${D.id}/delivery`, { token: buyerB });
+  const otherBuyerAccept = await api('POST', `/buyer/orders/${D.id}/delivery/quotes/${buyerView1.json.quotes[0].id}/accept`, { token: buyerB });
+  check('another shopper can neither see nor accept these quotes', otherBuyerView.status === 404 && otherBuyerAccept.status === 404, { view: otherBuyerView.status, accept: otherBuyerAccept.status });
+
+  const accepted = await api('POST', `/buyer/orders/${D.id}/delivery/quotes/${buyerView1.json.quotes[0].id}/accept`, { token: buyerA });
+  const dCode = accepted.json.deliveryCode;
+  check('the buyer accepts the KES 150 quote: assigned, with the rider\'s phone and a 4-digit code',
+    accepted.status === 200 && accepted.json.status === 'ASSIGNED' && accepted.json.agreedFee === 150 && /^\d{4}$/.test(dCode || '') && accepted.json.rider.phone === '254733222111', accepted.json);
+  const acceptAgain = await api('POST', `/buyer/orders/${D.id}/delivery/quotes/${buyerView1.json.quotes[1].id}/accept`, { token: buyerA });
+  check('a second quote cannot be accepted afterwards', acceptAgain.status === 400 || acceptAgain.status === 404, acceptAgain);
+  const shopView2 = await api('GET', `/online-orders/${D.id}/delivery`, { token: owner });
+  check('the shop sees the chosen rider and their phone, but never the delivery code', shopView2.json.status === 'ASSIGNED' && shopView2.json.rider.phone === '254733222111' && !('deliveryCode' in shopView2.json), shopView2.json);
+  const openA4 = await api('GET', '/rider/jobs/open', { token: riderA });
+  const quoteA1 = await api('POST', `/rider/jobs/${JOB}/quote`, { token: riderA, body: { fee: 100 } });
+  const mineA = await api('GET', '/rider/jobs/mine', { token: riderA });
+  check('the rider who lost no longer sees the job and cannot quote', openA4.json.length === 0 && quoteA1.status === 404 && mineA.json.length === 0, { open: openA4.json, quote: quoteA1.status, mine: mineA.json });
+  const mineB = await api('GET', '/rider/jobs/mine', { token: riderBToken });
+  check('the chosen rider now gets the buyer\'s phone and full address, and the agreed price (but not the code)',
+    mineB.json.length === 1 && mineB.json[0].buyerPhone === '254722000333' && /blue gate/.test(mineB.json[0].deliveryAddress) && mineB.json[0].agreedFee === 150 && !('deliveryCode' in mineB.json[0]), mineB.json);
+
+  const pickA = await api('POST', `/rider/jobs/${JOB}/pickup`, { token: riderA });
+  check('a rider who was not chosen cannot pick the goods up', pickA.status === 400, pickA);
+  const deliverEarly = await api('POST', `/rider/jobs/${JOB}/deliver`, { token: riderBToken, body: { code: dCode } });
+  check('delivering before picking up is refused', deliverEarly.status === 400, deliverEarly);
+  const pickB = await api('POST', `/rider/jobs/${JOB}/pickup`, { token: riderBToken });
+  check('the chosen rider picks the goods up', pickB.status === 200 && pickB.json.status === 'PICKED_UP', pickB);
+  const wrongDelivery = await api('POST', `/rider/jobs/${JOB}/deliver`, { token: riderBToken, body: { code: dCode === '0000' ? '1111' : '0000' } });
+  const attempts = await sql.query('SELECT "codeAttempts" AS n FROM delivery_jobs WHERE id = $1', [JOB]);
+  check('a wrong code is refused, counted (even though the request failed), and the order stays open', wrongDelivery.status === 400 && /tries left/.test(wrongDelivery.json.message || '') && attempts.rows[0].n === 1, { wrongDelivery, attempts: attempts.rows });
+  const deliverA = await api('POST', `/rider/jobs/${JOB}/deliver`, { token: riderA, body: { code: dCode } });
+  check('another rider cannot deliver it, even knowing the code', deliverA.status === 404, deliverA);
+  const delivered = await api('POST', `/rider/jobs/${JOB}/deliver`, { token: riderBToken, body: { code: dCode, cashCollected: 150 } });
+  check('the right code completes the delivery', delivered.status === 200 && delivered.json.status === 'DELIVERED' && delivered.json.cashCollected === 150, delivered);
+  const dOrderRow = await sql.query('SELECT status, "commissionAmount"::float AS c FROM online_orders WHERE id = $1', [D.id]);
+  check('the order completes with it, and the 3% commission (KES 7.50, products only) is recorded', dOrderRow.rows[0].status === 'COMPLETED' && dOrderRow.rows[0].c === 7.5, dOrderRow.rows);
+  const deliverTwice = await api('POST', `/rider/jobs/${JOB}/deliver`, { token: riderBToken, body: { code: dCode } });
+  check('a delivery cannot be confirmed twice', deliverTwice.status === 400, deliverTwice);
+  const buyerView2 = await api('GET', `/buyer/orders/${D.id}/delivery`, { token: buyerA });
+  const shopView3 = await api('GET', `/online-orders/${D.id}/delivery`, { token: owner });
+  check('buyer and shop both see it delivered; the code is gone; the shop sees the cash the rider reported', buyerView2.json.status === 'DELIVERED' && buyerView2.json.deliveryCode === null && shopView3.json.status === 'DELIVERED' && shopView3.json.cashCollected === 150, { buyer: buyerView2.json, shop: shopView3.json });
+
+  // The database's own rules, as the restricted user the live API connects as.
+  const riderDb = new Client({ connectionString: env.DATABASE_URL });
+  await riderDb.connect();
+  const seenBy = async (riderId, table) => {
+    await riderDb.query('BEGIN');
+    if (riderId) await riderDb.query("SELECT set_config('app.current_rider', $1, true)", [riderId]);
+    const r = await riderDb.query(`SELECT count(*)::int AS n FROM ${table}`);
+    await riderDb.query('ROLLBACK');
+    return r.rows[0].n;
+  };
+  check('the database shows a rider only their own quotes (1 each)', (await seenBy(riderAId, 'delivery_quotes')) === 1 && (await seenBy(riderBId, 'delivery_quotes')) === 1);
+  check('the database shows the delivery to its rider only', (await seenBy(riderBId, 'delivery_jobs')) === 1 && (await seenBy(riderAId, 'delivery_jobs')) === 0);
+  check('the buyer\'s phone and address are visible to the chosen rider only - not another rider, not nobody',
+    (await seenBy(riderBId, 'delivery_job_contacts')) === 1 && (await seenBy(riderAId, 'delivery_job_contacts')) === 0 && (await seenBy(null, 'delivery_job_contacts')) === 0);
+  await riderDb.query('BEGIN');
+  await riderDb.query("SELECT set_config('app.current_rider', $1, true)", [riderAId]);
+  const hijack = await riderDb.query("UPDATE delivery_jobs SET status = 'CANCELLED' WHERE id = $1", [JOB]);
+  await riderDb.query('ROLLBACK');
+  check('a rider cannot change a job that is not theirs, even straight in the database', hijack.rowCount === 0);
+  await riderDb.end();
+
+  // A second order whose quote window runs out, then is asked again, and is settled by hand.
+  const D2 = (await placeDelivery('Nyalenda, Kisumu')).json;
+  await payAndAccept(D2);
+  const j2 = (await api('POST', `/online-orders/${D2.id}/delivery`, { token: owner, body: { audience: 'EVERYONE' } })).json;
+  await api('POST', `/rider/jobs/${j2.id}/quote`, { token: riderBToken, body: { fee: 200 } });
+  await sql.query("UPDATE delivery_jobs SET \"quoteDeadline\" = (now() AT TIME ZONE 'UTC') - interval '1 minute' WHERE id = $1", [j2.id]);
+  const openExpired = await api('GET', '/rider/jobs/open', { token: riderBToken });
+  const quoteExpired = await api('POST', `/rider/jobs/${j2.id}/quote`, { token: riderBToken, body: { fee: 150 } });
+  check('when the time is up, riders no longer see or quote on the job', openExpired.json.length === 0 && quoteExpired.status === 404, { open: openExpired.json, quote: quoteExpired.status });
+  const expiredBuyer = await api('GET', `/buyer/orders/${D2.id}/delivery`, { token: buyerA });
+  const acceptExpired = await api('POST', `/buyer/orders/${D2.id}/delivery/quotes/${(await sql.query('SELECT id FROM delivery_quotes WHERE "jobId" = $1', [j2.id])).rows[0].id}/accept`, { token: buyerA });
+  check('the buyer sees it expired and can no longer accept a late quote', expiredBuyer.json.status === 'EXPIRED' && acceptExpired.status === 400, { view: expiredBuyer.json.status, accept: acceptExpired.status });
+  const j2b = await api('POST', `/online-orders/${D2.id}/delivery`, { token: owner, body: { audience: 'ONE_RIDER', riderId: riderBId } });
+  check('the shop can ask again - this time just one rider', j2b.status === 201 && j2b.json.status === 'OPEN' && j2b.json.audience === 'ONE_RIDER', j2b);
+  const openA5 = await api('GET', '/rider/jobs/open', { token: riderA });
+  check('a job offered to one rider is invisible to the others', openA5.json.length === 0, openA5.json);
+  await api('POST', `/rider/jobs/${j2b.json.id}/quote`, { token: riderBToken, body: { fee: 120 } });
+  const b2 = await api('GET', `/buyer/orders/${D2.id}/delivery`, { token: buyerA });
+  await api('POST', `/buyer/orders/${D2.id}/delivery/quotes/${b2.json.quotes[0].id}/accept`, { token: buyerA });
+  await api('POST', `/rider/jobs/${j2b.json.id}/pickup`, { token: riderBToken });
+  const manualDone = await api('POST', `/online-orders/${D2.id}/complete`, { token: owner });
+  const j2row = await sql.query('SELECT status FROM delivery_jobs WHERE id = $1', [j2b.json.id]);
+  check('the shop completing the order by hand also closes the delivery as delivered', manualDone.json.status === 'COMPLETED' && j2row.rows[0].status === 'DELIVERED', { order: manualDone.json.status, job: j2row.rows });
+
+  // A third order cancelled by the shop while riders are still quoting.
+  const D3 = (await placeDelivery('Kibuye, Kisumu')).json;
+  await payAndAccept(D3);
+  const j3 = (await api('POST', `/online-orders/${D3.id}/delivery`, { token: owner, body: { audience: 'EVERYONE' } })).json;
+  await api('POST', `/rider/jobs/${j3.id}/quote`, { token: riderA, body: { fee: 300 } });
+  const cancelOrder3 = await api('POST', `/online-orders/${D3.id}/cancel`, { token: owner, body: { reason: 'customer called to cancel' } });
+  const j3row = await sql.query('SELECT j.status AS job, q.status AS quote FROM delivery_jobs j JOIN delivery_quotes q ON q."jobId" = j.id WHERE j.id = $1', [j3.id]);
+  check('cancelling the order cancels the delivery request and closes the quotes', cancelOrder3.json.status === 'CANCELLED' && j3row.rows[0].job === 'CANCELLED' && j3row.rows[0].quote === 'REJECTED', { order: cancelOrder3.json.status, rows: j3row.rows });
+
+  section('19. Suspended riders and tidy-up');
   const suspendB = await api('POST', `/riders/${addB.json.id}/status`, { token: owner, body: { status: 'SUSPENDED' } });
   const riderMeB = await api('GET', '/rider/me', { token: verifyB.json.accessToken });
   check('the shop suspends its rider and the rider sees it', suspendB.json.status === 'SUSPENDED' && riderMeB.json.status === 'SUSPENDED', { s: suspendB.json.status, me: riderMeB.json.status });
@@ -507,6 +669,10 @@ async function riderLogin(email) {
   check('the platform admin can suspend a pool rider', suspendA.json.status === 'SUSPENDED', suspendA);
   const otpRows = await sql.query("SELECT count(*)::int AS n FROM rider_otps WHERE \"codeHash\" = $1 OR \"codeHash\" = $2", [codeA, codeB]);
   check('login codes are stored only as hashes, never as the code itself', otpRows.rows[0].n === 0, otpRows.rows);
+
+  const openSuspended = await api('GET', '/rider/jobs/open', { token: riderA });
+  const quoteSuspended = await api('POST', `/rider/jobs/${JOB}/quote`, { token: riderA, body: { fee: 100 } });
+  check('a suspended rider can no longer see or take jobs', openSuspended.status === 403 && quoteSuspended.status === 403, { open: openSuspended.status, quote: quoteSuspended.status });
 
   console.log(`\n${failures.length === 0 ? 'ALL GOOD' : 'PROBLEMS FOUND'}: ${passed} checks passed, ${failures.length} failed.`);
   if (failures.length) console.log('Failed:\n - ' + failures.join('\n - '));

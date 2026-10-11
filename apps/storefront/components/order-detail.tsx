@@ -7,6 +7,7 @@ import { ApiError, cancelOrder, checkOrderPayment, getOrder, payOrder } from "..
 import { displayPhone, formatQty, kes } from "../lib/format";
 import type { Order } from "../lib/types";
 import AuthForm from "./auth-form";
+import DeliveryPanel from "./delivery-panel";
 import OrderStatusBadge, { PROGRESS_STEPS, progressIndex } from "./order-status";
 import { useStore } from "./store-provider";
 
@@ -262,6 +263,10 @@ export default function OrderDetail({ orderId }: { orderId: string }) {
         {order.fulfilmentType === "PICKUP" && <p className="text-secondary-600">Collect from {order.shop.name}. Quote order number {order.orderNumber}.</p>}
         {order.buyerNote && <p className="mt-1 text-secondary-600">Your note: {order.buyerNote}</p>}
       </section>
+
+      {order.fulfilmentType === "DELIVERY" && ["ACCEPTED", "READY", "COMPLETED"].includes(order.status) && token && (
+        <DeliveryPanel token={token} orderId={order.id} onUnauthorized={signOut} />
+      )}
     </div>
   );
 }

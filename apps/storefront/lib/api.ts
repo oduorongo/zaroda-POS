@@ -1,4 +1,4 @@
-import type { Buyer, Order, OrderCheck, Rider, Shop, ShopSummary, VehicleType } from "./types";
+import type { Buyer, BuyerDelivery, MyJob, OpenJob, Order, OrderCheck, Rider, Shop, ShopSummary, VehicleType } from "./types";
 
 export class ApiError extends Error {
   status: number;
@@ -114,3 +114,25 @@ export interface RiderProfileInput {
 
 export const updateRiderMe = (token: string, input: RiderProfileInput) =>
   request<Rider>("/rider/me", { method: "PATCH", token, body: JSON.stringify(input) });
+
+// ── Delivery ─────────────────────────────────────────────────────────────
+
+/** The delivery of a shopper's own order, or null if the shop hasn't asked for a rider yet. */
+export const getOrderDelivery = (token: string, orderId: string) => request<BuyerDelivery | null>(`/buyer/orders/${orderId}/delivery`, { token });
+
+export const acceptDeliveryQuote = (token: string, orderId: string, quoteId: string) =>
+  request<BuyerDelivery>(`/buyer/orders/${orderId}/delivery/quotes/${quoteId}/accept`, { method: "POST", token, body: "{}" });
+
+export const listOpenJobs = (token: string) => request<OpenJob[]>("/rider/jobs/open", { token });
+
+export const listMyJobs = (token: string) => request<MyJob[]>("/rider/jobs/mine", { token });
+
+export const quoteJob = (token: string, jobId: string, input: { fee: number; etaMinutes?: number; note?: string }) =>
+  request<OpenJob>(`/rider/jobs/${jobId}/quote`, { method: "POST", token, body: JSON.stringify(input) });
+
+export const withdrawQuote = (token: string, jobId: string) => request<{ withdrawn: boolean }>(`/rider/jobs/${jobId}/quote`, { method: "DELETE", token });
+
+export const pickUpJob = (token: string, jobId: string) => request<MyJob>(`/rider/jobs/${jobId}/pickup`, { method: "POST", token, body: "{}" });
+
+export const deliverJob = (token: string, jobId: string, input: { code: string; cashCollected?: number }) =>
+  request<MyJob>(`/rider/jobs/${jobId}/deliver`, { method: "POST", token, body: JSON.stringify(input) });

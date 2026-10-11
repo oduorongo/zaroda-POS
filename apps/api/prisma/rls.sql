@@ -691,3 +691,64 @@ CREATE POLICY tenant_isolation ON subscription_payments
 -- row of their own verified id; a business only the riders whose organizationId is its
 -- own (plus, later, approved pool riders through a narrow view); a platform admin the
 -- rest. Both tables are on rls-coverage.spec.ts's exclusion list.
+
+-- ── Delivery jobs, quotes and contacts ────────────────────────────────────
+-- Four parties touch these: the business (app.current_tenant), the buyer of the order
+-- (app.current_buyer), and riders (app.current_rider, set only from a verified rider token,
+-- see DeliveryRiderService). What each may see:
+--   delivery_jobs      business: its own. Buyer: the job of their own order. Rider: the jobs
+--                      assigned to them, plus OPEN jobs they are allowed to quote on (an
+--                      approved rider; their own business's riders, or the shared pool when the
+--                      job is open to everyone; or the one rider a business picked).
+--   delivery_quotes    business: its own. Buyer: quotes on their own order's job. Rider: ONLY
+--                      their own quotes - never a competitor's.
+--   delivery_job_contacts  business: its own. Rider: only for the job assigned to them. The
+--                      buyer's name, phone and address are never visible to a rider who has not
+--                      been chosen. (The buyer already knows their own details.)
+-- Only the business and the buyer may create or change jobs; a rider may change a job only
+-- once it is assigned to them, and may only write quotes of their own on a job they can see.
+ALTER TABLE delivery_jobs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE delivery_jobs FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON delivery_jobs;
+CREATE POLICY tenant_isolation ON delivery_jobs
+  USING ("organizationId" = current_setting('app.current_tenant', true)
+         OR EXISTS (SELECT 1 FROM online_orders o WHERE o.id = delivery_jobs."orderId"
+                    AND o."buyerId" = current_setting('app.current_buyer', true))
+         OR "riderId" = current_setting('app.current_rider', true)
+         OR (status = 'OPEN'
+             AND EXISTS (SELECT 1 FROM riders r
+                         WHERE r.id = current_setting('app.current_rider', true)
+                           AND r.status = 'APPROVED'
+                           AND ((audience = 'EVERYONE' AND (r."organizationId" IS NULL OR r."organizationId" = delivery_jobs."organizationId"))
+                                OR (audience = 'SHOP_RIDERS' AND r."organizationId" = delivery_jobs."organizationId")
+                                OR (audience = 'ONE_RIDER' AND delivery_jobs."targetRiderId" = r.id)))))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true)
+              OR EXISTS (SELECT 1 FROM online_orders o WHERE o.id = delivery_jobs."orderId"
+                         AND o."buyerId" = current_setting('app.current_buyer', true))
+              OR "riderId" = current_setting('app.current_rider', true));
+
+ALTER TABLE delivery_quotes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE delivery_quotes FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON delivery_quotes;
+CREATE POLICY tenant_isolation ON delivery_quotes
+  USING ("organizationId" = current_setting('app.current_tenant', true)
+         OR "riderId" = current_setting('app.current_rider', true)
+         OR EXISTS (SELECT 1 FROM online_orders o JOIN delivery_jobs j ON j."orderId" = o.id
+                    WHERE j.id = delivery_quotes."jobId"
+                      AND o."buyerId" = current_setting('app.current_buyer', true)))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true)
+              OR EXISTS (SELECT 1 FROM online_orders o JOIN delivery_jobs j ON j."orderId" = o.id
+                         WHERE j.id = delivery_quotes."jobId"
+                           AND o."buyerId" = current_setting('app.current_buyer', true))
+              OR ("riderId" = current_setting('app.current_rider', true)
+                  AND EXISTS (SELECT 1 FROM delivery_jobs j WHERE j.id = delivery_quotes."jobId" AND j.status = 'OPEN')));
+
+ALTER TABLE delivery_job_contacts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE delivery_job_contacts FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON delivery_job_contacts;
+CREATE POLICY tenant_isolation ON delivery_job_contacts
+  USING ("organizationId" = current_setting('app.current_tenant', true)
+         OR EXISTS (SELECT 1 FROM delivery_jobs j WHERE j.id = delivery_job_contacts."jobId"
+                    AND j."riderId" = current_setting('app.current_rider', true)
+                    AND j.status IN ('ASSIGNED', 'PICKED_UP', 'DELIVERED')))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));

@@ -83,6 +83,9 @@ model Organization {
   onlineOrders     OnlineOrder[]
   commissionInvoices CommissionInvoice[]
   riders           Rider[]
+  deliveryJobs     DeliveryJob[]
+  deliveryQuotes   DeliveryQuote[]
+  deliveryJobContacts DeliveryJobContact[]
 
   @@map("organizations")
 }
@@ -1969,6 +1972,7 @@ model OnlineOrder {
   lines        OnlineOrderLine[]
   commissionInvoice CommissionInvoice? @relation(fields: [commissionInvoiceId], references: [id])
   sale         Sale?             @relation(fields: [saleId], references: [id], onDelete: SetNull)
+  deliveryJobs DeliveryJob[]
 
   @@index([organizationId, status])
   @@index([commissionInvoiceId])
@@ -2100,6 +2104,8 @@ model Rider {
   updatedAt      DateTime    @updatedAt
 
   organization Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  deliveryJobs DeliveryJob[]
+  quotes       DeliveryQuote[]
 
   @@index([organizationId])
   @@index([status])
@@ -2117,4 +2123,110 @@ model RiderOtp {
 
   @@index([email, createdAt])
   @@map("rider_otps")
+}
+
+// ── Delivery jobs ─────────────────────────────────────────────────────────
+
+enum DeliveryJobStatus {
+  OPEN // waiting for riders' quotes
+  ASSIGNED // the buyer accepted a quote; the rider is on the way to collect
+  PICKED_UP
+  DELIVERED
+  CANCELLED
+  EXPIRED // nobody quoted (or the buyer didn't choose) before the deadline
+}
+
+// Who may see and quote on an open job.
+enum DeliveryAudience {
+  SHOP_RIDERS // only the business's own riders
+  EVERYONE // the business's own riders and the shared pool
+  ONE_RIDER // a single rider the business picked (targetRiderId)
+}
+
+enum DeliveryQuoteStatus {
+  OFFERED
+  ACCEPTED
+  REJECTED
+  WITHDRAWN
+}
+
+// One delivery of one online order. Riders work across businesses, so a job carries its own
+// small snapshot of what a rider may see BEFORE being chosen (shop name, pickup place, the
+// delivery area, item count). The buyer's name, phone and full address live in
+// DeliveryJobContact, which only the business and the ONE assigned rider can read.
+model DeliveryJob {
+  id             String            @id @default(uuid())
+  organizationId String
+  orderId        String
+  status         DeliveryJobStatus @default(OPEN)
+  audience       DeliveryAudience
+  targetRiderId  String?
+  orderNumber    String
+  shopName       String
+  pickupArea     String
+  dropoffSummary String
+  itemCount      Int
+  quoteDeadline  DateTime
+  riderId        String?
+  agreedFee      Int?
+  assignedAt     DateTime?
+  pickedUpAt     DateTime?
+  deliveredAt    DateTime?
+  // What the rider says they collected in cash from the buyer.
+  cashCollected  Int?
+  // Wrong delivery-code tries; after too many the rider is locked out and the shop settles it.
+  codeAttempts   Int               @default(0)
+  cancelledAt    DateTime?
+  cancelReason   String?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  order        OnlineOrder        @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  rider        Rider?             @relation(fields: [riderId], references: [id])
+  quotes       DeliveryQuote[]
+  contact      DeliveryJobContact?
+
+  @@index([organizationId, status])
+  @@index([orderId])
+  @@index([status, quoteDeadline])
+  @@index([riderId, status])
+  @@map("delivery_jobs")
+}
+
+model DeliveryJobContact {
+  jobId           String  @id
+  organizationId  String
+  buyerName       String?
+  buyerPhone      String
+  deliveryAddress String
+
+  job          DeliveryJob  @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("delivery_job_contacts")
+}
+
+// A rider's price for a job. One live quote per rider per job (they may change it while it is OFFERED).
+model DeliveryQuote {
+  id             String              @id @default(uuid())
+  organizationId String
+  jobId          String
+  riderId        String
+  // Whole shillings, paid to the rider in cash on delivery.
+  fee            Int
+  etaMinutes     Int?
+  note           String?
+  status         DeliveryQuoteStatus @default(OFFERED)
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  job          DeliveryJob  @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  rider        Rider        @relation(fields: [riderId], references: [id])
+
+  @@unique([jobId, riderId])
+  @@index([jobId])
+  @@index([riderId])
+  @@map("delivery_quotes")
 }

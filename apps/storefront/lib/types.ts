@@ -101,3 +101,53 @@ export interface Rider {
   kind: "SHOP" | "POOL";
   profileComplete: boolean;
 }
+
+export type DeliveryStatus = "OPEN" | "ASSIGNED" | "PICKED_UP" | "DELIVERED" | "CANCELLED" | "EXPIRED";
+
+export interface DeliveryQuote {
+  id: string;
+  name: string | null;
+  vehicleType: VehicleType | null;
+  plateNumber: string | null;
+  fee: number;
+  etaMinutes: number | null;
+  note: string | null;
+}
+
+/** What a shopper sees of the delivery of their own order. The code is only present while a rider is on the way. */
+export interface BuyerDelivery {
+  id: string;
+  status: DeliveryStatus;
+  quoteDeadline: string;
+  agreedFee: number | null;
+  pickedUpAt: string | null;
+  deliveredAt: string | null;
+  quotes: DeliveryQuote[];
+  rider: { riderId: string; name: string | null; vehicleType: VehicleType | null; plateNumber: string | null; phone: string | null } | null;
+  deliveryCode: string | null;
+}
+
+/** A job a rider can bid on. No buyer details - only the area. */
+export interface OpenJob {
+  id: string;
+  orderNumber: string;
+  shopName: string;
+  pickupArea: string;
+  dropoffSummary: string;
+  itemCount: number;
+  quoteDeadline: string;
+  myQuote: { id: string; fee: number; etaMinutes: number | null; note: string | null; status: string } | null;
+}
+
+/** A job the rider won: now with the buyer's contact details. */
+export interface MyJob extends OpenJob {
+  status: DeliveryStatus;
+  agreedFee: number | null;
+  pickedUpAt: string | null;
+  deliveredAt: string | null;
+  cashCollected: number | null;
+  codeLocked: boolean;
+  buyerName: string | null;
+  buyerPhone: string | null;
+  deliveryAddress: string | null;
+}
