@@ -7,6 +7,7 @@ import { TenantTx } from '../common/prisma/tenant-scoped-prisma.service';
 import { roundMoney } from '../online-orders/online-orders.util';
 import { DeliverDto, QuoteDto } from './dto/delivery.dto';
 import { deliveryCodeFor, MAX_CODE_ATTEMPTS } from './delivery.util';
+import { DeliveryNotifier } from './delivery-notifier';
 
 const TX_OPTIONS = { timeout: 15_000, maxWait: 15_000 };
 // How far back a rider's finished jobs are listed.
@@ -59,6 +60,7 @@ export class DeliveryRiderService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
+    private readonly notifier: DeliveryNotifier,
   ) {}
 
   private runAsRider<T>(riderId: string, fn: (tx: TenantTx) => Promise<T>): Promise<T> {
@@ -126,8 +128,31 @@ export class DeliveryRiderService {
       const quote = existing
         ? await tx.deliveryQuote.update({ where: { id: existing.id }, data })
         : await tx.deliveryQuote.create({ data: { ...data, jobId, riderId, organizationId: job.organizationId } });
-      return { job, quote };
+
+      // Is this the FIRST live price on the job? Only then is the shopper emailed (a price change, or a
+      // second rider's offer, would just be noise). A rider can neither count other riders' quotes nor
+      // read the order, and both are needed here, so from this point the transaction acts for the job's
+      // business - the rider and the job were already verified above.
+      let announceTo: string | null = null;
+      if (!existing || existing.status === DeliveryQuoteStatus.WITHDRAWN) {
+        await tx.$executeRaw`SELECT set_config('app.current_tenant', ${job.organizationId}, true)`;
+        const live = await tx.deliveryQuote.count({ where: { jobId, status: DeliveryQuoteStatus.OFFERED } });
+        if (live === 1) {
+          const order = await tx.onlineOrder.findUnique({ where: { id: job.orderId }, select: { buyerId: true } });
+          announceTo = order?.buyerId ?? null;
+        }
+      }
+      return { job, quote, announceTo };
     });
+    if (result.announceTo) {
+      void this.notifier.newQuote(result.announceTo, {
+        orderId: result.job.orderId,
+        orderNumber: result.job.orderNumber,
+        shopName: result.job.shopName,
+        fee: result.quote.fee,
+        deadline: result.job.quoteDeadline,
+      });
+    }
     return { ...toOpenJobView({ ...result.job, quotes: [result.quote] }) };
   }
 
@@ -140,15 +165,23 @@ export class DeliveryRiderService {
   }
 
   async pickUp(riderId: string, jobId: string) {
-    const job = await this.runAsRider(riderId, async (tx) => {
+    const { job, buyerId } = await this.runAsRider(riderId, async (tx) => {
       await this.requireApproved(tx, riderId);
       const done = await tx.deliveryJob.updateMany({
         where: { id: jobId, riderId, status: DeliveryJobStatus.ASSIGNED },
         data: { status: DeliveryJobStatus.PICKED_UP, pickedUpAt: new Date() },
       });
       if (done.count !== 1) throw new BadRequestException('This job is not waiting to be picked up');
-      return tx.deliveryJob.findUniqueOrThrow({ where: { id: jobId }, include: { quotes: { where: { riderId } }, contact: true } });
+      const full = await tx.deliveryJob.findUniqueOrThrow({ where: { id: jobId }, include: { quotes: { where: { riderId } }, contact: true } });
+      // Who to tell: the order belongs to the business, which a rider cannot read, so look it up as the
+      // job's business (the rider and the job were verified above).
+      await tx.$executeRaw`SELECT set_config('app.current_tenant', ${full.organizationId}, true)`;
+      const order = await tx.onlineOrder.findUnique({ where: { id: full.orderId }, select: { buyerId: true } });
+      return { job: full, buyerId: order?.buyerId ?? null };
     });
+    if (buyerId) {
+      void this.notifier.pickedUp(buyerId, { orderId: job.orderId, orderNumber: job.orderNumber, shopName: job.shopName, agreedFee: job.agreedFee });
+    }
     return toMyJobView(job);
   }
 

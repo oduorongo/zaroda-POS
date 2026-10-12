@@ -17,6 +17,7 @@ import { TenantScopedPrismaService, TenantTx } from '../common/prisma/tenant-sco
 import { getTenantStore } from '../common/tenant/tenant-context';
 import { CancelDeliveryDto, RequestDeliveryDto } from './dto/delivery.dto';
 import { deliveryCodeFor, effectiveJobStatus, isActiveJobStatus, MAX_CODE_ATTEMPTS, QUOTE_WINDOW_MS, summarizeDropoff } from './delivery.util';
+import { DeliveryNotifier, MAX_JOB_EMAILS, RiderContact } from './delivery-notifier';
 
 const TX_OPTIONS = { timeout: 15_000, maxWait: 15_000 };
 
@@ -89,7 +90,28 @@ export class DeliveryService {
     private readonly prisma: PrismaService,
     private readonly tenantPrisma: TenantScopedPrismaService,
     private readonly config: ConfigService,
+    private readonly notifier: DeliveryNotifier,
   ) {}
+
+  /**
+   * Who to tell about a newly opened job: the one rider picked, or the business's own riders, or - when
+   * open to everyone - its own riders first and then the pool, up to a cap so a big pool is not flooded.
+   */
+  private async jobRecipients(tx: TenantTx, organizationId: string, audience: DeliveryAudience, targetRiderId?: string): Promise<RiderContact[]> {
+    const select = { email: true, fullName: true };
+    if (audience === DeliveryAudience.ONE_RIDER) {
+      return targetRiderId ? tx.rider.findMany({ where: { id: targetRiderId, status: RiderStatus.APPROVED }, select }) : [];
+    }
+    const own = await tx.rider.findMany({ where: { organizationId, status: RiderStatus.APPROVED }, select, take: MAX_JOB_EMAILS });
+    if (audience === DeliveryAudience.SHOP_RIDERS || own.length >= MAX_JOB_EMAILS) return own;
+    const pool = await tx.rider.findMany({
+      where: { organizationId: null, status: RiderStatus.APPROVED },
+      select,
+      orderBy: { lastLoginAt: { sort: 'desc', nulls: 'last' } },
+      take: MAX_JOB_EMAILS - own.length,
+    });
+    return [...own, ...pool];
+  }
 
   private codeFor(jobId: string) {
     return deliveryCodeFor(jobId, parseEncryptionKey(this.config.get<string>('SECRETS_ENCRYPTION_KEY')));
@@ -118,7 +140,7 @@ export class DeliveryService {
 
   async requestRider(orderId: string, dto: RequestDeliveryDto) {
     const { organizationId } = getTenantStore();
-    const job = await this.tenantPrisma.run(async (tx) => {
+    const { job, recipients } = await this.tenantPrisma.run(async (tx) => {
       const order = await tx.onlineOrder.findUnique({ where: { id: orderId }, include: { lines: true } });
       if (!order) throw new NotFoundException('Order not found');
       if (order.fulfilmentType !== FulfilmentType.DELIVERY) throw new BadRequestException('This order is for pickup - it needs no rider');
@@ -163,8 +185,13 @@ export class DeliveryService {
           contact: { create: { organizationId, buyerName: order.buyerName, buyerPhone: order.buyerPhone, deliveryAddress: order.deliveryAddress ?? '' } },
         },
       });
-      return tx.deliveryJob.findUniqueOrThrow({ where: { id: created.id }, include: JOB_INCLUDE });
+      return {
+        job: await tx.deliveryJob.findUniqueOrThrow({ where: { id: created.id }, include: JOB_INCLUDE }),
+        recipients: await this.jobRecipients(tx, organizationId, dto.audience, targetRiderId),
+      };
     });
+    // Tell the riders who may quote - after everything is saved, and never holding up or failing the request.
+    void this.notifier.jobOpen(recipients, job);
     return toBusinessJobView(job);
   }
 
@@ -233,6 +260,13 @@ export class DeliveryService {
       await tx.deliveryQuote.updateMany({ where: { jobId: open.id, id: { not: quote.id }, status: DeliveryQuoteStatus.OFFERED }, data: { status: DeliveryQuoteStatus.REJECTED } });
       return tx.deliveryJob.findUniqueOrThrow({ where: { id: open.id }, include: JOB_INCLUDE });
     });
+    // The chosen rider hears about it straight away, by email, as well as on their rider page.
+    if (job.rider && job.agreedFee !== null) {
+      void this.notifier.riderChosen(
+        { email: job.rider.email, fullName: job.rider.fullName },
+        { shopName: job.shopName, pickupArea: job.pickupArea, dropoffSummary: job.dropoffSummary, fee: job.agreedFee },
+      );
+    }
     return toBuyerJobView(job, this.codeFor(job.id));
   }
 }

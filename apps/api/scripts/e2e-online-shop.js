@@ -96,6 +96,15 @@ async function riderLogin(email) {
   return code;
 }
 
+// Delivery emails: no email provider is configured in testing, so each one leaves a "was not sent" line
+// in the API log naming the recipient - which is enough to prove WHO would have been emailed, and when.
+const logMark = () => fs.statSync(API_LOG).size;
+async function mailedSince(mark) {
+  await sleep(700); // the emails are sent after the response, in the background
+  const text = fs.readFileSync(API_LOG).subarray(mark).toString('utf8');
+  return [...text.matchAll(/Delivery email to (\S+) was not sent/g)].map((m) => m[1]);
+}
+
 (async () => {
   await sql.connect();
 
@@ -533,8 +542,11 @@ async function riderLogin(email) {
   const noRider = await api('POST', `/online-orders/${D.id}/delivery`, { token: owner, body: { audience: 'ONE_RIDER' } });
   check('choosing "one rider" without saying who is refused', noRider.status === 400, noRider);
 
+  const markOwn = logMark();
   const ownReq = await api('POST', `/online-orders/${D.id}/delivery`, { token: owner, body: { audience: 'SHOP_RIDERS' } });
   check('the shop asks only its own riders: the request is open', ownReq.status === 201 && ownReq.json.status === 'OPEN' && ownReq.json.audience === 'SHOP_RIDERS', ownReq);
+  const mailedOwn = await mailedSince(markOwn);
+  check('only the shop\'s own rider is emailed about the job - not the pool rider', mailedOwn.includes(RB) && !mailedOwn.includes(RA), mailedOwn);
   const dupReq = await api('POST', `/online-orders/${D.id}/delivery`, { token: owner, body: { audience: 'EVERYONE' } });
   check('a second request for the same order is refused while one is open', dupReq.status === 409, dupReq);
   const openA1 = await api('GET', '/rider/jobs/open', { token: riderA });
@@ -547,19 +559,28 @@ async function riderLogin(email) {
   const cancelReq = await api('POST', `/online-orders/${D.id}/delivery/cancel`, { token: owner, body: { reason: 'wider search' } });
   check('the shop cancels that request', cancelReq.status === 200 && cancelReq.json.status === 'CANCELLED', cancelReq);
 
+  const markAll = logMark();
   const allReq = await api('POST', `/online-orders/${D.id}/delivery`, { token: owner, body: { audience: 'EVERYONE' } });
   const JOB = allReq.json.id;
   check('the shop opens it to everyone', allReq.status === 201 && allReq.json.status === 'OPEN' && allReq.json.audience === 'EVERYONE', allReq);
+  const mailedAll = await mailedSince(markAll);
+  check('opening it to everyone emails the shop\'s rider AND the pool rider', mailedAll.includes(RB) && mailedAll.includes(RA), mailedAll);
   const openA2 = await api('GET', '/rider/jobs/open', { token: riderA });
   check('now the pool rider sees it', Array.isArray(openA2.json) && openA2.json.length === 1 && openA2.json[0].id === JOB, openA2.json);
   const lowFee = await api('POST', `/rider/jobs/${JOB}/quote`, { token: riderA, body: { fee: 5 } });
   const highFee = await api('POST', `/rider/jobs/${JOB}/quote`, { token: riderA, body: { fee: 20000 } });
   check('an absurdly low or high delivery price is refused', lowFee.status === 400 && highFee.status === 400, { low: lowFee.status, high: highFee.status });
+  const markQuote1 = logMark();
   const qA = await api('POST', `/rider/jobs/${JOB}/quote`, { token: riderA, body: { fee: 250, etaMinutes: 20, note: 'I am near the shop' } });
   check('the pool rider quotes KES 250', qA.status === 200 && qA.json.myQuote.fee === 250, qA);
+  const mailedQuote1 = await mailedSince(markQuote1);
+  check('the shopper is emailed when the FIRST price arrives', mailedQuote1.includes(A_EMAIL), mailedQuote1);
+  const markQuote2 = logMark();
   const qB = await api('POST', `/rider/jobs/${JOB}/quote`, { token: riderBToken, body: { fee: 180 } });
   const qB2 = await api('POST', `/rider/jobs/${JOB}/quote`, { token: riderBToken, body: { fee: 150, etaMinutes: 15 } });
   check('the shop\'s rider quotes KES 180, then lowers it to KES 150', qB.status === 200 && qB2.status === 200 && qB2.json.myQuote.fee === 150, { qB: qB.status, qB2: qB2.json });
+  const mailedQuote2 = await mailedSince(markQuote2);
+  check('a second rider\'s price, or a price change, does NOT email the shopper again', !mailedQuote2.includes(A_EMAIL), mailedQuote2);
   const openA3 = await api('GET', '/rider/jobs/open', { token: riderA });
   check('a rider only ever sees their OWN quote, never a competitor\'s', openA3.json[0].myQuote.fee === 250 && !JSON.stringify(openA3.json).includes('150'), openA3.json);
   const shopView1 = await api('GET', `/online-orders/${D.id}/delivery`, { token: owner });
@@ -570,7 +591,10 @@ async function riderLogin(email) {
   const otherBuyerAccept = await api('POST', `/buyer/orders/${D.id}/delivery/quotes/${buyerView1.json.quotes[0].id}/accept`, { token: buyerB });
   check('another shopper can neither see nor accept these quotes', otherBuyerView.status === 404 && otherBuyerAccept.status === 404, { view: otherBuyerView.status, accept: otherBuyerAccept.status });
 
+  const markAccept = logMark();
   const accepted = await api('POST', `/buyer/orders/${D.id}/delivery/quotes/${buyerView1.json.quotes[0].id}/accept`, { token: buyerA });
+  const mailedAccept = await mailedSince(markAccept);
+  check('the rider the shopper chose is emailed - and the one who lost is not', mailedAccept.includes(RB) && !mailedAccept.includes(RA), mailedAccept);
   const dCode = accepted.json.deliveryCode;
   check('the buyer accepts the KES 150 quote: assigned, with the rider\'s phone and a 4-digit code',
     accepted.status === 200 && accepted.json.status === 'ASSIGNED' && accepted.json.agreedFee === 150 && /^\d{4}$/.test(dCode || '') && accepted.json.rider.phone === '254733222111', accepted.json);
@@ -590,7 +614,10 @@ async function riderLogin(email) {
   check('a rider who was not chosen cannot pick the goods up', pickA.status === 400, pickA);
   const deliverEarly = await api('POST', `/rider/jobs/${JOB}/deliver`, { token: riderBToken, body: { code: dCode } });
   check('delivering before picking up is refused', deliverEarly.status === 400, deliverEarly);
+  const markPick = logMark();
   const pickB = await api('POST', `/rider/jobs/${JOB}/pickup`, { token: riderBToken });
+  const mailedPick = await mailedSince(markPick);
+  check('picking the goods up emails the shopper that the order is on its way', mailedPick.includes(A_EMAIL), mailedPick);
   check('the chosen rider picks the goods up', pickB.status === 200 && pickB.json.status === 'PICKED_UP', pickB);
   const wrongDelivery = await api('POST', `/rider/jobs/${JOB}/deliver`, { token: riderBToken, body: { code: dCode === '0000' ? '1111' : '0000' } });
   const attempts = await sql.query('SELECT "codeAttempts" AS n FROM delivery_jobs WHERE id = $1', [JOB]);
