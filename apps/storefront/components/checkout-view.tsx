@@ -158,9 +158,12 @@ export default function CheckoutView({ shop }: { shop: Shop }) {
                 rows={3}
                 value={address}
                 onChange={(e) => setAddress(e.target.value)}
-                placeholder="Estate, street, house number, any landmark"
+                placeholder="Area first, e.g. Milimani, Kisumu - then street, house number, landmark"
                 className="mt-1 w-full rounded-md border border-border bg-surface p-3 text-base"
               />
+              <p className="mt-1 text-xs text-secondary-500">
+                Start with your area. Riders see only the area when they decide whether to deliver; the full address goes to the rider you choose.
+              </p>
             </div>
           )}
 

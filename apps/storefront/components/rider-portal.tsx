@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { ApiError, getRiderMe, requestRiderCode, updateRiderMe, verifyRiderCode } from "../lib/api";
 import type { Rider, VehicleType } from "../lib/types";
+import RiderJobs from "./rider-jobs";
 
 const TOKEN_KEY = "zaroda_rider_token";
 
@@ -206,7 +207,7 @@ function StatusBanner({ rider }: { rider: Rider }) {
       <div className="rounded-md border border-success-600/40 bg-success-50 p-4 text-sm">
         <p className="font-semibold">You&apos;re approved</p>
         <p className="mt-1">
-          {rider.kind === "SHOP" ? "You ride for a shop that added you." : "You're in the Zaroda rider pool."} Delivery jobs are coming soon - we&apos;ll email you when you can start taking them.
+          {rider.kind === "SHOP" ? "You ride for a shop that added you." : "You're in the Zaroda rider pool."}
         </p>
       </div>
     );
@@ -271,6 +272,8 @@ function Profile({ token, rider, onChange, onSignOut }: { token: string; rider: 
       </div>
 
       <StatusBanner rider={rider} />
+
+      {rider.status === "APPROVED" && <RiderJobs token={token} onUnauthorized={onSignOut} />}
 
       <form onSubmit={save} className="space-y-4 rounded-lg border border-border bg-surface p-6">
         <div>

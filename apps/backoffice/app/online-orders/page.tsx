@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { apiGet, apiPost, ApiError } from "../../lib/api";
 import { getSession, clearSession, isBackofficeRole, type Session } from "../../lib/auth";
+import { DeliveryBox } from "../../components/delivery-box";
 import { Nav } from "../../components/nav";
 import { PageHeader } from "../../components/page-header";
 import { Badge, Button, EmptyState, LoadingState } from "@zaroda/ui";
@@ -258,6 +259,10 @@ Enter the M-Pesa confirmation code, e.g. SJK1ABC2DE:`);
                   </tbody>
                 </table>
 
+                {order.fulfilmentType === "DELIVERY" && ["ACCEPTED", "READY", "COMPLETED"].includes(order.status) && (
+                  <DeliveryBox orderId={order.id} canManage={session.role === "MANAGER" || session.role === "OWNER"} />
+                )}
+
                 <div className="mt-3 flex flex-wrap gap-2">
                   {order.status === "PAID" && (
                     <Button size="sm" onClick={() => void act(order, "accept")} disabled={busy}>
@@ -266,12 +271,12 @@ Enter the M-Pesa confirmation code, e.g. SJK1ABC2DE:`);
                   )}
                   {order.status === "ACCEPTED" && (
                     <Button size="sm" onClick={() => void act(order, "ready")} disabled={busy}>
-                      {order.fulfilmentType === "PICKUP" ? "Ready for pickup" : "Out for delivery"}
+                      {order.fulfilmentType === "PICKUP" ? "Ready for pickup" : "Packed - ready for the rider"}
                     </Button>
                   )}
                   {(order.status === "ACCEPTED" || order.status === "READY") && (
                     <Button size="sm" variant={order.status === "READY" ? "primary" : "outline"} onClick={() => void act(order, "complete")} disabled={busy}>
-                      {order.fulfilmentType === "PICKUP" ? "Collected" : "Delivered"}
+                      {order.fulfilmentType === "PICKUP" ? "Collected" : "Mark delivered"}
                     </Button>
                   )}
                   {canCancel && (order.status === "PENDING_PAYMENT" || order.status === "EXPIRED") && (

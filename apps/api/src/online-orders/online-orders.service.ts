@@ -25,6 +25,7 @@ import { AfricasTalkingSmsProvider } from '../notifications/africas-talking-sms.
 import { DEFAULT_COMMISSION_RATE } from '../online-store/online-store.constants';
 import { TumaClient } from '../online-store/tuma.client';
 import { evaluateCallback, parseCallback } from '../online-store/tuma.util';
+import { cancelJobsOnOrderCancel, settleJobsOnManualComplete } from '../delivery/delivery-order-hooks';
 import { recordOnlineSale, voidOnlineSale } from './online-order-sale';
 import { ShopCatalogService } from './shop-catalog.service';
 import { CancelOnlineOrderDto, CreateOnlineOrderDto } from './dto/online-order.dto';
@@ -669,18 +670,22 @@ export class OnlineOrdersService {
       order.buyerPhone,
       order.fulfilmentType === FulfilmentType.PICKUP
         ? `Your ${order.shopName} order ${order.orderNumber} is ready for pickup.`
-        : `Your ${order.shopName} order ${order.orderNumber} is on its way.`,
+        : `Your ${order.shopName} order ${order.orderNumber} is packed and ready - a rider will collect it.`,
     );
     return toOrderView(order);
   }
 
   /** Collected / delivered. This is the point commission becomes owed. */
   async complete(id: string) {
-    const order = await this.transition(id, [OnlineOrderStatus.ACCEPTED, OnlineOrderStatus.READY], async (_tx, current) => ({
-      status: OnlineOrderStatus.COMPLETED,
-      completedAt: new Date(),
-      commissionAmount: roundMoney(Number(current.subtotal) * Number(current.commissionRate)),
-    }));
+    const order = await this.transition(id, [OnlineOrderStatus.ACCEPTED, OnlineOrderStatus.READY], async (tx, current) => {
+      // Completing by hand also settles any delivery still in progress, so the two never disagree.
+      await settleJobsOnManualComplete(tx, current.id);
+      return {
+        status: OnlineOrderStatus.COMPLETED,
+        completedAt: new Date(),
+        commissionAmount: roundMoney(Number(current.subtotal) * Number(current.commissionRate)),
+      };
+    });
     return toOrderView(order);
   }
 
@@ -706,6 +711,7 @@ export class OnlineOrdersService {
           }
         }
         await voidOnlineSale(tx, current.saleId);
+        await cancelJobsOnOrderCancel(tx, current.id, dto.reason.trim());
         return {
           status: OnlineOrderStatus.CANCELLED,
           cancelledAt: new Date(),
