@@ -500,7 +500,7 @@ export default function OnlineShopSettingsPage() {
                   </label>
                   <label className="flex items-center gap-2 text-sm">
                     <input type="checkbox" checked={deliveryEnabled} onChange={(e) => setDeliveryEnabled(e.target.checked)} className="h-4 w-4" />
-                    We deliver orders ourselves
+                    Offer delivery (a rider brings the order)
                   </label>
                 </div>
                 {saveError && <p className="text-sm text-error-600">{saveError}</p>}
