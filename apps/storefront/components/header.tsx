@@ -16,6 +16,9 @@ export default function Header() {
           <span>Zaroda Marketplace</span>
         </Link>
         <nav className="flex items-center gap-4 text-sm">
+          <Link href="/" className="hover:text-primary-600">
+            Shops
+          </Link>
           {ready && buyer ? (
             <>
               <Link href="/orders" className="hover:text-primary-600">

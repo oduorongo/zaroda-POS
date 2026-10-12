@@ -42,7 +42,12 @@ export default function OrdersView() {
 
   return (
     <div className="mx-auto max-w-2xl space-y-4">
-      <h1 className="text-2xl font-bold">My orders</h1>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-2xl font-bold">My orders</h1>
+        <Link href="/" className="rounded-md bg-primary-600 px-4 py-2 text-sm font-semibold text-white hover:bg-primary-700">
+          Order something else
+        </Link>
+      </div>
       {error && <p className="text-sm text-error-600">{error}</p>}
       {!orders && !error && <p className="text-secondary-500">Loading your orders...</p>}
       {orders && orders.length === 0 && (
