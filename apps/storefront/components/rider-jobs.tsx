@@ -35,6 +35,13 @@ export default function RiderJobs({ token, onUnauthorized }: { token: string; on
 
   const active = mine?.filter((j) => j.status !== "DELIVERED") ?? [];
   const finished = mine?.filter((j) => j.status === "DELIVERED") ?? [];
+  // Earnings: the cash the rider reported collecting for each finished delivery (the list covers the last 14 days).
+  const cashOf = (j: MyJob) => j.cashCollected ?? j.agreedFee ?? 0;
+  const startOfToday = new Date();
+  startOfToday.setHours(0, 0, 0, 0);
+  const sum = (jobs: MyJob[]) => ({ count: jobs.length, cash: jobs.reduce((total, j) => total + cashOf(j), 0) });
+  const earnedAll = sum(finished);
+  const earnedToday = sum(finished.filter((j) => j.deliveredAt && new Date(j.deliveredAt) >= startOfToday));
 
   return (
     <div className="space-y-6">
@@ -59,14 +66,32 @@ export default function RiderJobs({ token, onUnauthorized }: { token: string; on
 
       {finished.length > 0 && (
         <section className="space-y-2">
-          <h2 className="text-lg font-semibold">Recently delivered</h2>
+          <h2 className="text-lg font-semibold">My earnings</h2>
+          <div className="grid grid-cols-2 gap-3 text-sm">
+            <div className="rounded-lg border border-border bg-surface p-3">
+              <p className="text-secondary-500">Today</p>
+              <p className="text-lg font-bold">{kes(earnedToday.cash)}</p>
+              <p className="text-xs text-secondary-500">
+                {earnedToday.count} {earnedToday.count === 1 ? "delivery" : "deliveries"}
+              </p>
+            </div>
+            <div className="rounded-lg border border-border bg-surface p-3">
+              <p className="text-secondary-500">Last 14 days</p>
+              <p className="text-lg font-bold">{kes(earnedAll.cash)}</p>
+              <p className="text-xs text-secondary-500">
+                {earnedAll.count} {earnedAll.count === 1 ? "delivery" : "deliveries"}
+              </p>
+            </div>
+          </div>
+          <p className="text-xs text-secondary-500">Cash you reported collecting from customers for the deliveries themselves.</p>
           <ul className="divide-y divide-border rounded-lg border border-border bg-surface text-sm">
             {finished.map((j) => (
               <li key={j.id} className="flex justify-between gap-3 p-3">
                 <span>
                   {j.shopName} · {j.dropoffSummary}
+                  {j.deliveredAt && <span className="block text-xs text-secondary-500">{new Date(j.deliveredAt).toLocaleString("en-KE", { dateStyle: "medium", timeStyle: "short" })}</span>}
                 </span>
-                <span className="font-mono">{kes(j.cashCollected ?? j.agreedFee ?? 0)}</span>
+                <span className="font-mono">{kes(cashOf(j))}</span>
               </li>
             ))}
           </ul>

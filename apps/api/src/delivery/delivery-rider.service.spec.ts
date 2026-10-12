@@ -39,18 +39,19 @@ function setup(opts: { rider?: Record<string, unknown> | null; job?: Record<stri
       updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       findUniqueOrThrow: jest.fn().mockResolvedValue(job({ status: 'DELIVERED' })),
     },
-    deliveryQuote: { findUnique: jest.fn(), create: jest.fn(), update: jest.fn(), updateMany: jest.fn() },
+    deliveryQuote: { findUnique: jest.fn(), create: jest.fn(), update: jest.fn(), updateMany: jest.fn(), count: jest.fn().mockResolvedValue(1) },
     onlineOrder: {
-      findUnique: jest.fn().mockResolvedValue({ id: 'order-1', status: 'READY', subtotal: 1000, commissionRate: 0.03 }),
+      findUnique: jest.fn().mockResolvedValue({ id: 'order-1', status: 'READY', subtotal: 1000, commissionRate: 0.03, buyerId: 'buyer-1' }),
       updateMany: jest.fn().mockResolvedValue({ count: 1 }),
     },
   };
   const prisma = { $transaction: jest.fn((fn: (t: typeof tx) => unknown) => fn(tx)) };
   const config = { get: jest.fn(() => KEY_B64) };
+  const notifier = { newQuote: jest.fn().mockResolvedValue(undefined), pickedUp: jest.fn().mockResolvedValue(undefined) };
   /* eslint-disable @typescript-eslint/no-explicit-any */
-  const service = new DeliveryRiderService(prisma as any, config as any);
+  const service = new DeliveryRiderService(prisma as any, config as any, notifier as any);
   /* eslint-enable @typescript-eslint/no-explicit-any */
-  return { service, tx };
+  return { service, tx, notifier };
 }
 
 describe('what a rider is shown', () => {
@@ -145,5 +146,60 @@ describe('DeliveryRiderService - who may work', () => {
     tx.deliveryQuote.findUnique.mockResolvedValue({ id: 'q1', status: 'REJECTED' });
     await expect(service.quote('rider-1', 'job-1', { fee: 100 })).rejects.toBeInstanceOf(BadRequestException);
     expect(tx.deliveryQuote.update).not.toHaveBeenCalled();
+  });
+});
+
+describe('DeliveryRiderService - who gets emailed', () => {
+  const newQuoteRow = { id: 'q1', fee: 150, etaMinutes: null, note: null, status: 'OFFERED' };
+
+  it('the shopper is emailed when the FIRST live price arrives', async () => {
+    const { service, tx, notifier } = setup();
+    tx.deliveryQuote.findUnique.mockResolvedValue(null);
+    tx.deliveryQuote.create.mockResolvedValue(newQuoteRow);
+    tx.deliveryQuote.count.mockResolvedValue(1);
+    await service.quote('rider-1', 'job-1', { fee: 150 });
+    expect(notifier.newQuote).toHaveBeenCalledWith('buyer-1', expect.objectContaining({ orderId: 'order-1', orderNumber: 'ZR-AAAAAA', shopName: 'Shop', fee: 150 }));
+  });
+
+  it('a second rider\'s price is not announced again (that would be noise)', async () => {
+    const { service, tx, notifier } = setup();
+    tx.deliveryQuote.findUnique.mockResolvedValue(null);
+    tx.deliveryQuote.create.mockResolvedValue(newQuoteRow);
+    tx.deliveryQuote.count.mockResolvedValue(2);
+    await service.quote('rider-2', 'job-1', { fee: 120 });
+    expect(notifier.newQuote).not.toHaveBeenCalled();
+  });
+
+  it('changing an existing price emails nobody, and does not even leave the rider\'s own view', async () => {
+    const { service, tx, notifier } = setup();
+    tx.deliveryQuote.findUnique.mockResolvedValue({ id: 'q1', status: 'OFFERED' });
+    tx.deliveryQuote.update.mockResolvedValue({ ...newQuoteRow, fee: 130 });
+    await service.quote('rider-1', 'job-1', { fee: 130 });
+    expect(notifier.newQuote).not.toHaveBeenCalled();
+    expect(tx.deliveryQuote.count).not.toHaveBeenCalled();
+    expect(tx.$executeRaw).toHaveBeenCalledTimes(1); // only the rider's own scope
+  });
+
+  it('a price put back after being withdrawn counts as a new offer', async () => {
+    const { service, tx, notifier } = setup();
+    tx.deliveryQuote.findUnique.mockResolvedValue({ id: 'q1', status: 'WITHDRAWN' });
+    tx.deliveryQuote.update.mockResolvedValue(newQuoteRow);
+    tx.deliveryQuote.count.mockResolvedValue(1);
+    await service.quote('rider-1', 'job-1', { fee: 150 });
+    expect(notifier.newQuote).toHaveBeenCalledTimes(1);
+  });
+
+  it('picking the goods up tells the shopper they are on their way', async () => {
+    const { service, tx, notifier } = setup();
+    tx.deliveryJob.findUniqueOrThrow.mockResolvedValue(job({ status: 'PICKED_UP' }));
+    await service.pickUp('rider-1', 'job-1');
+    expect(notifier.pickedUp).toHaveBeenCalledWith('buyer-1', { orderId: 'order-1', orderNumber: 'ZR-AAAAAA', shopName: 'Shop', agreedFee: 200 });
+  });
+
+  it('a failed pick-up (not theirs, wrong state) emails nobody', async () => {
+    const { service, tx, notifier } = setup();
+    tx.deliveryJob.updateMany.mockResolvedValue({ count: 0 });
+    await expect(service.pickUp('rider-1', 'job-1')).rejects.toBeInstanceOf(BadRequestException);
+    expect(notifier.pickedUp).not.toHaveBeenCalled();
   });
 });
