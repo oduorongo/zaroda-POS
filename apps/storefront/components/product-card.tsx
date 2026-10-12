@@ -31,7 +31,7 @@ export default function ProductCard({ shopSlug, product }: { shopSlug: string; p
 
   return (
     <article className="flex flex-col overflow-hidden rounded-lg border border-border bg-surface">
-      <div className="relative aspect-square bg-secondary-100">
+      <div className="relative aspect-square bg-secondary-500/10">
         {product.images.length > 0 ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={product.images[imageIndex]} alt={product.name} loading="lazy" className="h-full w-full object-cover" />
@@ -86,7 +86,7 @@ export default function ProductCard({ shopSlug, product }: { shopSlug: string; p
           </div>
 
           {soldOut ? (
-            <span className="rounded-md bg-secondary-100 px-3 py-2 text-sm text-secondary-500">Sold out</span>
+            <span className="rounded-md bg-secondary-500/10 px-3 py-2 text-sm text-secondary-500">Sold out</span>
           ) : inCart === 0 ? (
             <button
               onClick={() => set(step)}
@@ -99,7 +99,7 @@ export default function ProductCard({ shopSlug, product }: { shopSlug: string; p
               <button
                 onClick={() => set(inCart - step)}
                 aria-label="Remove one"
-                className="flex h-9 w-9 items-center justify-center rounded-md border border-border hover:bg-secondary-50"
+                className="flex h-9 w-9 items-center justify-center rounded-md border border-border hover:bg-secondary-500/5"
               >
                 <Minus size={16} aria-hidden />
               </button>
@@ -108,7 +108,7 @@ export default function ProductCard({ shopSlug, product }: { shopSlug: string; p
                 onClick={() => set(inCart + step)}
                 disabled={atMax}
                 aria-label="Add one"
-                className="flex h-9 w-9 items-center justify-center rounded-md border border-border hover:bg-secondary-50 disabled:opacity-40"
+                className="flex h-9 w-9 items-center justify-center rounded-md border border-border hover:bg-secondary-500/5 disabled:opacity-40"
               >
                 <Plus size={16} aria-hidden />
               </button>

@@ -199,7 +199,7 @@ export default function ReceiptClient() {
                       <button
                         type="button"
                         onClick={() => removeItem(item.id)}
-                        className="col-span-1 flex h-10 items-center justify-center rounded-md text-secondary-400 hover:bg-secondary-50 hover:text-error-600"
+                        className="col-span-1 flex h-10 items-center justify-center rounded-md text-secondary-400 hover:bg-secondary-500/5 hover:text-error-600"
                         aria-label="Remove item"
                       >
                         ×

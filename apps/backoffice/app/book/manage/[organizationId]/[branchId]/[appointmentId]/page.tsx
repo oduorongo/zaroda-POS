@@ -1,5 +1,6 @@
 "use client";
 
+import { FloatingThemeToggle } from "@zaroda/ui";
 import { useEffect, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 
@@ -90,6 +91,7 @@ export default function ManageBookingPage() {
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background p-4 text-foreground">
+      <FloatingThemeToggle />
       <div className="w-full max-w-md space-y-3 rounded-xl bg-surface p-6 shadow-xl">
         <h1 className="text-2xl font-bold">Your booking</h1>
         {loading && <p className="text-secondary-500">Loading...</p>}

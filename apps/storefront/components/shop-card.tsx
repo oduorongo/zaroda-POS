@@ -10,7 +10,7 @@ export default function ShopCard({ shop }: { shop: ShopSummary }) {
       href={`/s/${shop.slug}`}
       className="group overflow-hidden rounded-lg border border-border bg-surface transition hover:-translate-y-0.5 hover:shadow-md"
     >
-      <div className="aspect-[16/9] bg-secondary-100">
+      <div className="aspect-[16/9] bg-secondary-500/10">
         {shop.coverImage ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={shop.coverImage} alt="" loading="lazy" className="h-full w-full object-cover" />

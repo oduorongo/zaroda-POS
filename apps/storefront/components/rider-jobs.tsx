@@ -144,7 +144,7 @@ function OpenJobCard({ job, token, onChanged, onUnauthorized }: { job: OpenJob; 
             {busy ? "Sending..." : live ? "Change my price" : "Send my price"}
           </button>
           {live && (
-            <button type="button" disabled={busy} onClick={() => void run(() => withdrawQuote(token, job.id), "Could not withdraw.")} className="rounded-md border border-border px-4 py-2 hover:bg-secondary-100 disabled:opacity-50">
+            <button type="button" disabled={busy} onClick={() => void run(() => withdrawQuote(token, job.id), "Could not withdraw.")} className="rounded-md border border-border px-4 py-2 hover:bg-secondary-500/10 disabled:opacity-50">
               Withdraw
             </button>
           )}
@@ -188,7 +188,7 @@ function MyJobCard({ job, token, onChanged, onUnauthorized }: { job: MyJob; toke
         <span className="rounded-full bg-primary-50 px-3 py-1 text-xs font-medium text-primary-700">{job.status === "ASSIGNED" ? "Go and collect" : "Out for delivery"}</span>
       </div>
 
-      <div className="rounded-md bg-secondary-50 p-3 text-foreground">
+      <div className="rounded-md bg-secondary-500/5 p-3 text-foreground">
         <p className="font-medium">{job.buyerName ?? "Customer"}</p>
         {job.buyerPhone && (
           <a href={`tel:+${job.buyerPhone}`} className="font-mono text-primary-600 underline">

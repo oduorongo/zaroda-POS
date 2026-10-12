@@ -126,7 +126,7 @@ export default function DeliveryPanel({ token, orderId, onUnauthorized }: { toke
       {(delivery.status === "ASSIGNED" || delivery.status === "PICKED_UP") && delivery.rider && (
         <>
           <p className="font-medium">{delivery.status === "ASSIGNED" ? "Your rider is collecting your order from the shop." : "Your order is on its way."}</p>
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-md bg-secondary-50 p-3 text-foreground">
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-md bg-secondary-500/5 p-3 text-foreground">
             <div>
               <p className="font-semibold">{delivery.rider.name ?? "Your rider"}</p>
               <p className="text-xs text-secondary-600">
@@ -135,7 +135,7 @@ export default function DeliveryPanel({ token, orderId, onUnauthorized }: { toke
               </p>
             </div>
             {delivery.rider.phone && (
-              <a href={`tel:+${delivery.rider.phone}`} className="inline-flex items-center gap-1 rounded-md border border-border px-3 py-2 font-medium hover:bg-secondary-100">
+              <a href={`tel:+${delivery.rider.phone}`} className="inline-flex items-center gap-1 rounded-md border border-border px-3 py-2 font-medium hover:bg-secondary-500/10">
                 <Phone size={14} aria-hidden /> {displayPhone(delivery.rider.phone)}
               </a>
             )}

@@ -7,7 +7,7 @@ const LABELS: Record<OrderStatus, { label: string; tone: string }> = {
   READY: { label: "Ready", tone: "bg-success-50 text-success-700" },
   COMPLETED: { label: "Completed", tone: "bg-success-50 text-success-700" },
   CANCELLED: { label: "Cancelled", tone: "bg-error-50 text-error-700" },
-  EXPIRED: { label: "Expired", tone: "bg-secondary-100 text-secondary-700" },
+  EXPIRED: { label: "Expired", tone: "bg-secondary-500/10 text-secondary-700" },
 };
 
 /** READY means different things for the buyer depending on how they're getting it. */

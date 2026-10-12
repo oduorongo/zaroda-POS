@@ -133,7 +133,7 @@ export function DeliveryBox({ orderId, canManage }: { orderId: string; canManage
   const select = "rounded-md border border-border bg-surface p-2 text-sm";
 
   return (
-    <div className="mt-3 space-y-2 rounded-md border border-border bg-secondary-50/40 p-3 text-sm">
+    <div className="mt-3 space-y-2 rounded-md border border-border bg-secondary-500/5 p-3 text-sm">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <span className="font-semibold">Delivery rider</span>
         {job && <Badge variant={job.status === "DELIVERED" ? "success" : job.status === "CANCELLED" || job.status === "EXPIRED" ? "neutral" : "primary"}>{STATUS_LABEL[job.status]}</Badge>}

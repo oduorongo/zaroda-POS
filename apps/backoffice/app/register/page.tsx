@@ -1,5 +1,6 @@
 "use client";
 
+import { FloatingThemeToggle } from "@zaroda/ui";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { ApiError } from "../../lib/api";
@@ -102,6 +103,7 @@ export default function RegisterPage() {
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background p-4 text-foreground">
+      <FloatingThemeToggle />
       <form onSubmit={handleSubmit} className="w-full max-w-md space-y-4 rounded-xl bg-surface p-6 shadow-xl">
         <h1 className="text-2xl font-bold">Set up a new organization</h1>
         <p className="text-sm text-secondary-500">

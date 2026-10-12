@@ -1,5 +1,6 @@
 "use client";
 
+import { FloatingThemeToggle } from "@zaroda/ui";
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 
@@ -169,6 +170,7 @@ export default function PublicBookingPage() {
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background p-4 text-foreground">
+      <FloatingThemeToggle />
       <div className="w-full max-w-md rounded-xl bg-surface p-6 shadow-xl">
         <h1 className="text-2xl font-bold">Book an appointment</h1>
         {loading && <p className="mt-4 text-secondary-500">Loading...</p>}

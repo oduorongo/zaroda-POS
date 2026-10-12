@@ -71,7 +71,7 @@ export default function Nav() {
             <Link
               key={link.href}
               href={link.href}
-              className="rounded-md px-2 py-2 text-sm text-secondary-600 hover:bg-secondary-50 hover:text-foreground"
+              className="rounded-md px-2 py-2 text-sm text-secondary-600 hover:bg-secondary-500/5 hover:text-foreground"
               onClick={() => setOpen(false)}
             >
               {link.label}
@@ -79,7 +79,7 @@ export default function Nav() {
           ))}
           <a
             href={BACKOFFICE_LOGIN_URL}
-            className="rounded-md px-2 py-2 text-sm text-secondary-600 hover:bg-secondary-50 hover:text-foreground"
+            className="rounded-md px-2 py-2 text-sm text-secondary-600 hover:bg-secondary-500/5 hover:text-foreground"
           >
             Sign In
           </a>
