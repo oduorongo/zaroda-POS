@@ -58,7 +58,7 @@ export default function LandingPage() {
           <Link href="/signup" className="rounded-md bg-primary-600 px-6 py-3 font-semibold text-white hover:bg-primary-700">
             Start your 14-day free trial
           </Link>
-          <Link href="/pricing" className="rounded-md border border-border px-6 py-3 font-semibold text-foreground hover:bg-secondary-50">
+          <Link href="/pricing" className="rounded-md border border-border px-6 py-3 font-semibold text-foreground hover:bg-secondary-500/5">
             See pricing
           </Link>
         </div>

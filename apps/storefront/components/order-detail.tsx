@@ -148,7 +148,7 @@ export default function OrderDetail({ orderId }: { orderId: string }) {
       </div>
 
       {waiting && (
-        <section className="space-y-3 rounded-lg border border-warning-500 bg-warning-50 p-4" aria-live="polite">
+        <section className="space-y-3 rounded-lg border border-warning-500 bg-warning-50 p-4 text-warning-900" aria-live="polite">
           <h2 className="font-semibold text-warning-700">Complete your payment</h2>
           <p className="text-sm">
             Check your phone <strong>{displayPhone(order.paymentPhone)}</strong> for an M-Pesa prompt for <strong>{kes(order.amountDue)}</strong> and enter your PIN. This page updates by itself once the payment goes through.
@@ -182,7 +182,7 @@ export default function OrderDetail({ orderId }: { orderId: string }) {
                 if (confirm("Cancel this order?")) void act(() => cancelOrder(token, order.id));
               }}
               disabled={busy}
-              className="rounded-md border border-border px-4 py-2 text-sm hover:bg-secondary-50"
+              className="rounded-md border border-border px-4 py-2 text-sm hover:bg-secondary-500/5"
             >
               Cancel order
             </button>
@@ -193,7 +193,7 @@ export default function OrderDetail({ orderId }: { orderId: string }) {
               <button
                 onClick={() => void checkNow()}
                 disabled={busy}
-                className="mt-2 rounded-md border border-border bg-surface px-4 py-2 text-sm font-semibold hover:bg-secondary-50 disabled:opacity-50"
+                className="mt-2 rounded-md border border-border bg-surface px-4 py-2 text-sm font-semibold hover:bg-secondary-500/5 disabled:opacity-50"
               >
                 {busy ? "Checking..." : "I've paid - check now"}
               </button>
@@ -226,7 +226,7 @@ export default function OrderDetail({ orderId }: { orderId: string }) {
           {PROGRESS_STEPS.map((step, i) => (
             <li key={step.status} className="flex flex-1 flex-col items-center gap-1 text-center text-xs">
               <span
-                className={`flex h-7 w-7 items-center justify-center rounded-full ${i <= progress ? "bg-success-600 text-white" : "bg-secondary-100 text-secondary-400"}`}
+                className={`flex h-7 w-7 items-center justify-center rounded-full ${i <= progress ? "bg-success-600 text-white" : "bg-secondary-500/10 text-secondary-400"}`}
               >
                 {i <= progress ? <Check size={14} aria-hidden /> : i + 1}
               </span>

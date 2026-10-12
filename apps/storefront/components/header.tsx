@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { ShoppingBag, UserRound } from "lucide-react";
 import { displayPhone } from "../lib/format";
+import { ThemeToggle } from "@zaroda/ui";
 import { useStore } from "./store-provider";
 
 export default function Header() {
@@ -33,11 +34,12 @@ export default function Header() {
             </>
           ) : (
             ready && (
-              <Link href="/orders" className="rounded-md border border-border px-3 py-1.5 hover:bg-secondary-50">
+              <Link href="/orders" className="rounded-md border border-border px-3 py-1.5 hover:bg-secondary-500/5">
                 Sign in
               </Link>
             )
           )}
+          <ThemeToggle />
         </nav>
       </div>
     </header>

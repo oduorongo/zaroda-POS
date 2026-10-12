@@ -196,7 +196,7 @@ function SignIn({ onSignedIn }: { onSignedIn: (token: string, rider: Rider) => v
 function StatusBanner({ rider }: { rider: Rider }) {
   if (rider.status === "SUSPENDED") {
     return (
-      <div className="rounded-md border border-error-600/40 bg-error-50 p-4 text-sm">
+      <div className="rounded-md border border-error-600/40 bg-error-50 p-4 text-sm text-error-900">
         <p className="font-semibold">Your account is suspended</p>
         <p className="mt-1">You can&apos;t take deliveries right now. Please contact {rider.kind === "SHOP" ? "the shop you ride for" : "Zaroda"} to find out why.</p>
       </div>
@@ -204,7 +204,7 @@ function StatusBanner({ rider }: { rider: Rider }) {
   }
   if (rider.status === "APPROVED") {
     return (
-      <div className="rounded-md border border-success-600/40 bg-success-50 p-4 text-sm">
+      <div className="rounded-md border border-success-600/40 bg-success-50 p-4 text-sm text-success-900">
         <p className="font-semibold">You&apos;re approved</p>
         <p className="mt-1">
           {rider.kind === "SHOP" ? "You ride for a shop that added you." : "You're in the Zaroda rider pool."}
@@ -213,7 +213,7 @@ function StatusBanner({ rider }: { rider: Rider }) {
     );
   }
   return (
-    <div className="rounded-md border border-warning-600/40 bg-warning-50 p-4 text-sm">
+    <div className="rounded-md border border-warning-600/40 bg-warning-50 p-4 text-sm text-warning-900">
       <p className="font-semibold">{rider.profileComplete ? "Waiting for approval" : "Finish your details to apply"}</p>
       <p className="mt-1">
         {rider.profileComplete

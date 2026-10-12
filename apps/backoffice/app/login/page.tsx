@@ -1,5 +1,6 @@
 "use client";
 
+import { FloatingThemeToggle } from "@zaroda/ui";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { login, getOrganization, ApiError } from "../../lib/api";
@@ -45,6 +46,7 @@ export default function LoginPage() {
 
   return (
     <div className="flex min-h-screen flex-col bg-background text-foreground lg:flex-row">
+      <FloatingThemeToggle />
       {/* Hero panel — a compact banner on mobile, a full-height side panel
           from lg up. Background photo: apps/backoffice/public/login-hero.png
           (glossy-navy POS hardware shot). Falls back to the plain navy

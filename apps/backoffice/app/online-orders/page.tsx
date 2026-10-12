@@ -188,7 +188,7 @@ Enter the M-Pesa confirmation code, e.g. SJK1ABC2DE:`);
               }`}
             >
               {t.label}
-              {counts[t.key] > 0 && <span className="ml-1.5 rounded-full bg-secondary-100 px-1.5 text-xs text-secondary-700">{counts[t.key]}</span>}
+              {counts[t.key] > 0 && <span className="ml-1.5 rounded-full bg-secondary-500/10 px-1.5 text-xs text-secondary-700">{counts[t.key]}</span>}
             </button>
           ))}
         </div>
