@@ -100,7 +100,9 @@ async function riderLogin(email) {
 // in the API log naming the recipient - which is enough to prove WHO would have been emailed, and when.
 const logMark = () => fs.statSync(API_LOG).size;
 async function mailedSince(mark) {
-  await sleep(700); // the emails are sent after the response, in the background
+  // The emails are sent after the response, in the background (a database lookup first), so give them time:
+  // 0.7s is plenty locally, but over a slow link to a remote database set MAIL_WAIT_MS=4000.
+  await sleep(Number(process.env.MAIL_WAIT_MS) || 700);
   const text = fs.readFileSync(API_LOG).subarray(mark).toString('utf8');
   return [...text.matchAll(/Delivery email to (\S+) was not sent/g)].map((m) => m[1]);
 }
