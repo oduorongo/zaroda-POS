@@ -200,11 +200,18 @@ export class DeliveryRiderService {
       if (job.status !== DeliveryJobStatus.PICKED_UP) {
         throw new BadRequestException(job.status === DeliveryJobStatus.ASSIGNED ? 'Mark the goods as picked up first' : 'This job is not out for delivery');
       }
-      if (job.codeAttempts >= MAX_CODE_ATTEMPTS) return { kind: 'locked' as const };
+      // Count this try FIRST, and only while tries remain - one statement, so the limit and the count can't
+      // be separated. Reading the count and comparing afterwards would let any number of guesses sent at the
+      // same instant all see "0 tries used" and all go ahead, which turns a 4-digit code into a few thousand
+      // parallel guesses. The database serialises these updates, so at most MAX_CODE_ATTEMPTS ever get through.
+      const claimed = await tx.$queryRaw<{ codeAttempts: number }[]>`
+        UPDATE delivery_jobs SET "codeAttempts" = "codeAttempts" + 1
+         WHERE id = ${job.id} AND "codeAttempts" < ${MAX_CODE_ATTEMPTS}
+        RETURNING "codeAttempts"`;
+      if (claimed.length === 0) return { kind: 'locked' as const };
 
       if (deliveryCodeFor(job.id, key) !== dto.code.trim()) {
-        const bumped = await tx.deliveryJob.update({ where: { id: job.id }, data: { codeAttempts: { increment: 1 } } });
-        return { kind: 'wrong' as const, remaining: Math.max(0, MAX_CODE_ATTEMPTS - bumped.codeAttempts) };
+        return { kind: 'wrong' as const, remaining: Math.max(0, MAX_CODE_ATTEMPTS - Number(claimed[0].codeAttempts)) };
       }
 
       const now = new Date();

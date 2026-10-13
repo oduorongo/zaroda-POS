@@ -349,14 +349,17 @@ async function mailedSince(mark) {
   check('before billing: 2 completed orders, KES 22.50 building up, no invoice', nothingYet.json.unbilled?.orderCount === 2 && nothingYet.json.unbilled.commissionTotal === 22.5 && nothingYet.json.invoices.length === 0, nothingYet.json);
   const run = await api('POST', '/platform-admin/commission/run', { token: admin });
   check('the billing run creates exactly one invoice', run.status === 201 || run.status === 200, run);
-  check('  ...invoicesCreated = 1', run.json.invoicesCreated === 1, run.json);
+  // On a copy of the live database other businesses may have unbilled orders too and are invoiced by the same run -
+  // so ask "did THIS business get exactly one invoice", not "was exactly one invoice made anywhere".
+  const demoInvoices = await sql.query('SELECT count(*)::int AS n FROM commission_invoices WHERE "organizationId" = $1', [orgId]);
+  check('  ...this business got exactly one invoice', run.json.invoicesCreated >= 1 && demoInvoices.rows[0].n === 1, { run: run.json, demo: demoInvoices.rows });
   const run2 = await api('POST', '/platform-admin/commission/run', { token: admin });
   check('running billing again creates nothing new (never double-bills)', run2.json.invoicesCreated === 0, run2.json);
   const comm = await api('GET', '/online-store/me/commission', { token: owner });
   const invoice = comm.json.invoices?.[0];
   check('the invoice covers 2 orders, KES 750 sales, KES 22.50 commission, KES 23 to pay', invoice?.orderCount === 2 && invoice.salesTotal === 750 && invoice.commissionTotal === 22.5 && invoice.amountDue === 23 && invoice.status === 'ISSUED', invoice);
   check('the business can pay online, and is not paused', comm.json.canPayOnline === true && comm.json.paused === false);
-  const orderBilled = await sql.query(`SELECT count(*)::int AS n FROM online_orders WHERE "commissionInvoiceId" IS NOT NULL`);
+  const orderBilled = await sql.query(`SELECT count(*)::int AS n FROM online_orders WHERE "commissionInvoiceId" IS NOT NULL AND "organizationId" = $1`, [orgId]);
   check('both orders are tied to the invoice', orderBilled.rows[0].n === 2);
 
   section('14. Paying the invoice online (through the platform Tuma account)');
