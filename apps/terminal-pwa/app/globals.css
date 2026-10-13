@@ -62,3 +62,11 @@ body {
 :root[data-theme="dark"] .text-secondary-700 { color: rgb(226 232 240 / var(--tw-text-opacity, 1)); }
 :root[data-theme="dark"] .text-secondary-900 { color: rgb(241 245 249 / var(--tw-text-opacity, 1)); }
 :root[data-theme="dark"] .hover\:text-secondary-600:hover { color: rgb(203 213 225 / var(--tw-text-opacity, 1)); }
+
+/* Screens inside the till frame fill the space between the ribbons rather than the whole window. */
+#till-screen .h-screen {
+  height: 100%;
+}
+#till-screen .min-h-screen {
+  min-height: 100%;
+}
