@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { BottomRibbon } from "@zaroda/ui";
 
 const BACKOFFICE_URL = process.env.NEXT_PUBLIC_BACKOFFICE_URL ?? "http://localhost:3003";
 
@@ -24,6 +25,7 @@ export default function Footer() {
   const year = new Date().getFullYear();
 
   return (
+    <>
     <footer className="border-t border-border bg-surface py-12 text-sm">
       <div className="mx-auto grid max-w-6xl gap-10 px-6 sm:grid-cols-4">
         <div className="sm:col-span-1">
@@ -78,8 +80,9 @@ export default function Footer() {
 
       <div className="mx-auto mt-10 max-w-6xl border-t border-border px-6 pt-6 text-xs text-secondary-400">
         <p>© {year} Zaroda POS. All rights reserved.</p>
-        <p className="mt-1">Powered by Zaroda Solutions. Innovative. Reliable. Forward.</p>
       </div>
     </footer>
+    <BottomRibbon />
+    </>
   );
 }
