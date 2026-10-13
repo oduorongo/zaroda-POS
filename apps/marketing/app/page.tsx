@@ -3,11 +3,12 @@ import Link from "next/link";
 import { Card, CardContent, Badge } from "@zaroda/ui";
 import CapabilityGrid from "../components/capability-grid";
 import ChooseApp from "../components/choose-app";
+import OnlineShopSection from "../components/online-shop-section";
 import { ShopSceneIllustration } from "../components/feature-illustrations";
 
 export const metadata: Metadata = {
   title: "Zaroda POS — POS for Kenyan Retail",
-  description: "Rent-to-run POS for Kenyan shops — M-Pesa STK push, offline sales, and eTIMS-ready tax from day one.",
+  description: "Rent-to-run POS for Kenyan shops — M-Pesa at the till, offline sales, eTIMS-ready tax, and an online shop with rider delivery.",
   alternates: { canonical: "https://zarodashop.com" },
 };
 
@@ -55,7 +56,7 @@ export default function LandingPage() {
         </h1>
         <p className="mx-auto mt-4 max-w-2xl text-lg text-secondary-500">
           M-Pesa, KES, and Kenyan retail from the ground up. No hardware to buy, no server to run —
-          just a monthly fee and a tablet.
+          just a monthly fee and a tablet. And when you are ready, sell online with delivery by riders.
         </p>
         <div className="mt-8 flex items-center justify-center gap-4">
           <Link href="/signup" className="rounded-md bg-primary-600 px-6 py-3 font-semibold text-white hover:bg-primary-700">
@@ -89,6 +90,8 @@ export default function LandingPage() {
       </section>
 
       <CapabilityGrid />
+
+      <OnlineShopSection />
 
       <section className="border-t border-border bg-surface py-16">
         <div className="mx-auto max-w-6xl px-6">

@@ -2,11 +2,12 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Card, CardContent } from "@zaroda/ui";
 import CapabilityGrid from "../../components/capability-grid";
+import OnlineShopSection from "../../components/online-shop-section";
 import { FeatureIllustration, type IllustrationKey } from "../../components/feature-illustrations";
 
 export const metadata: Metadata = {
   title: "Features — Zaroda POS",
-  description: "Offline-first checkout, M-Pesa STK push, multi-branch reporting, and staff accountability — everything a Kenyan shop needs from one till.",
+  description: "Offline-first checkout, M-Pesa STK push, multi-branch reporting, staff accountability, plus an online shop with rider delivery — everything a Kenyan shop needs.",
   alternates: { canonical: "https://zarodashop.com/features" },
 };
 
@@ -90,6 +91,8 @@ export default function FeaturesPage() {
           </div>
         </div>
       </section>
+
+      <OnlineShopSection heading="Online shop and delivery" />
 
       <div className="border-t border-border">
         <CapabilityGrid />
