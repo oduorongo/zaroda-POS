@@ -80,12 +80,12 @@ export function RibbonButton({ onClick, children, className }: { onClick: () => 
   );
 }
 
-/** The bottom ribbon. On a phone it shrinks to just "ZARODA SOLUTIONS" so the two ribbons leave room for the page. */
+/** The bottom ribbon. On a phone it drops only "Powered by" so the two ribbons leave room for the page. */
 export function BottomRibbon({ children, className }: { children?: ReactNode; className?: string }) {
   return (
     <footer
       className={cn(
-        "sticky bottom-0 z-40 px-2 py-1.5 text-center text-[0.72rem] text-white/80 sm:px-4 sm:py-2.5 sm:text-[0.8rem]",
+        "sticky bottom-0 z-40 px-2 py-1.5 text-center text-[0.68rem] leading-snug text-white/80 sm:px-4 sm:py-2.5 sm:text-[0.8rem]",
         "shadow-[0_-2px_10px_rgba(5,12,35,0.25)]",
         NAVY,
         className,
@@ -93,7 +93,9 @@ export function BottomRibbon({ children, className }: { children?: ReactNode; cl
     >
       <span className="hidden sm:inline">Powered by </span>
       <strong className="text-white">ZARODA SOLUTIONS</strong>
-      <span className="hidden sm:inline"> - Innovative. Reliable. Forward.</span>
+      <span className="sm:hidden"> · </span>
+      <span className="hidden sm:inline"> - </span>
+      Innovative. Reliable. Forward.
       {children}
     </footer>
   );
