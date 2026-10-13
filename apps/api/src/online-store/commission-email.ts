@@ -1,3 +1,4 @@
+import { BRAND, brandButton, brandedEmail } from '../common/email/brand-layout';
 import { pauseDate } from './commission.util';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -83,16 +84,15 @@ const HEADLINES: Record<ReminderStage, (inv: EmailInvoice) => { subject: string;
 export function buildInvoiceEmail(stage: ReminderStage, invoice: EmailInvoice, shopName: string, payUrl: string | null): BuiltEmail {
   const { subject, lead, urgent } = HEADLINES[stage](invoice);
   const shop = escapeHtml(shopName);
-  const accent = urgent ? '#b91c1c' : '#0a1633';
+  const accent = urgent ? '#b91c1c' : BRAND.NAVY;
   const button = payUrl
-    ? `<p style="text-align:center;margin:24px 0"><a href="${escapeHtml(payUrl)}" style="background:${accent};color:#fff;text-decoration:none;padding:12px 28px;border-radius:8px;font-weight:bold;display:inline-block">Pay ${escapeHtml(money(invoice.amountDue))} with M-Pesa</a></p>`
+    ? `<p style="text-align:center;margin:24px 0">${brandButton(`Pay ${money(invoice.amountDue)} with M-Pesa`, payUrl, urgent ? accent : undefined)}</p>`
     : '';
-  const html = `
-    <div style="font-family:Arial,sans-serif;max-width:560px;margin:auto;color:#0f172a">
-      <div style="background:${accent};color:#fff;padding:16px 20px;border-radius:8px 8px 0 0">
-        <h2 style="margin:0;font-size:18px">Zaroda commission invoice</h2>
-      </div>
-      <div style="border:1px solid #e2e8f0;border-top:none;padding:20px;border-radius:0 0 8px 8px">
+  const html = brandedEmail({
+    title: 'Zaroda commission invoice',
+    maxWidth: 560,
+    accent: urgent ? accent : undefined,
+    bodyHtml: `
         <p>Hello ${shop},</p>
         <p>${escapeHtml(lead)}</p>
         <table style="width:100%;border-collapse:collapse;font-size:14px;margin:16px 0">
@@ -105,9 +105,8 @@ export function buildInvoiceEmail(stage: ReminderStage, invoice: EmailInvoice, s
           <tr><td style="padding:6px 0;color:#64748b">Due date</td><td style="text-align:right">${escapeHtml(date(invoice.dueDate))}</td></tr>
         </table>
         ${button}
-        <p style="font-size:12px;color:#64748b">You can also pay from <b>Online Shop settings</b> in your Zaroda back office. Already paid? Thank you - you can ignore this email.</p>
-      </div>
-    </div>`;
+        <p style="font-size:12px;color:#64748b">You can also pay from <b>Online Shop settings</b> in your Zaroda back office. Already paid? Thank you - you can ignore this email.</p>`,
+  });
   const text = `${lead}\n\nInvoice ${invoice.invoiceNumber} (${monthName(invoice.periodMonth)})\nOrders: ${invoice.orderCount}\nCommission: ${money(invoice.commissionTotal)}\nAmount to pay: ${money(invoice.amountDue)}\nDue: ${date(invoice.dueDate)}\n${payUrl ? `\nPay online: ${payUrl}\n` : ''}`;
   return { subject, html, text };
 }
@@ -116,14 +115,14 @@ export function buildInvoiceEmail(stage: ReminderStage, invoice: EmailInvoice, s
 export function buildReceiptEmail(invoice: EmailInvoice, shopName: string, mpesaReceipt: string | null, shopIsHidden: boolean): BuiltEmail {
   const subject = `Payment received - commission invoice ${invoice.invoiceNumber}`;
   const lead = `Thank you - we received ${money(invoice.amountDue)} for commission invoice ${invoice.invoiceNumber} (${monthName(invoice.periodMonth)}).${mpesaReceipt ? ` M-Pesa receipt: ${mpesaReceipt}.` : ''}${shopIsHidden ? '' : ''}`;
-  const html = `
-    <div style="font-family:Arial,sans-serif;max-width:560px;margin:auto;color:#0f172a">
-      <div style="background:#15803d;color:#fff;padding:16px 20px;border-radius:8px 8px 0 0"><h2 style="margin:0;font-size:18px">Payment received</h2></div>
-      <div style="border:1px solid #e2e8f0;border-top:none;padding:20px;border-radius:0 0 8px 8px">
+  const html = brandedEmail({
+    title: 'Payment received',
+    maxWidth: 560,
+    accent: '#15803d',
+    bodyHtml: `
         <p>Hello ${escapeHtml(shopName)},</p>
         <p>${escapeHtml(lead)}</p>
-        <p style="font-size:12px;color:#64748b">Your online shop stays open for buyers. Keep this email as your receipt.</p>
-      </div>
-    </div>`;
+        <p style="font-size:12px;color:#64748b">Your online shop stays open for buyers. Keep this email as your receipt.</p>`,
+  });
   return { subject, html, text: lead };
 }

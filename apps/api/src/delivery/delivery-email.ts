@@ -3,6 +3,8 @@
 // Nothing here ever includes the delivery code, a phone number or a full address - the emails only point
 // at the pages that show them to the right person.
 
+import { brandButton, brandedEmail } from '../common/email/brand-layout';
+
 export interface BuiltEmail {
   subject: string;
   html: string;
@@ -16,15 +18,13 @@ const kes = (n: number) => `KES ${n.toLocaleString('en-KE')}`;
 export const nairobiTime = (d: Date) => d.toLocaleTimeString('en-KE', { timeZone: 'Africa/Nairobi', hour: '2-digit', minute: '2-digit' });
 
 function frame(title: string, bodyHtml: string, buttonLabel: string, url: string, footnote?: string): string {
-  return `
-    <div style="font-family:Arial,sans-serif;max-width:520px;margin:auto;color:#0f172a">
-      <div style="background:#0a1633;color:#fff;padding:16px 20px;border-radius:8px 8px 0 0"><h2 style="margin:0;font-size:18px">${escapeHtml(title)}</h2></div>
-      <div style="border:1px solid #e2e8f0;border-top:none;padding:20px;border-radius:0 0 8px 8px">
-        ${bodyHtml}
-        <p style="text-align:center;margin:24px 0 8px"><a href="${escapeHtml(url)}" style="background:#0a1633;color:#fff;text-decoration:none;padding:12px 22px;border-radius:6px;font-weight:bold;display:inline-block">${escapeHtml(buttonLabel)}</a></p>
-        ${footnote ? `<p style="font-size:12px;color:#64748b;margin:16px 0 0">${escapeHtml(footnote)}</p>` : ''}
-      </div>
-    </div>`;
+  return brandedEmail({
+    title,
+    bodyHtml:
+      bodyHtml +
+      `<p style="text-align:center;margin:24px 0 8px">${brandButton(buttonLabel, url)}</p>` +
+      (footnote ? `<p style="font-size:12px;color:#64748b;margin:16px 0 0">${escapeHtml(footnote)}</p>` : ''),
+  });
 }
 
 const p = (text: string) => `<p style="margin:0 0 12px;line-height:1.5">${escapeHtml(text)}</p>`;
