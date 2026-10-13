@@ -31,6 +31,7 @@ const job = (over: Record<string, unknown> = {}) => ({
 function setup(opts: { rider?: Record<string, unknown> | null; job?: Record<string, unknown> | null } = {}) {
   const tx = {
     $executeRaw: jest.fn().mockResolvedValue(1),
+    $queryRaw: jest.fn().mockResolvedValue([{ codeAttempts: 1 }]),
     rider: { findUnique: jest.fn().mockResolvedValue(opts.rider === undefined ? { id: 'rider-1', status: 'APPROVED' } : opts.rider) },
     deliveryJob: {
       findFirst: jest.fn().mockResolvedValue(opts.job === undefined ? job() : opts.job),
@@ -95,14 +96,28 @@ describe('DeliveryRiderService.deliver', () => {
 
   it('a wrong code is counted, the order is NOT completed, and the rider is told how many tries are left', async () => {
     const { service, tx } = setup();
-    tx.deliveryJob.update.mockResolvedValue(job({ codeAttempts: 2 }));
-    await expect(service.deliver('rider-1', 'job-1', { code: wrong })).rejects.toThrow(`${MAX_CODE_ATTEMPTS - 2} tries left`);
-    expect(tx.deliveryJob.update).toHaveBeenCalledWith({ where: { id: 'job-1' }, data: { codeAttempts: { increment: 1 } } });
+    tx.$queryRaw.mockResolvedValue([{ codeAttempts: 3 }]); // this was the 3rd try
+    await expect(service.deliver('rider-1', 'job-1', { code: wrong })).rejects.toThrow(`${MAX_CODE_ATTEMPTS - 3} tries left`);
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(1);
     expect(tx.onlineOrder.updateMany).not.toHaveBeenCalled();
   });
 
-  it('locks the rider out after too many wrong codes - even the right code no longer works', async () => {
-    const { service, tx } = setup({ job: job({ codeAttempts: MAX_CODE_ATTEMPTS }) });
+  it('counts the try BEFORE comparing the code, in one atomic step - so parallel guesses cannot all slip past the limit', async () => {
+    const { service, tx } = setup();
+    const order: string[] = [];
+    tx.$queryRaw.mockImplementation(() => { order.push('count'); return Promise.resolve([{ codeAttempts: 1 }]); });
+    tx.deliveryJob.updateMany.mockImplementation(() => { order.push('deliver'); return Promise.resolve({ count: 1 }); });
+    await service.deliver('rider-1', 'job-1', { code });
+    expect(order).toEqual(['count', 'deliver']);
+    // the statement itself carries the limit, so the database - not this code - decides who is let through
+    const sqlText = String((tx.$queryRaw.mock.calls[0][0] as string[]).join(' '));
+    expect(sqlText).toMatch(/"codeAttempts" < /);
+    expect(sqlText).toMatch(/"codeAttempts" = "codeAttempts" \+ 1/);
+  });
+
+  it('locks the rider out after too many tries - even the right code no longer works', async () => {
+    const { service, tx } = setup();
+    tx.$queryRaw.mockResolvedValue([]); // no row updated: the limit is already reached
     await expect(service.deliver('rider-1', 'job-1', { code })).rejects.toBeInstanceOf(ForbiddenException);
     expect(tx.deliveryJob.updateMany).not.toHaveBeenCalled();
     expect(tx.onlineOrder.updateMany).not.toHaveBeenCalled();
