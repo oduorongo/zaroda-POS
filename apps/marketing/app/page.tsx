@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Card, CardContent, Badge } from "@zaroda/ui";
 import CapabilityGrid from "../components/capability-grid";
+import ChooseApp from "../components/choose-app";
 import { ShopSceneIllustration } from "../components/feature-illustrations";
 
 export const metadata: Metadata = {
@@ -47,6 +48,8 @@ export default function LandingPage() {
   return (
     <main>
       <section className="mx-auto max-w-4xl px-6 py-20 text-center">
+        {/* eslint-disable-next-line @next/next/no-img-element -- fixed brand asset */}
+        <img src="/zaroda-logo-navy-gold.png" alt="Zaroda Solutions" width={160} height={132} className="mx-auto mb-6 h-32 w-auto" />
         <h1 className="text-4xl font-bold tracking-tight text-foreground sm:text-5xl">
           Zaroda Shop — the POS your shop rents, not builds
         </h1>
@@ -64,6 +67,8 @@ export default function LandingPage() {
         </div>
         <p className="mt-3 text-xs text-secondary-400">No card required to start.</p>
       </section>
+
+      <ChooseApp />
 
       <section className="border-y border-border bg-surface py-8">
         <div className="mx-auto max-w-5xl px-6">
