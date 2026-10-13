@@ -10,3 +10,4 @@ export * from "./components/PinPad";
 export * from "./components/EmptyState";
 export * from "./components/ThemeToggle";
 export * from "./components/PoweredByFooter";
+export * from "./components/Ribbons";

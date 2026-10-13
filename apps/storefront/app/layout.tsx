@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { BottomRibbon } from "@zaroda/ui";
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import Header from "../components/header";
@@ -22,13 +23,13 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         <StoreProvider>
           <Header />
           <main className="mx-auto min-h-[70vh] max-w-6xl px-4 py-6">{children}</main>
-          <footer className="border-t border-border px-4 py-6 text-center text-xs text-secondary-500">
-            Powered by Zaroda. Payments go directly to each shop through M-Pesa.
-            <br />
-            <Link href="/rider" className="mt-1 inline-block hover:text-foreground hover:underline">
+          <p className="px-4 pb-4 text-center text-xs text-secondary-500">Payments go directly to each shop through M-Pesa.</p>
+          <BottomRibbon>
+            <span className="hidden sm:inline"> · </span>
+            <Link href="/rider" className="ml-2 text-[#c99a2e] hover:underline sm:ml-0">
               Deliver with Zaroda
             </Link>
-          </footer>
+          </BottomRibbon>
         </StoreProvider>
       </body>
     </html>
