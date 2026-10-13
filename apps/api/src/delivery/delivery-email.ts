@@ -18,10 +18,10 @@ export const nairobiTime = (d: Date) => d.toLocaleTimeString('en-KE', { timeZone
 function frame(title: string, bodyHtml: string, buttonLabel: string, url: string, footnote?: string): string {
   return `
     <div style="font-family:Arial,sans-serif;max-width:520px;margin:auto;color:#0f172a">
-      <div style="background:#1d4ed8;color:#fff;padding:16px 20px;border-radius:8px 8px 0 0"><h2 style="margin:0;font-size:18px">${escapeHtml(title)}</h2></div>
+      <div style="background:#0a1633;color:#fff;padding:16px 20px;border-radius:8px 8px 0 0"><h2 style="margin:0;font-size:18px">${escapeHtml(title)}</h2></div>
       <div style="border:1px solid #e2e8f0;border-top:none;padding:20px;border-radius:0 0 8px 8px">
         ${bodyHtml}
-        <p style="text-align:center;margin:24px 0 8px"><a href="${escapeHtml(url)}" style="background:#1d4ed8;color:#fff;text-decoration:none;padding:12px 22px;border-radius:6px;font-weight:bold;display:inline-block">${escapeHtml(buttonLabel)}</a></p>
+        <p style="text-align:center;margin:24px 0 8px"><a href="${escapeHtml(url)}" style="background:#0a1633;color:#fff;text-decoration:none;padding:12px 22px;border-radius:6px;font-weight:bold;display:inline-block">${escapeHtml(buttonLabel)}</a></p>
         ${footnote ? `<p style="font-size:12px;color:#64748b;margin:16px 0 0">${escapeHtml(footnote)}</p>` : ''}
       </div>
     </div>`;

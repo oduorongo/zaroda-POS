@@ -83,7 +83,7 @@ const HEADLINES: Record<ReminderStage, (inv: EmailInvoice) => { subject: string;
 export function buildInvoiceEmail(stage: ReminderStage, invoice: EmailInvoice, shopName: string, payUrl: string | null): BuiltEmail {
   const { subject, lead, urgent } = HEADLINES[stage](invoice);
   const shop = escapeHtml(shopName);
-  const accent = urgent ? '#b91c1c' : '#1d4ed8';
+  const accent = urgent ? '#b91c1c' : '#0a1633';
   const button = payUrl
     ? `<p style="text-align:center;margin:24px 0"><a href="${escapeHtml(payUrl)}" style="background:${accent};color:#fff;text-decoration:none;padding:12px 28px;border-radius:8px;font-weight:bold;display:inline-block">Pay ${escapeHtml(money(invoice.amountDue))} with M-Pesa</a></p>`
     : '';
