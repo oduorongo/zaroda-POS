@@ -13,6 +13,8 @@ export interface Session {
   email: string;
   /** Fetched from GET /organizations/me at login - gates which vertical nav links/screens show (see components/nav.tsx). */
   industryType: string;
+  /** The shop's name, shown in the top ribbon; filled in by the nav the first time it is missing. */
+  orgName?: string;
 }
 
 const KEY = "zaroda-backoffice-session";

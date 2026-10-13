@@ -30,9 +30,8 @@ import {
 } from "lucide-react";
 import { getSession, clearSession, isBackofficeRole, type Session } from "../../lib/auth";
 import { useIdleLogout } from "../../hooks/use-idle-logout";
-import { Badge, Button, ThemeToggle } from "@zaroda/ui";
+import { Nav } from "../../components/nav";
 
-const MARKETING_URL = process.env.NEXT_PUBLIC_MARKETING_URL ?? "http://localhost:3005";
 
 type Tile = {
   href: string;
@@ -154,35 +153,7 @@ export default function DashboardPage() {
 
   return (
     <div className="min-h-screen bg-background text-foreground">
-      <header className="border-b border-border px-4 py-3 sm:px-6">
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex flex-col">
-            <a href={MARKETING_URL} className="text-xs text-secondary-500 hover:text-secondary-300">
-              ← zarodashop.com
-            </a>
-            <span className="font-bold">
-              ZARODA <span className="text-primary-500">Back Office</span>
-            </span>
-          </div>
-          <div className="flex items-center gap-3 text-sm">
-            <Badge variant="neutral">{session.industryType || "?"}</Badge>
-            <span className="hidden text-secondary-400 sm:inline">
-              {session.email} · {session.role}
-            </span>
-            <ThemeToggle />
-            <Button
-              onClick={() => {
-                clearSession();
-                router.replace("/login");
-              }}
-              variant="secondary"
-              size="sm"
-            >
-              Sign out
-            </Button>
-          </div>
-        </div>
-      </header>
+      <Nav session={session} />
 
       <main className="mx-auto max-w-6xl px-4 py-8 sm:px-6">
         <h1 className="text-2xl font-bold text-foreground">Welcome back{session.email ? `, ${session.email.split("@")[0]}` : ""}</h1>
