@@ -3,7 +3,9 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { LayoutGrid, ExternalLink } from "lucide-react";
-import { clearSession, type Session } from "../lib/auth";
+import { useEffect, useState } from "react";
+import { apiGet } from "../lib/api";
+import { clearSession, setSession, type Session } from "../lib/auth";
 import { useIdleLogout } from "../hooks/use-idle-logout";
 import { RibbonButton, RibbonLink, ThemeToggle, TopRibbon } from "@zaroda/ui";
 
@@ -36,8 +38,22 @@ export function Nav({ session }: { session: Session }) {
   const verticalLink = VERTICAL_LINKS[session.industryType];
   useIdleLogout();
 
+  // The shop's name goes in the ribbon. Sessions made before this existed do not have it yet, so fetch it once and keep it.
+  const [orgName, setOrgName] = useState(session.orgName);
+  useEffect(() => {
+    if (session.orgName) return;
+    apiGet<{ name?: string }>("/organizations/me")
+      .then((org) => {
+        if (!org.name) return;
+        setOrgName(org.name);
+        setSession({ ...session, orgName: org.name });
+      })
+      .catch(() => {});
+  }, [session]);
+
   return (
-    <TopRibbon appName="Back Office" homeHref="/dashboard" LinkComponent={Link}>
+    <TopRibbon appName={orgName ?? "Back Office"} homeHref="/dashboard" LinkComponent={Link}>
+      {orgName && <span className="hidden text-xs text-white/60 lg:inline">Back Office</span>}
       <RibbonLink href="/dashboard" LinkComponent={Link} active={pathname === "/dashboard"}>
         <LayoutGrid size={14} />
         Home
