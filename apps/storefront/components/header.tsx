@@ -1,47 +1,36 @@
 "use client";
 
 import Link from "next/link";
-import { ShoppingBag, UserRound } from "lucide-react";
+import { RibbonButton, RibbonLink, ThemeToggle, TopRibbon } from "@zaroda/ui";
 import { displayPhone } from "../lib/format";
-import { ThemeToggle } from "@zaroda/ui";
 import { useStore } from "./store-provider";
 
+// The same navy top ribbon as the back office and Zaroda Events: logo and name, then the menu, which wraps
+// onto a second row on a phone instead of overflowing.
 export default function Header() {
   const { buyer, ready, signOut } = useStore();
 
   return (
-    <header className="sticky top-0 z-30 border-b border-border bg-surface/95 backdrop-blur">
-      <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-3">
-        <Link href="/" className="flex items-center gap-2 font-bold">
-          <ShoppingBag size={22} className="text-primary-600" aria-hidden />
-          <span>Zaroda Marketplace</span>
-        </Link>
-        <nav className="flex items-center gap-4 text-sm">
-          <Link href="/" className="hover:text-primary-600">
-            Shops
-          </Link>
-          {ready && buyer ? (
-            <>
-              <Link href="/orders" className="hover:text-primary-600">
-                My orders
-              </Link>
-              <span className="hidden items-center gap-1 text-secondary-500 sm:flex">
-                <UserRound size={14} aria-hidden /> {buyer.name ?? buyer.email ?? (buyer.phone ? displayPhone(buyer.phone) : "My account")}
-              </span>
-              <button onClick={signOut} className="text-secondary-500 hover:text-foreground">
-                Sign out
-              </button>
-            </>
-          ) : (
-            ready && (
-              <Link href="/orders" className="rounded-md border border-border px-3 py-1.5 hover:bg-secondary-500/5">
-                Sign in
-              </Link>
-            )
-          )}
-          <ThemeToggle />
-        </nav>
-      </div>
-    </header>
+    <TopRibbon appName="Marketplace" homeHref="/" LinkComponent={Link}>
+      <RibbonLink href="/" LinkComponent={Link}>
+        Shops
+      </RibbonLink>
+      {ready && buyer ? (
+        <>
+          <RibbonLink href="/orders" LinkComponent={Link}>
+            My orders
+          </RibbonLink>
+          <span className="hidden text-xs text-white/70 md:inline">{buyer.name ?? buyer.email ?? (buyer.phone ? displayPhone(buyer.phone) : "My account")}</span>
+          <RibbonButton onClick={signOut}>Sign out</RibbonButton>
+        </>
+      ) : (
+        ready && (
+          <RibbonLink href="/orders" LinkComponent={Link}>
+            Sign in
+          </RibbonLink>
+        )
+      )}
+      <ThemeToggle />
+    </TopRibbon>
   );
 }

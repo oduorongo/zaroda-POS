@@ -56,3 +56,12 @@ body {
 :root[data-theme="dark"] .text-secondary-700 { color: rgb(226 232 240 / var(--tw-text-opacity, 1)); }
 :root[data-theme="dark"] .text-secondary-900 { color: rgb(241 245 249 / var(--tw-text-opacity, 1)); }
 :root[data-theme="dark"] .hover\:text-secondary-600:hover { color: rgb(203 213 225 / var(--tw-text-opacity, 1)); }
+
+/* Navy buttons that forgot a text colour were unreadable (dark text on navy); make them white. */
+@layer base {
+  .bg-primary-500,
+  .bg-primary-600,
+  .bg-primary-700 {
+    color: #fff;
+  }
+}
