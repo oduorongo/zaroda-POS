@@ -56,3 +56,15 @@ body {
 :root[data-theme="dark"] .text-secondary-700 { color: rgb(226 232 240 / var(--tw-text-opacity, 1)); }
 :root[data-theme="dark"] .text-secondary-900 { color: rgb(241 245 249 / var(--tw-text-opacity, 1)); }
 :root[data-theme="dark"] .hover\:text-secondary-600:hover { color: rgb(203 213 225 / var(--tw-text-opacity, 1)); }
+
+/* Dark mode: the pale status backgrounds (green "approved", red "error", amber "warning" boxes) stayed
+   pale while their text turned light, so the words vanished. In dark mode they become a soft tint of the
+   same colour instead - the light text then reads clearly. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .bg-success-50 { background-color: rgb(22 163 74 / 0.16); }
+  :root:not([data-theme="light"]) .bg-warning-50 { background-color: rgb(217 119 6 / 0.16); }
+  :root:not([data-theme="light"]) .bg-error-50 { background-color: rgb(220 38 38 / 0.16); }
+}
+:root[data-theme="dark"] .bg-success-50 { background-color: rgb(22 163 74 / 0.16); }
+:root[data-theme="dark"] .bg-warning-50 { background-color: rgb(217 119 6 / 0.16); }
+:root[data-theme="dark"] .bg-error-50 { background-color: rgb(220 38 38 / 0.16); }
