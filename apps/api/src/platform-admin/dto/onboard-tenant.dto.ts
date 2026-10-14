@@ -1,6 +1,6 @@
 import { IsEmail, IsIn, IsInt, IsOptional, IsPositive, IsString, MaxLength, MinLength } from 'class-validator';
 
-const INDUSTRY_TYPES = ['RETAIL', 'RESTAURANT', 'PHARMACY', 'SALON'] as const;
+const INDUSTRY_TYPES = ['RETAIL', 'RESTAURANT', 'PHARMACY', 'SALON', 'RENTAL'] as const;
 
 /** Admin-driven onboarding (distinct from the public self-service /auth/register): the tenant starts ACTIVE on a chosen plan, not on a trial. */
 export class OnboardTenantDto {

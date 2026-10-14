@@ -27,6 +27,7 @@ import {
   Scissors,
   Factory,
   Wrench,
+  Home,
 } from "lucide-react";
 import { getSession, clearSession, isBackofficeRole, type Session } from "../../lib/auth";
 import { useIdleLogout } from "../../hooks/use-idle-logout";
@@ -113,6 +114,13 @@ const VERTICAL_TILES: Record<string, Tile> = {
     label: "Production",
     description: "Production runs and recipe output.",
     icon: Factory,
+    tone: "bg-amber-600",
+  },
+  RENTAL: {
+    href: "/rentals",
+    label: "Rentals",
+    description: "Properties, units, tenants and leases.",
+    icon: Home,
     tone: "bg-amber-600",
   },
   SERVICE: {

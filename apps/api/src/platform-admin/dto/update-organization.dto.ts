@@ -1,6 +1,6 @@
 import { IsBoolean, IsIn, IsNumber, IsOptional, IsString, Max, MaxLength, Min, MinLength } from 'class-validator';
 
-const INDUSTRY_TYPES = ['RETAIL', 'RESTAURANT', 'PHARMACY', 'SALON'] as const;
+const INDUSTRY_TYPES = ['RETAIL', 'RESTAURANT', 'PHARMACY', 'SALON', 'RENTAL'] as const;
 
 /** Every field optional - a platform admin edits whichever subset of the profile needs correcting, not the whole record at once. */
 export class UpdateOrganizationDto {
