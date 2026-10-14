@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { apiGet, apiPatch, apiPost, ApiError } from "../../lib/api";
 import { getSession, clearSession, isBackofficeRole, type Session } from "../../lib/auth";
 import { Nav } from "../../components/nav";
+import { RentSection } from "./rent-section";
 import { PageHeader } from "../../components/page-header";
 
 interface Property {
@@ -47,7 +48,7 @@ interface Lease {
   unit: { id: string; label: string; property: { id: string; name: string } };
 }
 
-type Tab = "properties" | "tenants" | "leases";
+type Tab = "properties" | "tenants" | "leases" | "rent";
 
 const input = "w-full rounded-md border border-border bg-surface p-2 text-sm";
 const button = "rounded-md bg-primary-600 px-3 py-2 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-50";
@@ -241,8 +242,19 @@ export default function RentalsPage() {
   };
 
   const endLease = (lease: Lease) => {
-    if (!window.confirm(`End ${lease.tenant.name}'s lease on ${lease.unit.property.name} ${lease.unit.label}? The unit becomes vacant.`)) return;
-    void submit(() => apiPatch(`/rental/leases/${lease.id}/end`, {}), () => {});
+    const answer = window.prompt(
+      `End ${lease.tenant.name}'s lease on ${lease.unit.property.name} ${lease.unit.label}? The unit becomes vacant and rent stops being billed.
+
+How much of the deposit are you handing back (KES)? Enter 0 for none.`,
+      "0",
+    );
+    if (answer === null) return;
+    const refund = Number(answer.replace(/,/g, "").trim() || "0");
+    if (!Number.isFinite(refund) || refund < 0) {
+      setError("Enter the deposit refund as a number, like 5000 (or 0 for none).");
+      return;
+    }
+    void submit(() => apiPatch(`/rental/leases/${lease.id}/end`, refund > 0 ? { depositRefunded: refund } : {}), () => {});
   };
 
   if (!session) return null;
@@ -280,7 +292,7 @@ export default function RentalsPage() {
         {notice && <p className="mb-4 rounded-md bg-green-950 p-3 text-sm text-green-300">{notice}</p>}
 
         <div className="mb-4 flex gap-2">
-          {(["properties", "tenants", "leases"] as Tab[]).map((t) => (
+          {(["properties", "tenants", "leases", "rent"] as Tab[]).map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
@@ -501,6 +513,7 @@ export default function RentalsPage() {
             </div>
           </div>
         )}
+        {tab === "rent" && <RentSection onChanged={() => void load()} />}
       </main>
     </div>
   );
