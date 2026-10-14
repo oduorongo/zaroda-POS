@@ -10,7 +10,7 @@ const POINTS = [
   {
     icon: CreditCard,
     title: "Paid straight to you",
-    description: "Shoppers pay with M-Pesa and the money goes to your own account through Tuma. Zaroda never holds your money. A paid order shows up in your back office right away.",
+    description: "Shoppers pay with M-Pesa and the money goes straight to you, through Tuma or your own Paybill or Till. Zaroda never holds your money. A paid order shows up in your back office right away.",
   },
   {
     icon: Bike,

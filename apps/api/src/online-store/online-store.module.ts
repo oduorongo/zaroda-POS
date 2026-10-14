@@ -5,12 +5,13 @@ import { CommissionSchedulerService } from './commission-scheduler.service';
 import { CommissionService } from './commission.service';
 import { OnlineStoreController } from './online-store.controller';
 import { OnlineStoreService } from './online-store.service';
+import { DarajaClient } from './daraja.client';
 import { TumaClient } from './tuma.client';
 
 @Module({
   imports: [NotificationsModule],
   controllers: [OnlineStoreController, CommissionCallbackController],
-  providers: [OnlineStoreService, TumaClient, CommissionService, CommissionSchedulerService],
-  exports: [TumaClient, CommissionService],
+  providers: [OnlineStoreService, TumaClient, DarajaClient, CommissionService, CommissionSchedulerService],
+  exports: [TumaClient, DarajaClient, CommissionService],
 })
 export class OnlineStoreModule {}

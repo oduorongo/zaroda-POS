@@ -39,7 +39,11 @@ type Confirmation =
   | { outcome: 'unconfirmed'; detail: string }
   | { outcome: 'unavailable'; detail: string };
 
-function setup(order: Record<string, unknown> | null, confirmation: Confirmation = { outcome: 'paid', mpesaReceipt: 'QAB1' }) {
+function setup(
+  order: Record<string, unknown> | null,
+  confirmation: Confirmation = { outcome: 'paid', mpesaReceipt: 'QAB1' },
+  storeOverrides: Record<string, unknown> = {},
+) {
   const tx = {
     $executeRaw: jest.fn(),
     onlineOrder: {
@@ -54,12 +58,14 @@ function setup(order: Record<string, unknown> | null, confirmation: Confirmation
         tumaEmail: 'shop@example.com',
         tumaApiKeyEncrypted: encryptSecret('shop-api-key', KEY),
         contactPhone: '0712345678',
+        ...storeOverrides,
       }),
     },
   };
   const prisma = { $transaction: jest.fn((fn: (t: typeof tx) => unknown) => fn(tx)) };
   const tenantPrisma = { run: jest.fn((fn: (t: typeof tx) => unknown) => fn(tx)) };
   const tuma = { confirmPayment: jest.fn().mockResolvedValue(confirmation) };
+  const daraja = { queryStk: jest.fn().mockResolvedValue({ outcome: 'unconfirmed', detail: 'no result yet' }), stkPush: jest.fn() };
   const sms = { sendSms: jest.fn().mockResolvedValue({ sent: true }) };
   const config = { get: jest.fn((k: string) => (k === 'SECRETS_ENCRYPTION_KEY' ? KEY.toString('base64') : undefined)) };
   /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -68,12 +74,13 @@ function setup(order: Record<string, unknown> | null, confirmation: Confirmation
     tenantPrisma as any,
     {} as any,
     tuma as any,
+    daraja as any,
     {} as any,
     sms as any,
     config as any,
   );
   /* eslint-enable @typescript-eslint/no-explicit-any */
-  return { service, tx, tuma, sms };
+  return { service, tx, tuma, daraja, sms };
 }
 
 const settledWith = (tx: ReturnType<typeof setup>['tx']) => tx.onlineOrder.updateMany.mock.calls[0]?.[0]?.data;
@@ -259,5 +266,94 @@ describe('normalizeKenyanPhone', () => {
 describe('generateOrderNumber', () => {
   it('uses only unambiguous characters', () => {
     for (let i = 0; i < 200; i++) expect(generateOrderNumber()).toMatch(/^ZR-[2-9A-HJ-NP-Z]{6}$/);
+  });
+});
+
+// A shop collecting through its OWN M-Pesa (Safaricom Daraja) instead of Tuma.
+const darajaStore = {
+  paymentGateway: 'DARAJA',
+  tumaEmail: null,
+  tumaApiKeyEncrypted: null,
+  mpesaAccountType: 'PAYBILL',
+  mpesaShortcode: '174379',
+  mpesaConsumerKeyEncrypted: encryptSecret('consumer-key-1234', KEY),
+  mpesaConsumerSecretEncrypted: encryptSecret('consumer-secret-1234', KEY),
+  mpesaPasskeyEncrypted: encryptSecret('passkey-passkey-passkey-1234', KEY),
+  mpesaEnvironment: 'sandbox',
+};
+
+const darajaCallback = (overrides: { code?: number; amount?: number; receipt?: string | null; id?: string } = {}) => ({
+  Body: {
+    stkCallback: {
+      MerchantRequestID: 'm-1',
+      CheckoutRequestID: overrides.id ?? 'ws_CO_2',
+      ResultCode: overrides.code ?? 0,
+      ResultDesc: 'The service request is processed successfully.',
+      ...(overrides.code && overrides.code !== 0
+        ? {}
+        : {
+            CallbackMetadata: {
+              Item: [
+                { Name: 'Amount', Value: overrides.amount ?? 500 },
+                ...(overrides.receipt === null ? [] : [{ Name: 'MpesaReceiptNumber', Value: overrides.receipt ?? 'SDA1B2C3D4' }]),
+                { Name: 'PhoneNumber', Value: 254712345678 },
+              ],
+            },
+          }),
+    },
+  },
+});
+
+describe("OnlineOrdersService.handleDarajaCallback (a shop's own M-Pesa)", () => {
+  const order = () => baseOrder({ tumaMerchantRequestId: 'ws_CO_2' });
+
+  it('rejects a callback without the right URL token and never asks Safaricom', async () => {
+    const { service, daraja, tx } = setup(order(), undefined, darajaStore);
+    await expect(service.handleDarajaCallback(ORG, ORDER, 'forged-token', darajaCallback())).rejects.toThrow(NotFoundException);
+    expect(daraja.queryStk).not.toHaveBeenCalled();
+    expect(tx.onlineOrder.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('settles a complete success callback with its receipt, and acknowledges Safaricom', async () => {
+    const { service, tx, daraja } = setup(order(), undefined, darajaStore);
+    const reply = await service.handleDarajaCallback(ORG, ORDER, goodToken, darajaCallback());
+    expect(reply).toEqual({ ResultCode: 0, ResultDesc: 'Accepted' });
+    expect(settledWith(tx)).toMatchObject({ status: OnlineOrderStatus.PAID, mpesaReceiptNumber: 'SDA1B2C3D4', tumaMerchantRequestId: 'ws_CO_2' });
+    expect(daraja.queryStk).not.toHaveBeenCalled();
+  });
+
+  it('flags a cancelled prompt in plain words and settles nothing', async () => {
+    const { service, tx } = setup(order(), undefined, darajaStore);
+    await service.handleDarajaCallback(ORG, ORDER, goodToken, darajaCallback({ code: 1032 }));
+    expect(tx.onlineOrder.updateMany).not.toHaveBeenCalled();
+    expect(tx.onlineOrder.update).toHaveBeenCalledWith(expect.objectContaining({ data: { lastPaymentError: expect.stringContaining('cancelled') } }));
+  });
+
+  it('does not settle a payment for less than the order, and flags it for review', async () => {
+    const { service, tx } = setup(order(), undefined, darajaStore);
+    await service.handleDarajaCallback(ORG, ORDER, goodToken, darajaCallback({ amount: 100 }));
+    expect(tx.onlineOrder.updateMany).not.toHaveBeenCalled();
+    expect(tx.onlineOrder.update).toHaveBeenCalledWith(expect.objectContaining({ data: { lastPaymentError: expect.stringContaining("doesn't match") } }));
+  });
+
+  it('asks Safaricom (free) when the callback has no receipt, and settles only if Safaricom confirms', async () => {
+    const { service, tx, daraja } = setup(order(), undefined, darajaStore);
+    daraja.queryStk.mockResolvedValue({ outcome: 'paid' });
+    await service.handleDarajaCallback(ORG, ORDER, goodToken, darajaCallback({ receipt: null }));
+    expect(daraja.queryStk).toHaveBeenCalledTimes(1);
+    expect(settledWith(tx)).toMatchObject({ status: OnlineOrderStatus.PAID, mpesaReceiptNumber: 'DARAJA:ws_CO_2' });
+  });
+
+  it('leaves the order waiting when Safaricom cannot confirm', async () => {
+    const { service, tx, daraja } = setup(order(), undefined, darajaStore);
+    daraja.queryStk.mockResolvedValue({ outcome: 'unconfirmed', detail: 'no result yet' });
+    await service.handleDarajaCallback(ORG, ORDER, goodToken, darajaCallback({ receipt: null }));
+    expect(tx.onlineOrder.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('ignores a callback for an order that is already settled', async () => {
+    const { service, tx } = setup(baseOrder({ status: OnlineOrderStatus.PAID }), undefined, darajaStore);
+    await service.handleDarajaCallback(ORG, ORDER, goodToken, darajaCallback());
+    expect(tx.onlineOrder.updateMany).not.toHaveBeenCalled();
   });
 });

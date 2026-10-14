@@ -21,6 +21,12 @@ interface OnlineStore {
   deliveryEnabled: boolean;
   tumaEmail: string | null;
   tumaConnected: boolean;
+  paymentGateway: "TUMA" | "DARAJA";
+  mpesaConnected: boolean;
+  mpesaAccountType: "PAYBILL" | "TILL" | null;
+  mpesaShortcode: string | null;
+  mpesaTillNumber: string | null;
+  mpesaEnvironment: "production" | "sandbox";
   publishBlockers: string[];
 }
 
@@ -94,6 +100,18 @@ export default function OnlineShopSettingsPage() {
   const [tumaBusy, setTumaBusy] = useState(false);
   const [tumaError, setTumaError] = useState<string | null>(null);
 
+  // Which way of getting paid the form on screen is for (the active one is shown by a badge).
+  const [payTab, setPayTab] = useState<"TUMA" | "DARAJA">("TUMA");
+  const [mpesaAccountType, setMpesaAccountType] = useState<"PAYBILL" | "TILL">("PAYBILL");
+  const [mpesaShortcode, setMpesaShortcode] = useState("");
+  const [mpesaTillNumber, setMpesaTillNumber] = useState("");
+  const [mpesaConsumerKey, setMpesaConsumerKey] = useState("");
+  const [mpesaConsumerSecret, setMpesaConsumerSecret] = useState("");
+  const [mpesaPasskey, setMpesaPasskey] = useState("");
+  const [mpesaEnvironment, setMpesaEnvironment] = useState<"production" | "sandbox">("production");
+  const [mpesaBusy, setMpesaBusy] = useState(false);
+  const [mpesaError, setMpesaError] = useState<string | null>(null);
+
   const [publishBusy, setPublishBusy] = useState(false);
   const [publishError, setPublishError] = useState<string | null>(null);
   const [commission, setCommission] = useState<Commission | null>(null);
@@ -128,6 +146,11 @@ export default function OnlineShopSettingsPage() {
     setPickupEnabled(result.pickupEnabled);
     setDeliveryEnabled(result.deliveryEnabled);
     setTumaEmail(result.tumaEmail ?? "");
+    setPayTab(result.paymentGateway ?? "TUMA");
+    setMpesaAccountType(result.mpesaAccountType ?? "PAYBILL");
+    setMpesaShortcode(result.mpesaShortcode ?? "");
+    setMpesaTillNumber(result.mpesaTillNumber ?? "");
+    setMpesaEnvironment(result.mpesaEnvironment ?? "production");
   }
 
   async function load() {
@@ -199,6 +222,56 @@ export default function OnlineShopSettingsPage() {
       setTumaError(err instanceof ApiError ? err.message : "Could not disconnect TUMA.");
     } finally {
       setTumaBusy(false);
+    }
+  }
+
+  async function connectMpesa() {
+    setMpesaBusy(true);
+    setMpesaError(null);
+    try {
+      const result = await apiPost<OnlineStore>("/online-store/me/mpesa", {
+        accountType: mpesaAccountType,
+        shortcode: mpesaShortcode.trim(),
+        ...(mpesaAccountType === "TILL" ? { tillNumber: mpesaTillNumber.trim() } : {}),
+        consumerKey: mpesaConsumerKey.trim(),
+        consumerSecret: mpesaConsumerSecret.trim(),
+        passkey: mpesaPasskey.trim(),
+        environment: mpesaEnvironment,
+      });
+      applyStore(result);
+      setMpesaConsumerKey("");
+      setMpesaConsumerSecret("");
+      setMpesaPasskey("");
+    } catch (err) {
+      setMpesaError(err instanceof ApiError ? err.message : "Could not connect M-Pesa.");
+    } finally {
+      setMpesaBusy(false);
+    }
+  }
+
+  async function disconnectMpesa() {
+    if (!confirm("Remove your M-Pesa details? Buyers will pay through TUMA instead, and your shop goes offline if TUMA is not connected.")) return;
+    setMpesaBusy(true);
+    setMpesaError(null);
+    try {
+      applyStore(await apiDelete<OnlineStore>("/online-store/me/mpesa"));
+    } catch (err) {
+      setMpesaError(err instanceof ApiError ? err.message : "Could not remove the M-Pesa details.");
+    } finally {
+      setMpesaBusy(false);
+    }
+  }
+
+  async function useGateway(gateway: "TUMA" | "DARAJA") {
+    setMpesaBusy(true);
+    setMpesaError(null);
+    setTumaError(null);
+    try {
+      applyStore(await apiPost<OnlineStore>("/online-store/me/payment-gateway", { gateway }));
+    } catch (err) {
+      (gateway === "DARAJA" ? setMpesaError : setTumaError)(err instanceof ApiError ? err.message : "Could not switch.");
+    } finally {
+      setMpesaBusy(false);
     }
   }
 
@@ -289,8 +362,8 @@ export default function OnlineShopSettingsPage() {
               <h2 className="font-semibold">Sell online with Zaroda</h2>
               <p className="text-sm text-secondary-600">
                 Put your products on the Zaroda marketplace and get your own shop link. Online stock comes straight from your POS
-                inventory, so you never sell something that just sold at the counter. Buyers pay you directly through your TUMA
-                account.
+                inventory, so you never sell something that just sold at the counter. Buyers pay you directly, through TUMA or your own
+                M-Pesa Paybill or Till.
               </p>
               <p className="text-sm text-secondary-600">
                 The Online Shop is a paid add-on. Contact Zaroda to turn it on for your business.
@@ -513,13 +586,32 @@ export default function OnlineShopSettingsPage() {
 
             <Card>
               <CardHeader>
-                <CardTitle>Payments (TUMA)</CardTitle>
+                <CardTitle>How you get paid</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 <p className="text-sm text-secondary-600">
-                  Buyers pay you directly by M-Pesa through your own TUMA account, and the money settles to your bank or till. Sign up at
-                  tuma.co.ke, then copy your API key from the Developer API section of the TUMA merchant portal.
+                  Buyers pay you directly by M-Pesa and the money goes to you, not to Zaroda. Choose how: through a TUMA account, or through
+                  your own M-Pesa Paybill or Till.
                 </p>
+                <div className="flex flex-wrap gap-2">
+                  {(["TUMA", "DARAJA"] as const).map((tab) => (
+                    <button
+                      key={tab}
+                      type="button"
+                      onClick={() => setPayTab(tab)}
+                      className={`rounded-md border px-3 py-1.5 text-sm font-medium ${payTab === tab ? "border-primary-500 bg-primary-500/10 text-foreground" : "border-border text-secondary-600"}`}
+                    >
+                      {tab === "TUMA" ? "TUMA" : "My own M-Pesa (Paybill or Till)"}
+                      {store.paymentGateway === tab && <span className="ml-2 text-xs text-success-600">In use</span>}
+                    </button>
+                  ))}
+                </div>
+
+                {payTab === "TUMA" && (
+                  <>
+                    <p className="text-sm text-secondary-600">
+                      Sign up at tuma.co.ke, then copy your API key from the Developer API section of the TUMA merchant portal.
+                    </p>
                 {store.tumaConnected ? (
                   <div className="flex flex-wrap items-center gap-3">
                     <Badge variant="success">Connected</Badge>
@@ -544,7 +636,105 @@ export default function OnlineShopSettingsPage() {
                     </Button>
                   </>
                 )}
-                {tumaError && <p className="text-sm text-error-600">{tumaError}</p>}
+
+                    {store.tumaConnected && store.paymentGateway !== "TUMA" && (
+                      <Button size="sm" onClick={() => void useGateway("TUMA")} disabled={mpesaBusy}>
+                        Use TUMA for new orders
+                      </Button>
+                    )}
+                    {tumaError && <p className="text-sm text-error-600">{tumaError}</p>}
+                  </>
+                )}
+
+                {payTab === "DARAJA" && (
+                  <>
+                    <p className="text-sm text-secondary-600">
+                      Use your own Safaricom Daraja app, so shoppers&apos; M-Pesa prompts pay straight into your Paybill or Till. Create an app at
+                      developer.safaricom.co.ke, request Go Live for your shortcode, then copy its keys here.
+                    </p>
+                    {store.mpesaConnected ? (
+                      <div className="space-y-3">
+                        <div className="flex flex-wrap items-center gap-3">
+                          <Badge variant="success">Connected</Badge>
+                          <span className="text-sm">
+                            {store.mpesaAccountType === "TILL" ? "Till" : "Paybill"} {store.mpesaAccountType === "TILL" ? store.mpesaTillNumber : store.mpesaShortcode}
+                            {store.mpesaEnvironment === "sandbox" ? " (sandbox - test only)" : ""}
+                          </span>
+                          <Button variant="outline" size="sm" onClick={() => void disconnectMpesa()} disabled={mpesaBusy}>
+                            Remove
+                          </Button>
+                        </div>
+                        {store.paymentGateway !== "DARAJA" && (
+                          <Button size="sm" onClick={() => void useGateway("DARAJA")} disabled={mpesaBusy}>
+                            Use my M-Pesa for new orders
+                          </Button>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="space-y-4">
+                        <div>
+                          <Label>Account type</Label>
+                          <select
+                            value={mpesaAccountType}
+                            onChange={(e) => setMpesaAccountType(e.target.value as "PAYBILL" | "TILL")}
+                            className="mt-1 w-full rounded-md border border-border bg-surface p-2 text-sm"
+                          >
+                            <option value="PAYBILL">Paybill</option>
+                            <option value="TILL">Till (Buy Goods)</option>
+                          </select>
+                        </div>
+                        <div>
+                          <Label>{mpesaAccountType === "TILL" ? "Store number (Head Office shortcode)" : "Paybill number"}</Label>
+                          <Input inputMode="numeric" value={mpesaShortcode} onChange={(e) => setMpesaShortcode(e.target.value)} />
+                        </div>
+                        {mpesaAccountType === "TILL" && (
+                          <div>
+                            <Label>Till number</Label>
+                            <Input inputMode="numeric" value={mpesaTillNumber} onChange={(e) => setMpesaTillNumber(e.target.value)} />
+                          </div>
+                        )}
+                        <div>
+                          <Label>Consumer key</Label>
+                          <Input type="password" autoComplete="off" value={mpesaConsumerKey} onChange={(e) => setMpesaConsumerKey(e.target.value)} />
+                        </div>
+                        <div>
+                          <Label>Consumer secret</Label>
+                          <Input type="password" autoComplete="off" value={mpesaConsumerSecret} onChange={(e) => setMpesaConsumerSecret(e.target.value)} />
+                        </div>
+                        <div>
+                          <Label>Passkey</Label>
+                          <Input type="password" autoComplete="off" value={mpesaPasskey} onChange={(e) => setMpesaPasskey(e.target.value)} />
+                        </div>
+                        <div>
+                          <Label>Environment</Label>
+                          <select
+                            value={mpesaEnvironment}
+                            onChange={(e) => setMpesaEnvironment(e.target.value as "production" | "sandbox")}
+                            className="mt-1 w-full rounded-md border border-border bg-surface p-2 text-sm"
+                          >
+                            <option value="production">Live (real money)</option>
+                            <option value="sandbox">Sandbox (testing only)</option>
+                          </select>
+                        </div>
+                        <p className="text-xs text-secondary-500">We check the key and secret with Safaricom, then store everything encrypted. They are never shown again.</p>
+                        <Button
+                          onClick={() => void connectMpesa()}
+                          disabled={
+                            mpesaBusy ||
+                            !mpesaShortcode.trim() ||
+                            (mpesaAccountType === "TILL" && !mpesaTillNumber.trim()) ||
+                            !mpesaConsumerKey.trim() ||
+                            !mpesaConsumerSecret.trim() ||
+                            !mpesaPasskey.trim()
+                          }
+                        >
+                          {mpesaBusy ? "Checking with Safaricom..." : "Connect my M-Pesa"}
+                        </Button>
+                      </div>
+                    )}
+                    {mpesaError && <p className="text-sm text-error-600">{mpesaError}</p>}
+                  </>
+                )}
               </CardContent>
             </Card>
           </>

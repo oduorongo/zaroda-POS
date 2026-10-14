@@ -51,4 +51,32 @@ describe('publishBlockers', () => {
       'Connect your TUMA account so buyers can pay you',
     ]);
   });
+
+  describe('when the shop collects through its own M-Pesa', () => {
+    const own = {
+      ...ready,
+      tumaApiKeyEncrypted: null,
+      paymentGateway: 'DARAJA',
+      mpesaAccountType: 'PAYBILL',
+      mpesaShortcode: '174379',
+      mpesaConsumerKeyEncrypted: 'v1:a',
+      mpesaConsumerSecretEncrypted: 'v1:b',
+      mpesaPasskeyEncrypted: 'v1:c',
+    };
+
+    it('does not need TUMA', () => {
+      expect(publishBlockers(own)).toEqual([]);
+    });
+
+    it('needs every M-Pesa detail', () => {
+      expect(publishBlockers({ ...own, mpesaPasskeyEncrypted: null })).toEqual([
+        'Finish connecting your M-Pesa Paybill or Till so buyers can pay you',
+      ]);
+    });
+
+    it('a Till also needs its till number', () => {
+      expect(publishBlockers({ ...own, mpesaAccountType: 'TILL', mpesaTillNumber: null })).toHaveLength(1);
+      expect(publishBlockers({ ...own, mpesaAccountType: 'TILL', mpesaTillNumber: '555111' })).toEqual([]);
+    });
+  });
 });

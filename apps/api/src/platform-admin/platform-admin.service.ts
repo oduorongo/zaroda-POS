@@ -64,6 +64,8 @@ function toPlatformOnlineStoreView(store: OnlineStore | null) {
     slug: store?.slug ?? null,
     displayName: store?.displayName ?? null,
     tumaConnected: Boolean(store?.tumaApiKeyEncrypted),
+    paymentGateway: store?.paymentGateway ?? 'TUMA',
+    mpesaConnected: Boolean(store?.mpesaConsumerKeyEncrypted && store?.mpesaPasskeyEncrypted),
   };
 }
 
