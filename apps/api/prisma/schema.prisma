@@ -74,6 +74,10 @@ model Organization {
   rentalAllocations   RentalPaymentAllocation[]
   rentalSettings      RentalSettings?
   rentalRequests      RentalPaymentRequest[]
+  rentalMaintenance   RentalMaintenanceRequest[]
+  rentalExpenses      RentalExpense[]
+  rentalMeterReadings RentalMeterReading[]
+  rentalReminderLogs  RentalReminderLog[]
   kitchenStations     KitchenStation[]
   salonResources      SalonResource[]
   salonAppointments   SalonAppointment[]
@@ -96,8 +100,8 @@ model Organization {
   // member creates the account; only the platform owner can change it. Self-signups have neither.
   salesTeamId         String?
   salesAgentId        String?
-  salesTeam           SalesTeam?                @relation(fields: [salesTeamId], references: [id], onDelete: SetNull)
-  salesAgent          SalesAgent?               @relation(fields: [salesAgentId], references: [id], onDelete: SetNull)
+  salesTeam           SalesTeam?                 @relation(fields: [salesTeamId], references: [id], onDelete: SetNull)
+  salesAgent          SalesAgent?                @relation(fields: [salesAgentId], references: [id], onDelete: SetNull)
   deliveryJobs        DeliveryJob[]
   deliveryQuotes      DeliveryQuote[]
   deliveryJobContacts DeliveryJobContact[]
@@ -2436,8 +2440,10 @@ model RentalProperty {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization Organization               @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   units        RentalUnit[]
+  maintenance  RentalMaintenanceRequest[]
+  expenses     RentalExpense[]
 
   @@unique([organizationId, name])
   @@index([organizationId])
@@ -2456,9 +2462,12 @@ model RentalUnit {
   createdAt      DateTime         @default(now())
   updatedAt      DateTime         @updatedAt
 
-  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  property     RentalProperty @relation(fields: [propertyId], references: [id], onDelete: Cascade)
-  leases       RentalLease[]
+  organization  Organization               @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  property      RentalProperty             @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  leases        RentalLease[]
+  maintenance   RentalMaintenanceRequest[]
+  expenses      RentalExpense[]
+  meterReadings RentalMeterReading[]
 
   @@unique([propertyId, label])
   @@index([organizationId])
@@ -2476,8 +2485,9 @@ model RentalTenant {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization Organization               @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   leases       RentalLease[]
+  maintenance  RentalMaintenanceRequest[]
 
   @@index([organizationId])
   @@map("rental_tenants")
@@ -2501,12 +2511,13 @@ model RentalLease {
   createdAt       DateTime          @default(now())
   updatedAt       DateTime          @updatedAt
 
-  organization Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  unit         RentalUnit             @relation(fields: [unitId], references: [id], onDelete: Restrict)
-  tenant       RentalTenant           @relation(fields: [tenantId], references: [id], onDelete: Restrict)
-  invoices     RentalInvoice[]
-  payments     RentalPayment[]
-  requests     RentalPaymentRequest[]
+  organization  Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  unit          RentalUnit             @relation(fields: [unitId], references: [id], onDelete: Restrict)
+  tenant        RentalTenant           @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  invoices      RentalInvoice[]
+  payments      RentalPayment[]
+  requests      RentalPaymentRequest[]
+  meterReadings RentalMeterReading[]
 
   @@index([organizationId])
   @@index([unitId, status])
@@ -2627,6 +2638,9 @@ model RentalSettings {
   mpesaConsumerSecretEncrypted String?
   mpesaPasskeyEncrypted        String?
   mpesaEnvironment             String   @default("production")
+  remindersEnabled             Boolean  @default(false)
+  smsReminders                 Boolean  @default(false)
+  paymentInstructions          String?
   createdAt                    DateTime @default(now())
   updatedAt                    DateTime @updatedAt
 
@@ -2660,4 +2674,127 @@ model RentalPaymentRequest {
   @@index([leaseId, createdAt])
   @@index([status, createdAt])
   @@map("rental_payment_requests")
+}
+
+// ── Rental module, phase 3: expenses, maintenance, meters, reminders ─────
+
+enum RentalExpenseCategory {
+  REPAIRS
+  UTILITIES
+  RATES_AND_TAXES
+  INSURANCE
+  CARETAKER
+  MANAGEMENT_FEE
+  OTHER
+}
+
+enum RentalMaintenanceStatus {
+  OPEN
+  IN_PROGRESS
+  DONE
+  CANCELLED
+}
+
+enum RentalMaintenancePriority {
+  LOW
+  NORMAL
+  URGENT
+}
+
+enum RentalMeterKind {
+  WATER
+  ELECTRICITY
+}
+
+// A repair or problem reported on a property or one of its units, tracked until it is done.
+model RentalMaintenanceRequest {
+  id             String                    @id @default(uuid())
+  organizationId String
+  propertyId     String
+  unitId         String?
+  tenantId       String? // who reported it, when a tenant did
+  title          String
+  description    String?
+  priority       RentalMaintenancePriority @default(NORMAL)
+  status         RentalMaintenanceStatus   @default(OPEN)
+  reportedAt     DateTime                  @db.Date
+  resolvedAt     DateTime?                 @db.Date
+  createdAt      DateTime                  @default(now())
+  updatedAt      DateTime                  @updatedAt
+
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  property     RentalProperty  @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  unit         RentalUnit?     @relation(fields: [unitId], references: [id], onDelete: SetNull)
+  tenant       RentalTenant?   @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  expenses     RentalExpense[]
+
+  @@index([organizationId, status])
+  @@index([propertyId])
+  @@map("rental_maintenance_requests")
+}
+
+// Money a landlord spends on a property (repairs, rates, caretaker...), so profit per property can be reported.
+model RentalExpense {
+  id             String                @id @default(uuid())
+  organizationId String
+  propertyId     String
+  unitId         String?
+  maintenanceId  String? // the repair this paid for, when there is one
+  category       RentalExpenseCategory
+  description    String
+  vendor         String?
+  amount         Decimal               @db.Decimal(12, 2)
+  incurredAt     DateTime              @db.Date
+  createdAt      DateTime              @default(now())
+
+  organization Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  property     RentalProperty            @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  unit         RentalUnit?               @relation(fields: [unitId], references: [id], onDelete: SetNull)
+  maintenance  RentalMaintenanceRequest? @relation(fields: [maintenanceId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, incurredAt])
+  @@index([propertyId, incurredAt])
+  @@map("rental_expenses")
+}
+
+// A water or electricity meter reading for a unit. Consumption since the previous reading, at the rate entered, is
+// billed to the tenant as a one-off charge (chargeInvoiceId).
+model RentalMeterReading {
+  id              String          @id @default(uuid())
+  organizationId  String
+  unitId          String
+  leaseId         String? // the tenant who was in the unit and was charged
+  kind            RentalMeterKind
+  readingDate     DateTime        @db.Date
+  reading         Decimal         @db.Decimal(12, 2)
+  previousReading Decimal?        @db.Decimal(12, 2)
+  unitsUsed       Decimal?        @db.Decimal(12, 2)
+  ratePerUnit     Decimal?        @db.Decimal(12, 2)
+  chargeInvoiceId String?
+  createdAt       DateTime        @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  unit         RentalUnit   @relation(fields: [unitId], references: [id], onDelete: Cascade)
+  lease        RentalLease? @relation(fields: [leaseId], references: [id], onDelete: SetNull)
+
+  @@unique([unitId, kind, readingDate])
+  @@index([organizationId])
+  @@index([unitId, kind, readingDate])
+  @@map("rental_meter_readings")
+}
+
+// Each reminder sent once per invoice, stage and channel, so the hourly job never nags twice.
+model RentalReminderLog {
+  id             String   @id @default(uuid())
+  organizationId String
+  invoiceId      String
+  stage          String // UPCOMING | DUE | OVERDUE | FINAL
+  channel        String // EMAIL | SMS
+  sentAt         DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([invoiceId, stage, channel])
+  @@index([organizationId])
+  @@map("rental_reminder_logs")
 }

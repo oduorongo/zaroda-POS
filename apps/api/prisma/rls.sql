@@ -824,3 +824,31 @@ DROP POLICY IF EXISTS tenant_isolation ON rental_payment_requests;
 CREATE POLICY tenant_isolation ON rental_payment_requests
   USING ("organizationId" = current_setting('app.current_tenant', true))
   WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+ALTER TABLE rental_maintenance_requests ENABLE ROW LEVEL SECURITY;
+ALTER TABLE rental_maintenance_requests FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON rental_maintenance_requests;
+CREATE POLICY tenant_isolation ON rental_maintenance_requests
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+ALTER TABLE rental_expenses ENABLE ROW LEVEL SECURITY;
+ALTER TABLE rental_expenses FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON rental_expenses;
+CREATE POLICY tenant_isolation ON rental_expenses
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+ALTER TABLE rental_meter_readings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE rental_meter_readings FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON rental_meter_readings;
+CREATE POLICY tenant_isolation ON rental_meter_readings
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+ALTER TABLE rental_reminder_logs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE rental_reminder_logs FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON rental_reminder_logs;
+CREATE POLICY tenant_isolation ON rental_reminder_logs
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));

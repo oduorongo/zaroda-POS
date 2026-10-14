@@ -30,6 +30,14 @@ interface Receipt {
   keptAsCredit: number;
   balanceAfter: number;
 }
+interface Report {
+  business: string;
+  month: string;
+  properties: { propertyId: string; property: string; units: number; occupied: number; charged: number; collected: number; expenses: number; net: number; arrears: number }[];
+  totals: { units: number; occupied: number; charged: number; collected: number; expenses: number; net: number; arrears: number };
+  expensesByCategory: { category: string; amount: number }[];
+  printedOn: string;
+}
 interface Statement {
   business: string;
   tenant: Party;
@@ -46,12 +54,24 @@ const money = (v: number) => v.toLocaleString("en-KE", { minimumFractionDigits: 
 const day = (iso: string) => iso.slice(0, 10);
 const METHOD_LABEL: Record<string, string> = { CASH: "Cash", BANK: "Bank", MPESA: "M-Pesa", TUMA: "M-Pesa", DARAJA: "M-Pesa", OTHER: "Other" };
 
+/** The footer every printed Zaroda document carries (the same one as the school system's receipts and report cards). */
+function Footer({ note }: { note: string }) {
+  return (
+    <div className="mt-8 border-t border-gray-300 pt-3 text-center text-[10px] italic text-gray-500">
+      <p className="not-italic">{note}</p>
+      <p>Powered by ZARODA SOLUTIONS</p>
+      <p>Reliable. Innovative. Forward.</p>
+    </div>
+  );
+}
+
 /** A plain white page meant for the printer (or "save as PDF"): one rent receipt or one tenant statement. */
 export default function PrintPage() {
   const router = useRouter();
   const { kind, id } = useParams<{ kind: string; id: string }>();
   const [receipt, setReceipt] = useState<Receipt | null>(null);
   const [statement, setStatement] = useState<Statement | null>(null);
+  const [report, setReport] = useState<Report | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -59,7 +79,12 @@ export default function PrintPage() {
       router.replace("/login");
       return;
     }
-    const load = kind === "statement" ? apiGet<Statement>(`/rental/leases/${id}/statement`).then(setStatement) : apiGet<Receipt>(`/rental/payments/${id}`).then(setReceipt);
+    const load =
+      kind === "statement"
+        ? apiGet<Statement>(`/rental/leases/${id}/statement`).then(setStatement)
+        : kind === "report"
+          ? apiGet<Report>(`/rental/reports/monthly?month=${id}`).then(setReport)
+          : apiGet<Receipt>(`/rental/payments/${id}`).then(setReceipt);
     load.catch((err) => setError(err instanceof ApiError ? err.message : "Could not load this page."));
   }, [kind, id, router]);
 
@@ -97,7 +122,8 @@ export default function PrintPage() {
             {receipt.keptAsCredit > 0 && <p className="mt-2 text-sm">Kept as credit for future rent: KES {money(receipt.keptAsCredit)}</p>}
             {receipt.note && <p className="mt-2 text-sm text-gray-600">Note: {receipt.note}</p>}
             <p className="mt-4 text-sm">Balance still owing after this payment: <strong>KES {money(receipt.balanceAfter)}</strong></p>
-            <p className="mt-8 text-xs text-gray-500">Thank you.</p>
+            <p className="mt-6 text-xs text-gray-500">Thank you.</p>
+            <Footer note="This is a computer-generated receipt." />
           </div>
         )}
 
@@ -135,6 +161,54 @@ export default function PrintPage() {
             <p className="mt-4 text-right text-base font-bold">
               {statement.balance > 0 ? `Balance owing: KES ${money(statement.balance)}` : statement.balance < 0 ? `In credit: KES ${money(-statement.balance)}` : "Fully paid up"}
             </p>
+            <Footer note="This is a computer-generated statement." />
+          </div>
+        )}
+
+        {report && (
+          <div className="rounded border border-gray-400 p-6">
+            <h1 className="text-xl font-bold">{report.business}</h1>
+            <p className="text-sm text-gray-600">Rental report for {report.month} - printed {day(report.printedOn)}</p>
+            <table className="mt-4 w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-400 text-left text-xs uppercase text-gray-600">
+                  <th className="py-1">Property</th>
+                  <th className="py-1">Occupied</th>
+                  <th className="py-1 text-right">Charged</th>
+                  <th className="py-1 text-right">Collected</th>
+                  <th className="py-1 text-right">Expenses</th>
+                  <th className="py-1 text-right">Net</th>
+                  <th className="py-1 text-right">Arrears</th>
+                </tr>
+              </thead>
+              <tbody>
+                {report.properties.map((p) => (
+                  <tr key={p.propertyId} className="border-b border-gray-200">
+                    <td className="py-1">{p.property}</td>
+                    <td className="py-1">{p.occupied}/{p.units}</td>
+                    <td className="py-1 text-right">{money(p.charged)}</td>
+                    <td className="py-1 text-right">{money(p.collected)}</td>
+                    <td className="py-1 text-right">{money(p.expenses)}</td>
+                    <td className="py-1 text-right">{money(p.net)}</td>
+                    <td className="py-1 text-right">{money(p.arrears)}</td>
+                  </tr>
+                ))}
+                <tr className="font-bold">
+                  <td className="py-1">Total</td>
+                  <td className="py-1">{report.totals.occupied}/{report.totals.units}</td>
+                  <td className="py-1 text-right">{money(report.totals.charged)}</td>
+                  <td className="py-1 text-right">{money(report.totals.collected)}</td>
+                  <td className="py-1 text-right">{money(report.totals.expenses)}</td>
+                  <td className="py-1 text-right">{money(report.totals.net)}</td>
+                  <td className="py-1 text-right">{money(report.totals.arrears)}</td>
+                </tr>
+              </tbody>
+            </table>
+            {report.expensesByCategory.length > 0 && (
+              <p className="mt-3 text-xs text-gray-600">Expenses: {report.expensesByCategory.map((c) => `${c.category.replace(/_/g, " ").toLowerCase()} ${money(c.amount)}`).join(" · ")}</p>
+            )}
+            <p className="mt-2 text-xs text-gray-600">Collected = payments received this month. Arrears = everything overdue today.</p>
+            <Footer note="This is a computer-generated report." />
           </div>
         )}
       </div>
