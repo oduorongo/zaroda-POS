@@ -392,6 +392,11 @@ export default function OnlineShopSettingsPage() {
                       {STOREFRONT_URL}/s/{store.slug}
                     </span>
                   )}
+                  {store.slug && (
+                    <a href="/settings/online-shop/poster" className="text-sm font-semibold text-primary-600 hover:underline">
+                      Print a poster with a QR code
+                    </a>
+                  )}
                 </div>
                 {!store.isPublished && store.publishBlockers.length > 0 && (
                   <div className="text-sm">
