@@ -262,7 +262,7 @@ export default function OnlineShopSettingsPage() {
     }
   }
 
-  async function useGateway(gateway: "TUMA" | "DARAJA") {
+  async function switchGateway(gateway: "TUMA" | "DARAJA") {
     setMpesaBusy(true);
     setMpesaError(null);
     setTumaError(null);
@@ -391,6 +391,11 @@ export default function OnlineShopSettingsPage() {
                     <span className="break-all text-sm text-secondary-600">
                       {STOREFRONT_URL}/s/{store.slug}
                     </span>
+                  )}
+                  {store.slug && (
+                    <a href="/settings/online-shop/poster" className="text-sm font-semibold text-primary-600 hover:underline">
+                      Print a poster with a QR code
+                    </a>
                   )}
                 </div>
                 {!store.isPublished && store.publishBlockers.length > 0 && (
@@ -638,7 +643,7 @@ export default function OnlineShopSettingsPage() {
                 )}
 
                     {store.tumaConnected && store.paymentGateway !== "TUMA" && (
-                      <Button size="sm" onClick={() => void useGateway("TUMA")} disabled={mpesaBusy}>
+                      <Button size="sm" onClick={() => void switchGateway("TUMA")} disabled={mpesaBusy}>
                         Use TUMA for new orders
                       </Button>
                     )}
@@ -665,7 +670,7 @@ export default function OnlineShopSettingsPage() {
                           </Button>
                         </div>
                         {store.paymentGateway !== "DARAJA" && (
-                          <Button size="sm" onClick={() => void useGateway("DARAJA")} disabled={mpesaBusy}>
+                          <Button size="sm" onClick={() => void switchGateway("DARAJA")} disabled={mpesaBusy}>
                             Use my M-Pesa for new orders
                           </Button>
                         )}
