@@ -8,6 +8,7 @@ import { Prisma } from '@prisma/client';
 import { TenantScopedPrismaService } from '../common/prisma/tenant-scoped-prisma.service';
 import { getTenantStore } from '../common/tenant/tenant-context';
 import {
+  BulkCreateUnitsDto,
   CreateLeaseDto,
   CreatePropertyDto,
   CreateTenantDto,
@@ -116,12 +117,51 @@ export class RentalService {
     }
   }
 
+  // Adds many units to a property in one go. Labels the property already has (or repeats within the list) are skipped.
+  async createUnitsBulk(dto: BulkCreateUnitsDto) {
+    const { organizationId } = getTenantStore();
+    const labels = [...new Set(dto.labels.map((l) => l.trim()).filter(Boolean))];
+    if (labels.length === 0) {
+      throw new BadRequestException('Give at least one unit name');
+    }
+    return this.tenantPrisma.run(async (tx) => {
+      if (!(await tx.rentalProperty.findUnique({ where: { id: dto.propertyId } }))) {
+        throw new NotFoundException('Property not found');
+      }
+      const existing = await tx.rentalUnit.findMany({
+        where: { propertyId: dto.propertyId, label: { in: labels } },
+        select: { label: true },
+      });
+      const taken = new Set(existing.map((u) => u.label));
+      const fresh = labels.filter((l) => !taken.has(l));
+      if (fresh.length > 0) {
+        await tx.rentalUnit.createMany({
+          data: fresh.map((label) => ({
+            organizationId,
+            propertyId: dto.propertyId,
+            label,
+            monthlyRent: dto.monthlyRent,
+            depositAmount: dto.depositAmount ?? 0,
+          })),
+          skipDuplicates: true,
+        });
+      }
+      return { created: fresh.length, skipped: [...taken] };
+    });
+  }
+
   listUnits(filters: { propertyId?: string; status?: 'VACANT' | 'OCCUPIED' }) {
     return this.tenantPrisma.run((tx) =>
       tx.rentalUnit.findMany({
         where: { propertyId: filters.propertyId, status: filters.status },
         orderBy: [{ propertyId: 'asc' }, { label: 'asc' }],
-        include: { property: { select: { id: true, name: true } } },
+        include: {
+          property: { select: { id: true, name: true } },
+          leases: {
+            where: { status: 'ACTIVE' },
+            select: { tenant: { select: { id: true, name: true } } },
+          },
+        },
       }),
     );
   }
@@ -144,11 +184,35 @@ export class RentalService {
 
   // ── Tenants ─────────────────────────────────────────────────────────────
 
-  createTenant(dto: CreateTenantDto) {
+  // With a unitId the tenant is also moved into that vacant unit, all in one transaction.
+  async createTenant(dto: CreateTenantDto) {
     const { organizationId } = getTenantStore();
-    return this.tenantPrisma.run((tx) =>
-      tx.rentalTenant.create({ data: { organizationId, ...dto } }),
-    );
+    const { unitId, startDate, dueDay, monthlyRent, depositAmount, ...person } = dto;
+    if (unitId && !startDate) {
+      throw new BadRequestException('Give a move-in date to put the tenant in a unit');
+    }
+    try {
+      return await this.tenantPrisma.run(async (tx) => {
+        const tenant = await tx.rentalTenant.create({
+          data: { organizationId, ...person },
+        });
+        if (!unitId || !startDate) return tenant;
+        const lease = await this.createLeaseInTx(tx, organizationId, {
+          unitId,
+          tenantId: tenant.id,
+          startDate,
+          dueDay,
+          monthlyRent,
+          depositAmount,
+        });
+        return { ...tenant, lease };
+      });
+    } catch (e) {
+      if (isUniqueViolation(e)) {
+        throw new ConflictException('This unit already has an active lease');
+      }
+      throw e;
+    }
   }
 
   listTenants() {
@@ -199,45 +263,53 @@ export class RentalService {
 
   async createLease(dto: CreateLeaseDto) {
     const { organizationId } = getTenantStore();
-    if (dto.endDate && new Date(dto.endDate) <= new Date(dto.startDate)) {
-      throw new BadRequestException('The end date must be after the start date');
-    }
     try {
-      return await this.tenantPrisma.run(async (tx) => {
-        const unit = await tx.rentalUnit.findUnique({ where: { id: dto.unitId } });
-        if (!unit) throw new NotFoundException('Unit not found');
-        if (!(await tx.rentalTenant.findUnique({ where: { id: dto.tenantId } }))) {
-          throw new NotFoundException('Tenant not found');
-        }
-        // The partial unique index is the real guard against a race; this gives the friendly message.
-        if (unit.status === 'OCCUPIED') {
-          throw new ConflictException('This unit is already occupied. End its current lease first.');
-        }
-
-        const lease = await tx.rentalLease.create({
-          data: {
-            organizationId,
-            unitId: dto.unitId,
-            tenantId: dto.tenantId,
-            startDate: new Date(dto.startDate),
-            endDate: dto.endDate ? new Date(dto.endDate) : null,
-            monthlyRent: dto.monthlyRent ?? unit.monthlyRent,
-            depositAmount: dto.depositAmount ?? unit.depositAmount,
-            dueDay: dto.dueDay ?? 1,
-          },
-        });
-        await tx.rentalUnit.update({
-          where: { id: unit.id },
-          data: { status: 'OCCUPIED' },
-        });
-        return lease;
-      });
+      return await this.tenantPrisma.run((tx) =>
+        this.createLeaseInTx(tx, organizationId, dto),
+      );
     } catch (e) {
-      if (isUniqueViolation(e) || (e as { code?: string }).code === 'P2002') {
+      if (isUniqueViolation(e)) {
         throw new ConflictException('This unit already has an active lease');
       }
       throw e;
     }
+  }
+
+  private async createLeaseInTx(
+    tx: Prisma.TransactionClient,
+    organizationId: string,
+    dto: CreateLeaseDto,
+  ) {
+    if (dto.endDate && new Date(dto.endDate) <= new Date(dto.startDate)) {
+      throw new BadRequestException('The end date must be after the start date');
+    }
+    const unit = await tx.rentalUnit.findUnique({ where: { id: dto.unitId } });
+    if (!unit) throw new NotFoundException('Unit not found');
+    if (!(await tx.rentalTenant.findUnique({ where: { id: dto.tenantId } }))) {
+      throw new NotFoundException('Tenant not found');
+    }
+    // The partial unique index is the real guard against a race; this gives the friendly message.
+    if (unit.status === 'OCCUPIED') {
+      throw new ConflictException('This unit is already occupied. End its current lease first.');
+    }
+
+    const lease = await tx.rentalLease.create({
+      data: {
+        organizationId,
+        unitId: dto.unitId,
+        tenantId: dto.tenantId,
+        startDate: new Date(dto.startDate),
+        endDate: dto.endDate ? new Date(dto.endDate) : null,
+        monthlyRent: dto.monthlyRent ?? unit.monthlyRent,
+        depositAmount: dto.depositAmount ?? unit.depositAmount,
+        dueDay: dto.dueDay ?? 1,
+      },
+    });
+    await tx.rentalUnit.update({
+      where: { id: unit.id },
+      data: { status: 'OCCUPIED' },
+    });
+    return lease;
   }
 
   listLeases(filters: { status?: 'ACTIVE' | 'ENDED'; unitId?: string; tenantId?: string }) {
