@@ -89,7 +89,9 @@ export default function PrintPage() {
   }, [kind, id, router]);
 
   return (
-    <div className="min-h-screen bg-white p-6 text-black print:p-0">
+    <div className="min-h-screen bg-white p-6 text-black print:min-h-0 print:p-0">
+      {/* The app-wide navy footer bar is for screens; on paper it would spill onto a blank second page, and the printed document carries its own Zaroda footer. */}
+      <style>{`@media print { body > footer { display: none !important; } @page { margin: 12mm; } }`}</style>
       <div className="mx-auto max-w-2xl">
         <div className="mb-4 flex justify-end gap-2 print:hidden">
           <button onClick={() => window.print()} className="rounded-md bg-blue-700 px-3 py-2 text-sm text-white">Print / save as PDF</button>
