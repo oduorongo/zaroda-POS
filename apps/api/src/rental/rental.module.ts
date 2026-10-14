@@ -3,6 +3,8 @@ import { ModuleRegistryModule } from '../module-registry/module-registry.module'
 import { ModuleRegistryService } from '../module-registry/module-registry.service';
 import { RentalController } from './rental.controller';
 import { RentalService } from './rental.service';
+import { RentalBillingService } from './rental-billing.service';
+import { RentalSchedulerService } from './rental-scheduler.service';
 
 /**
  * Rental / property management for landlords (industryType "RENTAL").
@@ -12,7 +14,7 @@ import { RentalService } from './rental.service';
 @Module({
   imports: [ModuleRegistryModule],
   controllers: [RentalController],
-  providers: [RentalService],
+  providers: [RentalService, RentalBillingService, RentalSchedulerService],
 })
 export class RentalModule implements OnModuleInit {
   constructor(private readonly registry: ModuleRegistryService) {}
@@ -26,6 +28,9 @@ export class RentalModule implements OnModuleInit {
         { tableName: 'rental_units', description: 'Lettable units (houses, rooms, shops) in a property' },
         { tableName: 'rental_tenants', description: 'People renting units' },
         { tableName: 'rental_leases', description: 'A tenant renting a unit, with rent, deposit and due day' },
+        { tableName: 'rental_invoices', description: 'Monthly rent, deposit and one-off charges owed by a tenant' },
+        { tableName: 'rental_payments', description: 'Money received from tenants, with receipt numbers' },
+        { tableName: 'rental_payment_allocations', description: 'Which invoice each payment was applied to' },
       ],
     });
   }

@@ -69,6 +69,9 @@ model Organization {
   rentalUnits         RentalUnit[]
   rentalTenants       RentalTenant[]
   rentalLeases        RentalLease[]
+  rentalInvoices      RentalInvoice[]
+  rentalPayments      RentalPayment[]
+  rentalAllocations   RentalPaymentAllocation[]
   kitchenStations     KitchenStation[]
   salonResources      SalonResource[]
   salonAppointments   SalonAppointment[]
@@ -91,8 +94,8 @@ model Organization {
   // member creates the account; only the platform owner can change it. Self-signups have neither.
   salesTeamId         String?
   salesAgentId        String?
-  salesTeam           SalesTeam?           @relation(fields: [salesTeamId], references: [id], onDelete: SetNull)
-  salesAgent          SalesAgent?          @relation(fields: [salesAgentId], references: [id], onDelete: SetNull)
+  salesTeam           SalesTeam?                @relation(fields: [salesTeamId], references: [id], onDelete: SetNull)
+  salesAgent          SalesAgent?               @relation(fields: [salesAgentId], references: [id], onDelete: SetNull)
   deliveryJobs        DeliveryJob[]
   deliveryQuotes      DeliveryQuote[]
   deliveryJobContacts DeliveryJobContact[]
@@ -2479,26 +2482,117 @@ model RentalTenant {
 // One unit has at most one ACTIVE lease at a time - enforced by a partial
 // unique index in the migration (Prisma cannot express it).
 model RentalLease {
-  id             String            @id @default(uuid())
-  organizationId String
-  unitId         String
-  tenantId       String
-  startDate      DateTime          @db.Date
-  endDate        DateTime?         @db.Date // planned end; null = open-ended
-  endedAt        DateTime?         @db.Date // when it actually ended
-  monthlyRent    Decimal           @db.Decimal(12, 2) // agreed rent, copied from the unit but editable per lease
-  depositAmount  Decimal           @default(0) @db.Decimal(12, 2)
-  dueDay         Int               @default(1) // day of the month rent falls due, 1-28
-  status         RentalLeaseStatus @default(ACTIVE)
-  createdAt      DateTime          @default(now())
-  updatedAt      DateTime          @updatedAt
+  id              String            @id @default(uuid())
+  organizationId  String
+  unitId          String
+  tenantId        String
+  startDate       DateTime          @db.Date
+  endDate         DateTime?         @db.Date // planned end; null = open-ended
+  endedAt         DateTime?         @db.Date // when it actually ended
+  monthlyRent     Decimal           @db.Decimal(12, 2) // agreed rent, copied from the unit but editable per lease
+  depositAmount   Decimal           @default(0) @db.Decimal(12, 2)
+  dueDay          Int               @default(1) // day of the month rent falls due, 1-28
+  depositRefunded Decimal           @default(0) @db.Decimal(12, 2) // handed back to the tenant when the lease ended
+  status          RentalLeaseStatus @default(ACTIVE)
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  unit         RentalUnit   @relation(fields: [unitId], references: [id], onDelete: Restrict)
-  tenant       RentalTenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  unit         RentalUnit      @relation(fields: [unitId], references: [id], onDelete: Restrict)
+  tenant       RentalTenant    @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  invoices     RentalInvoice[]
+  payments     RentalPayment[]
 
   @@index([organizationId])
   @@index([unitId, status])
   @@index([tenantId])
   @@map("rental_leases")
+}
+
+// ── Rental module, phase 2: rent invoices and payments ───────────────────
+
+enum RentalInvoiceKind {
+  RENT
+  DEPOSIT
+  OTHER
+}
+
+enum RentalPaymentMethod {
+  CASH
+  BANK
+  MPESA // an M-Pesa payment the landlord recorded by hand (e.g. from a Paybill statement)
+  TUMA // an automatic M-Pesa prompt confirmed through the landlord's Tuma account
+  DARAJA // an automatic M-Pesa prompt confirmed through the landlord's own Paybill/Till
+  OTHER
+}
+
+// One amount a tenant owes: a month's rent, the deposit, or a one-off charge (water, repairs...).
+// RENT and DEPOSIT rows are keyed by (lease, kind, month) so generating them twice is harmless.
+model RentalInvoice {
+  id             String            @id @default(uuid())
+  organizationId String
+  leaseId        String
+  kind           RentalInvoiceKind
+  periodMonth    DateTime?         @db.Date // first day of the month a RENT/DEPOSIT row belongs to; null for OTHER
+  description    String?
+  amountDue      Decimal           @db.Decimal(12, 2)
+  amountPaid     Decimal           @default(0) @db.Decimal(12, 2)
+  dueDate        DateTime          @db.Date
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  organization Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  lease        RentalLease               @relation(fields: [leaseId], references: [id], onDelete: Restrict)
+  allocations  RentalPaymentAllocation[]
+
+  @@unique([leaseId, kind, periodMonth])
+  @@index([organizationId])
+  @@index([leaseId, dueDate])
+  @@map("rental_invoices")
+}
+
+// Money received from a tenant. How much of it has been applied to which invoice is in the allocations;
+// anything not yet applied is the tenant's credit and is used as new invoices appear. A mistaken payment
+// is voided (kept for the record) rather than deleted.
+model RentalPayment {
+  id             String              @id @default(uuid())
+  organizationId String
+  leaseId        String
+  amount         Decimal             @db.Decimal(12, 2)
+  method         RentalPaymentMethod
+  reference      String? // M-Pesa code, bank reference, cheque number... one per business, so a code cannot be entered twice
+  paidAt         DateTime            @db.Date
+  note           String?
+  receiptNumber  String
+  voidedAt       DateTime?
+  voidReason     String?
+  createdAt      DateTime            @default(now())
+
+  organization Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  lease        RentalLease               @relation(fields: [leaseId], references: [id], onDelete: Restrict)
+  allocations  RentalPaymentAllocation[]
+
+  @@unique([organizationId, reference])
+  @@unique([organizationId, receiptNumber])
+  @@index([organizationId])
+  @@index([leaseId, paidAt])
+  @@map("rental_payments")
+}
+
+model RentalPaymentAllocation {
+  id             String   @id @default(uuid())
+  organizationId String
+  paymentId      String
+  invoiceId      String
+  amount         Decimal  @db.Decimal(12, 2)
+  createdAt      DateTime @default(now())
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  payment      RentalPayment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  invoice      RentalInvoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([paymentId])
+  @@index([invoiceId])
+  @@map("rental_payment_allocations")
 }
