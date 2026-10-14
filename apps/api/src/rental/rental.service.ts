@@ -192,7 +192,8 @@ export class RentalService {
   // With a unitId the tenant is also moved into that vacant unit, all in one transaction.
   async createTenant(dto: CreateTenantDto) {
     const { organizationId } = getTenantStore();
-    const { unitId, startDate, dueDay, monthlyRent, depositAmount, ...person } = dto;
+    const { unitId, startDate, dueDay, monthlyRent, depositAmount, ...rest } = dto;
+    const person = { ...rest, email: rest.email?.trim().toLowerCase() };
     if (unitId && !startDate) {
       throw new BadRequestException('Give a move-in date to put the tenant in a unit');
     }
@@ -260,7 +261,7 @@ export class RentalService {
       if (!(await tx.rentalTenant.findUnique({ where: { id } }))) {
         throw new NotFoundException('Tenant not found');
       }
-      return tx.rentalTenant.update({ where: { id }, data: dto });
+      return tx.rentalTenant.update({ where: { id }, data: { ...dto, email: dto.email?.trim().toLowerCase() } });
     });
   }
 
