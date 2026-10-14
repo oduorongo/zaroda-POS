@@ -83,6 +83,12 @@ model Organization {
   onlineOrders        OnlineOrder[]
   commissionInvoices  CommissionInvoice[]
   riders              Rider[]
+  // The marketing team (and the member of it) that onboarded this business. Set once, when a team
+  // member creates the account; only the platform owner can change it. Self-signups have neither.
+  salesTeamId         String?
+  salesAgentId        String?
+  salesTeam           SalesTeam?           @relation(fields: [salesTeamId], references: [id], onDelete: SetNull)
+  salesAgent          SalesAgent?          @relation(fields: [salesAgentId], references: [id], onDelete: SetNull)
   deliveryJobs        DeliveryJob[]
   deliveryQuotes      DeliveryQuote[]
   deliveryJobContacts DeliveryJobContact[]
@@ -2117,6 +2123,12 @@ model Rider {
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 
+  // The marketing team and member that onboarded this rider (see Organization.salesTeamId).
+  salesTeamId  String?
+  salesAgentId String?
+  salesTeam    SalesTeam?  @relation(fields: [salesTeamId], references: [id], onDelete: SetNull)
+  salesAgent   SalesAgent? @relation(fields: [salesAgentId], references: [id], onDelete: SetNull)
+
   organization Organization?   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   deliveryJobs DeliveryJob[]
   quotes       DeliveryQuote[]
@@ -2243,4 +2255,72 @@ model DeliveryQuote {
   @@index([jobId])
   @@index([riderId])
   @@map("delivery_quotes")
+}
+
+// ── Marketing teams ───────────────────────────────────────────────────────
+// Teams of people who onboard businesses and riders across the country and are paid commission on
+// what they generate. These are PLATFORM-level tables (no tenant): the platform owner manages the
+// teams and their leaders; a leader manages their own team; a member sees only their own work.
+// Access rules live in SalesTeamsService / SalesAgentService (like riders), not in row-level
+// security, and both tables are on rls-coverage.spec.ts's exclusion list.
+
+enum SalesAgentRole {
+  LEADER
+  MEMBER
+}
+
+enum SalesAgentStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+enum SalesTeamStatus {
+  ACTIVE
+  PAUSED
+}
+
+model SalesTeam {
+  id                 String          @id @default(uuid())
+  name               String          @unique
+  region             String?
+  status             SalesTeamStatus @default(ACTIVE)
+  // The earning terms, as fractions (0.3000 = 30%). A member earns memberShareRate of what Zaroda
+  // collects as online-order commission from the businesses they onboarded; the leader also earns
+  // leaderOverrideRate of everything the team earns. The bonus is paid once per business, when it
+  // pays its first monthly subscription. All zero until the platform owner sets them.
+  memberShareRate    Decimal         @default(0) @db.Decimal(5, 4)
+  leaderOverrideRate Decimal         @default(0) @db.Decimal(5, 4)
+  onboardingBonusKes Decimal         @default(0) @db.Decimal(12, 2)
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+
+  agents        SalesAgent[]
+  organizations Organization[]
+  riders        Rider[]
+
+  @@map("sales_teams")
+}
+
+model SalesAgent {
+  id                 String           @id @default(uuid())
+  teamId             String
+  role               SalesAgentRole
+  fullName           String
+  // Stored lower-case; the sign-in username.
+  email              String           @unique
+  phone              String?
+  passwordHash       String
+  // True until the person has replaced the temporary password they were given.
+  mustChangePassword Boolean          @default(true)
+  status             SalesAgentStatus @default(ACTIVE)
+  lastLoginAt        DateTime?
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+
+  team          SalesTeam      @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  organizations Organization[]
+  riders        Rider[]
+
+  @@index([teamId])
+  @@map("sales_agents")
 }

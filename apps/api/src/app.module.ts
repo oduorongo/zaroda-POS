@@ -48,6 +48,7 @@ import { WasteModule } from './waste/waste.module';
 import { OnlineStoreModule } from './online-store/online-store.module';
 import { OnlineOrdersModule } from './online-orders/online-orders.module';
 import { RidersModule } from './riders/riders.module';
+import { SalesTeamsModule } from './sales-teams/sales-teams.module';
 import { DeliveryModule } from './delivery/delivery.module';
 
 // Phase 1+ will import vertical module packages here and register their
@@ -129,6 +130,7 @@ import { DeliveryModule } from './delivery/delivery.module';
     OnlineStoreModule,
     OnlineOrdersModule,
     RidersModule,
+    SalesTeamsModule,
     DeliveryModule,
     LayawaysModule,
     RestaurantModule,
