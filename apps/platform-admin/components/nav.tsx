@@ -12,6 +12,7 @@ const LINKS = [
   { href: "/billing", label: "Billing" },
   { href: "/commission", label: "Commission" },
   { href: "/riders", label: "Riders" },
+  { href: "/teams", label: "Teams" },
   { href: "/analytics", label: "Analytics" },
 ];
 

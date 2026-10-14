@@ -38,6 +38,9 @@ const INTENTIONALLY_EXCLUDED = new Set([
   // Riders sign in across businesses like buyers - see rls.sql's "riders" comment.
   'riders',
   'rider_otps',
+  // Marketing teams and their members are platform-level (no tenant) - see rls.sql's "marketing teams" comment.
+  'sales_teams',
+  'sales_agents',
   // A global price list with no organizationId - see rls.sql's "platform
   // billing tables" comment.
   'plans',
