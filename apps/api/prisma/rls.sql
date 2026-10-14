@@ -759,3 +759,33 @@ CREATE POLICY tenant_isolation ON delivery_job_contacts
 -- SalesTeamsService / SalesAgentService (every query there is scoped by the verified agent's team or
 -- id), and both tables are on rls-coverage.spec.ts's exclusion list. A business's own row only gains
 -- the nullable salesTeamId / salesAgentId columns, which its own RLS policy already covers.
+
+-- ── Rental / property management module ───────────────────────────────────
+
+ALTER TABLE rental_properties ENABLE ROW LEVEL SECURITY;
+ALTER TABLE rental_properties FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON rental_properties;
+CREATE POLICY tenant_isolation ON rental_properties
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+ALTER TABLE rental_units ENABLE ROW LEVEL SECURITY;
+ALTER TABLE rental_units FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON rental_units;
+CREATE POLICY tenant_isolation ON rental_units
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+ALTER TABLE rental_tenants ENABLE ROW LEVEL SECURITY;
+ALTER TABLE rental_tenants FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON rental_tenants;
+CREATE POLICY tenant_isolation ON rental_tenants
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+ALTER TABLE rental_leases ENABLE ROW LEVEL SECURITY;
+ALTER TABLE rental_leases FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON rental_leases;
+CREATE POLICY tenant_isolation ON rental_leases
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));

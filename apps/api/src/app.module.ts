@@ -35,6 +35,7 @@ import { NotificationsModule } from './notifications/notifications.module';
 import { LayawaysModule } from './layaways/layaways.module';
 import { AllExceptionsFilter } from './common/logging/all-exceptions.filter';
 import { RestaurantModule } from './restaurant/restaurant.module';
+import { RentalModule } from './rental/rental.module';
 import { PharmacyModule } from './pharmacy/pharmacy.module';
 import { SalonModule } from './salon/salon.module';
 import { ManufacturingModule } from './manufacturing/manufacturing.module';
@@ -134,6 +135,7 @@ import { DeliveryModule } from './delivery/delivery.module';
     DeliveryModule,
     LayawaysModule,
     RestaurantModule,
+    RentalModule,
     PharmacyModule,
     SalonModule,
     ManufacturingModule,

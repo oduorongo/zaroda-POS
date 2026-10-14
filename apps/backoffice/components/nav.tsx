@@ -28,6 +28,7 @@ const VERTICAL_LINKS: Record<string, { href: string; label: string }> = {
   SALON: { href: "/bookings", label: "Bookings" },
   MANUFACTURING: { href: "/manufacturing", label: "Production" },
   SERVICE: { href: "/service-jobs", label: "Job Orders" },
+  RENTAL: { href: "/rentals", label: "Rentals" },
 };
 
 // The navy top ribbon shared with Zaroda Events and the other web apps: logo and app name, then the menu,

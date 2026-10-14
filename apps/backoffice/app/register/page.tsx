@@ -19,6 +19,7 @@ const INDUSTRY_TYPES = [
   { value: "RESTAURANT", label: "Restaurant" },
   { value: "PHARMACY", label: "Pharmacy" },
   { value: "SALON", label: "Salon" },
+  { value: "RENTAL", label: "Property rentals (landlord)" },
 ];
 
 /**
