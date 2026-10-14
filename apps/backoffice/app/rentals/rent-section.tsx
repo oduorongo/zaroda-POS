@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { apiGet, apiPost, ApiError } from "../../lib/api";
 import { MpesaSettingsPanel, type MpesaSettings } from "./mpesa-settings";
+import { ReminderSettingsPanel } from "./reminder-settings";
 
 interface DueRow {
   leaseId: string;
@@ -176,6 +177,14 @@ export function RentSection({ onChanged }: { onChanged: () => void }) {
     });
   };
 
+  function remind(row: DueRow) {
+    void run(async () => {
+      const result = await apiPost<{ email: string; sms: string }>("/rental/reminders/send", { leaseId: row.leaseId });
+      const via = [result.email === "sent" ? "email" : "", result.sms === "sent" ? "SMS" : ""].filter(Boolean).join(" and ");
+      setNotice({ text: `Reminder sent to ${row.tenant.name} by ${via}.` });
+    });
+  }
+
   function voidPayment(p: PaymentRow) {
     const reason = window.prompt(`Void receipt ${p.receiptNumber} (KES ${money(p.amount)} from ${p.tenant.name})?\nThe money stops counting as paid. Why is it being voided?`);
     if (!reason || reason.trim().length < 2) return;
@@ -210,6 +219,7 @@ export function RentSection({ onChanged }: { onChanged: () => void }) {
       </div>
 
       <MpesaSettingsPanel onChange={(s: MpesaSettings) => setMpesaReady(s.ready)} />
+      <ReminderSettingsPanel />
 
       {error && <p className="rounded-md bg-red-950 p-3 text-sm text-red-300">{error}</p>}
       {notice && (
@@ -340,6 +350,9 @@ export function RentSection({ onChanged }: { onChanged: () => void }) {
                     )}
                     <button className={smallButton} disabled={busy} onClick={() => startPayment(r)}>Record payment</button>
                     <button className={smallButton} disabled={busy} onClick={() => { setPaying(null); setPrompting(null); setCharging(r); setNotice(null); }}>+ Charge</button>
+                    {r.outstanding > 0 && (
+                      <button className={smallButton} disabled={busy} onClick={() => remind(r)}>Remind</button>
+                    )}
                     <Link href={`/rentals/print/statement/${r.leaseId}`} target="_blank" className={`${smallButton} inline-block`}>Statement</Link>
                   </td>
                 </tr>

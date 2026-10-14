@@ -6,6 +6,7 @@ import { apiGet, apiPatch, apiPost, ApiError } from "../../lib/api";
 import { getSession, clearSession, isBackofficeRole, type Session } from "../../lib/auth";
 import { Nav } from "../../components/nav";
 import { RentSection } from "./rent-section";
+import { ExpensesSection, MaintenanceSection, MetersSection, ReportsSection } from "./ops-sections";
 import { PageHeader } from "../../components/page-header";
 
 interface Property {
@@ -48,7 +49,7 @@ interface Lease {
   unit: { id: string; label: string; property: { id: string; name: string } };
 }
 
-type Tab = "properties" | "tenants" | "leases" | "rent";
+type Tab = "properties" | "tenants" | "leases" | "rent" | "expenses" | "maintenance" | "meters" | "reports";
 
 const input = "w-full rounded-md border border-border bg-surface p-2 text-sm";
 const button = "rounded-md bg-primary-600 px-3 py-2 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-50";
@@ -291,8 +292,8 @@ How much of the deposit are you handing back (KES)? Enter 0 for none.`,
         {error && <p className="mb-4 rounded-md bg-red-950 p-3 text-sm text-red-300">{error}</p>}
         {notice && <p className="mb-4 rounded-md bg-green-950 p-3 text-sm text-green-300">{notice}</p>}
 
-        <div className="mb-4 flex gap-2">
-          {(["properties", "tenants", "leases", "rent"] as Tab[]).map((t) => (
+        <div className="mb-4 flex flex-wrap gap-2">
+          {(["properties", "tenants", "leases", "rent", "expenses", "maintenance", "meters", "reports"] as Tab[]).map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
@@ -514,6 +515,10 @@ How much of the deposit are you handing back (KES)? Enter 0 for none.`,
           </div>
         )}
         {tab === "rent" && <RentSection onChanged={() => void load()} />}
+        {tab === "expenses" && <ExpensesSection properties={properties} />}
+        {tab === "maintenance" && <MaintenanceSection properties={properties} units={units} />}
+        {tab === "meters" && <MetersSection units={units} />}
+        {tab === "reports" && <ReportsSection />}
       </main>
     </div>
   );
