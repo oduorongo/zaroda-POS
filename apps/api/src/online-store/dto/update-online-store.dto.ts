@@ -1,9 +1,11 @@
 import {
   IsBoolean,
   IsEmail,
+  IsIn,
   IsOptional,
   IsString,
   IsUUID,
+  Matches,
   MaxLength,
   MinLength,
 } from 'class-validator';
@@ -62,4 +64,43 @@ export class ConnectTumaDto {
   @MinLength(8)
   @MaxLength(500)
   apiKey!: string;
+}
+
+/** Connecting the business's OWN M-Pesa (Safaricom Daraja) is its own request so the key and secret are checked with Safaricom before anything is saved. */
+export class ConnectMpesaDto {
+  @IsIn(['PAYBILL', 'TILL'])
+  accountType!: 'PAYBILL' | 'TILL';
+
+  // Paybill number, or for a Till the store (head office) number Daraja signs with.
+  @Matches(/^\d{5,8}$/, { message: 'Enter the shortcode as 5 to 8 digits' })
+  shortcode!: string;
+
+  // A Till's own number (where the money lands). Required when accountType is TILL.
+  @IsOptional()
+  @Matches(/^\d{5,8}$/, { message: 'Enter the till number as 5 to 8 digits' })
+  tillNumber?: string;
+
+  @IsString()
+  @MinLength(8)
+  @MaxLength(200)
+  consumerKey!: string;
+
+  @IsString()
+  @MinLength(8)
+  @MaxLength(200)
+  consumerSecret!: string;
+
+  @IsString()
+  @MinLength(20)
+  @MaxLength(300)
+  passkey!: string;
+
+  @IsIn(['production', 'sandbox'])
+  environment!: 'production' | 'sandbox';
+}
+
+/** Which connected gateway buyers pay through. */
+export class SetGatewayDto {
+  @IsIn(['TUMA', 'DARAJA'])
+  gateway!: 'TUMA' | 'DARAJA';
 }

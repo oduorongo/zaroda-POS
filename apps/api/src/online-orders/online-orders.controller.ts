@@ -69,6 +69,19 @@ export class TumaCallbackController {
   ) {
     return this.orders.handleTumaCallback(organizationId, orderId, token, body);
   }
+
+  // Safaricom's own payment callback, for shops that collect through their own M-Pesa. The same HMAC token authenticates it.
+  @Public()
+  @Post(':organizationId/:orderId/daraja-callback/:token')
+  @HttpCode(200)
+  darajaCallback(
+    @Param('organizationId', ParseUUIDPipe) organizationId: string,
+    @Param('orderId', ParseUUIDPipe) orderId: string,
+    @Param('token') token: string,
+    @Body() body: Record<string, unknown>,
+  ) {
+    return this.orders.handleDarajaCallback(organizationId, orderId, token, body);
+  }
 }
 
 /** Buyer phone login. */

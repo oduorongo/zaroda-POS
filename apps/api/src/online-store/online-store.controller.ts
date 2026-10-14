@@ -5,7 +5,7 @@ import { Roles } from '../auth/roles.decorator';
 import { PAY_THROTTLE, PayInvoiceDto } from './commission.controller';
 import { CommissionService } from './commission.service';
 import { OnlineStoreService } from './online-store.service';
-import { ConnectTumaDto, UpdateOnlineStoreDto } from './dto/update-online-store.dto';
+import { ConnectMpesaDto, ConnectTumaDto, SetGatewayDto, UpdateOnlineStoreDto } from './dto/update-online-store.dto';
 
 // Each attempt makes an outbound call to TUMA - throttled so this endpoint
 // can't be used to hammer TUMA or brute-force API keys through Zaroda.
@@ -62,5 +62,22 @@ export class OnlineStoreController {
   @Delete('tuma')
   disconnectTuma() {
     return this.onlineStore.disconnectTuma();
+  }
+
+  // The business's OWN M-Pesa (Safaricom Daraja): throttled like Tuma, since each attempt calls Safaricom.
+  @Throttle(TUMA_THROTTLE)
+  @Post('mpesa')
+  connectMpesa(@Body() dto: ConnectMpesaDto) {
+    return this.onlineStore.connectMpesa(dto);
+  }
+
+  @Delete('mpesa')
+  disconnectMpesa() {
+    return this.onlineStore.disconnectMpesa();
+  }
+
+  @Post('payment-gateway')
+  setGateway(@Body() dto: SetGatewayDto) {
+    return this.onlineStore.setGateway(dto.gateway);
   }
 }

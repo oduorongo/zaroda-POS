@@ -23,6 +23,9 @@ import { assertQuantityMatchesMode } from '../common/inventory/quantity-mode.uti
 import { InventoryTransactionsService } from '../inventory/inventory-transactions.service';
 import { AfricasTalkingSmsProvider } from '../notifications/africas-talking-sms.provider';
 import { DEFAULT_COMMISSION_RATE } from '../online-store/online-store.constants';
+import { DarajaClient } from '../online-store/daraja.client';
+import { darajaFailureMessage, evaluateDarajaCallback, parseDarajaCallback } from '../online-store/daraja.util';
+import { darajaCredentials, gatewayOf, paymentsReady } from '../online-store/payment-gateway';
 import { TumaClient } from '../online-store/tuma.client';
 import { evaluateCallback, parseCallback } from '../online-store/tuma.util';
 import { cancelJobsOnOrderCancel, settleJobsOnManualComplete } from '../delivery/delivery-order-hooks';
@@ -109,6 +112,7 @@ export class OnlineOrdersService {
     private readonly tenantPrisma: TenantScopedPrismaService,
     private readonly catalog: ShopCatalogService,
     private readonly tuma: TumaClient,
+    private readonly daraja: DarajaClient,
     private readonly inventory: InventoryTransactionsService,
     private readonly sms: AfricasTalkingSmsProvider,
     private readonly config: ConfigService,
@@ -153,10 +157,10 @@ export class OnlineOrdersService {
     return createHmac('sha256', this.encryptionKey()).update(`tuma-callback:${orderId}`).digest('base64url');
   }
 
-  private callbackUrl(organizationId: string, orderId: string): string {
+  private callbackUrl(organizationId: string, orderId: string, gateway: 'tuma' | 'daraja' = 'tuma'): string {
     const base = this.config.get<string>('PUBLIC_API_BASE_URL');
     if (!base) throw new ServiceUnavailableException('Online payments are not configured on this server yet');
-    return `${base.replace(/\/+$/, '')}/public/online-orders/${organizationId}/${orderId}/tuma-callback/${this.callbackToken(orderId)}`;
+    return `${base.replace(/\/+$/, '')}/public/online-orders/${organizationId}/${orderId}/${gateway}-callback/${this.callbackToken(orderId)}`;
   }
 
   private async notifySms(to: string | null | undefined, message: string) {
@@ -307,19 +311,34 @@ export class OnlineOrdersService {
     let tumaMerchantRequestId: string | null = null;
     let lastPaymentError: string | null = null;
     try {
-      if (!store?.tumaEmail || !store.tumaApiKeyEncrypted || !store.addonActive) {
+      if (!store || !store.addonActive || !paymentsReady(store)) {
         throw new ServiceUnavailableException('This shop is not accepting payments right now');
       }
-      const result = await this.tuma.stkPush(
-        { email: store.tumaEmail, apiKey: decryptSecret(store.tumaApiKeyEncrypted, this.encryptionKey()) },
-        {
+      if (gatewayOf(store) === 'DARAJA') {
+        // The shop's OWN M-Pesa: the money goes straight to its Paybill/Till. The request id we keep is
+        // Safaricom's CheckoutRequestID (it is what the free status query needs).
+        const creds = darajaCredentials(store, this.encryptionKey());
+        if (!creds) throw new ServiceUnavailableException('This shop is not accepting payments right now');
+        const result = await this.daraja.stkPush(creds, {
           amount: order.amountDue,
           phone: order.paymentPhone,
-          description: `${order.shopName} order ${order.orderNumber}`,
-          callbackUrl: this.callbackUrl(order.organizationId, order.id),
-        },
-      );
-      tumaMerchantRequestId = result.merchantRequestId;
+          accountReference: order.orderNumber,
+          description: 'Order',
+          callbackUrl: this.callbackUrl(order.organizationId, order.id, 'daraja'),
+        });
+        tumaMerchantRequestId = result.checkoutRequestId;
+      } else {
+        const result = await this.tuma.stkPush(
+          { email: store.tumaEmail as string, apiKey: decryptSecret(store.tumaApiKeyEncrypted as string, this.encryptionKey()) },
+          {
+            amount: order.amountDue,
+            phone: order.paymentPhone,
+            description: `${order.shopName} order ${order.orderNumber}`,
+            callbackUrl: this.callbackUrl(order.organizationId, order.id),
+          },
+        );
+        tumaMerchantRequestId = result.merchantRequestId;
+      }
     } catch (e) {
       lastPaymentError = e instanceof Error ? e.message : 'Could not start the payment';
       this.logger.warn({ err: e, orderId: order.id }, 'Online order STK push failed');
@@ -448,6 +467,87 @@ export class OnlineOrdersService {
     return { ok: true };
   }
 
+  /**
+   * Safaricom's callback for a shop that collects through its OWN M-Pesa. Same trust model as Tuma's: the
+   * address carries this order's HMAC token, and only a complete, matching success settles the order (success
+   * code, full amount, an M-Pesa receipt, the latest payment request). Anything less falls back to Safaricom's
+   * STK query - free, unlike Tuma's. Safaricom wants a plain acknowledgement back.
+   */
+  async handleDarajaCallback(organizationId: string, orderId: string, token: string, body: Record<string, unknown>) {
+    const expected = Buffer.from(this.callbackToken(orderId));
+    const actual = Buffer.from(token);
+    if (expected.length !== actual.length || !timingSafeEqual(expected, actual)) {
+      throw new NotFoundException();
+    }
+    const parsed = parseDarajaCallback(body);
+    // Field names and the result code only - never amounts, receipts or phone numbers.
+    this.logger.log({ orderId, resultCode: parsed.resultCode, hasReceipt: Boolean(parsed.receipt) }, 'Daraja order callback received');
+    const order = await this.runAsTenant(organizationId, (tx) => tx.onlineOrder.findUnique({ where: { id: orderId } }));
+    if (!order) throw new NotFoundException();
+    const ack = { ResultCode: 0, ResultDesc: 'Accepted' };
+    if (order.status !== OnlineOrderStatus.PENDING_PAYMENT && order.status !== OnlineOrderStatus.EXPIRED) return ack;
+
+    const verdict = evaluateDarajaCallback(body, { amount: order.amountDue, latestRequestId: order.tumaMerchantRequestId });
+    switch (verdict.kind) {
+      case 'paid':
+        await this.settle(organizationId, order, verdict.receipt, parsed.checkoutRequestId ?? order.tumaMerchantRequestId ?? undefined);
+        break;
+      case 'review':
+        this.logger.error({ orderId, detail: verdict.detail }, 'M-Pesa reported a payment that does not match the order - needs manual review');
+        await this.flag(organizationId, orderId, `A payment was received that doesn't match this order (${verdict.detail}). Contact the shop.`);
+        break;
+      case 'failed':
+        if (
+          order.status === OnlineOrderStatus.PENDING_PAYMENT &&
+          (!parsed.checkoutRequestId || !order.tumaMerchantRequestId || parsed.checkoutRequestId === order.tumaMerchantRequestId)
+        ) {
+          await this.flag(organizationId, orderId, darajaFailureMessage(parsed.resultCode, parsed.resultDesc));
+        }
+        break;
+      case 'needs-check':
+        this.logger.warn({ orderId, reason: verdict.reason }, 'Daraja callback was not complete enough to trust - asking Safaricom');
+        await this.verifyWithDaraja(organizationId, orderId).catch(() => undefined);
+        break;
+      case 'pending':
+        break;
+    }
+    return ack;
+  }
+
+  /** Asks Safaricom (free) whether this order's latest M-Pesa prompt was paid. */
+  private async verifyWithDaraja(
+    organizationId: string,
+    orderId: string,
+  ): Promise<'paid' | 'review' | 'unconfirmed' | 'unavailable' | 'skipped'> {
+    const { order, store } = await this.runAsTenant(organizationId, async (tx) => ({
+      order: await tx.onlineOrder.findUnique({ where: { id: orderId } }),
+      store: await tx.onlineStore.findUnique({ where: { organizationId } }),
+    }));
+    const creds = store ? darajaCredentials(store, this.encryptionKey()) : null;
+    if (!order || !creds || !order.tumaMerchantRequestId) return 'skipped';
+    if (order.status !== OnlineOrderStatus.PENDING_PAYMENT && order.status !== OnlineOrderStatus.EXPIRED) return 'skipped';
+
+    const requestId = order.tumaMerchantRequestId;
+    const result = await this.daraja.queryStk(creds, requestId);
+    if (result.outcome === 'failed') {
+      if (order.status === OnlineOrderStatus.PENDING_PAYMENT) {
+        await this.flag(organizationId, orderId, darajaFailureMessage(result.resultCode, result.resultDesc));
+      }
+      return 'unconfirmed';
+    }
+    if (result.outcome !== 'paid') return 'unconfirmed';
+    // The query confirms the payment but carries no receipt number; the request id is just as unique a guard
+    // against one payment settling two orders.
+    const outcome = await this.settle(organizationId, order, `DARAJA:${requestId}`, requestId);
+    return outcome === 'review' ? 'review' : 'paid';
+  }
+
+  /** Checks the order's latest payment with whichever gateway the shop uses. */
+  private async verifyPayment(organizationId: string, orderId: string) {
+    const store = await this.runAsTenant(organizationId, (tx) => tx.onlineStore.findUnique({ where: { organizationId } }));
+    return store && gatewayOf(store) === 'DARAJA' ? this.verifyWithDaraja(organizationId, orderId) : this.verifyWithTuma(organizationId, orderId);
+  }
+
   /** A short note on the order, shown to the buyer and the shop. */
   private flag(organizationId: string, orderId: string, message: string) {
     return this.runAsTenant(organizationId, (tx) => tx.onlineOrder.update({ where: { id: orderId }, data: { lastPaymentError: message } }));
@@ -561,7 +661,7 @@ export class OnlineOrdersService {
     }
     this.checks.set(order.id, { last: Date.now(), count: state.count + 1 });
 
-    const result = await this.verifyWithTuma(order.organizationId, order.id);
+    const result = await this.verifyPayment(order.organizationId, order.id);
     const updated = (await this.findBuyerOrder(buyerId, orderId)) ?? order;
     return {
       ...toOrderView(updated),

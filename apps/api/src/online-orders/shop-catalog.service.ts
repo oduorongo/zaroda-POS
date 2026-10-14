@@ -4,6 +4,7 @@ import { PrismaService } from '../common/prisma/prisma.service';
 import { TenantTx } from '../common/prisma/tenant-scoped-prisma.service';
 import { ObjectStorageService } from '../common/storage/object-storage.service';
 import { hasOverdueCommission } from '../online-store/commission.service';
+import { paymentsReady } from '../online-store/payment-gateway';
 
 const TX_OPTIONS = { timeout: 15_000, maxWait: 15_000 };
 const MAX_DIRECTORY_SHOPS = 60;
@@ -18,8 +19,7 @@ export interface LiveShop {
   pickupEnabled: boolean;
   deliveryEnabled: boolean;
   commissionRate: number | null;
-  tumaEmail: string;
-  tumaApiKeyEncrypted: string;
+  paymentGateway: string;
 }
 
 /**
@@ -43,7 +43,7 @@ export class ShopCatalogService {
       const store = await tx.onlineStore.findUnique({ where: { slug: slug.toLowerCase() } });
       // Policy already hides unpublished/unpaid shops; the field checks
       // here also cover a half-configured shop that slipped through.
-      if (!store || !store.fulfilmentBranchId || !store.displayName || !store.tumaEmail || !store.tumaApiKeyEncrypted) {
+      if (!store || !store.fulfilmentBranchId || !store.displayName || !paymentsReady(store)) {
         throw new NotFoundException('Shop not found');
       }
       await tx.$executeRaw`SELECT set_config('app.current_tenant', ${store.organizationId}, true)`;
@@ -65,8 +65,7 @@ export class ShopCatalogService {
         pickupEnabled: store.pickupEnabled,
         deliveryEnabled: store.deliveryEnabled,
         commissionRate: store.commissionRate != null ? Number(store.commissionRate) : null,
-        tumaEmail: store.tumaEmail,
-        tumaApiKeyEncrypted: store.tumaApiKeyEncrypted,
+        paymentGateway: store.paymentGateway,
       });
     }, TX_OPTIONS);
   }
@@ -147,7 +146,7 @@ export class ShopCatalogService {
           slug: { not: null },
           displayName: { not: null },
           fulfilmentBranchId: { not: null },
-          tumaApiKeyEncrypted: { not: null },
+          OR: [{ tumaApiKeyEncrypted: { not: null } }, { mpesaConsumerKeyEncrypted: { not: null } }],
         },
         orderBy: { displayName: 'asc' },
         take: MAX_DIRECTORY_SHOPS,
@@ -155,6 +154,7 @@ export class ShopCatalogService {
 
       const shops = [];
       for (const store of stores) {
+        if (!paymentsReady(store)) continue; // the gateway it chose must be fully set up
         await tx.$executeRaw`SELECT set_config('app.current_tenant', ${store.organizationId}, true)`;
         if (await hasOverdueCommission(tx)) continue;
         const [branch, products] = await Promise.all([

@@ -95,7 +95,7 @@ export default function PricingClient() {
         <ul className="mt-4 grid gap-2 text-sm text-secondary-600 sm:grid-cols-2">
           <li>✓ Pay when you sell online</li>
           <li>✓ Delivery fees are not charged commission, and Zaroda takes no cut of them</li>
-          <li>✓ Shoppers pay your own account through Tuma, not through us</li>
+          <li>✓ Shoppers pay you directly, through Tuma or your own M-Pesa Paybill or Till, not through us</li>
           <li>✓ Online orders appear as normal sales in your reports</li>
           <li>✓ Your own riders, or Zaroda&apos;s approved rider pool</li>
           <li>✓ Billed monthly with a clear invoice, payable by M-Pesa</li>
