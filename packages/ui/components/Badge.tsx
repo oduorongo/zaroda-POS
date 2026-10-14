@@ -4,7 +4,7 @@ import { cn } from "../lib/cn";
 type Variant = "neutral" | "success" | "warning" | "error" | "primary";
 
 const variantClasses: Record<Variant, string> = {
-  neutral: "bg-secondary-100 text-secondary-700",
+  neutral: "bg-secondary-500/10 text-secondary-700",
   success: "bg-success-50 text-success-700",
   warning: "bg-warning-50 text-warning-700",
   error: "bg-error-50 text-error-700",

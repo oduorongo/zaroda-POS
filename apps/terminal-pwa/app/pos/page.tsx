@@ -1293,7 +1293,7 @@ export default function PosPage() {
 
             <div className="flex flex-col items-center gap-1 text-center">
               <div
-                className="flex h-24 w-24 items-center justify-center rounded-md border border-dashed border-secondary-300 bg-secondary-50 text-center text-[10px] leading-tight text-secondary-400"
+                className="flex h-24 w-24 items-center justify-center rounded-md border border-dashed border-secondary-300 bg-secondary-500/5 text-center text-[10px] leading-tight text-secondary-400"
                 aria-label="eTIMS QR code placeholder"
               >
                 eTIMS QR<br />pending KRA<br />integration

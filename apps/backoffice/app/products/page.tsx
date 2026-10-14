@@ -37,6 +37,7 @@ interface Product {
   category: Category | null;
   taxClass: TaxClass | null;
   variants: Variant[];
+  onlineVisible: boolean;
 }
 
 /**
@@ -68,6 +69,10 @@ export default function ProductsPage() {
   const [variantBusy, setVariantBusy] = useState(false);
   const [variantError, setVariantError] = useState<string | null>(null);
 
+  // Online listing controls only appear once the Online Shop add-on is on.
+  // That endpoint is owner/manager-only, so other roles just don't see them.
+  const [onlineShopActive, setOnlineShopActive] = useState(false);
+
   async function load() {
     try {
       const [productsResult, categoriesResult, taxClassesResult] = await Promise.all([
@@ -78,6 +83,9 @@ export default function ProductsPage() {
       setProducts(productsResult);
       setCategories(categoriesResult);
       setTaxClasses(taxClassesResult);
+      apiGet<{ addonActive: boolean }>("/online-store/me")
+        .then((store) => setOnlineShopActive(store.addonActive))
+        .catch(() => setOnlineShopActive(false));
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not load the catalog.");
     } finally {
@@ -214,12 +222,24 @@ export default function ProductsPage() {
                     {product.category?.name ?? "No category"} · {product.taxClass?.name ?? "No tax class"}
                   </p>
                 </div>
-                <button
-                  onClick={() => setVariantForProductId(variantForProductId === product.id ? null : product.id)}
-                  className="rounded-md bg-surface px-3 py-1.5 text-sm hover:bg-border"
-                >
-                  + Variant
-                </button>
+                <div className="flex items-center gap-2">
+                  {onlineShopActive && (
+                    <Link
+                      href={`/products/online/${product.id}`}
+                      className={`rounded-md px-3 py-1.5 text-sm ${
+                        product.onlineVisible ? "bg-success-50 text-success-700 hover:opacity-80" : "bg-surface hover:bg-border"
+                      }`}
+                    >
+                      {product.onlineVisible ? "Online ✓" : "Sell online"}
+                    </Link>
+                  )}
+                  <button
+                    onClick={() => setVariantForProductId(variantForProductId === product.id ? null : product.id)}
+                    className="rounded-md bg-surface px-3 py-1.5 text-sm hover:bg-border"
+                  >
+                    + Variant
+                  </button>
+                </div>
               </div>
 
               {product.variants.length > 0 && (

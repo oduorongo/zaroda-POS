@@ -20,17 +20,19 @@ import {
   Trash2,
   PackageOpen,
   Receipt,
+  Store,
+  ShoppingBag,
   UtensilsCrossed,
   Pill,
   Scissors,
   Factory,
   Wrench,
+  Home,
 } from "lucide-react";
 import { getSession, clearSession, isBackofficeRole, type Session } from "../../lib/auth";
 import { useIdleLogout } from "../../hooks/use-idle-logout";
-import { Badge, Button, ThemeToggle } from "@zaroda/ui";
+import { Nav } from "../../components/nav";
 
-const MARKETING_URL = process.env.NEXT_PUBLIC_MARKETING_URL ?? "http://localhost:3005";
 
 type Tile = {
   href: string;
@@ -59,13 +61,29 @@ const TILES: Tile[] = [
 
 // Mirrors components/nav.tsx exactly - owner/manager only, though the real
 // authorization boundary is the API's @Roles() guard, not this UI check.
-const MANAGER_TILE: Tile = {
-  href: "/settings/tax",
-  label: "Tax Settings",
-  description: "VAT rates and tax-class configuration.",
-  icon: Receipt,
-  tone: "bg-secondary-500",
-};
+const MANAGER_TILES: Tile[] = [
+  {
+    href: "/settings/tax",
+    label: "Tax Settings",
+    description: "VAT rates and tax-class configuration.",
+    icon: Receipt,
+    tone: "bg-secondary-500",
+  },
+  {
+    href: "/online-orders",
+    label: "Online Orders",
+    description: "Accept, prepare, and hand over orders from your online shop.",
+    icon: ShoppingBag,
+    tone: "bg-emerald-600",
+  },
+  {
+    href: "/settings/online-shop",
+    label: "Online Shop",
+    description: "Your public shop link, payments, and pickup/delivery.",
+    icon: Store,
+    tone: "bg-emerald-600",
+  },
+];
 const MANAGER_ROLES = ["MANAGER", "OWNER"];
 
 // Same industryType gating as components/nav.tsx's VERTICAL_LINKS.
@@ -96,6 +114,13 @@ const VERTICAL_TILES: Record<string, Tile> = {
     label: "Production",
     description: "Production runs and recipe output.",
     icon: Factory,
+    tone: "bg-amber-600",
+  },
+  RENTAL: {
+    href: "/rentals",
+    label: "Rentals",
+    description: "Properties, units, tenants and leases.",
+    icon: Home,
     tone: "bg-amber-600",
   },
   SERVICE: {
@@ -130,41 +155,13 @@ export default function DashboardPage() {
 
   const verticalTile = VERTICAL_TILES[session.industryType];
   const tiles = MANAGER_ROLES.includes(session.role)
-    ? [...TILES, MANAGER_TILE]
+    ? [...TILES, ...MANAGER_TILES]
     : TILES;
   if (verticalTile) tiles.push(verticalTile);
 
   return (
     <div className="min-h-screen bg-background text-foreground">
-      <header className="border-b border-border px-4 py-3 sm:px-6">
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex flex-col">
-            <a href={MARKETING_URL} className="text-xs text-secondary-500 hover:text-secondary-300">
-              ← zarodashop.com
-            </a>
-            <span className="font-bold">
-              ZARODA <span className="text-primary-500">Back Office</span>
-            </span>
-          </div>
-          <div className="flex items-center gap-3 text-sm">
-            <Badge variant="neutral">{session.industryType || "?"}</Badge>
-            <span className="hidden text-secondary-400 sm:inline">
-              {session.email} · {session.role}
-            </span>
-            <ThemeToggle />
-            <Button
-              onClick={() => {
-                clearSession();
-                router.replace("/login");
-              }}
-              variant="secondary"
-              size="sm"
-            >
-              Sign out
-            </Button>
-          </div>
-        </div>
-      </header>
+      <Nav session={session} />
 
       <main className="mx-auto max-w-6xl px-4 py-8 sm:px-6">
         <h1 className="text-2xl font-bold text-foreground">Welcome back{session.email ? `, ${session.email.split("@")[0]}` : ""}</h1>

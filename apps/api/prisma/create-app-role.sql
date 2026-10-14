@@ -6,7 +6,11 @@
 -- (prisma migrate, prisma db execute) keep using the owner role's
 -- DATABASE_URL/DIRECT_URL; only the running API's DATABASE_URL should point
 -- at this role.
-ALTER ROLE zaroda_app WITH PASSWORD 'lmsX4ZHwxCnpEPBuBvTk2tOjIQ3qTrYL';
+-- NEVER put the real password in this file: this repository is public. Replace
+-- CHANGE_ME below with a freshly generated password on your own machine, run the
+-- script, then put the same password in DATABASE_URL (apps/api/.env and your
+-- host's environment settings) - and do not save or commit the edit.
+ALTER ROLE zaroda_app WITH PASSWORD 'CHANGE_ME';
 GRANT USAGE ON SCHEMA public TO zaroda_app;
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO zaroda_app;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO zaroda_app;

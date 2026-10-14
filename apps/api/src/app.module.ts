@@ -35,6 +35,7 @@ import { NotificationsModule } from './notifications/notifications.module';
 import { LayawaysModule } from './layaways/layaways.module';
 import { AllExceptionsFilter } from './common/logging/all-exceptions.filter';
 import { RestaurantModule } from './restaurant/restaurant.module';
+import { RentalModule } from './rental/rental.module';
 import { PharmacyModule } from './pharmacy/pharmacy.module';
 import { SalonModule } from './salon/salon.module';
 import { ManufacturingModule } from './manufacturing/manufacturing.module';
@@ -45,6 +46,11 @@ import { PurchasingModule } from './purchasing/purchasing.module';
 import { RepackagingModule } from './repackaging/repackaging.module';
 import { RecipesModule } from './recipes/recipes.module';
 import { WasteModule } from './waste/waste.module';
+import { OnlineStoreModule } from './online-store/online-store.module';
+import { OnlineOrdersModule } from './online-orders/online-orders.module';
+import { RidersModule } from './riders/riders.module';
+import { SalesTeamsModule } from './sales-teams/sales-teams.module';
+import { DeliveryModule } from './delivery/delivery.module';
 
 // Phase 1+ will import vertical module packages here and register their
 // manifests on ModuleRegistryService at bootstrap (see DESIGN.md §3) - none
@@ -122,8 +128,14 @@ import { WasteModule } from './waste/waste.module';
     PlatformAdminModule,
     PublicPlansModule,
     PublicBookingModule,
+    OnlineStoreModule,
+    OnlineOrdersModule,
+    RidersModule,
+    SalesTeamsModule,
+    DeliveryModule,
     LayawaysModule,
     RestaurantModule,
+    RentalModule,
     PharmacyModule,
     SalonModule,
     ManufacturingModule,

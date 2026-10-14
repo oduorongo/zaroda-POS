@@ -2,11 +2,13 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Card, CardContent, Badge } from "@zaroda/ui";
 import CapabilityGrid from "../components/capability-grid";
+import ChooseApp from "../components/choose-app";
+import OnlineShopSection from "../components/online-shop-section";
 import { ShopSceneIllustration } from "../components/feature-illustrations";
 
 export const metadata: Metadata = {
   title: "Zaroda POS — POS for Kenyan Retail",
-  description: "Rent-to-run POS for Kenyan shops — M-Pesa STK push, offline sales, and eTIMS-ready tax from day one.",
+  description: "Rent-to-run POS for Kenyan shops — M-Pesa at the till, offline sales, eTIMS-ready tax, and an online shop with rider delivery.",
   alternates: { canonical: "https://zarodashop.com" },
 };
 
@@ -47,23 +49,27 @@ export default function LandingPage() {
   return (
     <main>
       <section className="mx-auto max-w-4xl px-6 py-20 text-center">
+        {/* eslint-disable-next-line @next/next/no-img-element -- fixed brand asset */}
+        <img src="/zaroda-logo-navy-gold.png" alt="Zaroda Solutions" width={160} height={132} className="mx-auto mb-6 h-32 w-auto" />
         <h1 className="text-4xl font-bold tracking-tight text-foreground sm:text-5xl">
           Zaroda Shop — the POS your shop rents, not builds
         </h1>
         <p className="mx-auto mt-4 max-w-2xl text-lg text-secondary-500">
           M-Pesa, KES, and Kenyan retail from the ground up. No hardware to buy, no server to run —
-          just a monthly fee and a tablet.
+          just a monthly fee and a tablet. And when you are ready, sell online with delivery by riders.
         </p>
         <div className="mt-8 flex items-center justify-center gap-4">
           <Link href="/signup" className="rounded-md bg-primary-600 px-6 py-3 font-semibold text-white hover:bg-primary-700">
             Start your 14-day free trial
           </Link>
-          <Link href="/pricing" className="rounded-md border border-border px-6 py-3 font-semibold text-foreground hover:bg-secondary-50">
+          <Link href="/pricing" className="rounded-md border border-border px-6 py-3 font-semibold text-foreground hover:bg-secondary-500/5">
             See pricing
           </Link>
         </div>
         <p className="mt-3 text-xs text-secondary-400">No card required to start.</p>
       </section>
+
+      <ChooseApp />
 
       <section className="border-y border-border bg-surface py-8">
         <div className="mx-auto max-w-5xl px-6">
@@ -84,6 +90,8 @@ export default function LandingPage() {
       </section>
 
       <CapabilityGrid />
+
+      <OnlineShopSection />
 
       <section className="border-t border-border bg-surface py-16">
         <div className="mx-auto max-w-6xl px-6">

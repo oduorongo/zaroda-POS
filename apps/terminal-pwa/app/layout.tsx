@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import localFont from "next/font/local";
 import "./globals.css";
+import { TillFrame } from "../components/till-frame";
 import { ServiceWorkerRegistration } from "../components/service-worker-registration";
 
 const geistSans = localFont({
@@ -34,7 +35,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
     <html lang="en">
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased bg-slate-900`}>
         <ServiceWorkerRegistration />
-        {children}
+        <TillFrame>{children}</TillFrame>
       </body>
     </html>
   );

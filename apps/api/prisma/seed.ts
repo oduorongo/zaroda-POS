@@ -49,6 +49,11 @@ async function main() {
     });
 
     return { org, branch, terminal, user };
+  }, {
+    // Prisma's default 5s limit is too tight against a remote database (a Neon branch used for a
+    // rehearsal): several round trips plus two password hashes can take longer than that.
+    timeout: 60_000,
+    maxWait: 30_000,
   });
 
   console.log("Seeded demo tenant:");

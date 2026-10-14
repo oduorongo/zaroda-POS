@@ -1,4 +1,5 @@
 import {
+  IsBoolean,
   IsOptional,
   IsString,
   IsUUID,
@@ -25,6 +26,16 @@ export class CreateProductDto {
   @IsOptional()
   @MaxLength(50)
   baseUnit?: string;
+
+  // Online Shop add-on - see Product.onlineVisible's schema comment.
+  @IsBoolean()
+  @IsOptional()
+  onlineVisible?: boolean;
+
+  @IsString()
+  @IsOptional()
+  @MaxLength(2000)
+  onlineDescription?: string;
 }
 
 export class UpdateProductDto extends PartialType(CreateProductDto) {}

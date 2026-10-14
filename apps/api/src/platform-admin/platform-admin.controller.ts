@@ -6,6 +6,7 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Query,
   Req,
   UseGuards,
 } from '@nestjs/common';
@@ -20,8 +21,17 @@ import { PlatformAdminLoginDto } from './dto/platform-admin-login.dto';
 import { CreatePlanDto, UpdatePlanDto } from './dto/create-plan.dto';
 import { OnboardTenantDto } from './dto/onboard-tenant.dto';
 import { RecordPaymentDto, SetSuspensionDto } from './dto/record-payment.dto';
-import { SetOrganizationActiveDto, UpdateOrganizationDto } from './dto/update-organization.dto';
+import { SetOnlineStoreAddonDto, SetOrganizationActiveDto, UpdateOrganizationDto } from './dto/update-organization.dto';
 import { ResetUserPasswordDto } from './dto/reset-user-password.dto';
+import { CommissionService } from '../online-store/commission.service';
+import { RidersService } from '../riders/riders.service';
+import { ListRidersQueryDto, SetRiderStatusDto } from '../riders/dto/rider.dto';
+import {
+  GenerateInvoicesDto,
+  ListInvoicesQueryDto,
+  RecordInvoicePaymentDto,
+  WaiveInvoiceDto,
+} from './dto/commission.dto';
 
 // Same throttle shape as tenant login (auth.controller.ts) - this is the
 // one public, pre-JWT endpoint on this controller.
@@ -42,6 +52,8 @@ export class PlatformAdminController {
     private readonly auth: PlatformAdminAuthService,
     private readonly platformAdmin: PlatformAdminService,
     private readonly auditLog: PlatformAuditLogService,
+    private readonly commission: CommissionService,
+    private readonly riders: RidersService,
   ) {}
 
   @Public()
@@ -241,6 +253,131 @@ export class PlatformAdminController {
         : 'platform_admin.reactivated_tenant',
       entityType: 'Subscription',
       entityId: result.id,
+      organizationId: id,
+    });
+    return result;
+  }
+
+  @Public()
+  @UseGuards(PlatformAdminAuthGuard)
+  @Patch('organizations/:id/online-store')
+  async setOnlineStoreAddon(
+    @Req() req: PlatformAdminRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: SetOnlineStoreAddonDto,
+  ) {
+    const result = await this.platformAdmin.setOnlineStoreAddon(id, dto);
+    await this.auditLog.log({
+      platformAdminId: req.user!.platformAdminId,
+      action: dto.addonActive
+        ? 'platform_admin.enabled_online_store'
+        : 'platform_admin.disabled_online_store',
+      entityType: 'OnlineStore',
+      entityId: id,
+      organizationId: id,
+    });
+    return result;
+  }
+
+  // ── Delivery riders ──────────────────────────────────────────────────
+
+  @Public()
+  @UseGuards(PlatformAdminAuthGuard)
+  @Get('riders')
+  listRiders(@Req() req: PlatformAdminRequest, @Query() query: ListRidersQueryDto) {
+    return this.riders.listForAdmin(query.status);
+  }
+
+  // Approve (needs a finished profile) or suspend a rider.
+  @Public()
+  @UseGuards(PlatformAdminAuthGuard)
+  @Post('riders/:id/status')
+  async setRiderStatus(@Req() req: PlatformAdminRequest, @Param('id', ParseUUIDPipe) id: string, @Body() dto: SetRiderStatusDto) {
+    const result = await this.riders.setStatusForAdmin(id, dto.status);
+    await this.auditLog.log({
+      platformAdminId: req.user!.platformAdminId,
+      action: dto.status === 'APPROVED' ? 'platform_admin.approved_rider' : 'platform_admin.suspended_rider',
+      entityType: 'Rider',
+      entityId: id,
+    });
+    return result;
+  }
+
+  // ── Online Shop commission ───────────────────────────────────────────
+
+  @Public()
+  @UseGuards(PlatformAdminAuthGuard)
+  @Get('commission/invoices')
+  listCommissionInvoices(@Query() query: ListInvoicesQueryDto) {
+    return this.commission.listInvoices(query);
+  }
+
+  // Runs the whole daily automation on demand: invoices, emails, and
+  // confirming payments. The scheduler does this by itself every hour -
+  // this is for "do it now" and for a server where the scheduler is off.
+  @Public()
+  @UseGuards(PlatformAdminAuthGuard)
+  @Post('commission/run')
+  async runCommissionAutomation(@Req() req: PlatformAdminRequest) {
+    const result = await this.commission.runAutomation();
+    await this.auditLog.log({
+      platformAdminId: req.user!.platformAdminId,
+      action: 'platform_admin.ran_commission_billing',
+      entityType: 'CommissionInvoice',
+    });
+    return result;
+  }
+
+  // Idempotent: creates invoices for finished months that don't have one
+  // yet and never bills an order twice, so it's safe to run any time.
+  @Public()
+  @UseGuards(PlatformAdminAuthGuard)
+  @Post('commission/generate')
+  async generateCommissionInvoices(@Req() req: PlatformAdminRequest, @Body() dto: GenerateInvoicesDto) {
+    const result = await this.commission.generateInvoices({ month: dto.month });
+    await this.auditLog.log({
+      platformAdminId: req.user!.platformAdminId,
+      action: 'platform_admin.generated_commission_invoices',
+      entityType: 'CommissionInvoice',
+    });
+    return result;
+  }
+
+  @Public()
+  @UseGuards(PlatformAdminAuthGuard)
+  @Post('organizations/:id/commission-invoices/:invoiceId/payment')
+  async recordCommissionPayment(
+    @Req() req: PlatformAdminRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('invoiceId', ParseUUIDPipe) invoiceId: string,
+    @Body() dto: RecordInvoicePaymentDto,
+  ) {
+    const result = await this.commission.recordPayment(id, invoiceId, dto, req.user!.platformAdminId);
+    await this.auditLog.log({
+      platformAdminId: req.user!.platformAdminId,
+      action: 'platform_admin.recorded_commission_payment',
+      entityType: 'CommissionInvoice',
+      entityId: invoiceId,
+      organizationId: id,
+    });
+    return result;
+  }
+
+  @Public()
+  @UseGuards(PlatformAdminAuthGuard)
+  @Post('organizations/:id/commission-invoices/:invoiceId/waive')
+  async waiveCommissionInvoice(
+    @Req() req: PlatformAdminRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('invoiceId', ParseUUIDPipe) invoiceId: string,
+    @Body() dto: WaiveInvoiceDto,
+  ) {
+    const result = await this.commission.waive(id, invoiceId, dto.reason, req.user!.platformAdminId);
+    await this.auditLog.log({
+      platformAdminId: req.user!.platformAdminId,
+      action: 'platform_admin.waived_commission_invoice',
+      entityType: 'CommissionInvoice',
+      entityId: invoiceId,
       organizationId: id,
     });
     return result;

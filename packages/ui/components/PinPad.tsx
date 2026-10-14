@@ -58,8 +58,8 @@ export function PinPad({ value, maxLength = 4, onChange, onSubmit, disabled, cla
               "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500",
               "disabled:opacity-50",
               key === "clear" || key === "back"
-                ? "bg-secondary-100 text-secondary-600 hover:bg-secondary-200 text-sm"
-                : "bg-surface border border-border text-foreground hover:bg-secondary-50"
+                ? "bg-secondary-500/10 text-secondary-600 hover:bg-secondary-500/20 text-sm"
+                : "bg-surface border border-border text-foreground hover:bg-secondary-500/5"
             )}
           >
             {key === "back" ? "⌫" : key === "clear" ? "Clear" : key}

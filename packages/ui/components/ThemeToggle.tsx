@@ -52,3 +52,12 @@ export function ThemeToggle({ className }: { className?: string }) {
     </button>
   );
 }
+
+/** A switch pinned to the corner, for pages that have no header of their own (sign-in, register, public booking). */
+export function FloatingThemeToggle({ className }: { className?: string }) {
+  return (
+    <div className={cn("fixed right-3 top-3 z-50 rounded-md border border-border bg-surface shadow-sm", className)}>
+      <ThemeToggle />
+    </div>
+  );
+}

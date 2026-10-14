@@ -57,6 +57,17 @@ interface OrganizationDetail {
   branches: Branch[];
   orgUsers: OrgUserRow[];
   subscription: Subscription | null;
+  onlineStore: OnlineStoreSummary;
+}
+
+interface OnlineStoreSummary {
+  addonActive: boolean;
+  commissionRate: number | null;
+  effectiveCommissionRate: number;
+  isPublished: boolean;
+  slug: string | null;
+  displayName: string | null;
+  tumaConnected: boolean;
 }
 
 const STATUS_VARIANT: Record<string, "primary" | "success" | "warning" | "error" | "neutral"> = {
@@ -66,7 +77,7 @@ const STATUS_VARIANT: Record<string, "primary" | "success" | "warning" | "error"
   SUSPENDED: "error",
 };
 
-const INDUSTRY_TYPES = ["RETAIL", "RESTAURANT", "PHARMACY", "SALON"] as const;
+const INDUSTRY_TYPES = ["RETAIL", "RESTAURANT", "PHARMACY", "SALON", "RENTAL"] as const;
 
 export default function OrganizationDetailPage() {
   const params = useParams<{ id: string }>();
@@ -85,6 +96,10 @@ export default function OrganizationDetailPage() {
   const [editVatRegistered, setEditVatRegistered] = useState(false);
   const [savingEdit, setSavingEdit] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
+
+  const [commissionInput, setCommissionInput] = useState("");
+  const [savingOnlineStore, setSavingOnlineStore] = useState(false);
+  const [onlineStoreError, setOnlineStoreError] = useState<string | null>(null);
 
   const [deactivateConfirm, setDeactivateConfirm] = useState("");
   const [togglingActive, setTogglingActive] = useState(false);
@@ -111,6 +126,9 @@ export default function OrganizationDetailPage() {
       const result = await apiGet<OrganizationDetail>(`/platform-admin/organizations/${params.id}`);
       setOrg(result);
       resetEditFields(result);
+      setCommissionInput(
+        result.onlineStore.commissionRate === null ? "" : String(Number((result.onlineStore.commissionRate * 100).toFixed(2))),
+      );
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not load this organization.");
     }
@@ -192,6 +210,29 @@ export default function OrganizationDetailPage() {
       setResetError(err instanceof ApiError ? err.message : "Could not reset password.");
     } finally {
       setResetBusy(false);
+    }
+  }
+
+  async function saveOnlineStore(addonActive: boolean) {
+    if (!org) return;
+    const trimmed = commissionInput.trim();
+    const percent = Number(trimmed);
+    if (trimmed && (!Number.isFinite(percent) || percent < 0 || percent > 50)) {
+      setOnlineStoreError("Commission must be a percentage between 0 and 50.");
+      return;
+    }
+    setSavingOnlineStore(true);
+    setOnlineStoreError(null);
+    try {
+      await apiPatch(`/platform-admin/organizations/${org.id}/online-store`, {
+        addonActive,
+        commissionRate: trimmed ? Number((percent / 100).toFixed(4)) : null,
+      });
+      await load();
+    } catch (err) {
+      setOnlineStoreError(err instanceof ApiError ? err.message : "Could not update the Online Shop add-on.");
+    } finally {
+      setSavingOnlineStore(false);
     }
   }
 
@@ -360,6 +401,64 @@ export default function OrganizationDetailPage() {
                   )}
                 </div>
               )}
+            </section>
+
+            <section className="mt-4 rounded-lg border border-border">
+              <h2 className="border-b border-border bg-surface p-3 font-semibold">Online Shop add-on</h2>
+              <div className="p-3 text-sm">
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                  <div>
+                    <p className="text-xs text-secondary-500">Add-on</p>
+                    {org.onlineStore.addonActive ? <Badge variant="success">On</Badge> : <Badge variant="neutral">Off</Badge>}
+                  </div>
+                  <div>
+                    <p className="text-xs text-secondary-500">Shop</p>
+                    <p>{org.onlineStore.isPublished ? "Live" : "Offline"}{org.onlineStore.slug ? ` · /s/${org.onlineStore.slug}` : ""}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-secondary-500">TUMA</p>
+                    <p>{org.onlineStore.tumaConnected ? "Connected" : "Not connected"}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-secondary-500">Commission</p>
+                    <p>
+                      {Number((org.onlineStore.effectiveCommissionRate * 100).toFixed(2))}%
+                      {org.onlineStore.commissionRate === null && <span className="text-secondary-500"> (default)</span>}
+                    </p>
+                  </div>
+                </div>
+                <div className="mt-4 flex flex-wrap items-end gap-2">
+                  <div>
+                    <label className="block text-xs text-secondary-500">Custom commission % (blank = default)</label>
+                    <input
+                      value={commissionInput}
+                      onChange={(e) => setCommissionInput(e.target.value)}
+                      placeholder="3"
+                      className="mt-1 w-28 rounded-md border border-border bg-surface p-2 text-sm"
+                    />
+                  </div>
+                  <button
+                    onClick={() => void saveOnlineStore(org.onlineStore.addonActive)}
+                    disabled={savingOnlineStore}
+                    className="rounded-md border border-border px-3 py-2 text-sm hover:bg-surface disabled:opacity-40"
+                  >
+                    Save rate
+                  </button>
+                  <button
+                    onClick={() => void saveOnlineStore(!org.onlineStore.addonActive)}
+                    disabled={savingOnlineStore}
+                    className={`rounded-md px-3 py-2 text-sm font-semibold disabled:opacity-40 ${
+                      org.onlineStore.addonActive ? "bg-error-600 text-white hover:bg-error-700" : "bg-success-600 text-white hover:bg-success-700"
+                    }`}
+                  >
+                    {savingOnlineStore ? "..." : org.onlineStore.addonActive ? "Turn add-on off" : "Turn add-on on"}
+                  </button>
+                </div>
+                {onlineStoreError && <p className="mt-2 text-sm text-red-400">{onlineStoreError}</p>}
+                <p className="mt-2 text-xs text-secondary-500">
+                  Turning the add-on off hides the shop immediately but keeps the business&apos;s settings.
+                </p>
+              </div>
             </section>
 
             <section className="mt-4 rounded-lg border border-border">

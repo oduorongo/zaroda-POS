@@ -42,7 +42,7 @@ export default function PricingClient() {
     <main className="mx-auto max-w-5xl px-6 py-16">
       <div className="text-center">
         <h1 className="text-3xl font-bold text-foreground">Simple, per-device pricing</h1>
-        <p className="mt-2 text-secondary-500">Pay monthly in KES. Cancel anytime. No setup fee.</p>
+        <p className="mt-2 text-secondary-500">Pay monthly in KES. Cancel anytime. No setup fee. Add the online shop whenever you are ready.</p>
       </div>
 
       {loading && <div className="mt-12"><LoadingState label="Loading pricing..." /></div>}
@@ -82,6 +82,29 @@ export default function PricingClient() {
           ))}
         </div>
       )}
+      <section id="online-shop" className="mt-16 rounded-xl border border-[#c99a2e]/60 bg-surface p-6 sm:p-8">
+        <span className="text-xs font-semibold uppercase tracking-wider text-[#c99a2e]">Add-on</span>
+        <h2 className="mt-1 text-2xl font-bold text-foreground">Online Shop</h2>
+        <p className="mt-2 text-secondary-500">
+          Sell your till stock online, take M-Pesa payments and offer delivery by riders. Switch it on for your business whenever you are ready.
+        </p>
+        <p className="mt-4 text-3xl font-bold text-foreground">
+          3%
+          <span className="text-sm font-normal text-secondary-500"> of the product total on each completed online order</span>
+        </p>
+        <ul className="mt-4 grid gap-2 text-sm text-secondary-600 sm:grid-cols-2">
+          <li>✓ Pay when you sell online</li>
+          <li>✓ Delivery fees are not charged commission, and Zaroda takes no cut of them</li>
+          <li>✓ Shoppers pay you directly, through Tuma or your own M-Pesa Paybill or Till, not through us</li>
+          <li>✓ Online orders appear as normal sales in your reports</li>
+          <li>✓ Your own riders, or Zaroda&apos;s approved rider pool</li>
+          <li>✓ Billed monthly with a clear invoice, payable by M-Pesa</li>
+        </ul>
+        <p className="mt-4 text-sm text-secondary-500">
+          If a monthly invoice stays unpaid, your online shop is paused until it is settled. Your till keeps working as normal.
+          To switch the add-on on, contact Zaroda after you sign up.
+        </p>
+      </section>
     </main>
   );
 }

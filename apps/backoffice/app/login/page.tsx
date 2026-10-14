@@ -1,5 +1,6 @@
 "use client";
 
+import { FloatingThemeToggle } from "@zaroda/ui";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { login, getOrganization, ApiError } from "../../lib/api";
@@ -45,6 +46,7 @@ export default function LoginPage() {
 
   return (
     <div className="flex min-h-screen flex-col bg-background text-foreground lg:flex-row">
+      <FloatingThemeToggle />
       {/* Hero panel — a compact banner on mobile, a full-height side panel
           from lg up. Background photo: apps/backoffice/public/login-hero.png
           (glossy-navy POS hardware shot). Falls back to the plain navy
@@ -56,9 +58,12 @@ export default function LoginPage() {
         {/* Navy overlay - keeps the wordmark/heading/copy readable over any photo */}
         <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-slate-950/90 via-slate-950/75 to-primary-900/85" />
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(37,99,235,0.25),transparent_55%)]" />
-        <div className="relative flex items-center">
+        <div className="relative flex items-center gap-4">
+          {/* The transparent white logo sits straight on the photo; the old boxed blue logo looked pasted on. */}
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/logo.png" alt="Zaroda Solutions" className="h-11 w-auto sm:h-14" />
+          <img src="/zaroda-logo-white.png" alt="Zaroda Solutions" width={147} height={120} className="h-20 w-auto drop-shadow-lg sm:h-24 lg:h-28" />
+          <span className="h-12 w-px bg-white/30 sm:h-14" aria-hidden="true" />
+          <span className="text-sm font-extrabold uppercase tracking-widest text-[#c99a2e] sm:text-base">Back Office</span>
         </div>
         <div className="relative">
           <h2 className="text-2xl font-bold leading-tight text-white sm:text-3xl">

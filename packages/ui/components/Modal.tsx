@@ -34,7 +34,7 @@ export function Modal({ open, onClose, title, children, className }: ModalProps)
             <button
               onClick={onClose}
               aria-label="Close"
-              className="h-touch w-touch flex items-center justify-center rounded-md text-secondary-500 hover:bg-secondary-100"
+              className="h-touch w-touch flex items-center justify-center rounded-md text-secondary-500 hover:bg-secondary-500/10"
             >
               ✕
             </button>

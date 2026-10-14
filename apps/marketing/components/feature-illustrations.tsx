@@ -184,7 +184,7 @@ type Tone = "primary" | "accent" | "secondary" | "warning" | "success" | "error"
 const TONE_CLASSES: Record<Tone, { tint: string; fg: string }> = {
   primary: { tint: "bg-primary-50", fg: "text-primary-600" },
   accent: { tint: "bg-accent-50", fg: "text-accent-600" },
-  secondary: { tint: "bg-secondary-100", fg: "text-secondary-700" },
+  secondary: { tint: "bg-secondary-500/10", fg: "text-secondary-700" },
   warning: { tint: "bg-warning-50", fg: "text-warning-600" },
   success: { tint: "bg-success-50", fg: "text-success-600" },
   error: { tint: "bg-error-50", fg: "text-error-600" },

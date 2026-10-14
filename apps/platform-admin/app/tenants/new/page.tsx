@@ -16,7 +16,7 @@ interface Plan {
   maxBranches: number;
 }
 
-const INDUSTRY_TYPES = ["RETAIL", "RESTAURANT", "PHARMACY", "SALON"];
+const INDUSTRY_TYPES = ["RETAIL", "RESTAURANT", "PHARMACY", "SALON", "RENTAL"];
 
 /**
  * Admin-driven onboarding wizard - creates the tenant, owner account,

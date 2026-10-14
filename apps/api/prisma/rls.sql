@@ -180,6 +180,15 @@ CREATE POLICY tenant_isolation ON product_variants
   WITH CHECK (EXISTS (SELECT 1 FROM products p WHERE p.id = product_variants."productId"
                  AND p."organizationId" = current_setting('app.current_tenant', true)));
 
+ALTER TABLE product_images ENABLE ROW LEVEL SECURITY;
+ALTER TABLE product_images FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON product_images;
+CREATE POLICY tenant_isolation ON product_images
+  USING (EXISTS (SELECT 1 FROM products p WHERE p.id = product_images."productId"
+                 AND p."organizationId" = current_setting('app.current_tenant', true)))
+  WITH CHECK (EXISTS (SELECT 1 FROM products p WHERE p.id = product_images."productId"
+                 AND p."organizationId" = current_setting('app.current_tenant', true)));
+
 -- ── Scoped via variantId -> products."organizationId" ──────────────────────
 
 ALTER TABLE batches ENABLE ROW LEVEL SECURITY;
@@ -541,6 +550,67 @@ CREATE POLICY tenant_isolation ON roster_shifts
   USING ("organizationId" = current_setting('app.current_tenant', true))
   WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
 
+-- Online shop settings (marketplace add-on).
+ALTER TABLE online_stores ENABLE ROW LEVEL SECURITY;
+ALTER TABLE online_stores FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON online_stores;
+CREATE POLICY tenant_isolation ON online_stores
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+-- Deliberate, narrow public exception: the storefront and buyer checkout
+-- must find a shop by its slug before any tenant is known. A transaction
+-- opts in with set_config('app.public_catalog', 'on', true) (only
+-- PublicShopService / OnlineOrdersService do), and even then sees only
+-- shops that are paid for AND published. SELECT only - permissive policies
+-- OR together, so this never widens what can be written. Callers select
+-- only public columns; the TUMA key is encrypted regardless.
+DROP POLICY IF EXISTS public_catalog_read ON online_stores;
+CREATE POLICY public_catalog_read ON online_stores
+  FOR SELECT
+  USING (current_setting('app.public_catalog', true) = 'on'
+         AND "addonActive" AND "isPublished");
+
+-- Online orders belong to two parties: the business (app.current_tenant)
+-- and the buyer who placed it (app.current_buyer, set by buyer-facing
+-- requests from the verified buyer JWT - see BuyerAuthGuard). Either may
+-- see the order; neither sees anyone else's.
+ALTER TABLE online_orders ENABLE ROW LEVEL SECURITY;
+ALTER TABLE online_orders FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON online_orders;
+CREATE POLICY tenant_isolation ON online_orders
+  USING ("organizationId" = current_setting('app.current_tenant', true)
+         OR "buyerId" = current_setting('app.current_buyer', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true)
+              OR "buyerId" = current_setting('app.current_buyer', true));
+
+ALTER TABLE online_order_lines ENABLE ROW LEVEL SECURITY;
+ALTER TABLE online_order_lines FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON online_order_lines;
+CREATE POLICY tenant_isolation ON online_order_lines
+  USING (EXISTS (SELECT 1 FROM online_orders o WHERE o.id = online_order_lines."orderId"
+                 AND (o."organizationId" = current_setting('app.current_tenant', true)
+                      OR o."buyerId" = current_setting('app.current_buyer', true))))
+  WITH CHECK (EXISTS (SELECT 1 FROM online_orders o WHERE o.id = online_order_lines."orderId"
+                 AND (o."organizationId" = current_setting('app.current_tenant', true)
+                      OR o."buyerId" = current_setting('app.current_buyer', true))));
+
+-- Commission invoices: the business sees its own; a platform admin reads
+-- and records payments across tenants one tenant at a time (set_config per
+-- tenant), the same way it reads branches.
+ALTER TABLE commission_invoices ENABLE ROW LEVEL SECURITY;
+ALTER TABLE commission_invoices FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON commission_invoices;
+CREATE POLICY tenant_isolation ON commission_invoices
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+-- buyers / buyer_otps: deliberately NOT tenant-scoped, same reasoning as
+-- `users` below - one buyer shops at many businesses with one login, and
+-- an OTP is checked before any business is involved. The application
+-- only ever reads a buyer row by the id in a verified buyer JWT or by the
+-- phone number being verified (BuyerAuthService).
+
 -- ── organizations itself ─────────────────────────────────────────────────
 -- A tenant may only ever see its own organization row (not a child table,
 -- so it filters on id directly rather than organizationId). Same pre-auth
@@ -564,13 +634,193 @@ CREATE POLICY tenant_isolation ON organizations
 -- by only ever looking users up via an org_users row already filtered by
 -- the policies above - never by scanning `users` directly with tenant trust.
 
--- ── platform billing tables (plans, subscriptions, subscription_payments) ──
--- Deliberately NO RLS policy, same reasoning as platform_admins/
--- platform_audit_log (never given a policy in this file at all): these are
--- the platform owner's own rental-business records, not tenant data, and
--- are only ever queried by PlatformAdminController behind
--- PlatformAdminAuthGuard - a completely separate identity from a tenant
--- JWT. No tenant-facing controller may read or write them; that boundary
--- is enforced at the application layer (which endpoints exist), not by a
--- database policy, because RLS's "current_tenant" model has no meaningful
--- value to scope these rows by.
+-- ── platform billing tables ───────────────────────────────────────────────
+-- plans: deliberately NO RLS policy - a global price list with no
+-- organizationId, read by the public pricing endpoint and platform admin.
+--
+-- subscriptions / subscription_payments: platform-owned records, but each
+-- row belongs to exactly one tenant, so they get the same shape of policy
+-- as organizations above. Platform admin never sets app.current_tenant for
+-- billing (recordPayment, setSuspension, the billing list), so the
+-- "no tenant set" arm keeps its full access, for writes too - unlike
+-- organizations, whose writes platform admin always makes with the tenant
+-- set. What this adds is defence in depth: any transaction that HAS a
+-- tenant set (every tenant-facing request, plus self-registration and
+-- platform onboarding, which set it before creating the subscription) can
+-- only see or write that tenant's own billing rows, instead of relying
+-- solely on "no tenant-facing endpoint queries these".
+
+ALTER TABLE subscriptions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE subscriptions FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON subscriptions;
+CREATE POLICY tenant_isolation ON subscriptions
+  USING (
+    "organizationId" = current_setting('app.current_tenant', true)
+    OR NULLIF(current_setting('app.current_tenant', true), '') IS NULL
+  )
+  WITH CHECK (
+    "organizationId" = current_setting('app.current_tenant', true)
+    OR NULLIF(current_setting('app.current_tenant', true), '') IS NULL
+  );
+
+ALTER TABLE subscription_payments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE subscription_payments FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON subscription_payments;
+CREATE POLICY tenant_isolation ON subscription_payments
+  USING (
+    NULLIF(current_setting('app.current_tenant', true), '') IS NULL
+    OR EXISTS (
+      SELECT 1 FROM subscriptions s
+      WHERE s.id = subscription_payments."subscriptionId"
+        AND s."organizationId" = current_setting('app.current_tenant', true)
+    )
+  )
+  WITH CHECK (
+    NULLIF(current_setting('app.current_tenant', true), '') IS NULL
+    OR EXISTS (
+      SELECT 1 FROM subscriptions s
+      WHERE s.id = subscription_payments."subscriptionId"
+        AND s."organizationId" = current_setting('app.current_tenant', true)
+    )
+  );
+
+-- ── riders / rider_otps ───────────────────────────────────────────────────
+-- Deliberately NO row-level security, same reason as buyers / buyer_otps: a rider
+-- signs in once and works for many businesses, so there is no single tenant to scope
+-- by. The access rules live in RidersService: a rider only ever reads or changes the
+-- row of their own verified id; a business only the riders whose organizationId is its
+-- own (plus, later, approved pool riders through a narrow view); a platform admin the
+-- rest. Both tables are on rls-coverage.spec.ts's exclusion list.
+
+-- ── Delivery jobs, quotes and contacts ────────────────────────────────────
+-- Four parties touch these: the business (app.current_tenant), the buyer of the order
+-- (app.current_buyer), and riders (app.current_rider, set only from a verified rider token,
+-- see DeliveryRiderService). What each may see:
+--   delivery_jobs      business: its own. Buyer: the job of their own order. Rider: the jobs
+--                      assigned to them, plus OPEN jobs they are allowed to quote on (an
+--                      approved rider; their own business's riders, or the shared pool when the
+--                      job is open to everyone; or the one rider a business picked).
+--   delivery_quotes    business: its own. Buyer: quotes on their own order's job. Rider: ONLY
+--                      their own quotes - never a competitor's.
+--   delivery_job_contacts  business: its own. Rider: only for the job assigned to them. The
+--                      buyer's name, phone and address are never visible to a rider who has not
+--                      been chosen. (The buyer already knows their own details.)
+-- Only the business and the buyer may create or change jobs; a rider may change a job only
+-- once it is assigned to them, and may only write quotes of their own on a job they can see.
+ALTER TABLE delivery_jobs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE delivery_jobs FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON delivery_jobs;
+CREATE POLICY tenant_isolation ON delivery_jobs
+  USING ("organizationId" = current_setting('app.current_tenant', true)
+         OR EXISTS (SELECT 1 FROM online_orders o WHERE o.id = delivery_jobs."orderId"
+                    AND o."buyerId" = current_setting('app.current_buyer', true))
+         OR "riderId" = current_setting('app.current_rider', true)
+         OR (status = 'OPEN'
+             AND EXISTS (SELECT 1 FROM riders r
+                         WHERE r.id = current_setting('app.current_rider', true)
+                           AND r.status = 'APPROVED'
+                           AND ((audience = 'EVERYONE' AND (r."organizationId" IS NULL OR r."organizationId" = delivery_jobs."organizationId"))
+                                OR (audience = 'SHOP_RIDERS' AND r."organizationId" = delivery_jobs."organizationId")
+                                OR (audience = 'ONE_RIDER' AND delivery_jobs."targetRiderId" = r.id)))))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true)
+              OR EXISTS (SELECT 1 FROM online_orders o WHERE o.id = delivery_jobs."orderId"
+                         AND o."buyerId" = current_setting('app.current_buyer', true))
+              OR "riderId" = current_setting('app.current_rider', true));
+
+ALTER TABLE delivery_quotes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE delivery_quotes FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON delivery_quotes;
+CREATE POLICY tenant_isolation ON delivery_quotes
+  USING ("organizationId" = current_setting('app.current_tenant', true)
+         OR "riderId" = current_setting('app.current_rider', true)
+         OR EXISTS (SELECT 1 FROM online_orders o JOIN delivery_jobs j ON j."orderId" = o.id
+                    WHERE j.id = delivery_quotes."jobId"
+                      AND o."buyerId" = current_setting('app.current_buyer', true)))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true)
+              OR EXISTS (SELECT 1 FROM online_orders o JOIN delivery_jobs j ON j."orderId" = o.id
+                         WHERE j.id = delivery_quotes."jobId"
+                           AND o."buyerId" = current_setting('app.current_buyer', true))
+              OR ("riderId" = current_setting('app.current_rider', true)
+                  AND EXISTS (SELECT 1 FROM delivery_jobs j WHERE j.id = delivery_quotes."jobId" AND j.status = 'OPEN')));
+
+ALTER TABLE delivery_job_contacts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE delivery_job_contacts FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON delivery_job_contacts;
+CREATE POLICY tenant_isolation ON delivery_job_contacts
+  USING ("organizationId" = current_setting('app.current_tenant', true)
+         OR EXISTS (SELECT 1 FROM delivery_jobs j WHERE j.id = delivery_job_contacts."jobId"
+                    AND j."riderId" = current_setting('app.current_rider', true)
+                    AND j.status IN ('ASSIGNED', 'PICKED_UP', 'DELIVERED')))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+-- ── Marketing teams (sales_teams, sales_agents, sales_earnings, sales_payouts) ───────────────────────────
+-- Platform-level tables with no tenant, like riders: the platform owner manages teams and their
+-- leaders; a leader manages their own team; a member sees only their own work. The rules live in
+-- SalesTeamsService / SalesAgentService (every query there is scoped by the verified agent's team or
+-- id), and both tables are on rls-coverage.spec.ts's exclusion list. A business's own row only gains
+-- the nullable salesTeamId / salesAgentId columns, which its own RLS policy already covers.
+
+-- ── Rental / property management module ───────────────────────────────────
+
+ALTER TABLE rental_properties ENABLE ROW LEVEL SECURITY;
+ALTER TABLE rental_properties FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON rental_properties;
+CREATE POLICY tenant_isolation ON rental_properties
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+ALTER TABLE rental_units ENABLE ROW LEVEL SECURITY;
+ALTER TABLE rental_units FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON rental_units;
+CREATE POLICY tenant_isolation ON rental_units
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+ALTER TABLE rental_tenants ENABLE ROW LEVEL SECURITY;
+ALTER TABLE rental_tenants FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON rental_tenants;
+CREATE POLICY tenant_isolation ON rental_tenants
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+ALTER TABLE rental_leases ENABLE ROW LEVEL SECURITY;
+ALTER TABLE rental_leases FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON rental_leases;
+CREATE POLICY tenant_isolation ON rental_leases
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+ALTER TABLE rental_invoices ENABLE ROW LEVEL SECURITY;
+ALTER TABLE rental_invoices FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON rental_invoices;
+CREATE POLICY tenant_isolation ON rental_invoices
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+ALTER TABLE rental_payments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE rental_payments FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON rental_payments;
+CREATE POLICY tenant_isolation ON rental_payments
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+ALTER TABLE rental_payment_allocations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE rental_payment_allocations FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON rental_payment_allocations;
+CREATE POLICY tenant_isolation ON rental_payment_allocations
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+ALTER TABLE rental_settings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE rental_settings FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON rental_settings;
+CREATE POLICY tenant_isolation ON rental_settings
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+ALTER TABLE rental_payment_requests ENABLE ROW LEVEL SECURITY;
+ALTER TABLE rental_payment_requests FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON rental_payment_requests;
+CREATE POLICY tenant_isolation ON rental_payment_requests
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));

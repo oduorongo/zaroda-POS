@@ -1,12 +1,13 @@
 import { randomUUID } from 'crypto';
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import { Prisma, Role } from '@prisma/client';
+import { OnlineStore, Prisma, Role } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '../common/prisma/prisma.service';
 import { CreatePlanDto, UpdatePlanDto } from './dto/create-plan.dto';
 import { OnboardTenantDto } from './dto/onboard-tenant.dto';
 import { RecordPaymentDto } from './dto/record-payment.dto';
-import { UpdateOrganizationDto } from './dto/update-organization.dto';
+import { SetOnlineStoreAddonDto, UpdateOrganizationDto } from './dto/update-organization.dto';
+import { DEFAULT_COMMISSION_RATE } from '../online-store/online-store.constants';
 import { effectiveStatus } from './subscriptions.util';
 
 const SALT_ROUNDS = 10;
@@ -27,8 +28,10 @@ const SALT_ROUNDS = 10;
  *   org's id for one transaction, then querying normally within it - the
  *   exact same mechanism TenantScopedPrismaService.run() uses, just
  *   looped across N tenants here instead of fixed to one.
- * - plans/subscriptions/subscription_payments carry no RLS at all (see
- *   their schema.prisma comment) - queried directly, no set_config needed.
+ * - plans carries no RLS; subscriptions/subscription_payments have a
+ *   policy whose "no tenant set" arm allows reads and writes (see rls.sql's
+ *   "platform billing tables" comment) - so billing is queried directly,
+ *   no set_config needed.
  *
  * Documented pilot-scale limit: the loop is N *sequential* round trips
  * for an org-list-with-counts view (deliberately not fired concurrently
@@ -49,6 +52,22 @@ const SALT_ROUNDS = 10;
  * problem, it's the identical bug freshly reintroduced.
  */
 const TX_OPTIONS = { timeout: 15_000, maxWait: 15_000 };
+
+/** Platform admin's view of a tenant's shop - status and commission, never the tenant's TUMA credential. */
+function toPlatformOnlineStoreView(store: OnlineStore | null) {
+  const commissionRate = store?.commissionRate != null ? Number(store.commissionRate) : null;
+  return {
+    addonActive: store?.addonActive ?? false,
+    commissionRate,
+    effectiveCommissionRate: commissionRate ?? DEFAULT_COMMISSION_RATE,
+    isPublished: store?.isPublished ?? false,
+    slug: store?.slug ?? null,
+    displayName: store?.displayName ?? null,
+    tumaConnected: Boolean(store?.tumaApiKeyEncrypted),
+    paymentGateway: store?.paymentGateway ?? 'TUMA',
+    mpesaConnected: Boolean(store?.mpesaConsumerKeyEncrypted && store?.mpesaPasskeyEncrypted),
+  };
+}
 
 @Injectable()
 export class PlatformAdminService {
@@ -108,12 +127,17 @@ export class PlatformAdminService {
       where: { organizationId: id },
       include: { plan: true, payments: { orderBy: { paidAt: 'desc' }, take: 20 } },
     });
+    const onlineStore = await this.prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT set_config('app.current_tenant', ${id}, true)`;
+      return tx.onlineStore.findUnique({ where: { organizationId: id } });
+    }, TX_OPTIONS);
 
     return {
       ...org,
       ...counts,
       branches,
       orgUsers,
+      onlineStore: toPlatformOnlineStoreView(onlineStore),
       subscription: subscription
         ? { ...subscription, status: effectiveStatus(subscription) }
         : null,
@@ -154,8 +178,17 @@ export class PlatformAdminService {
     return this.prisma.plan.findMany({ orderBy: { priceKes: 'asc' } });
   }
 
-  createPlan(dto: CreatePlanDto) {
-    return this.prisma.plan.create({ data: dto });
+  async createPlan(dto: CreatePlanDto) {
+    try {
+      return await this.prisma.plan.create({ data: dto });
+    } catch (e) {
+      // tier is unique - say so, instead of a bare 500 (found when rehearsing
+      // the launch against a copy of the live data, where BASIC already exists).
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
+        throw new ConflictException(`A plan with the tier "${dto.tier}" already exists`);
+      }
+      throw e;
+    }
   }
 
   async updatePlan(id: string, dto: UpdatePlanDto) {
@@ -173,7 +206,15 @@ export class PlatformAdminService {
    * admin walking someone through onboarding implies a plan has already
    * been agreed, not a self-serve trial.
    */
-  async onboardTenant(dto: OnboardTenantDto) {
+  /**
+   * options.attribution credits the business to a marketing team and the member who onboarded it (set once, here;
+   * only the platform owner can change it later). options.trial starts it on a 14-day free trial, as a self-signup
+   * does, instead of straight onto a paid period - which is what team members' onboarding uses.
+   */
+  async onboardTenant(
+    dto: OnboardTenantDto,
+    options: { attribution?: { salesTeamId: string; salesAgentId: string }; trial?: boolean } = {},
+  ) {
     const plan = await this.prisma.plan.findUnique({ where: { tier: dto.planTier } });
     if (!plan) throw new NotFoundException(`No plan with tier ${dto.planTier}`);
 
@@ -188,6 +229,7 @@ export class PlatformAdminService {
             name: dto.organizationName,
             industryType: dto.industryType,
             kraPin: dto.kraPin,
+            ...(options.attribution ?? {}),
           },
         });
 
@@ -218,8 +260,8 @@ export class PlatformAdminService {
           data: {
             organizationId,
             planId: plan.id,
-            currentPeriodEnd: new Date(Date.now() + plan.billingPeriodDays * 24 * 60 * 60 * 1000),
-            isTrial: false,
+            currentPeriodEnd: new Date(Date.now() + (options.trial ? 14 : plan.billingPeriodDays) * 24 * 60 * 60 * 1000),
+            isTrial: options.trial ?? false,
           },
         });
 
@@ -352,6 +394,35 @@ export class PlatformAdminService {
       include: { plan: true },
     });
     return { ...updated, status: effectiveStatus(updated) };
+  }
+
+  /**
+   * Switches the paid Online Shop add-on on or off for one tenant - the
+   * only way an online_stores row is ever created (a tenant can only
+   * update an existing, active one). Switching off keeps every setting so
+   * switching back on restores the shop exactly as it was; the storefront
+   * hides any shop whose add-on is off regardless of isPublished.
+   */
+  async setOnlineStoreAddon(organizationId: string, dto: SetOnlineStoreAddonDto) {
+    const org = await this.prisma.organization.findUnique({ where: { id: organizationId } });
+    if (!org) throw new NotFoundException('Organization not found');
+
+    const store = await this.prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT set_config('app.current_tenant', ${organizationId}, true)`;
+      return tx.onlineStore.upsert({
+        where: { organizationId },
+        create: {
+          organizationId,
+          addonActive: dto.addonActive,
+          commissionRate: dto.commissionRate ?? null,
+        },
+        update: {
+          addonActive: dto.addonActive,
+          commissionRate: dto.commissionRate,
+        },
+      });
+    }, TX_OPTIONS);
+    return toPlatformOnlineStoreView(store);
   }
 
   // ── Platform analytics ──────────────────────────────────────────────

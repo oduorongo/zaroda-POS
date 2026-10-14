@@ -17,6 +17,10 @@
     --foreground: #f1f5f9;
     --surface: #1e293b;
     --border: #334155;
+    --primary-500-rgb: 126 160 214;
+    --primary-600-rgb: 79 120 181;
+    --primary-700-rgb: 63 97 153;
+    --primary-800-rgb: 52 82 129;
   }
 }
 
@@ -26,6 +30,10 @@
   --foreground: #f1f5f9;
   --surface: #1e293b;
   --border: #334155;
+  --primary-500-rgb: 126 160 214;
+  --primary-600-rgb: 79 120 181;
+  --primary-700-rgb: 63 97 153;
+  --primary-800-rgb: 52 82 129;
 }
 
 body {
@@ -38,4 +46,27 @@ body {
   .text-balance {
     text-wrap: balance;
   }
+}
+
+/* Dark mode: the mid-grey text shades (muted text, labels) are too dark to read on the dark background,
+   so they are lightened here - dark mode only. Backgrounds and borders are untouched. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .text-secondary-500 { color: rgb(148 163 184 / var(--tw-text-opacity, 1)); }
+  :root:not([data-theme="light"]) .text-secondary-600 { color: rgb(203 213 225 / var(--tw-text-opacity, 1)); }
+  :root:not([data-theme="light"]) .text-secondary-700 { color: rgb(226 232 240 / var(--tw-text-opacity, 1)); }
+  :root:not([data-theme="light"]) .text-secondary-900 { color: rgb(241 245 249 / var(--tw-text-opacity, 1)); }
+  :root:not([data-theme="light"]) .hover\:text-secondary-600:hover { color: rgb(203 213 225 / var(--tw-text-opacity, 1)); }
+}
+:root[data-theme="dark"] .text-secondary-500 { color: rgb(148 163 184 / var(--tw-text-opacity, 1)); }
+:root[data-theme="dark"] .text-secondary-600 { color: rgb(203 213 225 / var(--tw-text-opacity, 1)); }
+:root[data-theme="dark"] .text-secondary-700 { color: rgb(226 232 240 / var(--tw-text-opacity, 1)); }
+:root[data-theme="dark"] .text-secondary-900 { color: rgb(241 245 249 / var(--tw-text-opacity, 1)); }
+:root[data-theme="dark"] .hover\:text-secondary-600:hover { color: rgb(203 213 225 / var(--tw-text-opacity, 1)); }
+
+/* Screens inside the till frame fill the space between the ribbons rather than the whole window. */
+#till-screen .h-screen {
+  height: 100%;
+}
+#till-screen .min-h-screen {
+  min-height: 100%;
 }

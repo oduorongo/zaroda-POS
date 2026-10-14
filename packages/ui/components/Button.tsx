@@ -6,9 +6,9 @@ type Size = "sm" | "md" | "lg" | "touch";
 
 const variantClasses: Record<Variant, string> = {
   primary: "bg-primary-600 text-white hover:bg-primary-700 active:bg-primary-800",
-  secondary: "bg-secondary-100 text-secondary-900 hover:bg-secondary-200 active:bg-secondary-300",
-  outline: "border border-border bg-transparent text-foreground hover:bg-secondary-50",
-  ghost: "bg-transparent text-foreground hover:bg-secondary-100",
+  secondary: "bg-secondary-500/10 text-secondary-900 hover:bg-secondary-500/20 active:bg-secondary-500/30",
+  outline: "border border-border bg-transparent text-foreground hover:bg-secondary-500/5",
+  ghost: "bg-transparent text-foreground hover:bg-secondary-500/10",
   danger: "bg-error-600 text-white hover:bg-error-700",
   success: "bg-success-600 text-white hover:bg-success-700",
   // M-Pesa green (tokens.colors.accent) - reserved for M-Pesa payment

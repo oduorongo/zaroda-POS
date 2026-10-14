@@ -31,6 +31,21 @@ const INTENTIONALLY_EXCLUDED = new Set([
   // that connects as a separate BYPASSRLS role, never tenant-facing.
   'platform_admins',
   'platform_audit_log',
+  // Online Shop buyers shop across many businesses with one login - see
+  // rls.sql's "buyers / buyer_otps" comment.
+  'buyers',
+  'buyer_otps',
+  // Riders sign in across businesses like buyers - see rls.sql's "riders" comment.
+  'riders',
+  'rider_otps',
+  // Marketing teams and their members are platform-level (no tenant) - see rls.sql's "marketing teams" comment.
+  'sales_teams',
+  'sales_agents',
+  'sales_earnings',
+  'sales_payouts',
+  // A global price list with no organizationId - see rls.sql's "platform
+  // billing tables" comment.
+  'plans',
 ]);
 
 function extractMappedTables(schemaSource: string): string[] {
