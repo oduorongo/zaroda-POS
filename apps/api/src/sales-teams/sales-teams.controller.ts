@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { SalesAgentRole } from '@prisma/client';
 import { Request } from 'express';
@@ -14,8 +14,10 @@ import {
 } from './dto/sales-team.dto';
 import { CreateShopRiderDto } from '../riders/dto/rider.dto';
 import { AddMemberDto, OnboardTenantByAgentDto, SetMemberStatusDto } from './dto/sales-portal.dto';
+import { EarningsMonthQueryDto, PayoutsQueryDto, RecordSalesPayoutDto } from './dto/sales-earnings.dto';
 import { AuthenticatedAgent, CurrentAgent, PasswordChangedGuard, SalesAgentAuthGuard } from './sales-agent-auth';
 import { SalesAgentService } from './sales-agent.service';
+import { SalesEarningsService } from './sales-earnings.service';
 import { SalesPortalService } from './sales-portal.service';
 import { SalesTeamsService } from './sales-teams.service';
 
@@ -197,5 +199,45 @@ export class SalesPortalController {
   @HttpCode(200)
   resetMemberPassword(@CurrentAgent() agent: AuthenticatedAgent, @Param('id', ParseUUIDPipe) id: string) {
     return this.portal.resetMemberPassword(agent, id);
+  }
+}
+
+/** A person's own earnings statement: this month, what is still owed to them, what they have been paid. A leader also sees the team. */
+@Controller('sales-agent/earnings')
+export class SalesEarningsAgentController {
+  constructor(private readonly earnings: SalesEarningsService) {}
+
+  @Public()
+  @UseGuards(SalesAgentAuthGuard, PasswordChangedGuard)
+  @Get()
+  statement(@CurrentAgent() agent: AuthenticatedAgent, @Query() query: EarningsMonthQueryDto) {
+    return this.earnings.statement(agent, query.month);
+  }
+}
+
+/** The platform owner's side of the money: what every team has earned and is owed, and recording a payment made. */
+@Controller('platform-admin/sales-earnings')
+export class SalesEarningsAdminController {
+  constructor(private readonly earnings: SalesEarningsService) {}
+
+  @Public()
+  @UseGuards(PlatformAdminAuthGuard)
+  @Get()
+  overview(@Query() query: EarningsMonthQueryDto) {
+    return this.earnings.overview(query.month);
+  }
+
+  @Public()
+  @UseGuards(PlatformAdminAuthGuard)
+  @Get('payouts')
+  payouts(@Query() query: PayoutsQueryDto) {
+    return this.earnings.payouts(query.agentId);
+  }
+
+  @Public()
+  @UseGuards(PlatformAdminAuthGuard)
+  @Post('payouts')
+  recordPayout(@Req() req: PlatformAdminRequest, @Body() dto: RecordSalesPayoutDto) {
+    return this.earnings.recordPayout(req.user!.platformAdminId, dto);
   }
 }

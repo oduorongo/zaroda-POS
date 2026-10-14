@@ -115,10 +115,10 @@ function HomeBody({ me, reload }: { me: TeamMe; reload: () => Promise<void> }) {
         <h2 className="font-semibold">Your team&apos;s earning terms</h2>
         <ul className="space-y-1 text-sm text-secondary-600">
           <li>Members earn {pct(me.team.memberShareRate)} of what Zaroda collects as online-order commission from the shops they onboard.</li>
-          <li>The team leader also earns {pct(me.team.leaderOverrideRate)} of everything the team earns.</li>
+          <li>The team leader also earns {pct(me.team.leaderOverrideRate)} of the commission collected from all the team&apos;s shops.</li>
           <li>A bonus of KES {me.team.onboardingBonusKes.toLocaleString("en-KE")} for each shop, once it pays its first monthly subscription.</li>
         </ul>
-        <p className="text-xs text-secondary-500">Your earnings statement is coming next.</p>
+        <p className="text-xs text-secondary-500">Only money Zaroda has actually received counts. See the Earnings page for what you have earned and been paid.</p>
       </section>
 
       <form onSubmit={changePassword} className="space-y-3 rounded-lg border border-border bg-surface p-4">

@@ -99,3 +99,23 @@ export const teamChangePassword = (currentPassword: string, newPassword: string)
 export const teamGet = <T>(path: string) => request<T>(`/sales-agent${path}`, { method: "GET" });
 export const teamPost = <T>(path: string, body: unknown) => request<T>(`/sales-agent${path}`, { method: "POST", body: JSON.stringify(body) });
 export const teamPatch = <T>(path: string, body: unknown) => request<T>(`/sales-agent${path}`, { method: "PATCH", body: JSON.stringify(body) });
+
+export interface EarningLine {
+  id: string;
+  kind: "COMMISSION_SHARE" | "LEADER_OVERRIDE" | "ONBOARDING_BONUS";
+  shop: string;
+  baseKes: number;
+  rate: number | null;
+  amountKes: number;
+  earnedAt: string;
+  status: "ACCRUED" | "PAID";
+}
+
+export interface EarningsStatement {
+  month: string;
+  thisMonth: { commissionShare: number; leaderOverride: number; onboardingBonus: number; total: number };
+  allTime: { unpaid: number; paid: number };
+  lines: EarningLine[];
+  payouts: { id: string; amountKes: number; throughMonth: string; method: string; reference: string | null; paidAt: string }[];
+  team: { agentId: string; fullName: string; role: "LEADER" | "MEMBER"; earnedThisMonth: number; unpaid: number }[] | null;
+}
