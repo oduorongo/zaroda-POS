@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { apiGet, apiPost, ApiError } from "../../lib/api";
+import { MpesaSettingsPanel, type MpesaSettings } from "./mpesa-settings";
 
 interface DueRow {
   leaseId: string;
@@ -29,6 +30,19 @@ interface PaymentRow {
   unit: string;
 }
 
+interface PromptRow {
+  id: string;
+  leaseId: string;
+  tenantName: string | null;
+  amount: number;
+  phone: string;
+  gateway: string;
+  status: "PENDING" | "PAID" | "FAILED" | "REVIEW";
+  mpesaReceipt: string | null;
+  lastError: string | null;
+  createdAt: string;
+}
+
 const input = "w-full rounded-md border border-border bg-surface p-2 text-sm";
 const button = "rounded-md bg-primary-600 px-3 py-2 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-50";
 const smallButton = "rounded border border-border px-2 py-1 text-xs hover:bg-background disabled:opacity-50";
@@ -49,14 +63,19 @@ export function RentSection({ onChanged }: { onChanged: () => void }) {
   const [busy, setBusy] = useState(false);
   const [paying, setPaying] = useState<DueRow | null>(null);
   const [charging, setCharging] = useState<DueRow | null>(null);
+  const [prompting, setPrompting] = useState<DueRow | null>(null);
+  const [promptForm, setPromptForm] = useState({ amount: "", phone: "" });
+  const [prompts, setPrompts] = useState<PromptRow[]>([]);
+  const [mpesaReady, setMpesaReady] = useState(false);
   const [payForm, setPayForm] = useState({ amount: "", method: "MPESA", reference: "", paidAt: "", note: "" });
   const [chargeForm, setChargeForm] = useState({ description: "", amount: "" });
 
   async function load() {
     try {
-      const [d, p] = await Promise.all([apiGet<DueRow[]>("/rental/dues"), apiGet<PaymentRow[]>("/rental/payments")]);
+      const [d, p, r] = await Promise.all([apiGet<DueRow[]>("/rental/dues"), apiGet<PaymentRow[]>("/rental/payments"), apiGet<PromptRow[]>("/rental/mpesa/requests")]);
       setDues(d);
       setPayments(p);
+      setPrompts(r);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not load rent details.");
     }
@@ -65,6 +84,14 @@ export function RentSection({ onChanged }: { onChanged: () => void }) {
   useEffect(() => {
     void load();
   }, []);
+
+  // While a tenant is still entering their PIN, keep the screen fresh so the payment shows up on its own.
+  const waiting = prompts.some((p) => p.status === "PENDING");
+  useEffect(() => {
+    if (!waiting) return;
+    const timer = setInterval(() => void load(), 6000);
+    return () => clearInterval(timer);
+  }, [waiting]);
 
   async function run(action: () => Promise<void>) {
     setBusy(true);
@@ -82,6 +109,7 @@ export function RentSection({ onChanged }: { onChanged: () => void }) {
 
   function startPayment(row: DueRow) {
     setCharging(null);
+    setPrompting(null);
     setPaying(row);
     setNotice(null);
     setPayForm({ amount: row.outstanding > 0 ? String(row.outstanding) : "", method: "MPESA", reference: "", paidAt: "", note: "" });
@@ -106,6 +134,36 @@ export function RentSection({ onChanged }: { onChanged: () => void }) {
       setPaying(null);
     });
   };
+
+  function startPrompt(row: DueRow) {
+    setPaying(null);
+    setCharging(null);
+    setNotice(null);
+    setPrompting(row);
+    setPromptForm({ amount: row.outstanding > 0 ? String(row.outstanding) : "", phone: row.tenant.phone ?? "" });
+  }
+
+  const submitPrompt = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!prompting) return;
+    void run(async () => {
+      const result = await apiPost<PromptRow>("/rental/mpesa/requests", {
+        leaseId: prompting.leaseId,
+        amount: Number(promptForm.amount),
+        phone: promptForm.phone || undefined,
+      });
+      if (result.status === "FAILED") throw new ApiError(result.lastError ?? "The M-Pesa prompt could not be sent.", 502);
+      setNotice({ text: `M-Pesa prompt for KES ${money(Number(promptForm.amount))} sent to ${prompting.tenant.name}'s phone. The rent is recorded automatically once they enter their PIN.` });
+      setPrompting(null);
+    });
+  };
+
+  function checkPrompt(p: PromptRow) {
+    void run(async () => {
+      const result = await apiPost<PromptRow>(`/rental/mpesa/requests/${p.id}/check`, {});
+      setNotice({ text: result.status === "PAID" ? `Payment received from ${p.tenantName}.` : "Not paid yet - the tenant may still be entering their PIN." });
+    });
+  }
 
   const submitCharge = (e: React.FormEvent) => {
     e.preventDefault();
@@ -151,6 +209,8 @@ export function RentSection({ onChanged }: { onChanged: () => void }) {
         </div>
       </div>
 
+      <MpesaSettingsPanel onChange={(s: MpesaSettings) => setMpesaReady(s.ready)} />
+
       {error && <p className="rounded-md bg-red-950 p-3 text-sm text-red-300">{error}</p>}
       {notice && (
         <p className="rounded-md bg-green-950 p-3 text-sm text-green-300">
@@ -192,6 +252,43 @@ export function RentSection({ onChanged }: { onChanged: () => void }) {
             <button type="button" className={smallButton} onClick={() => setPaying(null)}>Cancel</button>
           </div>
         </form>
+      )}
+
+      {prompting && (
+        <form onSubmit={submitPrompt} className="grid gap-2 rounded-lg border-2 border-green-600 bg-surface p-3 sm:grid-cols-4">
+          <p className="text-sm font-semibold sm:col-span-4">
+            Ask {prompting.tenant.name} to pay by M-Pesa - {prompting.unit.property.name} {prompting.unit.label}
+            <span className="ml-2 font-normal text-secondary-500">owes KES {money(prompting.outstanding)}</span>
+          </p>
+          <input className={input} type="number" min="1" step="0.01" required placeholder="Amount" value={promptForm.amount} onChange={(e) => setPromptForm({ ...promptForm, amount: e.target.value })} />
+          <input className={input} required placeholder="Tenant's Safaricom number" value={promptForm.phone} onChange={(e) => setPromptForm({ ...promptForm, phone: e.target.value })} />
+          <div className="flex gap-2 sm:col-span-2">
+            <button className={button} disabled={busy}>Send M-Pesa prompt</button>
+            <button type="button" className={smallButton} onClick={() => setPrompting(null)}>Cancel</button>
+          </div>
+        </form>
+      )}
+
+      {prompts.some((p) => p.status !== "PAID" && Date.now() - new Date(p.createdAt).getTime() < 24 * 3600 * 1000) && (
+        <div className="rounded-lg border border-border bg-surface p-3">
+          <p className="mb-2 text-sm font-semibold">M-Pesa prompts waiting or needing attention</p>
+          {prompts
+            .filter((p) => p.status !== "PAID" && Date.now() - new Date(p.createdAt).getTime() < 24 * 3600 * 1000)
+            .map((p) => (
+              <div key={p.id} className="flex flex-wrap items-center justify-between gap-2 border-t border-border py-2 text-sm first:border-t-0">
+                <span>
+                  {p.tenantName} - KES {money(p.amount)}{" "}
+                  <span className={p.status === "PENDING" ? "text-amber-400" : "text-red-400"}>
+                    {p.status === "PENDING" ? "waiting for the tenant to enter their PIN" : p.status === "REVIEW" ? "needs a look" : "did not go through"}
+                  </span>
+                  {p.lastError && <span className="block text-xs text-secondary-500">{p.lastError}</span>}
+                </span>
+                {p.status === "PENDING" && (
+                  <button className={smallButton} disabled={busy} onClick={() => checkPrompt(p)}>Check now</button>
+                )}
+              </div>
+            ))}
+        </div>
       )}
 
       {charging && (
@@ -238,8 +335,11 @@ export function RentSection({ onChanged }: { onChanged: () => void }) {
                   <td className={`p-2 ${r.overdue > 0 ? "font-semibold text-red-400" : ""}`}>{r.overdue > 0 ? money(r.overdue) : "-"}</td>
                   <td className="p-2">{r.lastPaidAt ? day(r.lastPaidAt) : "-"}</td>
                   <td className="space-x-1 p-2 text-right whitespace-nowrap">
+                    {mpesaReady && (
+                      <button className={smallButton} disabled={busy} onClick={() => startPrompt(r)}>Ask by M-Pesa</button>
+                    )}
                     <button className={smallButton} disabled={busy} onClick={() => startPayment(r)}>Record payment</button>
-                    <button className={smallButton} disabled={busy} onClick={() => { setPaying(null); setCharging(r); setNotice(null); }}>+ Charge</button>
+                    <button className={smallButton} disabled={busy} onClick={() => { setPaying(null); setPrompting(null); setCharging(r); setNotice(null); }}>+ Charge</button>
                     <Link href={`/rentals/print/statement/${r.leaseId}`} target="_blank" className={`${smallButton} inline-block`}>Statement</Link>
                   </td>
                 </tr>

@@ -2,6 +2,7 @@ import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/commo
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../common/prisma/prisma.service';
 import { RentalBillingService } from './rental-billing.service';
+import { RentalMpesaService } from './rental-mpesa.service';
 
 // First run shortly after boot (so a restart after downtime catches up), then once an hour. Generating
 // invoices is idempotent, so a pass with nothing to do is cheap.
@@ -24,6 +25,7 @@ export class RentalSchedulerService implements OnModuleInit, OnModuleDestroy {
   constructor(
     private readonly prisma: PrismaService,
     private readonly billing: RentalBillingService,
+    private readonly mpesa: RentalMpesaService,
     private readonly config: ConfigService,
   ) {}
 
@@ -59,6 +61,8 @@ export class RentalSchedulerService implements OnModuleInit, OnModuleDestroy {
           await tx.$executeRaw`SELECT set_config('app.current_tenant', ${org.id}, true)`;
           return this.billing.syncOrganization(tx, org.id);
         }, TX_OPTIONS);
+        // Prompts still waiting after a missed callback: ask Safaricom (free) for landlords on their own Paybill/Till.
+        await this.mpesa.reconcileDaraja(org.id).catch((e) => this.logger.warn({ err: e }, 'Rent prompt reconcile failed'));
       }
       if (created > 0) this.logger.log({ created }, 'Rental invoices created');
     } catch (e) {
