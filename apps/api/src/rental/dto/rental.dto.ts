@@ -1,4 +1,7 @@
 import {
+  ArrayMaxSize,
+  ArrayMinSize,
+  IsArray,
   IsDateString,
   IsEmail,
   IsInt,
@@ -71,6 +74,29 @@ export class CreateUnitDto {
   notes?: string;
 }
 
+export class BulkCreateUnitsDto {
+  @IsUUID()
+  propertyId!: string;
+
+  // One entry per unit, e.g. ["A1", "A2", "A3"]. Labels the property already has are skipped, not failed.
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(300)
+  @IsString({ each: true })
+  @MinLength(1, { each: true })
+  @MaxLength(60, { each: true })
+  labels!: string[];
+
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  monthlyRent!: number;
+
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  @IsOptional()
+  depositAmount?: number;
+}
+
 export class UpdateUnitDto {
   @IsString()
   @MinLength(1)
@@ -99,6 +125,31 @@ export class CreateTenantDto {
   @MinLength(1)
   @MaxLength(120)
   name!: string;
+
+  // Optional: put the new tenant straight into a vacant unit (the lease is created in the same step).
+  @IsUUID()
+  @IsOptional()
+  unitId?: string;
+
+  @IsDateString()
+  @IsOptional()
+  startDate?: string;
+
+  @IsInt()
+  @Min(1)
+  @Max(28)
+  @IsOptional()
+  dueDay?: number;
+
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  @IsOptional()
+  monthlyRent?: number;
+
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  @IsOptional()
+  depositAmount?: number;
 
   @IsString()
   @MaxLength(30)

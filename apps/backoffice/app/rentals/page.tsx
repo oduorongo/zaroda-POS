@@ -21,6 +21,7 @@ interface Unit {
   monthlyRent: string;
   depositAmount: string;
   status: "VACANT" | "OCCUPIED";
+  leases: { tenant: { id: string; name: string } }[];
   property: { id: string; name: string };
 }
 
@@ -53,6 +54,28 @@ const button = "rounded-md bg-primary-600 px-3 py-2 text-sm font-medium text-whi
 const money = (v: string | number) => Number(v).toLocaleString("en-KE", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 const day = (iso: string) => iso.slice(0, 10);
 
+// Turns what a landlord types into unit names. Accepts names separated by commas or new lines ("A1, A2, B1")
+// and ranges like "A1-A10" or "Room 1-12" (the number is counted up, zero-padding such as 01-12 is kept).
+function expandUnitNames(text: string): string[] {
+  const names: string[] = [];
+  for (const raw of text.split(/[\n,]+/)) {
+    const token = raw.trim();
+    if (!token) continue;
+    const range = token.match(/^(.*?)(\d+)\s*-\s*(?:.*?)(\d+)$/);
+    if (range) {
+      const [, prefix, from, to] = range;
+      const start = Number(from);
+      const end = Number(to);
+      if (end >= start && end - start < 300) {
+        for (let n = start; n <= end; n++) names.push(prefix + String(n).padStart(from.length, "0"));
+        continue;
+      }
+    }
+    names.push(token);
+  }
+  return names.filter((n, i) => names.indexOf(n) === i);
+}
+
 /**
  * Landlord screen for the RENTAL industry: properties and their units,
  * tenants, and the leases that put a tenant in a unit. Rent invoicing and
@@ -71,7 +94,10 @@ export default function RentalsPage() {
 
   const [propForm, setPropForm] = useState({ name: "", address: "" });
   const [unitForm, setUnitForm] = useState({ propertyId: "", label: "", monthlyRent: "", depositAmount: "" });
-  const [tenantForm, setTenantForm] = useState({ name: "", phone: "", email: "", idNumber: "" });
+  const [bulkForm, setBulkForm] = useState({ propertyId: "", names: "", monthlyRent: "", depositAmount: "" });
+  const [notice, setNotice] = useState<string | null>(null);
+  const emptyTenant = { name: "", phone: "", email: "", idNumber: "", unitId: "", startDate: "", dueDay: "1" };
+  const [tenantForm, setTenantForm] = useState(emptyTenant);
   const [leaseForm, setLeaseForm] = useState({ unitId: "", tenantId: "", startDate: "", dueDay: "1", monthlyRent: "", depositAmount: "" });
 
   useEffect(() => {
@@ -148,8 +174,32 @@ export default function RentalsPage() {
     );
   };
 
+  const bulkNames = expandUnitNames(bulkForm.names);
+
+  const addUnitsBulk = (e: React.FormEvent) => {
+    e.preventDefault();
+    setNotice(null);
+    void submit(
+      async () => {
+        const result = await apiPost<{ created: number; skipped: string[] }>("/rental/units/bulk", {
+          propertyId: bulkForm.propertyId,
+          labels: bulkNames,
+          monthlyRent: Number(bulkForm.monthlyRent),
+          depositAmount: bulkForm.depositAmount ? Number(bulkForm.depositAmount) : undefined,
+        });
+        setNotice(
+          `Added ${result.created} unit${result.created === 1 ? "" : "s"}.` +
+            (result.skipped.length ? ` Skipped ${result.skipped.length} that already exist: ${result.skipped.join(", ")}.` : ""),
+        );
+      },
+      () => setBulkForm({ ...bulkForm, names: "", monthlyRent: "", depositAmount: "" }),
+    );
+  };
+
   const addTenant = (e: React.FormEvent) => {
     e.preventDefault();
+    setNotice(null);
+    const withUnit = !!tenantForm.unitId;
     void submit(
       () =>
         apiPost("/rental/tenants", {
@@ -157,9 +207,21 @@ export default function RentalsPage() {
           phone: tenantForm.phone || undefined,
           email: tenantForm.email || undefined,
           idNumber: tenantForm.idNumber || undefined,
+          unitId: withUnit ? tenantForm.unitId : undefined,
+          startDate: withUnit ? tenantForm.startDate : undefined,
+          dueDay: withUnit ? Number(tenantForm.dueDay) : undefined,
         }),
-      () => setTenantForm({ name: "", phone: "", email: "", idNumber: "" }),
+      () => {
+        setTenantForm(emptyTenant);
+        if (withUnit) setNotice(`${tenantForm.name} has been added and given the unit.`);
+      },
     );
+  };
+
+  // For a tenant added earlier with no unit: jump to the lease form with them already chosen.
+  const giveUnit = (tenantId: string) => {
+    setLeaseForm({ ...leaseForm, tenantId });
+    setTab("leases");
   };
 
   const addLease = (e: React.FormEvent) => {
@@ -215,6 +277,7 @@ export default function RentalsPage() {
         </div>
 
         {error && <p className="mb-4 rounded-md bg-red-950 p-3 text-sm text-red-300">{error}</p>}
+        {notice && <p className="mb-4 rounded-md bg-green-950 p-3 text-sm text-green-300">{notice}</p>}
 
         <div className="mb-4 flex gap-2">
           {(["properties", "tenants", "leases"] as Tab[]).map((t) => (
@@ -249,6 +312,35 @@ export default function RentalsPage() {
               <button className={button} disabled={busy}>Add unit</button>
             </form>
 
+            <form onSubmit={addUnitsBulk} className="grid gap-2 rounded-lg border border-border bg-surface p-3 sm:grid-cols-4">
+              <p className="text-sm font-semibold sm:col-span-4">Add many units at once</p>
+              <select className={input} required value={bulkForm.propertyId} onChange={(e) => setBulkForm({ ...bulkForm, propertyId: e.target.value })}>
+                <option value="">Property...</option>
+                {properties.map((p) => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
+              </select>
+              <input className={input} type="number" min="0" step="0.01" placeholder="Monthly rent (same for all)" required value={bulkForm.monthlyRent} onChange={(e) => setBulkForm({ ...bulkForm, monthlyRent: e.target.value })} />
+              <input className={input} type="number" min="0" step="0.01" placeholder="Deposit (same for all)" value={bulkForm.depositAmount} onChange={(e) => setBulkForm({ ...bulkForm, depositAmount: e.target.value })} />
+              <button className={button} disabled={busy || bulkNames.length === 0}>
+                Add {bulkNames.length || ""} unit{bulkNames.length === 1 ? "" : "s"}
+              </button>
+              <textarea
+                className={`${input} sm:col-span-4`}
+                rows={2}
+                required
+                placeholder="Type a range like A1-A20, or names separated by commas: A1, A2, Shop 3"
+                value={bulkForm.names}
+                onChange={(e) => setBulkForm({ ...bulkForm, names: e.target.value })}
+              />
+              {bulkNames.length > 0 && (
+                <p className="text-xs text-secondary-500 sm:col-span-4">
+                  Will add: {bulkNames.slice(0, 12).join(", ")}
+                  {bulkNames.length > 12 ? ` ... and ${bulkNames.length - 12} more` : ""}
+                </p>
+              )}
+            </form>
+
             {properties.map((p) => (
               <section key={p.id} className="rounded-lg border border-border bg-surface p-3">
                 <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
@@ -265,7 +357,7 @@ export default function RentalsPage() {
                       <div key={u.id} className={`rounded-md border-2 p-2 text-center ${u.status === "OCCUPIED" ? "border-green-700" : "border-amber-700"}`}>
                         <p className="font-bold">{u.label}</p>
                         <p className="text-xs">KES {money(u.monthlyRent)}</p>
-                        <p className="text-xs uppercase tracking-wide text-secondary-500">{u.status}</p>
+                        <p className="text-xs uppercase tracking-wide text-secondary-500">{u.leases[0]?.tenant.name ?? u.status}</p>
                       </div>
                     ))}
                   {p.unitCount === 0 && <p className="col-span-full text-sm text-secondary-500">No units yet.</p>}
@@ -284,6 +376,22 @@ export default function RentalsPage() {
               <input className={input} type="email" placeholder="Email" value={tenantForm.email} onChange={(e) => setTenantForm({ ...tenantForm, email: e.target.value })} />
               <input className={input} placeholder="ID number" value={tenantForm.idNumber} onChange={(e) => setTenantForm({ ...tenantForm, idNumber: e.target.value })} />
               <button className={button} disabled={busy}>Add tenant</button>
+              <select
+                className={`${input} sm:col-span-2`}
+                value={tenantForm.unitId}
+                onChange={(e) => setTenantForm({ ...tenantForm, unitId: e.target.value })}
+              >
+                <option value="">Give a unit now (optional)...</option>
+                {vacantUnits.map((u) => (
+                  <option key={u.id} value={u.id}>{u.property.name} - {u.label} (KES {money(u.monthlyRent)})</option>
+                ))}
+              </select>
+              {tenantForm.unitId && (
+                <>
+                  <input className={input} type="date" required title="Move-in date" value={tenantForm.startDate} onChange={(e) => setTenantForm({ ...tenantForm, startDate: e.target.value })} />
+                  <input className={input} type="number" min="1" max="28" title="Day of the month rent is due" placeholder="Rent due day" value={tenantForm.dueDay} onChange={(e) => setTenantForm({ ...tenantForm, dueDay: e.target.value })} />
+                </>
+              )}
             </form>
             <div className="overflow-x-auto rounded-lg border border-border bg-surface">
               <table className="w-full text-left text-sm">
@@ -293,6 +401,7 @@ export default function RentalsPage() {
                     <th className="p-2">Phone</th>
                     <th className="p-2">ID</th>
                     <th className="p-2">Renting</th>
+                    <th className="p-2" />
                   </tr>
                 </thead>
                 <tbody>
@@ -301,12 +410,17 @@ export default function RentalsPage() {
                       <td className="p-2 font-medium">{t.name}</td>
                       <td className="p-2">{t.phone ?? "-"}</td>
                       <td className="p-2">{t.idNumber ?? "-"}</td>
-                      <td className="p-2">{t.leases.map((l) => `${l.unit.property.name} ${l.unit.label}`).join(", ") || "-"}</td>
+                      <td className="p-2">{t.leases.map((l) => `${l.unit.property.name} ${l.unit.label}`).join(", ") || "No unit yet"}</td>
+                      <td className="p-2 text-right">
+                        <button onClick={() => giveUnit(t.id)} className="rounded border border-border px-2 py-1 text-xs hover:bg-background">
+                          {t.leases.length === 0 ? "Give unit" : "Add another unit"}
+                        </button>
+                      </td>
                     </tr>
                   ))}
                   {tenants.length === 0 && (
                     <tr>
-                      <td colSpan={4} className="p-3 text-secondary-500">No tenants yet.</td>
+                      <td colSpan={5} className="p-3 text-secondary-500">No tenants yet.</td>
                     </tr>
                   )}
                 </tbody>

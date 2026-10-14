@@ -12,6 +12,7 @@ import { Role } from '@prisma/client';
 import { Roles } from '../auth/roles.decorator';
 import { RentalService } from './rental.service';
 import {
+  BulkCreateUnitsDto,
   CreateLeaseDto,
   CreatePropertyDto,
   CreateTenantDto,
@@ -57,6 +58,12 @@ export class RentalController {
   @Post('units')
   createUnit(@Body() dto: CreateUnitDto) {
     return this.rental.createUnit(dto);
+  }
+
+  @Roles(Role.MANAGER, Role.OWNER)
+  @Post('units/bulk')
+  createUnitsBulk(@Body() dto: BulkCreateUnitsDto) {
+    return this.rental.createUnitsBulk(dto);
   }
 
   @Get('units')
