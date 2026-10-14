@@ -6,6 +6,8 @@ import {
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { TenantScopedPrismaService } from '../common/prisma/tenant-scoped-prisma.service';
+import { RentalBillingService } from './rental-billing.service';
+import { fromCents, nairobiToday, toCents } from './rental-billing.util';
 import { getTenantStore } from '../common/tenant/tenant-context';
 import {
   BulkCreateUnitsDto,
@@ -24,7 +26,10 @@ const isUniqueViolation = (e: unknown) =>
 
 @Injectable()
 export class RentalService {
-  constructor(private readonly tenantPrisma: TenantScopedPrismaService) {}
+  constructor(
+    private readonly tenantPrisma: TenantScopedPrismaService,
+    private readonly billing: RentalBillingService,
+  ) {}
 
   // ── Properties ──────────────────────────────────────────────────────────
 
@@ -309,6 +314,8 @@ export class RentalService {
       where: { id: unit.id },
       data: { status: 'OCCUPIED' },
     });
+    // Start billing straight away: the first month's rent and the deposit appear as invoices.
+    await this.billing.syncLease(tx, organizationId, lease);
     return lease;
   }
 
@@ -332,13 +339,24 @@ export class RentalService {
       if (lease.status === 'ENDED') {
         throw new ConflictException('This lease has already ended');
       }
-      const endedAt = dto.endedAt ? new Date(dto.endedAt) : new Date();
+      const endedAt = dto.endedAt ? new Date(dto.endedAt) : nairobiToday();
       if (endedAt < lease.startDate) {
         throw new BadRequestException('A lease cannot end before it starts');
       }
+      if (dto.depositRefunded) {
+        const deposit = await tx.rentalInvoice.aggregate({
+          where: { leaseId: id, kind: 'DEPOSIT' },
+          _sum: { amountPaid: true },
+        });
+        if (toCents(dto.depositRefunded) > toCents(deposit._sum.amountPaid ?? 0)) {
+          throw new BadRequestException(
+            `You can refund at most the deposit the tenant paid (KES ${fromCents(toCents(deposit._sum.amountPaid ?? 0))})`,
+          );
+        }
+      }
       const ended = await tx.rentalLease.update({
         where: { id },
-        data: { status: 'ENDED', endedAt },
+        data: { status: 'ENDED', endedAt, depositRefunded: dto.depositRefunded ?? 0 },
       });
       await tx.rentalUnit.update({
         where: { id: lease.unitId },

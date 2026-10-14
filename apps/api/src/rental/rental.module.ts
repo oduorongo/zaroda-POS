@@ -1,8 +1,13 @@
 import { Module, OnModuleInit } from '@nestjs/common';
 import { ModuleRegistryModule } from '../module-registry/module-registry.module';
 import { ModuleRegistryService } from '../module-registry/module-registry.service';
+import { OnlineStoreModule } from '../online-store/online-store.module';
 import { RentalController } from './rental.controller';
+import { RentalCallbackController, RentalMpesaController } from './rental-mpesa.controller';
+import { RentalMpesaService } from './rental-mpesa.service';
 import { RentalService } from './rental.service';
+import { RentalBillingService } from './rental-billing.service';
+import { RentalSchedulerService } from './rental-scheduler.service';
 
 /**
  * Rental / property management for landlords (industryType "RENTAL").
@@ -10,9 +15,9 @@ import { RentalService } from './rental.service';
  * and registers a manifest at bootstrap.
  */
 @Module({
-  imports: [ModuleRegistryModule],
-  controllers: [RentalController],
-  providers: [RentalService],
+  imports: [ModuleRegistryModule, OnlineStoreModule],
+  controllers: [RentalController, RentalMpesaController, RentalCallbackController],
+  providers: [RentalService, RentalBillingService, RentalMpesaService, RentalSchedulerService],
 })
 export class RentalModule implements OnModuleInit {
   constructor(private readonly registry: ModuleRegistryService) {}
@@ -26,6 +31,11 @@ export class RentalModule implements OnModuleInit {
         { tableName: 'rental_units', description: 'Lettable units (houses, rooms, shops) in a property' },
         { tableName: 'rental_tenants', description: 'People renting units' },
         { tableName: 'rental_leases', description: 'A tenant renting a unit, with rent, deposit and due day' },
+        { tableName: 'rental_invoices', description: 'Monthly rent, deposit and one-off charges owed by a tenant' },
+        { tableName: 'rental_payments', description: 'Money received from tenants, with receipt numbers' },
+        { tableName: 'rental_settings', description: 'How a landlord collects rent by M-Pesa (Tuma or own Paybill/Till), keys encrypted' },
+        { tableName: 'rental_payment_requests', description: 'M-Pesa prompts sent to tenants and how they ended' },
+        { tableName: 'rental_payment_allocations', description: 'Which invoice each payment was applied to' },
       ],
     });
   }

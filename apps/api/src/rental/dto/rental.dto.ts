@@ -4,6 +4,7 @@ import {
   IsArray,
   IsDateString,
   IsEmail,
+  IsIn,
   IsInt,
   IsNumber,
   IsOptional,
@@ -235,4 +236,71 @@ export class EndLeaseDto {
   @IsDateString()
   @IsOptional()
   endedAt?: string;
+
+  // How much of the paid deposit is handed back to the tenant. Cannot exceed what they paid.
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  @IsOptional()
+  depositRefunded?: number;
+}
+
+export const PAYMENT_METHODS = ['CASH', 'BANK', 'MPESA', 'OTHER'] as const;
+
+export class RecordPaymentDto {
+  @IsUUID()
+  leaseId!: string;
+
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0.01)
+  amount!: number;
+
+  // TUMA / DARAJA are only ever set by the automatic M-Pesa confirmation, never typed in.
+  @IsIn(PAYMENT_METHODS)
+  method!: (typeof PAYMENT_METHODS)[number];
+
+  // M-Pesa code, bank reference or cheque number. One per business: the same code cannot be recorded twice.
+  @IsString()
+  @MaxLength(60)
+  @IsOptional()
+  reference?: string;
+
+  @IsDateString()
+  @IsOptional()
+  paidAt?: string;
+
+  @IsString()
+  @MaxLength(500)
+  @IsOptional()
+  note?: string;
+
+  // Put this payment against one specific invoice first; anything left over goes to the oldest unpaid ones.
+  @IsUUID()
+  @IsOptional()
+  invoiceId?: string;
+}
+
+export class VoidPaymentDto {
+  @IsString()
+  @MinLength(2)
+  @MaxLength(300)
+  reason!: string;
+}
+
+// A one-off charge on a lease: water, a repair the tenant pays for, a late fee...
+export class CreateChargeDto {
+  @IsUUID()
+  leaseId!: string;
+
+  @IsString()
+  @MinLength(1)
+  @MaxLength(200)
+  description!: string;
+
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0.01)
+  amount!: number;
+
+  @IsDateString()
+  @IsOptional()
+  dueDate?: string;
 }

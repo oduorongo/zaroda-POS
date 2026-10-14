@@ -11,23 +11,30 @@ import {
 import { Role } from '@prisma/client';
 import { Roles } from '../auth/roles.decorator';
 import { RentalService } from './rental.service';
+import { RentalBillingService } from './rental-billing.service';
 import {
   BulkCreateUnitsDto,
+  CreateChargeDto,
   CreateLeaseDto,
   CreatePropertyDto,
   CreateTenantDto,
   CreateUnitDto,
   EndLeaseDto,
+  RecordPaymentDto,
   UpdatePropertyDto,
   UpdateTenantDto,
   UpdateUnitDto,
+  VoidPaymentDto,
 } from './dto/rental.dto';
 
 // JwtAuthGuard/RolesGuard are global. Reading is open to any signed-in role;
 // changing properties, units, tenants and leases is for managers and owners.
 @Controller('rental')
 export class RentalController {
-  constructor(private readonly rental: RentalService) {}
+  constructor(
+    private readonly rental: RentalService,
+    private readonly billing: RentalBillingService,
+  ) {}
 
   @Roles(Role.MANAGER, Role.OWNER)
   @Post('properties')
@@ -127,5 +134,61 @@ export class RentalController {
   @Patch('leases/:id/end')
   endLease(@Param('id', ParseUUIDPipe) id: string, @Body() dto: EndLeaseDto) {
     return this.rental.endLease(id, dto);
+  }
+
+  // ── Rent, payments and statements (managers and owners only) ────────────
+
+  @Roles(Role.MANAGER, Role.OWNER)
+  @Get('dues')
+  dues() {
+    return this.billing.dues();
+  }
+
+  @Roles(Role.MANAGER, Role.OWNER)
+  @Post('billing/generate')
+  generateInvoices() {
+    return this.billing.generateNow();
+  }
+
+  @Roles(Role.MANAGER, Role.OWNER)
+  @Get('invoices')
+  listInvoices(@Query('leaseId') leaseId?: string, @Query('open') open?: string) {
+    return this.billing.listInvoices({ leaseId, onlyOpen: open === 'true' });
+  }
+
+  @Roles(Role.MANAGER, Role.OWNER)
+  @Post('invoices')
+  createCharge(@Body() dto: CreateChargeDto) {
+    return this.billing.createCharge(dto);
+  }
+
+  @Roles(Role.MANAGER, Role.OWNER)
+  @Post('payments')
+  recordPayment(@Body() dto: RecordPaymentDto) {
+    return this.billing.recordPayment(dto);
+  }
+
+  @Roles(Role.MANAGER, Role.OWNER)
+  @Get('payments')
+  listPayments(@Query('leaseId') leaseId?: string) {
+    return this.billing.listPayments({ leaseId });
+  }
+
+  @Roles(Role.MANAGER, Role.OWNER)
+  @Get('payments/:id')
+  getReceipt(@Param('id', ParseUUIDPipe) id: string) {
+    return this.billing.getReceipt(id);
+  }
+
+  @Roles(Role.MANAGER, Role.OWNER)
+  @Post('payments/:id/void')
+  voidPayment(@Param('id', ParseUUIDPipe) id: string, @Body() dto: VoidPaymentDto) {
+    return this.billing.voidPayment(id, dto.reason);
+  }
+
+  @Roles(Role.MANAGER, Role.OWNER)
+  @Get('leases/:id/statement')
+  statement(@Param('id', ParseUUIDPipe) id: string) {
+    return this.billing.statement(id);
   }
 }

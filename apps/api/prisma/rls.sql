@@ -789,3 +789,38 @@ DROP POLICY IF EXISTS tenant_isolation ON rental_leases;
 CREATE POLICY tenant_isolation ON rental_leases
   USING ("organizationId" = current_setting('app.current_tenant', true))
   WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+ALTER TABLE rental_invoices ENABLE ROW LEVEL SECURITY;
+ALTER TABLE rental_invoices FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON rental_invoices;
+CREATE POLICY tenant_isolation ON rental_invoices
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+ALTER TABLE rental_payments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE rental_payments FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON rental_payments;
+CREATE POLICY tenant_isolation ON rental_payments
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+ALTER TABLE rental_payment_allocations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE rental_payment_allocations FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON rental_payment_allocations;
+CREATE POLICY tenant_isolation ON rental_payment_allocations
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+ALTER TABLE rental_settings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE rental_settings FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON rental_settings;
+CREATE POLICY tenant_isolation ON rental_settings
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+ALTER TABLE rental_payment_requests ENABLE ROW LEVEL SECURITY;
+ALTER TABLE rental_payment_requests FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON rental_payment_requests;
+CREATE POLICY tenant_isolation ON rental_payment_requests
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
