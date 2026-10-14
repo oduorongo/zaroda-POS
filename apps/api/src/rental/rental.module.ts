@@ -1,7 +1,14 @@
 import { Module, OnModuleInit } from '@nestjs/common';
+import { ConfigModule, ConfigService } from '@nestjs/config';
+import { JwtModule } from '@nestjs/jwt';
+import { PassportModule } from '@nestjs/passport';
 import { ModuleRegistryModule } from '../module-registry/module-registry.module';
 import { ModuleRegistryService } from '../module-registry/module-registry.service';
 import { OnlineStoreModule } from '../online-store/online-store.module';
+import { RentalTenantAuthService } from './portal/rental-tenant-auth.service';
+import { RentalTenantAuthController, RentalTenantPortalController } from './portal/rental-tenant-portal.controller';
+import { RentalTenantPortalService } from './portal/rental-tenant-portal.service';
+import { RentalTenantJwtStrategy } from './portal/tenant-auth';
 import { RentalController } from './rental.controller';
 import { RentalOpsController } from './rental-ops.controller';
 import { RentalOpsService } from './rental-ops.service';
@@ -19,8 +26,21 @@ import { RentalSchedulerService } from './rental-scheduler.service';
  * and registers a manifest at bootstrap.
  */
 @Module({
-  imports: [ModuleRegistryModule, OnlineStoreModule],
-  controllers: [RentalController, RentalOpsController, RentalMpesaController, RentalCallbackController],
+  imports: [
+    ModuleRegistryModule,
+    OnlineStoreModule,
+    PassportModule,
+    // Tenant tokens share the buyer secret and are told apart by their scope claim (see portal/tenant-auth.ts).
+    JwtModule.registerAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => ({
+        secret: config.getOrThrow<string>('BUYER_JWT_SECRET'),
+        signOptions: { expiresIn: config.get<string>('RENTAL_TENANT_JWT_EXPIRES_IN') ?? '30d' },
+      }),
+    }),
+  ],
+  controllers: [RentalController, RentalTenantAuthController, RentalTenantPortalController, RentalOpsController, RentalMpesaController, RentalCallbackController],
   providers: [
     RentalService,
     RentalBillingService,
@@ -29,6 +49,9 @@ import { RentalSchedulerService } from './rental-scheduler.service';
     RentalReportService,
     RentalRemindersService,
     RentalSchedulerService,
+    RentalTenantJwtStrategy,
+    RentalTenantAuthService,
+    RentalTenantPortalService,
   ],
 })
 export class RentalModule implements OnModuleInit {
@@ -51,6 +74,7 @@ export class RentalModule implements OnModuleInit {
         { tableName: 'rental_expenses', description: 'Money spent on a property, for profit reporting' },
         { tableName: 'rental_meter_readings', description: 'Water and electricity readings billed to tenants' },
         { tableName: 'rental_reminder_logs', description: 'Which rent reminders were sent, so none repeats' },
+        { tableName: 'rental_tenant_otps', description: 'One-time email sign-in codes for tenants' },
         { tableName: 'rental_payment_allocations', description: 'Which invoice each payment was applied to' },
       ],
     });

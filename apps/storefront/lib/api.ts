@@ -136,3 +136,94 @@ export const pickUpJob = (token: string, jobId: string) => request<MyJob>(`/ride
 
 export const deliverJob = (token: string, jobId: string, input: { code: string; cashCollected?: number }) =>
   request<MyJob>(`/rider/jobs/${jobId}/deliver`, { method: "POST", token, body: JSON.stringify(input) });
+
+// ── Tenant portal (renting from a landlord who uses Zaroda) ──────────────
+
+export interface TenantLease {
+  leaseId: string;
+  status: "ACTIVE" | "ENDED";
+  startDate: string;
+  endedAt: string | null;
+  property: { name: string; address: string | null };
+  unit: string;
+  monthlyRent: number;
+  dueDay: number;
+  outstanding: number;
+  overdue: number;
+  credit: number;
+  nextDue: string | null;
+  openInvoices: { id: string; description: string; dueDate: string; balance: number; status: "PAID" | "PARTIAL" | "OVERDUE" | "UNPAID" }[];
+  payments: { id: string; receiptNumber: string; amount: number; method: string; paidAt: string }[];
+  pendingPrompt: { id: string; amount: number } | null;
+}
+
+export interface TenantTenancy {
+  tenantName: string;
+  business: string;
+  canPayByMpesa: boolean;
+  paymentInstructions: string | null;
+  leases: TenantLease[];
+  maintenance: { id: string; title: string; status: "OPEN" | "IN_PROGRESS" | "DONE" | "CANCELLED"; priority: string; reportedAt: string; resolvedAt: string | null }[];
+}
+
+export interface TenantMe {
+  email: string;
+  tenancies: TenantTenancy[];
+}
+
+export interface TenantPrompt {
+  id: string;
+  status: "PENDING" | "PAID" | "FAILED" | "REVIEW";
+  amount: number;
+  mpesaReceipt: string | null;
+  lastError: string | null;
+  paymentId: string | null;
+}
+
+export interface TenantReceipt {
+  receiptNumber: string;
+  business: string;
+  amount: number;
+  method: string;
+  reference: string | null;
+  paidAt: string;
+  voided: boolean;
+  tenant: { name: string };
+  property: { name: string; address: string | null };
+  unit: string;
+  appliedTo: { description: string; amount: number }[];
+  keptAsCredit: number;
+  balanceAfter: number;
+}
+
+export interface TenantStatement {
+  business: string;
+  tenant: { name: string };
+  property: { name: string; address: string | null };
+  unit: string;
+  startDate: string;
+  monthlyRent: number;
+  lines: { date: string; description: string; reference: string | null; charge: number; paid: number; balance: number }[];
+  balance: number;
+  printedOn: string;
+}
+
+export const requestTenantCode = (email: string) =>
+  request<{ sent: boolean; email: string }>("/tenant-auth/request-code", { method: "POST", body: JSON.stringify({ email }) });
+
+export const verifyTenantCode = (email: string, code: string) =>
+  request<{ accessToken: string; email: string }>("/tenant-auth/verify", { method: "POST", body: JSON.stringify({ email, code }) });
+
+export const getTenantMe = (token: string) => request<TenantMe>("/tenant-portal/me", { token });
+
+export const tenantPay = (token: string, input: { leaseId: string; amount: number; phone?: string }) =>
+  request<{ id: string; status: string; lastError: string | null }>("/tenant-portal/pay", { method: "POST", token, body: JSON.stringify(input) });
+
+export const getTenantPrompt = (token: string, id: string) => request<TenantPrompt>(`/tenant-portal/prompts/${id}`, { token });
+
+export const tenantReportProblem = (token: string, input: { leaseId: string; title: string; description?: string }) =>
+  request<{ id: string; title: string; status: string }>("/tenant-portal/maintenance", { method: "POST", token, body: JSON.stringify(input) });
+
+export const getTenantReceipt = (token: string, paymentId: string) => request<TenantReceipt>(`/tenant-portal/payments/${paymentId}`, { token });
+
+export const getTenantStatement = (token: string, leaseId: string) => request<TenantStatement>(`/tenant-portal/leases/${leaseId}/statement`, { token });

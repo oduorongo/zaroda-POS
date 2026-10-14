@@ -8,7 +8,7 @@ import { AfricasTalkingSmsProvider } from '../notifications/africas-talking-sms.
 import { ResendEmailProvider } from '../notifications/resend-email.provider';
 import { normalizeKenyanPhone } from '../online-orders/online-orders.util';
 import { fromCents, nairobiToday, toCents } from './rental-billing.util';
-import { buildReminderEmail, buildReminderSms, reminderStage, ReminderFacts, ReminderStage } from './rental-reminders.util';
+import { buildReminderEmail, buildReminderSms, buildTenantInviteEmail, reminderStage, ReminderFacts, ReminderStage } from './rental-reminders.util';
 import { UpdateReminderSettingsDto } from './dto/rental-ops.dto';
 
 type Tx = Prisma.TransactionClient;
@@ -87,6 +87,25 @@ export class RentalRemindersService {
         invoices: true,
       },
     });
+  }
+
+  // ── Inviting a tenant to their own account ─────────────────────────────
+
+  /** Emails the tenant a link to sign in at the tenant portal (they sign in with a code sent to this same address). */
+  async sendPortalInvite(tenantId: string) {
+    const { organizationId } = getTenantStore();
+    const { tenant, org } = await this.tenantPrisma.run(async (tx) => ({
+      tenant: await tx.rentalTenant.findUnique({ where: { id: tenantId }, select: { name: true, email: true } }),
+      org: await tx.organization.findUnique({ where: { id: organizationId }, select: { name: true } }),
+    }));
+    if (!tenant) throw new NotFoundException('Tenant not found');
+    if (!tenant.email) throw new BadRequestException('Add this tenant\'s email address first - it is how they sign in');
+    if (!this.email.isConfigured()) throw new BadRequestException('Email sending is not set up on this server yet');
+    const base = (this.config.get<string>('STOREFRONT_BASE_URL') ?? 'https://shop.zarodashop.com').replace(/\/+$/, '');
+    const mail = buildTenantInviteEmail({ business: org?.name ?? '', tenantName: tenant.name, url: `${base}/tenant` });
+    const result = await this.email.sendEmail({ to: tenant.email, ...mail });
+    if (!result.sent) throw new BadRequestException('The invite could not be sent just now - please try again');
+    return { sent: true, email: tenant.email };
   }
 
   // ── A reminder the landlord sends by hand ───────────────────────────────

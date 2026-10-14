@@ -78,6 +78,12 @@ export class RentalOpsController {
     return this.reminders.updateSettings(dto);
   }
 
+  @Post('tenants/:id/invite')
+  @HttpCode(200)
+  inviteTenant(@Param('id', ParseUUIDPipe) id: string) {
+    return this.reminders.sendPortalInvite(id);
+  }
+
   @Post('reminders/send')
   @HttpCode(200)
   sendReminder(@Body() dto: SendReminderDto) {

@@ -31,6 +31,10 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
             <Link href="/rider" className="ml-2 text-[#c99a2e] hover:underline sm:ml-0">
               Deliver with Zaroda
             </Link>
+            <span className="hidden sm:inline"> · </span>
+            <Link href="/tenant" className="ml-2 text-[#c99a2e] hover:underline sm:ml-0">
+              Tenants: my rent account
+            </Link>
           </BottomRibbon>
         </StoreProvider>
       </body>

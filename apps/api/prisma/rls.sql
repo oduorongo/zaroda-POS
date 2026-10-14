@@ -852,3 +852,18 @@ DROP POLICY IF EXISTS tenant_isolation ON rental_reminder_logs;
 CREATE POLICY tenant_isolation ON rental_reminder_logs
   USING ("organizationId" = current_setting('app.current_tenant', true))
   WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+-- ── Rental tenant sign-in (rental_tenant_otps + one extra rule on rental_tenants) ──
+-- rental_tenant_otps has deliberately NO row-level security, like rider_otps: a sign-in
+-- attempt has no business behind it yet (listed in rls-coverage.spec.ts's exclusions).
+-- A tenant signs in by email and may rent from several landlords, so finding "my tenant
+-- records" has to cross businesses. That is allowed ONLY through this extra, read-only
+-- rule: it matches the rows whose email equals app.current_tenant_email, a setting the API
+-- sets only from a verified tenant token (RentalTenantPortalService). It is added alongside
+-- the normal tenant_isolation rule (rules are OR-ed), never instead of it. Everything else
+-- the tenant sees (leases, invoices, payments) is then read inside the owning business's
+-- own context, filtered to that tenant record.
+DROP POLICY IF EXISTS tenant_email_access ON rental_tenants;
+CREATE POLICY tenant_email_access ON rental_tenants
+  FOR SELECT
+  USING (email IS NOT NULL AND lower(email) = current_setting('app.current_tenant_email', true));

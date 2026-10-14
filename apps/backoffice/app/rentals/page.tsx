@@ -220,6 +220,30 @@ export default function RentalsPage() {
     );
   };
 
+  // Tenants sign in with the email address on their record, so a landlord can add or correct it here.
+  const editEmail = (tenant: Tenant) => {
+    const answer = window.prompt(`Email address for ${tenant.name} (they sign in to their rent account with a code sent here):`, tenant.email ?? "");
+    if (answer === null) return;
+    const email = answer.trim();
+    if (!/^S+@S+.S+$/.test(email)) {
+      setError("That does not look like an email address.");
+      return;
+    }
+    setNotice(null);
+    void submit(() => apiPatch(`/rental/tenants/${tenant.id}`, { email }), () => {});
+  };
+
+  const inviteTenant = (tenant: Tenant) => {
+    setNotice(null);
+    void submit(
+      async () => {
+        const result = await apiPost<{ email: string }>(`/rental/tenants/${tenant.id}/invite`, {});
+        setNotice(`Invite sent to ${result.email}. They sign in at shop.zarodashop.com/tenant with a code emailed to that address.`);
+      },
+      () => {},
+    );
+  };
+
   // For a tenant added earlier with no unit: jump to the lease form with them already chosen.
   const giveUnit = (tenantId: string) => {
     setLeaseForm({ ...leaseForm, tenantId });
@@ -427,6 +451,16 @@ How much of the deposit are you handing back (KES)? Enter 0 for none.`,
                       <td className="p-2 text-right">
                         <button onClick={() => giveUnit(t.id)} className="rounded border border-border px-2 py-1 text-xs hover:bg-background">
                           {t.leases.length === 0 ? "Give unit" : "Add another unit"}
+                        </button>
+                        {t.email ? (
+                          <button onClick={() => inviteTenant(t)} disabled={busy} className="ml-1 rounded border border-border px-2 py-1 text-xs hover:bg-background" title="Email them a link to their own rent account">
+                            Invite to portal
+                          </button>
+                        ) : (
+                          <span className="ml-2 text-xs text-secondary-500">no email, no portal</span>
+                        )}
+                        <button onClick={() => editEmail(t)} disabled={busy} className="ml-1 rounded border border-border px-2 py-1 text-xs hover:bg-background">
+                          {t.email ? "Change email" : "Add email"}
                         </button>
                       </td>
                     </tr>

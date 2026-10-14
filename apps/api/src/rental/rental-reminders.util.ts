@@ -1,4 +1,4 @@
-import { BRAND, brandedEmail } from '../common/email/brand-layout';
+import { BRAND, brandButton, brandedEmail } from '../common/email/brand-layout';
 
 export type ReminderStage = 'UPCOMING' | 'DUE' | 'OVERDUE' | 'FINAL';
 
@@ -87,4 +87,20 @@ export function buildReminderSms(f: ReminderFacts): string {
       ? `Hi ${f.tenantName.split(' ')[0]}, your rent for ${f.unit} is overdue`
       : `Hi ${f.tenantName.split(' ')[0]}, rent for ${f.unit} is due ${dateText(f.dueDate)}`;
   return `${head}: KES ${money(f.totalBalance > f.amount ? f.totalBalance : f.amount)}.${f.instructions ? ` Pay: ${f.instructions}.` : ''} - ${f.business}`.slice(0, 300);
+}
+
+/** The email that invites a tenant to their own account (balance, receipts, pay by M-Pesa, report a problem). */
+export function buildTenantInviteEmail(f: { business: string; tenantName: string; url: string }): { subject: string; html: string; text: string } {
+  return {
+    subject: `Your rent account with ${f.business}`,
+    html: brandedEmail({
+      title: 'Your rent account',
+      bodyHtml: `
+        <p style="margin:0 0 12px">Dear ${esc(f.tenantName)},</p>
+        <p style="margin:0 0 12px">${esc(f.business)} has set up an online account for you. You can see your rent balance and receipts, pay by M-Pesa, and tell your landlord about anything that needs fixing.</p>
+        <p style="margin:0 0 16px;text-align:center">${brandButton('Open my account', f.url)}</p>
+        <p style="margin:0 0 12px;color:#475569;font-size:13px">There is no password: enter this email address and we send you a 6-digit code each time you sign in.</p>`,
+    }),
+    text: `Dear ${f.tenantName},\n\n${f.business} has set up an online account for you: see your rent balance and receipts, pay by M-Pesa, and report problems.\n\nOpen it here: ${f.url}\n\nThere is no password - enter this email address and we send you a 6-digit code each time you sign in.`,
+  };
 }

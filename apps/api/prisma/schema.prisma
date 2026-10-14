@@ -2798,3 +2798,20 @@ model RentalReminderLog {
   @@index([organizationId])
   @@map("rental_reminder_logs")
 }
+
+// ── Rental module, phase 4: the tenant's own sign-in ─────────────────────
+// A tenant signs in with a 6-digit code emailed to the address their landlord has on file (no password), then sees only
+// their own balance, receipts and requests. The address is the identity, so the same person renting from two landlords
+// sees both under one sign-in. Platform-level like rider_otps: there is no business behind a sign-in attempt yet.
+model RentalTenantOtp {
+  id         String    @id @default(uuid())
+  email      String
+  codeHash   String
+  expiresAt  DateTime
+  attempts   Int       @default(0)
+  consumedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([email, createdAt])
+  @@map("rental_tenant_otps")
+}
