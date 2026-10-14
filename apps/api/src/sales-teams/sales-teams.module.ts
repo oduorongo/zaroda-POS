@@ -2,14 +2,20 @@ import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
-import { SalesAgentJwtStrategy } from './sales-agent-auth';
+import { PlatformAdminModule } from '../platform-admin/platform-admin.module';
+import { RidersModule } from '../riders/riders.module';
+import { PasswordChangedGuard, SalesAgentJwtStrategy } from './sales-agent-auth';
 import { SalesAgentService } from './sales-agent.service';
-import { SalesAgentController, SalesAgentsAdminController, SalesTeamsAdminController } from './sales-teams.controller';
+import { SalesPortalService } from './sales-portal.service';
+import { SalesAgentController, SalesAgentsAdminController, SalesPortalController, SalesTeamsAdminController } from './sales-teams.controller';
 import { SalesTeamsService } from './sales-teams.service';
 
 @Module({
   imports: [
     PassportModule,
+    // Onboarding a shop or a rider goes through the same code the platform admin uses.
+    PlatformAdminModule,
+    RidersModule,
     // Same secret as shoppers and riders, told apart by the scope claim (see sales-agent-auth.ts). A working day, not a month:
     // these accounts see other people's businesses.
     JwtModule.registerAsync({
@@ -21,8 +27,8 @@ import { SalesTeamsService } from './sales-teams.service';
       }),
     }),
   ],
-  controllers: [SalesTeamsAdminController, SalesAgentsAdminController, SalesAgentController],
-  providers: [SalesAgentJwtStrategy, SalesAgentService, SalesTeamsService],
+  controllers: [SalesTeamsAdminController, SalesAgentsAdminController, SalesAgentController, SalesPortalController],
+  providers: [SalesAgentJwtStrategy, PasswordChangedGuard, SalesAgentService, SalesPortalService, SalesTeamsService],
   exports: [SalesTeamsService],
 })
 export class SalesTeamsModule {}

@@ -48,8 +48,10 @@ function assertRatesFit(memberShareRate: number, leaderOverrideRate: number) {
 export class SalesTeamsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  private audit(platformAdminId: string, action: string, entityType: string, entityId: string) {
-    return this.prisma.platformAuditLog.create({ data: { platformAdminId, action, entityType, entityId } });
+  /** Logged under the platform admin who did it. A leader's own actions on their members have no platform admin, so are not written here. */
+  private async audit(platformAdminId: string | null, action: string, entityType: string, entityId: string) {
+    if (!platformAdminId) return;
+    await this.prisma.platformAuditLog.create({ data: { platformAdminId, action, entityType, entityId } });
   }
 
   async listTeams() {
@@ -143,7 +145,7 @@ export class SalesTeamsService {
    * the person must replace it at first sign-in. A team has one active leader: adding another is refused
    * unless the owner says to replace the current one (who is suspended, not deleted, so their history stays).
    */
-  async addAgent(platformAdminId: string, teamId: string, role: SalesAgentRole, dto: CreateSalesAgentDto) {
+  async addAgent(platformAdminId: string | null, teamId: string, role: SalesAgentRole, dto: CreateSalesAgentDto) {
     const team = await this.prisma.salesTeam.findUnique({ where: { id: teamId } });
     if (!team) throw new NotFoundException('Team not found');
     const email = dto.email.trim().toLowerCase();
@@ -172,7 +174,7 @@ export class SalesTeamsService {
     return { agent: toAgentView(agent), temporaryPassword };
   }
 
-  async setAgentStatus(platformAdminId: string, agentId: string, status: SalesAgentStatus) {
+  async setAgentStatus(platformAdminId: string | null, agentId: string, status: SalesAgentStatus) {
     const agent = await this.prisma.salesAgent.findUnique({ where: { id: agentId } });
     if (!agent) throw new NotFoundException('Person not found');
     if (status === SalesAgentStatus.ACTIVE && agent.role === SalesAgentRole.LEADER) {
@@ -187,7 +189,7 @@ export class SalesTeamsService {
   }
 
   /** A forgotten password: issue a new temporary one (shown once), which the person must replace at next sign-in. */
-  async resetAgentPassword(platformAdminId: string, agentId: string) {
+  async resetAgentPassword(platformAdminId: string | null, agentId: string) {
     const agent = await this.prisma.salesAgent.findUnique({ where: { id: agentId } });
     if (!agent) throw new NotFoundException('Person not found');
     const temporaryPassword = generateTempPassword();

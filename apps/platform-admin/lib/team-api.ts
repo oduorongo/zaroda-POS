@@ -46,6 +46,46 @@ export interface TeamMe {
   team: TeamTerms;
 }
 
+export interface TeamShop {
+  id: string;
+  name: string;
+  industryType: string;
+  county: string | null;
+  subCounty: string | null;
+  isActive: boolean;
+  createdAt: string;
+  onboardedBy: { id: string; fullName: string } | null;
+  subscription: { planName: string; status: "TRIAL" | "ACTIVE" | "GRACE" | "SUSPENDED"; currentPeriodEnd: string; isTrial: boolean } | null;
+  onlineShop: { addonActive: boolean; isPublished: boolean };
+  saleCount: number;
+  lastSaleAt: string | null;
+}
+
+export interface TeamRider {
+  id: string;
+  fullName: string | null;
+  email: string;
+  phone: string | null;
+  vehicleType: "BODA" | "TUK_TUK" | "VEHICLE" | null;
+  area: string | null;
+  status: "PENDING" | "APPROVED" | "SUSPENDED";
+  createdAt: string;
+  onboardedBy: { id: string; fullName: string } | null;
+}
+
+export interface TeamOverview {
+  shops: { total: number; onTrial: number; paying: number; lapsed: number; sellingOnline: number };
+  riders: { total: number; waitingForApproval: number; approved: number };
+  members: { id: string; fullName: string; status: "ACTIVE" | "SUSPENDED"; shops: number; riders: number }[] | null;
+}
+
+export interface TeamMember extends AgentProfile {
+  teamId: string;
+  lastLoginAt: string | null;
+  shopCount: number;
+  riderCount: number;
+}
+
 export const teamApiBase = defaultBase;
 
 export const teamLogin = (email: string, password: string) =>
@@ -55,3 +95,7 @@ export const teamMe = () => request<TeamMe>("/sales-agent/me", { method: "GET" }
 
 export const teamChangePassword = (currentPassword: string, newPassword: string) =>
   request<{ message: string }>("/sales-agent/auth/change-password", { method: "POST", body: JSON.stringify({ currentPassword, newPassword }) });
+
+export const teamGet = <T>(path: string) => request<T>(`/sales-agent${path}`, { method: "GET" });
+export const teamPost = <T>(path: string, body: unknown) => request<T>(`/sales-agent${path}`, { method: "POST", body: JSON.stringify(body) });
+export const teamPatch = <T>(path: string, body: unknown) => request<T>(`/sales-agent${path}`, { method: "PATCH", body: JSON.stringify(body) });

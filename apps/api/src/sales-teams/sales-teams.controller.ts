@@ -12,8 +12,11 @@ import {
   SetSalesAgentStatusDto,
   UpdateSalesTeamDto,
 } from './dto/sales-team.dto';
-import { AuthenticatedAgent, CurrentAgent, SalesAgentAuthGuard } from './sales-agent-auth';
+import { CreateShopRiderDto } from '../riders/dto/rider.dto';
+import { AddMemberDto, OnboardTenantByAgentDto, SetMemberStatusDto } from './dto/sales-portal.dto';
+import { AuthenticatedAgent, CurrentAgent, PasswordChangedGuard, SalesAgentAuthGuard } from './sales-agent-auth';
 import { SalesAgentService } from './sales-agent.service';
+import { SalesPortalService } from './sales-portal.service';
 import { SalesTeamsService } from './sales-teams.service';
 
 const LOGIN_THROTTLE = { default: { limit: 5, ttl: 60_000 } };
@@ -118,5 +121,81 @@ export class SalesAgentController {
   @HttpCode(200)
   changePassword(@CurrentAgent() agent: AuthenticatedAgent, @Body() dto: SalesAgentChangePasswordDto) {
     return this.agents.changePassword(agent.agentId, dto);
+  }
+}
+
+/**
+ * A leader's or member's working routes. SalesAgentAuthGuard proves who they are; PasswordChangedGuard holds
+ * everything here back until they have replaced their temporary password. What each person may see is decided in
+ * SalesPortalService (a member their own work, a leader their team's; members' management is leader-only).
+ */
+@Controller('sales-agent')
+export class SalesPortalController {
+  constructor(private readonly portal: SalesPortalService) {}
+
+  @Public()
+  @UseGuards(SalesAgentAuthGuard, PasswordChangedGuard)
+  @Get('overview')
+  overview(@CurrentAgent() agent: AuthenticatedAgent) {
+    return this.portal.overview(agent);
+  }
+
+  @Public()
+  @UseGuards(SalesAgentAuthGuard, PasswordChangedGuard)
+  @Get('tenants')
+  tenants(@CurrentAgent() agent: AuthenticatedAgent) {
+    return this.portal.listTenants(agent);
+  }
+
+  @Public()
+  @UseGuards(SalesAgentAuthGuard, PasswordChangedGuard)
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
+  @Post('tenants')
+  onboardTenant(@CurrentAgent() agent: AuthenticatedAgent, @Body() dto: OnboardTenantByAgentDto) {
+    return this.portal.onboardTenant(agent, dto);
+  }
+
+  @Public()
+  @UseGuards(SalesAgentAuthGuard, PasswordChangedGuard)
+  @Get('riders')
+  riders(@CurrentAgent() agent: AuthenticatedAgent) {
+    return this.portal.listRiders(agent);
+  }
+
+  @Public()
+  @UseGuards(SalesAgentAuthGuard, PasswordChangedGuard)
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
+  @Post('riders')
+  createRider(@CurrentAgent() agent: AuthenticatedAgent, @Body() dto: CreateShopRiderDto) {
+    return this.portal.createRider(agent, dto);
+  }
+
+  @Public()
+  @UseGuards(SalesAgentAuthGuard, PasswordChangedGuard)
+  @Get('members')
+  members(@CurrentAgent() agent: AuthenticatedAgent) {
+    return this.portal.listMembers(agent);
+  }
+
+  @Public()
+  @UseGuards(SalesAgentAuthGuard, PasswordChangedGuard)
+  @Post('members')
+  addMember(@CurrentAgent() agent: AuthenticatedAgent, @Body() dto: AddMemberDto) {
+    return this.portal.addMember(agent, dto);
+  }
+
+  @Public()
+  @UseGuards(SalesAgentAuthGuard, PasswordChangedGuard)
+  @Patch('members/:id/status')
+  setMemberStatus(@CurrentAgent() agent: AuthenticatedAgent, @Param('id', ParseUUIDPipe) id: string, @Body() dto: SetMemberStatusDto) {
+    return this.portal.setMemberStatus(agent, id, dto.status);
+  }
+
+  @Public()
+  @UseGuards(SalesAgentAuthGuard, PasswordChangedGuard)
+  @Post('members/:id/reset-password')
+  @HttpCode(200)
+  resetMemberPassword(@CurrentAgent() agent: AuthenticatedAgent, @Param('id', ParseUUIDPipe) id: string) {
+    return this.portal.resetMemberPassword(agent, id);
   }
 }

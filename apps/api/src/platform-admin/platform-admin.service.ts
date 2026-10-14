@@ -206,7 +206,15 @@ export class PlatformAdminService {
    * admin walking someone through onboarding implies a plan has already
    * been agreed, not a self-serve trial.
    */
-  async onboardTenant(dto: OnboardTenantDto) {
+  /**
+   * options.attribution credits the business to a marketing team and the member who onboarded it (set once, here;
+   * only the platform owner can change it later). options.trial starts it on a 14-day free trial, as a self-signup
+   * does, instead of straight onto a paid period - which is what team members' onboarding uses.
+   */
+  async onboardTenant(
+    dto: OnboardTenantDto,
+    options: { attribution?: { salesTeamId: string; salesAgentId: string }; trial?: boolean } = {},
+  ) {
     const plan = await this.prisma.plan.findUnique({ where: { tier: dto.planTier } });
     if (!plan) throw new NotFoundException(`No plan with tier ${dto.planTier}`);
 
@@ -221,6 +229,7 @@ export class PlatformAdminService {
             name: dto.organizationName,
             industryType: dto.industryType,
             kraPin: dto.kraPin,
+            ...(options.attribution ?? {}),
           },
         });
 
@@ -251,8 +260,8 @@ export class PlatformAdminService {
           data: {
             organizationId,
             planId: plan.id,
-            currentPeriodEnd: new Date(Date.now() + plan.billingPeriodDays * 24 * 60 * 60 * 1000),
-            isTrial: false,
+            currentPeriodEnd: new Date(Date.now() + (options.trial ? 14 : plan.billingPeriodDays) * 24 * 60 * 60 * 1000),
+            isTrial: options.trial ?? false,
           },
         });
 

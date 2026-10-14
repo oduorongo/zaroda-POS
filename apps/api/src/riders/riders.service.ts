@@ -124,6 +124,31 @@ export class RidersService {
     }
   }
 
+  /**
+   * A marketing team member signing a rider up. The rider joins the shared pool and waits for Zaroda's usual
+   * approval (the team does not vouch for them the way a business does for its own riders); they then sign in
+   * with their email like any rider. The credit to the member and team is set here, once.
+   */
+  async createForAgent(dto: CreateShopRiderDto, attribution: { salesTeamId: string; salesAgentId: string }) {
+    try {
+      const rider = await this.prisma.rider.create({
+        data: {
+          email: dto.email.trim().toLowerCase(),
+          fullName: dto.fullName.trim(),
+          phone: this.phoneOrThrow(dto.phone),
+          vehicleType: dto.vehicleType,
+          plateNumber: cleanUpper(dto.plateNumber),
+          area: clean(dto.area),
+          status: RiderStatus.PENDING,
+          ...attribution,
+        },
+      });
+      return toRiderView(rider);
+    } catch (e) {
+      return this.conflict(e);
+    }
+  }
+
   private async ownRider(id: string): Promise<Rider> {
     const { organizationId } = getTenantStore();
     // findFirst with the business in the where: a rider of another business or the pool is "not found" here.
