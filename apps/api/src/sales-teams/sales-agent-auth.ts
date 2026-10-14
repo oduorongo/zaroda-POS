@@ -1,4 +1,4 @@
-import { createParamDecorator, ExecutionContext, Injectable } from '@nestjs/common';
+import { CanActivate, createParamDecorator, ExecutionContext, ForbiddenException, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { AuthGuard, PassportStrategy } from '@nestjs/passport';
 import { SalesAgentRole, SalesAgentStatus, SalesTeamStatus } from '@prisma/client';
@@ -23,6 +23,7 @@ export interface AuthenticatedAgent {
   agentId: string;
   teamId: string;
   role: SalesAgentRole;
+  mustChangePassword: boolean;
 }
 
 @Injectable()
@@ -42,10 +43,10 @@ export class SalesAgentJwtStrategy extends PassportStrategy(Strategy, 'sales-age
     if (payload.scope !== 'sales-agent') return false;
     const agent = await this.prisma.salesAgent.findUnique({
       where: { id: payload.sub },
-      select: { id: true, teamId: true, role: true, status: true, team: { select: { status: true } } },
+      select: { id: true, teamId: true, role: true, status: true, mustChangePassword: true, team: { select: { status: true } } },
     });
     if (!agent || agent.status !== SalesAgentStatus.ACTIVE || agent.team.status !== SalesTeamStatus.ACTIVE) return false;
-    return { agentId: agent.id, teamId: agent.teamId, role: agent.role };
+    return { agentId: agent.id, teamId: agent.teamId, role: agent.role, mustChangePassword: agent.mustChangePassword };
   }
 }
 
@@ -57,3 +58,17 @@ export const CurrentAgent = createParamDecorator((_: unknown, ctx: ExecutionCont
   const request = ctx.switchToHttp().getRequest<{ user: AuthenticatedAgent }>();
   return request.user;
 });
+
+/**
+ * Everything except "who am I" and "change my password" waits until the person has replaced the temporary
+ * password they were given - a leaked or shared temporary password then cannot be used to work on their account.
+ * Use after SalesAgentAuthGuard.
+ */
+@Injectable()
+export class PasswordChangedGuard implements CanActivate {
+  canActivate(context: ExecutionContext): boolean {
+    const agent = context.switchToHttp().getRequest<{ user?: AuthenticatedAgent }>().user;
+    if (agent?.mustChangePassword) throw new ForbiddenException('Please choose your own password first');
+    return true;
+  }
+}

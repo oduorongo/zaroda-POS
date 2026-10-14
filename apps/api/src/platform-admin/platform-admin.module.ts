@@ -40,5 +40,7 @@ import { RidersModule } from '../riders/riders.module';
     PlatformAuditLogService,
     PlatformAdminJwtStrategy,
   ],
+  // The marketing teams module onboards businesses through the same code the platform admin uses.
+  exports: [PlatformAdminService],
 })
 export class PlatformAdminModule {}

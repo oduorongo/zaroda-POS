@@ -186,8 +186,8 @@ describe('SalesAgentJwtStrategy', () => {
   };
 
   it('accepts an active person on an active team', async () => {
-    const s = strategy({ id: 'agent-1', teamId: TEAM, role: 'LEADER', status: 'ACTIVE', team: { status: 'ACTIVE' } });
-    await expect(s.validate({ sub: 'agent-1', scope: 'sales-agent' })).resolves.toEqual({ agentId: 'agent-1', teamId: TEAM, role: 'LEADER' });
+    const s = strategy({ id: 'agent-1', teamId: TEAM, role: 'LEADER', status: 'ACTIVE', mustChangePassword: false, team: { status: 'ACTIVE' } });
+    await expect(s.validate({ sub: 'agent-1', scope: 'sales-agent' })).resolves.toEqual({ agentId: 'agent-1', teamId: TEAM, role: 'LEADER', mustChangePassword: false });
   });
 
   it('refuses a token with another scope (a rider or shopper token)', async () => {
