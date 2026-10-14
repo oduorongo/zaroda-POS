@@ -93,7 +93,12 @@ export default function TeamsPage() {
       <main className="mx-auto max-w-5xl space-y-4 p-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h1 className="text-xl font-bold">Marketing teams</h1>
-          <Button onClick={() => setShowNew((v) => !v)}>{showNew ? "Cancel" : "New team"}</Button>
+          <div className="flex gap-2">
+            <Link href="/teams/earnings" className="rounded-md border border-border px-4 py-2 text-sm font-medium no-underline hover:bg-secondary-500/5">
+              Earnings &amp; payouts
+            </Link>
+            <Button onClick={() => setShowNew((v) => !v)}>{showNew ? "Cancel" : "New team"}</Button>
+          </div>
         </div>
 
         {showNew && (
@@ -112,7 +117,7 @@ export default function TeamsPage() {
                 <input type="number" min={0} max={100} step="0.01" className="mt-1 w-full rounded-md border border-border bg-background p-2" value={memberPct} onChange={(e) => setMemberPct(e.target.value)} placeholder="e.g. 30" />
               </label>
               <label className="text-sm">
-                Leader override (% of the whole team&apos;s earnings)
+                Leader override (% of the commission from all the team&apos;s shops)
                 <input type="number" min={0} max={100} step="0.01" className="mt-1 w-full rounded-md border border-border bg-background p-2" value={leaderPct} onChange={(e) => setLeaderPct(e.target.value)} placeholder="e.g. 5" />
               </label>
               <label className="text-sm">

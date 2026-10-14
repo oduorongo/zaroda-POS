@@ -288,7 +288,7 @@ export default function TeamDetailPage() {
                   <input type="number" min={0} max={100} step="0.01" className="mt-1 w-full rounded-md border border-border bg-background p-2" value={memberPct} onChange={(e) => setMemberPct(e.target.value)} />
                 </label>
                 <label className="text-sm">
-                  Leader override (% of the whole team&apos;s earnings)
+                  Leader override (% of the commission from all the team&apos;s shops)
                   <input type="number" min={0} max={100} step="0.01" className="mt-1 w-full rounded-md border border-border bg-background p-2" value={leaderPct} onChange={(e) => setLeaderPct(e.target.value)} />
                 </label>
                 <label className="text-sm">

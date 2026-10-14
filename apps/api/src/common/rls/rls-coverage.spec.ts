@@ -41,6 +41,8 @@ const INTENTIONALLY_EXCLUDED = new Set([
   // Marketing teams and their members are platform-level (no tenant) - see rls.sql's "marketing teams" comment.
   'sales_teams',
   'sales_agents',
+  'sales_earnings',
+  'sales_payouts',
   // A global price list with no organizationId - see rls.sql's "platform
   // billing tables" comment.
   'plans',

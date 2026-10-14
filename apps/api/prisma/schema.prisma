@@ -2286,7 +2286,8 @@ model SalesTeam {
   status             SalesTeamStatus @default(ACTIVE)
   // The earning terms, as fractions (0.3000 = 30%). A member earns memberShareRate of what Zaroda
   // collects as online-order commission from the businesses they onboarded; the leader also earns
-  // leaderOverrideRate of everything the team earns. The bonus is paid once per business, when it
+  // leaderOverrideRate of the commission collected from ALL the team's businesses (so the two rates
+  // together can never exceed 100% of that commission). The bonus is paid once per business, when it
   // pays its first monthly subscription. All zero until the platform owner sets them.
   memberShareRate    Decimal         @default(0) @db.Decimal(5, 4)
   leaderOverrideRate Decimal         @default(0) @db.Decimal(5, 4)
@@ -2297,6 +2298,7 @@ model SalesTeam {
   agents        SalesAgent[]
   organizations Organization[]
   riders        Rider[]
+  earnings      SalesEarning[]
 
   @@map("sales_teams")
 }
@@ -2320,7 +2322,80 @@ model SalesAgent {
   team          SalesTeam      @relation(fields: [teamId], references: [id], onDelete: Cascade)
   organizations Organization[]
   riders        Rider[]
+  earnings      SalesEarning[]
+  payouts       SalesPayout[]
 
   @@index([teamId])
   @@map("sales_agents")
+}
+
+// ── What the teams earn ───────────────────────────────────────────────────
+// An append-only ledger: one row per thing earned, with the rate and base it was worked out on (so a later
+// change to a team's terms never rewrites what was already earned). Three kinds, each from one source:
+//   COMMISSION_SHARE  a member's share of the commission Zaroda collected from a business they onboarded;
+//                     source = the PAID commission invoice.
+//   LEADER_OVERRIDE   the team leader's slice of the same commission, from every business in the team.
+//   ONBOARDING_BONUS  a flat amount to the member, once per business, when it pays its first monthly
+//                     subscription; source = that subscription payment.
+// Only money Zaroda has actually received earns anything. (kind, sourceId) is unique, so however many
+// times accrual runs, or whoever leads the team at the time, a source is credited once.
+// Platform-level, like the other sales_* tables: access rules live in SalesEarningsService.
+
+enum SalesEarningKind {
+  COMMISSION_SHARE
+  LEADER_OVERRIDE
+  ONBOARDING_BONUS
+}
+
+enum SalesEarningStatus {
+  ACCRUED
+  PAID
+}
+
+model SalesEarning {
+  id               String             @id @default(uuid())
+  teamId           String
+  agentId          String
+  organizationId   String
+  organizationName String
+  kind             SalesEarningKind
+  sourceId         String
+  // The commission collected (or, for a bonus, the bonus amount), and the rate applied to it.
+  baseKes          Decimal            @db.Decimal(12, 2)
+  rate             Decimal?           @db.Decimal(5, 4)
+  amountKes        Decimal            @db.Decimal(12, 2)
+  // When Zaroda received the money, and that moment's month in Nairobi ("2026-10").
+  earnedAt         DateTime
+  periodMonth      String
+  status           SalesEarningStatus @default(ACCRUED)
+  payoutId         String?
+  createdAt        DateTime           @default(now())
+
+  team   SalesTeam    @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  agent  SalesAgent   @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  payout SalesPayout? @relation(fields: [payoutId], references: [id], onDelete: SetNull)
+
+  @@unique([kind, sourceId])
+  @@index([agentId, status])
+  @@index([teamId, periodMonth])
+  @@map("sales_earnings")
+}
+
+// Money Zaroda paid a person (by M-Pesa, bank or cash) against what they had earned up to a month.
+model SalesPayout {
+  id                        String   @id @default(uuid())
+  agentId                   String
+  amountKes                 Decimal  @db.Decimal(12, 2)
+  // Covers everything earned up to and including this month ("2026-10").
+  throughMonth              String
+  method                    String // "MPESA" | "BANK" | "CASH"
+  reference                 String?
+  recordedByPlatformAdminId String
+  paidAt                    DateTime @default(now())
+
+  agent    SalesAgent     @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  earnings SalesEarning[]
+
+  @@index([agentId])
+  @@map("sales_payouts")
 }
