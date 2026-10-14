@@ -65,6 +65,10 @@ model Organization {
   customers           Customer[]
   layaways            Layaway[]
   restaurantTables    RestaurantTable[]
+  rentalProperties    RentalProperty[]
+  rentalUnits         RentalUnit[]
+  rentalTenants       RentalTenant[]
+  rentalLeases        RentalLease[]
   kitchenStations     KitchenStation[]
   salonResources      SalonResource[]
   salonAppointments   SalonAppointment[]
@@ -92,10 +96,6 @@ model Organization {
   deliveryJobs        DeliveryJob[]
   deliveryQuotes      DeliveryQuote[]
   deliveryJobContacts DeliveryJobContact[]
-  RentalProperty      RentalProperty[]
-  RentalUnit          RentalUnit[]
-  RentalTenant        RentalTenant[]
-  RentalLease         RentalLease[]
 
   @@map("organizations")
 }
@@ -121,10 +121,6 @@ model Branch {
   lowStockAlerts        LowStockAlert[]
   layaways              Layaway[]
   restaurantTables      RestaurantTable[]
-  rentalProperties      RentalProperty[]
-  rentalUnits           RentalUnit[]
-  rentalTenants         RentalTenant[]
-  rentalLeases          RentalLease[]
   kitchenStations       KitchenStation[]
   salonResources        SalonResource[]
   salonAppointments     SalonAppointment[]
@@ -2435,8 +2431,6 @@ model RentalProperty {
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   units        RentalUnit[]
-  Branch       Branch?      @relation(fields: [branchId], references: [id])
-  branchId     String?
 
   @@unique([organizationId, name])
   @@index([organizationId])
@@ -2458,8 +2452,6 @@ model RentalUnit {
   organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   property     RentalProperty @relation(fields: [propertyId], references: [id], onDelete: Cascade)
   leases       RentalLease[]
-  Branch       Branch?        @relation(fields: [branchId], references: [id])
-  branchId     String?
 
   @@unique([propertyId, label])
   @@index([organizationId])
@@ -2479,8 +2471,6 @@ model RentalTenant {
 
   organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   leases       RentalLease[]
-  Branch       Branch?       @relation(fields: [branchId], references: [id])
-  branchId     String?
 
   @@index([organizationId])
   @@map("rental_tenants")
@@ -2506,8 +2496,6 @@ model RentalLease {
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   unit         RentalUnit   @relation(fields: [unitId], references: [id], onDelete: Restrict)
   tenant       RentalTenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
-  Branch       Branch?      @relation(fields: [branchId], references: [id])
-  branchId     String?
 
   @@index([organizationId])
   @@index([unitId, status])
