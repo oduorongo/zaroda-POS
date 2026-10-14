@@ -21,6 +21,11 @@ import { withSpan } from '../common/observability/trace-span.util';
  * `/:organizationId`, see initiateTraced below). MPESA_ENV=production
  * switches off the sandbox host; defaults to sandbox.
  */
+export interface StkQueryResult {
+  state: 'PENDING' | 'SUCCESS' | 'FAILED';
+  resultDesc?: string;
+}
+
 @Injectable()
 export class MpesaPaymentProcessor implements PaymentProcessor {
   constructor(private readonly config: ConfigService) {}
@@ -70,6 +75,60 @@ export class MpesaPaymentProcessor implements PaymentProcessor {
     return `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
   }
 
+  private password(shortcode: string, passkey: string, timestamp: string): string {
+    return Buffer.from(`${shortcode}${passkey}${timestamp}`).toString('base64');
+  }
+
+  /**
+   * Asks Daraja directly (STK Push Query) what happened to a push. This is
+   * the source of truth for settlement - the callback webhook is
+   * unauthenticated (Safaricom signs nothing), so its body is only ever a
+   * hint to come and ask here, never trusted on its own. Anyone who learned
+   * a checkoutRequestId could otherwise POST a fake ResultCode 0 and turn an
+   * unpaid push into a "paid" one (or a fake failure into a paid customer's
+   * sale being refused).
+   *
+   * PENDING covers both "customer hasn't answered yet" (Daraja returns an
+   * error body with no ResultCode while the push is in flight) and any
+   * transient failure reaching Daraja - either way the right move is to
+   * ask again later, not to decide.
+   */
+  async queryStkStatus(checkoutRequestId: string): Promise<StkQueryResult> {
+    return withSpan('mpesa.stk_query', { checkoutRequestId }, async () => {
+      const shortcode = this.requireConfig('MPESA_SHORTCODE');
+      const passkey = this.requireConfig('MPESA_PASSKEY');
+      const accessToken = await this.getAccessToken();
+      const timestamp = this.timestamp();
+
+      const response = await fetch(
+        `${this.baseUrl}/mpesa/stkpushquery/v1/query`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            BusinessShortCode: shortcode,
+            Password: this.password(shortcode, passkey, timestamp),
+            Timestamp: timestamp,
+            CheckoutRequestID: checkoutRequestId,
+          }),
+        },
+      );
+      const body = (await response.json().catch(() => ({}))) as {
+        ResultCode?: string | number;
+        ResultDesc?: string;
+      };
+      if (body.ResultCode === undefined || body.ResultCode === null) {
+        return { state: 'PENDING' };
+      }
+      return Number(body.ResultCode) === 0
+        ? { state: 'SUCCESS', resultDesc: body.ResultDesc }
+        : { state: 'FAILED', resultDesc: body.ResultDesc };
+    });
+  }
+
   async initiate(input: {
     amountKes: number;
     reference: string;
@@ -113,9 +172,7 @@ export class MpesaPaymentProcessor implements PaymentProcessor {
       this.getAccessToken(),
     );
     const timestamp = this.timestamp();
-    const password = Buffer.from(`${shortcode}${passkey}${timestamp}`).toString(
-      'base64',
-    );
+    const password = this.password(shortcode, passkey, timestamp);
 
     const response = await fetch(
       `${this.baseUrl}/mpesa/stkpush/v1/processrequest`,
@@ -148,8 +205,8 @@ export class MpesaPaymentProcessor implements PaymentProcessor {
     const body = (await response.json()) as { CheckoutRequestID: string };
 
     // Not settled yet - the customer still has to approve the prompt on
-    // their phone. The callback webhook (not yet built - see class comment)
-    // is what will eventually mark this payment/sale complete.
+    // their phone. PaymentsService confirms the outcome through
+    // queryStkStatus() once the callback (or a slow status poll) arrives.
     return {
       settledImmediately: false,
       providerReference: body.CheckoutRequestID,

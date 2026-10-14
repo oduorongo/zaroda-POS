@@ -107,6 +107,14 @@ export class SalesService {
           }),
         );
         if (existing) return existing;
+        // Not a clientId race - the other unique constraint a sale can
+        // trip is sale_payments.providerReference: two different sales
+        // racing to claim the same M-Pesa payment.
+        if (String(e.meta?.target ?? '').includes('providerReference')) {
+          throw new ConflictException(
+            'That M-Pesa payment has already been used for another sale',
+          );
+        }
       }
       throw e;
     }
@@ -317,6 +325,19 @@ export class SalesService {
         if (Math.abs(Number(stkRequest.amount) - payment.amount) > 0.01) {
           throw new BadRequestException(
             `M-Pesa payment ${payment.providerReference} was confirmed for ${Number(stkRequest.amount).toFixed(2)}, not the ${payment.amount.toFixed(2)} claimed`,
+          );
+        }
+        // One confirmed push pays for exactly one sale. (The unique index
+        // on sale_payments.providerReference is the race-proof backstop -
+        // see create()'s P2002 handling - this just gives the common case
+        // a clear message.)
+        const alreadyUsed = await tx.salePayment.findFirst({
+          where: { providerReference: payment.providerReference },
+          select: { saleId: true },
+        });
+        if (alreadyUsed) {
+          throw new ConflictException(
+            `M-Pesa payment ${payment.providerReference} has already been used for another sale`,
           );
         }
       }
