@@ -262,7 +262,7 @@ export default function OnlineShopSettingsPage() {
     }
   }
 
-  async function useGateway(gateway: "TUMA" | "DARAJA") {
+  async function switchGateway(gateway: "TUMA" | "DARAJA") {
     setMpesaBusy(true);
     setMpesaError(null);
     setTumaError(null);
@@ -638,7 +638,7 @@ export default function OnlineShopSettingsPage() {
                 )}
 
                     {store.tumaConnected && store.paymentGateway !== "TUMA" && (
-                      <Button size="sm" onClick={() => void useGateway("TUMA")} disabled={mpesaBusy}>
+                      <Button size="sm" onClick={() => void switchGateway("TUMA")} disabled={mpesaBusy}>
                         Use TUMA for new orders
                       </Button>
                     )}
@@ -665,7 +665,7 @@ export default function OnlineShopSettingsPage() {
                           </Button>
                         </div>
                         {store.paymentGateway !== "DARAJA" && (
-                          <Button size="sm" onClick={() => void useGateway("DARAJA")} disabled={mpesaBusy}>
+                          <Button size="sm" onClick={() => void switchGateway("DARAJA")} disabled={mpesaBusy}>
                             Use my M-Pesa for new orders
                           </Button>
                         )}
