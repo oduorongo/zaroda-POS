@@ -6,6 +6,7 @@ import { apiGet, apiPatch, apiPost, ApiError } from "../../lib/api";
 import { getSession, clearSession, isBackofficeRole, type Session } from "../../lib/auth";
 import { Nav } from "../../components/nav";
 import { RentSection } from "./rent-section";
+import { PlanSection } from "./plan-section";
 import { ExpensesSection, MaintenanceSection, MetersSection, ReportsSection } from "./ops-sections";
 import { PageHeader } from "../../components/page-header";
 
@@ -49,7 +50,7 @@ interface Lease {
   unit: { id: string; label: string; property: { id: string; name: string } };
 }
 
-type Tab = "properties" | "tenants" | "leases" | "rent" | "expenses" | "maintenance" | "meters" | "reports";
+type Tab = "properties" | "tenants" | "leases" | "rent" | "expenses" | "maintenance" | "meters" | "reports" | "plan";
 
 const input = "w-full rounded-md border border-border bg-surface p-2 text-sm";
 const button = "rounded-md bg-primary-600 px-3 py-2 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-50";
@@ -92,6 +93,8 @@ export default function RentalsPage() {
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [leases, setLeases] = useState<Lease[]>([]);
   const [error, setError] = useState<string | null>(null);
+  // A 402 from the server means "this needs a bigger plan": show an upgrade prompt, not just a red error.
+  const [needsUpgrade, setNeedsUpgrade] = useState(false);
   const [busy, setBusy] = useState(false);
 
   const [propForm, setPropForm] = useState({ name: "", address: "" });
@@ -143,11 +146,13 @@ export default function RentalsPage() {
   async function submit(action: () => Promise<unknown>, reset: () => void) {
     setBusy(true);
     setError(null);
+    setNeedsUpgrade(false);
     try {
       await action();
       reset();
       await load();
     } catch (err) {
+      setNeedsUpgrade(err instanceof ApiError && err.status === 402);
       setError(err instanceof ApiError ? err.message : "That did not save. Please try again.");
     } finally {
       setBusy(false);
@@ -313,11 +318,20 @@ How much of the deposit are you handing back (KES)? Enter 0 for none.`,
           </div>
         </div>
 
-        {error && <p className="mb-4 rounded-md bg-red-950 p-3 text-sm text-red-300">{error}</p>}
+        {error && needsUpgrade ? (
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-md bg-amber-950 p-3 text-sm text-amber-200">
+            <span>{error}</span>
+            <button className="rounded-md bg-primary-600 px-3 py-2 text-sm font-medium text-white hover:bg-primary-700" onClick={() => setTab("plan")}>
+              See plans
+            </button>
+          </div>
+        ) : (
+          error && <p className="mb-4 rounded-md bg-red-950 p-3 text-sm text-red-300">{error}</p>
+        )}
         {notice && <p className="mb-4 rounded-md bg-green-950 p-3 text-sm text-green-300">{notice}</p>}
 
         <div className="mb-4 flex flex-wrap gap-2">
-          {(["properties", "tenants", "leases", "rent", "expenses", "maintenance", "meters", "reports"] as Tab[]).map((t) => (
+          {(["properties", "tenants", "leases", "rent", "expenses", "maintenance", "meters", "reports", "plan"] as Tab[]).map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
@@ -553,6 +567,7 @@ How much of the deposit are you handing back (KES)? Enter 0 for none.`,
         {tab === "maintenance" && <MaintenanceSection properties={properties} units={units} />}
         {tab === "meters" && <MetersSection units={units} />}
         {tab === "reports" && <ReportsSection />}
+        {tab === "plan" && <PlanSection onChanged={() => void load()} />}
       </main>
     </div>
   );

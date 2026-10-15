@@ -9,6 +9,7 @@ import { TenantScopedPrismaService } from '../common/prisma/tenant-scoped-prisma
 import { RentalBillingService } from './rental-billing.service';
 import { fromCents, nairobiToday, toCents } from './rental-billing.util';
 import { getTenantStore } from '../common/tenant/tenant-context';
+import { assertUnitRoom } from './rental-plans.service';
 import {
   BulkCreateUnitsDto,
   CreateLeaseDto,
@@ -298,6 +299,9 @@ export class RentalService {
     if (unit.status === 'OCCUPIED') {
       throw new ConflictException('This unit is already occupied. End its current lease first.');
     }
+
+    // The plan's occupied-unit limit (Bure 5, Starter 30): checked here so every way of starting a lease is covered.
+    await assertUnitRoom(tx, organizationId);
 
     const lease = await tx.rentalLease.create({
       data: {

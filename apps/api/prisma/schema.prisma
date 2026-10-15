@@ -2641,6 +2641,17 @@ model RentalSettings {
   remindersEnabled             Boolean  @default(false)
   smsReminders                 Boolean  @default(false)
   paymentInstructions          String?
+  // The landlord's ZARODA plan (see rental-plans.util.ts). A landlord with no row yet is on 'bure'. Strings, not enums,
+  // so the later 'growth' and 'agency' plans need no migration.
+  plan                         String   @default("bure") // 'bure' | 'starter' | 'collect'
+  billingCycle                 String   @default("monthly") // 'monthly' | 'annual'
+  // A move to a cheaper plan waits for the next billing cycle (pendingPlanFrom); a move up applies at once.
+  pendingPlan                  String?
+  pendingPlanFrom              DateTime?
+  // The first 20 paying landlords keep their launch price until this date.
+  foundingPriceUntil           DateTime?
+  // Landlords who were already using rentals before plans existed: no charge until this date.
+  planFreeUntil                DateTime?
   createdAt                    DateTime @default(now())
   updatedAt                    DateTime @updatedAt
 

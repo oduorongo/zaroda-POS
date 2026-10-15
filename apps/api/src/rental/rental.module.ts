@@ -17,6 +17,7 @@ import { RentalReportService } from './rental-report.service';
 import { RentalCallbackController, RentalMpesaController } from './rental-mpesa.controller';
 import { RentalMpesaService } from './rental-mpesa.service';
 import { RentalService } from './rental.service';
+import { RentalPlansService } from './rental-plans.service';
 import { RentalBillingService } from './rental-billing.service';
 import { RentalSchedulerService } from './rental-scheduler.service';
 
@@ -43,6 +44,7 @@ import { RentalSchedulerService } from './rental-scheduler.service';
   controllers: [RentalController, RentalTenantAuthController, RentalTenantPortalController, RentalOpsController, RentalMpesaController, RentalCallbackController],
   providers: [
     RentalService,
+    RentalPlansService,
     RentalBillingService,
     RentalMpesaService,
     RentalOpsService,

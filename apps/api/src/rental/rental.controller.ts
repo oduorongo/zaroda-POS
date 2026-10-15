@@ -12,6 +12,8 @@ import { Role } from '@prisma/client';
 import { Roles } from '../auth/roles.decorator';
 import { RentalService } from './rental.service';
 import { RentalBillingService } from './rental-billing.service';
+import { RentalPlansService } from './rental-plans.service';
+import { ChangePlanDto } from './dto/rental-plans.dto';
 import {
   BulkCreateUnitsDto,
   CreateChargeDto,
@@ -34,6 +36,7 @@ export class RentalController {
   constructor(
     private readonly rental: RentalService,
     private readonly billing: RentalBillingService,
+    private readonly plans: RentalPlansService,
   ) {}
 
   @Roles(Role.MANAGER, Role.OWNER)
@@ -176,7 +179,8 @@ export class RentalController {
 
   @Roles(Role.MANAGER, Role.OWNER)
   @Get('payments/:id')
-  getReceipt(@Param('id', ParseUUIDPipe) id: string) {
+  async getReceipt(@Param('id', ParseUUIDPipe) id: string) {
+    await this.plans.assertFeature('receipts');
     return this.billing.getReceipt(id);
   }
 
@@ -188,7 +192,21 @@ export class RentalController {
 
   @Roles(Role.MANAGER, Role.OWNER)
   @Get('leases/:id/statement')
-  statement(@Param('id', ParseUUIDPipe) id: string) {
+  async statement(@Param('id', ParseUUIDPipe) id: string) {
+    await this.plans.assertFeature('statements');
     return this.billing.statement(id);
+  }
+
+  // The landlord's ZARODA plan: what it includes, how many units are used, and changing it (owners only).
+  @Roles(Role.MANAGER, Role.OWNER)
+  @Get('plan')
+  getPlan() {
+    return this.plans.getPlan();
+  }
+
+  @Roles(Role.OWNER)
+  @Post('plan')
+  changePlan(@Body() dto: ChangePlanDto) {
+    return this.plans.changePlan(dto);
   }
 }
