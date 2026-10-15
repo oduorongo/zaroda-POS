@@ -27,6 +27,7 @@ enum Role {
   MANAGER
   OWNER
   AUDITOR
+  CARETAKER // a landlord's on-site helper: records rent and logs repairs, nothing else (rental plans Starter and up, one per landlord)
 }
 
 model Organization {

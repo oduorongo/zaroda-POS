@@ -4,7 +4,7 @@ import { FloatingThemeToggle } from "@zaroda/ui";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { login, getOrganization, ApiError } from "../../lib/api";
-import { setSession, clearSession, decodeRole, isBackofficeRole } from "../../lib/auth";
+import { setSession, clearSession, decodeRole, homePath, isBackofficeRole, isCaretaker } from "../../lib/auth";
 
 const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:3001";
 const TERMINAL_URL = process.env.NEXT_PUBLIC_TERMINAL_URL ?? "https://pos.zarodashop.com";
@@ -28,7 +28,7 @@ export default function LoginPage() {
 
       // The back office is for owners/managers/auditors only - a cashier
       // never gets a session here, they belong at the till (PIN login).
-      if (!isBackofficeRole(role)) {
+      if (!isBackofficeRole(role) && !isCaretaker(role)) {
         clearSession();
         setBlockedCashier(true);
         return;
@@ -36,7 +36,7 @@ export default function LoginPage() {
 
       const { industryType } = await getOrganization(apiBaseUrl, accessToken);
       setSession({ apiBaseUrl, accessToken, role, email: email.trim(), industryType });
-      router.replace("/dashboard");
+      router.replace(homePath(role));
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Login failed - check the API URL and try again");
     } finally {

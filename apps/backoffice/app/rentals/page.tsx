@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { apiGet, apiPatch, apiPost, ApiError } from "../../lib/api";
-import { getSession, clearSession, isBackofficeRole, type Session } from "../../lib/auth";
+import { getSession, clearSession, isBackofficeRole, isCaretaker, type Session } from "../../lib/auth";
 import { Nav } from "../../components/nav";
 import { RentSection } from "./rent-section";
 import { PlanSection } from "./plan-section";
@@ -50,6 +50,10 @@ interface Lease {
   unit: { id: string; label: string; property: { id: string; name: string } };
 }
 
+// A caretaker records rent and logs repairs and meter readings; everything else is the landlord's.
+const CARETAKER_TABS: Tab[] = ["rent", "maintenance", "meters"];
+const OWNER_TABS: Tab[] = ["properties", "tenants", "leases", "rent", "expenses", "maintenance", "meters", "reports", "plan"];
+
 type Tab = "properties" | "tenants" | "leases" | "rent" | "expenses" | "maintenance" | "meters" | "reports" | "plan";
 
 const input = "w-full rounded-md border border-border bg-surface p-2 text-sm";
@@ -87,6 +91,7 @@ function expandUnitNames(text: string): string[] {
 export default function RentalsPage() {
   const router = useRouter();
   const [session, setSession] = useState<Session | null>(null);
+  const caretaker = !!session && isCaretaker(session.role);
   const [tab, setTab] = useState<Tab>("properties");
   const [properties, setProperties] = useState<Property[]>([]);
   const [units, setUnits] = useState<Unit[]>([]);
@@ -111,7 +116,7 @@ export default function RentalsPage() {
       router.replace("/login");
       return;
     }
-    if (!isBackofficeRole(s.role)) {
+    if (!isBackofficeRole(s.role) && !isCaretaker(s.role)) {
       clearSession();
       router.replace("/login");
       return;
@@ -121,6 +126,7 @@ export default function RentalsPage() {
       return;
     }
     setSession(s);
+    if (isCaretaker(s.role)) setTab("rent");
     void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router]);
@@ -331,7 +337,7 @@ How much of the deposit are you handing back (KES)? Enter 0 for none.`,
         {notice && <p className="mb-4 rounded-md bg-green-950 p-3 text-sm text-green-300">{notice}</p>}
 
         <div className="mb-4 flex flex-wrap gap-2">
-          {(["properties", "tenants", "leases", "rent", "expenses", "maintenance", "meters", "reports", "plan"] as Tab[]).map((t) => (
+          {(caretaker ? CARETAKER_TABS : OWNER_TABS).map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
@@ -562,7 +568,7 @@ How much of the deposit are you handing back (KES)? Enter 0 for none.`,
             </div>
           </div>
         )}
-        {tab === "rent" && <RentSection onChanged={() => void load()} />}
+        {tab === "rent" && <RentSection caretaker={caretaker} onChanged={() => void load()} />}
         {tab === "expenses" && <ExpensesSection properties={properties} />}
         {tab === "maintenance" && <MaintenanceSection properties={properties} units={units} />}
         {tab === "meters" && <MetersSection units={units} />}

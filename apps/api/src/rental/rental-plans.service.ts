@@ -55,6 +55,15 @@ export async function assertFeature(tx: Tx, organizationId: string, feature: Ren
   throw upgradeRequired(`${FEATURE_LABEL[feature]} comes with the ${needed.name} plan. You are on ${plan.name}.`, 'PLAN_FEATURE', needed.code);
 }
 
+/** One caretaker account per landlord, on Starter and above, and only for a rental business. exceptOrgUserId is the person being changed. */
+export async function assertCaretakerAllowed(tx: Tx, organizationId: string, exceptOrgUserId?: string): Promise<void> {
+  const org = await tx.organization.findUnique({ where: { id: organizationId }, select: { industryType: true } });
+  if (org?.industryType !== 'RENTAL') throw new BadRequestException('Caretaker accounts are only for rental businesses');
+  await assertFeature(tx, organizationId, 'caretaker');
+  const others = await tx.orgUser.count({ where: { organizationId, role: 'CARETAKER', isActive: true, ...(exceptOrgUserId ? { id: { not: exceptOrgUserId } } : {}) } });
+  if (others >= 1) throw new BadRequestException('You already have a caretaker. Your plan includes one caretaker account - deactivate them first to add another.');
+}
+
 /** The landlord's own view of their plan, and changing it. */
 @Injectable()
 export class RentalPlansService {
