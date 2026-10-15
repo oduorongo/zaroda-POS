@@ -8,7 +8,7 @@ import { OnboardTenantDto } from './dto/onboard-tenant.dto';
 import { RecordPaymentDto } from './dto/record-payment.dto';
 import { SetOnlineStoreAddonDto, UpdateOrganizationDto } from './dto/update-organization.dto';
 import { DEFAULT_COMMISSION_RATE } from '../online-store/online-store.constants';
-import { effectiveStatus } from './subscriptions.util';
+import { effectiveStatus, needsDeviceSubscription } from './subscriptions.util';
 
 const SALT_ROUNDS = 10;
 
@@ -256,16 +256,19 @@ export class PlatformAdminService {
           });
         }
 
-        const subscription = await tx.subscription.create({
-          data: {
-            organizationId,
-            planId: plan.id,
-            currentPeriodEnd: new Date(Date.now() + (options.trial ? 14 : plan.billingPeriodDays) * 24 * 60 * 60 * 1000),
-            isTrial: options.trial ?? false,
-          },
-        });
+        // No device subscription for a rental landlord - their plan is the rental plan (see needsDeviceSubscription).
+        const subscription = needsDeviceSubscription(dto.industryType)
+          ? await tx.subscription.create({
+              data: {
+                organizationId,
+                planId: plan.id,
+                currentPeriodEnd: new Date(Date.now() + (options.trial ? 14 : plan.billingPeriodDays) * 24 * 60 * 60 * 1000),
+                isTrial: options.trial ?? false,
+              },
+            })
+          : null;
 
-        return { organizationId, branchId: branch.id, subscriptionId: subscription.id };
+        return { organizationId, branchId: branch.id, subscriptionId: subscription?.id ?? null };
       }, TX_OPTIONS);
     } catch (e) {
       if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {

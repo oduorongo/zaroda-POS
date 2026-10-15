@@ -19,3 +19,13 @@ export function effectiveStatus(sub: SubscriptionLike, now: Date = new Date()): 
   if (now <= graceEnd) return 'GRACE';
   return 'SUSPENDED';
 }
+
+/**
+ * Whether a business gets the device/branch subscription (BASIC, STANDARD...) with its trial and payments.
+ * A rental landlord does not: their plan is the rental plan (Bure, Starter, Pay-as-you-collect), billed from the
+ * rentals screens (see rental/rental-platform-billing.service.ts), so a second, unrelated subscription would only
+ * show up as "payment overdue" in the platform admin's billing screen.
+ */
+export function needsDeviceSubscription(industryType: string): boolean {
+  return industryType !== 'RENTAL';
+}

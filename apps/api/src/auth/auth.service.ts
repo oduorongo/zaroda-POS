@@ -15,6 +15,7 @@ import { PinLoginDto } from './dto/pin-login.dto';
 import { RegisterOrganizationDto } from './dto/register-organization.dto';
 import { JwtPayload } from './jwt.strategy';
 import { PinLockoutService } from './pin-lockout.service';
+import { needsDeviceSubscription } from '../platform-admin/subscriptions.util';
 
 const SALT_ROUNDS = 10;
 
@@ -251,20 +252,24 @@ export class AuthService {
           // failing registration loudly here is correct: better than
           // silently onboarding a tenant with no billing record at all,
           // which platform-admin's billing screen has no way to represent.
-          const basicPlan = await tx.plan.findUniqueOrThrow({
-            where: { tier: 'BASIC' },
-          });
-          const trialDays = 14;
-          await tx.subscription.create({
-            data: {
-              organizationId,
-              planId: basicPlan.id,
-              currentPeriodEnd: new Date(
-                Date.now() + trialDays * 24 * 60 * 60 * 1000,
-              ),
-              isTrial: true,
-            },
-          });
+          // A rental landlord is the exception: their plan is the rental plan (free Bure to start), billed from the
+          // rentals screens, so they get no device subscription or trial.
+          if (needsDeviceSubscription(dto.industryType)) {
+            const basicPlan = await tx.plan.findUniqueOrThrow({
+              where: { tier: 'BASIC' },
+            });
+            const trialDays = 14;
+            await tx.subscription.create({
+              data: {
+                organizationId,
+                planId: basicPlan.id,
+                currentPeriodEnd: new Date(
+                  Date.now() + trialDays * 24 * 60 * 60 * 1000,
+                ),
+                isTrial: true,
+              },
+            });
+          }
 
           return { orgUser, branch, terminal };
         },
