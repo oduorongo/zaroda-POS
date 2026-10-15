@@ -38,6 +38,8 @@ export default function SignupClient() {
   const [branchName, setBranchName] = useState("");
   const [county, setCounty] = useState("");
   const [subCounty, setSubCounty] = useState("");
+  // Landlords start on the free Bure plan (up to 5 occupied units), not a 14-day trial, so the wording differs.
+  const rental = industryType === "RENTAL";
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -86,7 +88,7 @@ export default function SignupClient() {
     return (
       <main className="mx-auto max-w-md px-6 py-24 text-center">
         <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-success-600 text-2xl text-white">✓</div>
-        <h1 className="mt-4 text-2xl font-bold text-foreground">You&apos;re in — 14-day free trial started</h1>
+        <h1 className="mt-4 text-2xl font-bold text-foreground">{rental ? "You’re in — your free landlord account is ready" : "You’re in — 14-day free trial started"}</h1>
         <p className="mt-2 text-secondary-500">Taking you to your back office...</p>
         {handoffUrl && (
           <a
@@ -102,13 +104,17 @@ export default function SignupClient() {
 
   return (
     <main className="mx-auto max-w-md px-6 py-16">
-      <h1 className="text-2xl font-bold text-foreground">Start your free trial</h1>
-      <p className="mt-1 text-sm text-secondary-500">14 days, no card required. Set up your first branch and register now.</p>
+      <h1 className="text-2xl font-bold text-foreground">{rental ? "Create your free landlord account" : "Start your free trial"}</h1>
+      <p className="mt-1 text-sm text-secondary-500">
+        {rental
+          ? "Free for up to 5 occupied units, no card required. Add your properties and tenants right away, and upgrade only when you need more."
+          : "14 days, no card required. Set up your first branch and register now."}
+      </p>
 
       <div className="mt-6 space-y-4">
         <div>
           <Label>Business name</Label>
-          <Input value={organizationName} onChange={(e) => setOrganizationName(e.target.value)} placeholder="e.g. Mama Njeri's Minimart" />
+          <Input value={organizationName} onChange={(e) => setOrganizationName(e.target.value)} placeholder={rental ? "e.g. Mwangi Properties" : "e.g. Mama Njeri's Minimart"} />
         </div>
         <div>
           <Label>Business type</Label>
@@ -121,8 +127,8 @@ export default function SignupClient() {
           </select>
         </div>
         <div>
-          <Label>First branch name</Label>
-          <Input value={branchName} onChange={(e) => setBranchName(e.target.value)} placeholder="e.g. Main Branch" />
+          <Label>{rental ? "Office or main property name" : "First branch name"}</Label>
+          <Input value={branchName} onChange={(e) => setBranchName(e.target.value)} placeholder={rental ? "e.g. Head Office" : "e.g. Main Branch"} />
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div>
@@ -150,7 +156,7 @@ export default function SignupClient() {
         {error && <p className="text-sm text-error-600">{error}</p>}
 
         <Button onClick={() => void submit()} disabled={submitting || !canSubmit} size="lg" className="w-full">
-          {submitting ? "Creating your account..." : "Start free trial"}
+          {submitting ? "Creating your account..." : rental ? "Create free account" : "Start free trial"}
         </Button>
       </div>
     </main>

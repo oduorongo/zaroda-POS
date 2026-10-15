@@ -1,7 +1,7 @@
 import { SalesAgentStatus } from '@prisma/client';
 import { IsEmail, IsEnum, IsIn, IsInt, IsOptional, IsString, Max, MaxLength, Min, MinLength } from 'class-validator';
 
-const INDUSTRY_TYPES = ['RETAIL', 'RESTAURANT', 'PHARMACY', 'SALON'] as const;
+const INDUSTRY_TYPES = ['RETAIL', 'RESTAURANT', 'PHARMACY', 'SALON', 'RENTAL'] as const;
 
 /**
  * A team member signing a shop up. The shop starts on a 14-day free trial of the entry plan, like a self-signup.
