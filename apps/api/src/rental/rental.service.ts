@@ -9,6 +9,7 @@ import { TenantScopedPrismaService } from '../common/prisma/tenant-scoped-prisma
 import { RentalBillingService } from './rental-billing.service';
 import { fromCents, nairobiToday, toCents } from './rental-billing.util';
 import { getTenantStore } from '../common/tenant/tenant-context';
+import { normalizeKenyanPhone } from '../online-orders/online-orders.util';
 import { assertUnitRoom } from './rental-plans.service';
 import { assertInScope, caretakerPropertyIds, propertyFilter } from './rental-caretaker-scope';
 import {
@@ -199,7 +200,7 @@ export class RentalService {
   async createTenant(dto: CreateTenantDto) {
     const { organizationId } = getTenantStore();
     const { unitId, startDate, dueDay, monthlyRent, depositAmount, ...rest } = dto;
-    const person = { ...rest, email: rest.email?.trim().toLowerCase() };
+    const person = { ...rest, email: rest.email?.trim().toLowerCase(), phoneNormalized: rest.phone ? normalizeKenyanPhone(rest.phone) : undefined };
     if (unitId && !startDate) {
       throw new BadRequestException('Give a move-in date to put the tenant in a unit');
     }
@@ -271,7 +272,10 @@ export class RentalService {
       if (!(await tx.rentalTenant.findUnique({ where: { id } }))) {
         throw new NotFoundException('Tenant not found');
       }
-      return tx.rentalTenant.update({ where: { id }, data: { ...dto, email: dto.email?.trim().toLowerCase() } });
+      return tx.rentalTenant.update({
+        where: { id },
+        data: { ...dto, email: dto.email?.trim().toLowerCase(), phoneNormalized: dto.phone === undefined ? undefined : normalizeKenyanPhone(dto.phone) },
+      });
     });
   }
 

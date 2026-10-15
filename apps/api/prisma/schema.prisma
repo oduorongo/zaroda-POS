@@ -2483,6 +2483,8 @@ model RentalTenant {
   organizationId String
   name           String
   phone          String?
+  // The phone in 2547XXXXXXXX form (null if it is not a Kenyan mobile number): how a tenant who signs in by text message is found.
+  phoneNormalized String?
   email          String?
   idNumber       String?
   notes          String?
@@ -2494,6 +2496,7 @@ model RentalTenant {
   maintenance  RentalMaintenanceRequest[]
 
   @@index([organizationId])
+  @@index([phoneNormalized])
   @@map("rental_tenants")
 }
 
