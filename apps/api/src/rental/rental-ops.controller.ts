@@ -38,26 +38,31 @@ export class RentalOpsController {
     return this.ops.deleteExpense(id);
   }
 
+  @Roles(Role.MANAGER, Role.OWNER, Role.CARETAKER)
   @Post('maintenance')
   createMaintenance(@Body() dto: CreateMaintenanceDto) {
     return this.ops.createMaintenance(dto);
   }
 
+  @Roles(Role.MANAGER, Role.OWNER, Role.CARETAKER)
   @Get('maintenance')
   listMaintenance(@Query('status') status?: string, @Query('propertyId') propertyId?: string) {
     return this.ops.listMaintenance({ status, propertyId });
   }
 
+  @Roles(Role.MANAGER, Role.OWNER, Role.CARETAKER)
   @Patch('maintenance/:id')
   updateMaintenance(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateMaintenanceDto) {
     return this.ops.updateMaintenance(id, dto);
   }
 
+  @Roles(Role.MANAGER, Role.OWNER, Role.CARETAKER)
   @Post('meters')
   recordReading(@Body() dto: RecordMeterReadingDto) {
     return this.ops.recordReading(dto);
   }
 
+  @Roles(Role.MANAGER, Role.OWNER, Role.CARETAKER)
   @Get('meters')
   listReadings(@Query('unitId') unitId?: string) {
     return this.ops.listReadings({ unitId });

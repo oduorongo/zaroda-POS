@@ -141,7 +141,7 @@ export class RentalController {
 
   // ── Rent, payments and statements (managers and owners only) ────────────
 
-  @Roles(Role.MANAGER, Role.OWNER)
+  @Roles(Role.MANAGER, Role.OWNER, Role.CARETAKER)
   @Get('dues')
   dues() {
     return this.billing.dues();
@@ -153,7 +153,7 @@ export class RentalController {
     return this.billing.generateNow();
   }
 
-  @Roles(Role.MANAGER, Role.OWNER)
+  @Roles(Role.MANAGER, Role.OWNER, Role.CARETAKER)
   @Get('invoices')
   listInvoices(@Query('leaseId') leaseId?: string, @Query('open') open?: string) {
     return this.billing.listInvoices({ leaseId, onlyOpen: open === 'true' });
@@ -165,19 +165,19 @@ export class RentalController {
     return this.billing.createCharge(dto);
   }
 
-  @Roles(Role.MANAGER, Role.OWNER)
+  @Roles(Role.MANAGER, Role.OWNER, Role.CARETAKER)
   @Post('payments')
   recordPayment(@Body() dto: RecordPaymentDto) {
     return this.billing.recordPayment(dto);
   }
 
-  @Roles(Role.MANAGER, Role.OWNER)
+  @Roles(Role.MANAGER, Role.OWNER, Role.CARETAKER)
   @Get('payments')
   listPayments(@Query('leaseId') leaseId?: string) {
     return this.billing.listPayments({ leaseId });
   }
 
-  @Roles(Role.MANAGER, Role.OWNER)
+  @Roles(Role.MANAGER, Role.OWNER, Role.CARETAKER)
   @Get('payments/:id')
   async getReceipt(@Param('id', ParseUUIDPipe) id: string) {
     await this.plans.assertFeature('receipts');
@@ -190,7 +190,7 @@ export class RentalController {
     return this.billing.voidPayment(id, dto.reason);
   }
 
-  @Roles(Role.MANAGER, Role.OWNER)
+  @Roles(Role.MANAGER, Role.OWNER, Role.CARETAKER)
   @Get('leases/:id/statement')
   async statement(@Param('id', ParseUUIDPipe) id: string) {
     await this.plans.assertFeature('statements');

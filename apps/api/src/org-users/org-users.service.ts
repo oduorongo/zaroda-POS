@@ -13,6 +13,7 @@ import { getTenantStore } from '../common/tenant/tenant-context';
 import { CreateOrgUserDto } from './dto/create-org-user.dto';
 import { UpdateOrgUserDto } from './dto/update-org-user.dto';
 import { SetPinDto } from './dto/set-pin.dto';
+import { assertCaretakerAllowed } from '../rental/rental-plans.service';
 
 const SALT_ROUNDS = 10;
 
@@ -92,6 +93,7 @@ export class OrgUsersService {
 
     try {
       return await this.tenantPrisma.run(async (tx) => {
+        if (dto.role === 'CARETAKER') await assertCaretakerAllowed(tx, organizationId);
         const orgUser = await tx.orgUser.create({
           data: {
             organizationId,
@@ -137,6 +139,7 @@ export class OrgUsersService {
     return this.tenantPrisma.run(async (tx) => {
       const before = await tx.orgUser.findUnique({ where: { id } });
       if (!before) throw new NotFoundException('Org user not found');
+      if (dto.role === 'CARETAKER' && before.role !== 'CARETAKER') await assertCaretakerAllowed(tx, before.organizationId, id);
 
       const updated = await tx.orgUser.update({
         where: { id },
@@ -224,6 +227,7 @@ export class OrgUsersService {
       const before = await tx.orgUser.findUnique({ where: { id } });
       if (!before) throw new NotFoundException('Org user not found');
       if (before.isActive === isActive) return before;
+      if (isActive && before.role === 'CARETAKER') await assertCaretakerAllowed(tx, before.organizationId, id);
 
       const updated = await tx.orgUser.update({
         where: { id },

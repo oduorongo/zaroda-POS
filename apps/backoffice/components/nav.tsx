@@ -5,7 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { LayoutGrid, ExternalLink } from "lucide-react";
 import { useEffect, useState } from "react";
 import { apiGet } from "../lib/api";
-import { clearSession, setSession, type Session } from "../lib/auth";
+import { clearSession, homePath, isCaretaker, setSession, type Session } from "../lib/auth";
 import { useIdleLogout } from "../hooks/use-idle-logout";
 import { RibbonButton, RibbonLink, ThemeToggle, TopRibbon } from "@zaroda/ui";
 
@@ -37,6 +37,7 @@ export function Nav({ session }: { session: Session }) {
   const pathname = usePathname();
   const router = useRouter();
   const verticalLink = VERTICAL_LINKS[session.industryType];
+  const caretaker = isCaretaker(session.role); // sees Rentals only
   useIdleLogout();
 
   // The shop's name goes in the ribbon. Sessions made before this existed do not have it yet, so fetch it once and keep it.
@@ -53,13 +54,15 @@ export function Nav({ session }: { session: Session }) {
   }, [session]);
 
   return (
-    <TopRibbon appName={orgName ?? "Back Office"} homeHref="/dashboard" LinkComponent={Link}>
+    <TopRibbon appName={orgName ?? "Back Office"} homeHref={homePath(session.role)} LinkComponent={Link}>
       {orgName && <span className="hidden text-xs text-white/60 lg:inline">Back Office</span>}
+      {!caretaker && (
       <RibbonLink href="/dashboard" LinkComponent={Link} active={pathname === "/dashboard"}>
         <LayoutGrid size={14} />
         Home
       </RibbonLink>
-      {QUICK_LINKS.map((link) => (
+      )}
+      {!caretaker && QUICK_LINKS.map((link) => (
         <RibbonLink key={link.href} href={link.href} LinkComponent={Link} active={!!pathname?.startsWith(link.href)}>
           {link.label}
         </RibbonLink>

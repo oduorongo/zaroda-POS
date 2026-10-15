@@ -7,7 +7,7 @@ import { getSession, clearSession, isBackofficeRole, type Session } from "../../
 import { Nav } from "../../components/nav";
 import { PageHeader } from "../../components/page-header";
 
-type Role = "CASHIER" | "SUPERVISOR" | "MANAGER" | "OWNER" | "AUDITOR";
+type Role = "CASHIER" | "SUPERVISOR" | "MANAGER" | "OWNER" | "AUDITOR" | "CARETAKER";
 
 interface OrgUser {
   id: string;
@@ -17,7 +17,7 @@ interface OrgUser {
   user: { fullName: string; email?: string };
 }
 
-const ROLES: Role[] = ["CASHIER", "SUPERVISOR", "MANAGER", "OWNER", "AUDITOR"];
+const ROLES: Role[] = ["CASHIER", "SUPERVISOR", "MANAGER", "OWNER", "AUDITOR", "CARETAKER"];
 
 /**
  * The first UI for org-users.controller.ts's write endpoints (added
@@ -27,6 +27,8 @@ const ROLES: Role[] = ["CASHIER", "SUPERVISOR", "MANAGER", "OWNER", "AUDITOR"];
 export default function StaffPage() {
   const router = useRouter();
   const [session, setSessionState] = useState<Session | null>(null);
+  // A caretaker is a rental-business role (one per landlord, Starter plan and up), so only rental businesses are offered it.
+  const roleOptions = session?.industryType === "RENTAL" ? ROLES : ROLES.filter((r) => r !== "CARETAKER");
   const [orgUsers, setOrgUsers] = useState<OrgUser[]>([]);
   const [includeInactive, setIncludeInactive] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -219,7 +221,7 @@ export default function StaffPage() {
                 onChange={(e) => setNewRole(e.target.value as Role)}
                 className="rounded-md border border-border bg-background p-2 text-sm"
               >
-                {ROLES.map((r) => (
+                {roleOptions.map((r) => (
                   <option key={r} value={r}>
                     {r}
                   </option>
@@ -291,7 +293,7 @@ export default function StaffPage() {
                       onChange={(e) => setEditRole(e.target.value as Role)}
                       className="rounded-md border border-border bg-background p-2 text-sm"
                     >
-                      {ROLES.map((r) => (
+                      {roleOptions.map((r) => (
                         <option key={r} value={r}>
                           {r}
                         </option>

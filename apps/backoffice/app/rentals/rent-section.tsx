@@ -55,7 +55,7 @@ const METHOD_LABEL: Record<string, string> = { CASH: "Cash", BANK: "Bank", MPESA
  * The money side of the Rentals screen: who owes what this month, recording a payment, adding a one-off
  * charge, and the payment history with printable receipts and statements.
  */
-export function RentSection({ onChanged }: { onChanged: () => void }) {
+export function RentSection({ onChanged, caretaker = false }: { onChanged: () => void; caretaker?: boolean }) {
   const [view, setView] = useState<"dues" | "payments">("dues");
   const [dues, setDues] = useState<DueRow[]>([]);
   const [payments, setPayments] = useState<PaymentRow[]>([]);
@@ -73,7 +73,8 @@ export function RentSection({ onChanged }: { onChanged: () => void }) {
 
   async function load() {
     try {
-      const [d, p, r] = await Promise.all([apiGet<DueRow[]>("/rental/dues"), apiGet<PaymentRow[]>("/rental/payments"), apiGet<PromptRow[]>("/rental/mpesa/requests")]);
+      // A caretaker only records payments by hand: no M-Pesa prompts, settings, charges or reminders.
+      const [d, p, r] = await Promise.all([apiGet<DueRow[]>("/rental/dues"), apiGet<PaymentRow[]>("/rental/payments"), caretaker ? Promise.resolve<PromptRow[]>([]) : apiGet<PromptRow[]>("/rental/mpesa/requests")]);
       setDues(d);
       setPayments(p);
       setPrompts(r);
@@ -218,8 +219,8 @@ export function RentSection({ onChanged }: { onChanged: () => void }) {
         </div>
       </div>
 
-      <MpesaSettingsPanel onChange={(s: MpesaSettings) => setMpesaReady(s.ready)} />
-      <ReminderSettingsPanel />
+      {!caretaker && <MpesaSettingsPanel onChange={(s: MpesaSettings) => setMpesaReady(s.ready)} />}
+      {!caretaker && <ReminderSettingsPanel />}
 
       {error && <p className="rounded-md bg-red-950 p-3 text-sm text-red-300">{error}</p>}
       {notice && (
@@ -345,12 +346,14 @@ export function RentSection({ onChanged }: { onChanged: () => void }) {
                   <td className={`p-2 ${r.overdue > 0 ? "font-semibold text-red-400" : ""}`}>{r.overdue > 0 ? money(r.overdue) : "-"}</td>
                   <td className="p-2">{r.lastPaidAt ? day(r.lastPaidAt) : "-"}</td>
                   <td className="space-x-1 p-2 text-right whitespace-nowrap">
-                    {mpesaReady && (
+                    {mpesaReady && !caretaker && (
                       <button className={smallButton} disabled={busy} onClick={() => startPrompt(r)}>Ask by M-Pesa</button>
                     )}
                     <button className={smallButton} disabled={busy} onClick={() => startPayment(r)}>Record payment</button>
-                    <button className={smallButton} disabled={busy} onClick={() => { setPaying(null); setPrompting(null); setCharging(r); setNotice(null); }}>+ Charge</button>
-                    {r.outstanding > 0 && (
+                    {!caretaker && (
+                      <button className={smallButton} disabled={busy} onClick={() => { setPaying(null); setPrompting(null); setCharging(r); setNotice(null); }}>+ Charge</button>
+                    )}
+                    {r.outstanding > 0 && !caretaker && (
                       <button className={smallButton} disabled={busy} onClick={() => remind(r)}>Remind</button>
                     )}
                     <Link href={`/rentals/print/statement/${r.leaseId}`} target="_blank" className={`${smallButton} inline-block`}>Statement</Link>
@@ -392,7 +395,7 @@ export function RentSection({ onChanged }: { onChanged: () => void }) {
                   <td className="p-2">{p.reference ?? p.receiptNumber}</td>
                   <td className="space-x-1 p-2 text-right whitespace-nowrap">
                     <Link href={`/rentals/print/receipt/${p.id}`} target="_blank" className={`${smallButton} inline-block no-underline`}>Receipt</Link>
-                    {!p.voided && (
+                    {!p.voided && !caretaker && (
                       <button className={smallButton} disabled={busy} onClick={() => voidPayment(p)}>Void</button>
                     )}
                     {p.voided && <span className="text-xs no-underline">voided</span>}

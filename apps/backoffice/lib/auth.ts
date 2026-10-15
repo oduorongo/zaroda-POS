@@ -33,6 +33,12 @@ export function isBackofficeRole(role: string): boolean {
   return (BACKOFFICE_ROLES as readonly string[]).includes(role);
 }
 
+/** A landlord's on-site helper: signs in here but only ever sees the Rentals screen (see the API's @Roles on /rental). */
+export const isCaretaker = (role: string): boolean => role === "CARETAKER";
+
+/** Where a freshly signed-in person lands. */
+export const homePath = (role: string): string => (isCaretaker(role) ? "/rentals" : "/dashboard");
+
 export function getSession(): Session | null {
   if (typeof window === "undefined") return null;
   const raw = window.localStorage.getItem(KEY);
