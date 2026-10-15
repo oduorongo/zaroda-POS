@@ -1,5 +1,5 @@
 import { HttpException } from '@nestjs/common';
-import { assertCaretakerAllowed } from './rental-plans.service';
+import { assertCaretakerAllowed, dropCaretakerIfNotCovered } from './rental-plans.service';
 
 function fakeTx(opts: { industryType?: string; plan?: string; otherCaretakers?: number }) {
   return {
@@ -38,5 +38,37 @@ describe('assertCaretakerAllowed', () => {
     expect((tx as unknown as { orgUser: { count: jest.Mock } }).orgUser.count).toHaveBeenCalledWith({
       where: { organizationId: 'org-1', role: 'CARETAKER', isActive: true, id: { not: 'user-9' } },
     });
+  });
+});
+
+describe('dropCaretakerIfNotCovered', () => {
+  const txFor = (plan: string) => {
+    const updateMany = jest.fn(async () => ({ count: 1 }));
+    const tx = {
+      rentalSettings: { findUnique: jest.fn(async () => ({ plan, pendingPlan: null, pendingPlanFrom: null })) },
+      orgUser: { updateMany },
+    } as never;
+    return { tx, updateMany };
+  };
+
+  it('deactivates the caretaker once the plan has no caretaker (Bure)', async () => {
+    const { tx, updateMany } = txFor('bure');
+    expect(await dropCaretakerIfNotCovered(tx, 'org-1')).toBe(1);
+    expect(updateMany).toHaveBeenCalledWith({ where: { organizationId: 'org-1', role: 'CARETAKER', isActive: true }, data: { isActive: false } });
+  });
+
+  it('leaves the caretaker alone on Starter', async () => {
+    const { tx, updateMany } = txFor('starter');
+    expect(await dropCaretakerIfNotCovered(tx, 'org-1')).toBe(0);
+    expect(updateMany).not.toHaveBeenCalled();
+  });
+
+  it('drops the caretaker when a waiting move down to Bure has reached its date', async () => {
+    const updateMany = jest.fn(async () => ({ count: 1 }));
+    const tx = {
+      rentalSettings: { findUnique: jest.fn(async () => ({ plan: 'starter', pendingPlan: 'bure', pendingPlanFrom: new Date('2020-01-01') })) },
+      orgUser: { updateMany },
+    } as never;
+    expect(await dropCaretakerIfNotCovered(tx, 'org-1')).toBe(1);
   });
 });

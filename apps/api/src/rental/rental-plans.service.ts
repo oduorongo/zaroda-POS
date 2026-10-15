@@ -64,6 +64,16 @@ export async function assertCaretakerAllowed(tx: Tx, organizationId: string, exc
   if (others >= 1) throw new BadRequestException('You already have a caretaker. Your plan includes one caretaker account - deactivate them first to add another.');
 }
 
+/**
+ * A landlord whose plan no longer includes a caretaker (after a move down takes effect) loses the caretaker account:
+ * it is deactivated, never deleted, so what they recorded stays. Returns how many were deactivated.
+ */
+export async function dropCaretakerIfNotCovered(tx: Tx, organizationId: string): Promise<number> {
+  if (planHas(await loadPlan(tx, organizationId), 'caretaker')) return 0;
+  const { count } = await tx.orgUser.updateMany({ where: { organizationId, role: 'CARETAKER', isActive: true }, data: { isActive: false } });
+  return count;
+}
+
 /** The landlord's own view of their plan, and changing it. */
 @Injectable()
 export class RentalPlansService {
@@ -77,6 +87,8 @@ export class RentalPlansService {
   async getPlan() {
     const { organizationId } = getTenantStore();
     return this.tenantPrisma.run(async (tx) => {
+      // A move down that has just taken effect also takes the caretaker account away.
+      await dropCaretakerIfNotCovered(tx, organizationId);
       const settings = await tx.rentalSettings.findUnique({ where: { organizationId } });
       const plan = effectivePlan(settings);
       const occupiedUnits = await countOccupiedUnits(tx, organizationId);
