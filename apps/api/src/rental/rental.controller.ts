@@ -8,12 +8,14 @@ import {
   Post,
   Put,
   Query,
+  UseInterceptors,
 } from '@nestjs/common';
 import { Role } from '@prisma/client';
 import { Roles } from '../auth/roles.decorator';
 import { RentalService } from './rental.service';
 import { RentalBillingService } from './rental-billing.service';
 import { RentalPlansService } from './rental-plans.service';
+import { RentalReadOnlyInterceptor } from './rental-read-only.interceptor';
 import { RentalCaretakersService } from './rental-caretakers.service';
 import { ChangePlanDto, SetCaretakerPropertiesDto } from './dto/rental-plans.dto';
 import {
@@ -34,6 +36,7 @@ import {
 // JwtAuthGuard/RolesGuard are global. Reading is open to any signed-in role;
 // changing properties, units, tenants and leases is for managers and owners.
 @Controller('rental')
+@UseInterceptors(RentalReadOnlyInterceptor)
 export class RentalController {
   constructor(
     private readonly rental: RentalService,

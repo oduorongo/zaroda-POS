@@ -18,6 +18,9 @@ import { RentalCallbackController, RentalMpesaController } from './rental-mpesa.
 import { RentalMpesaService } from './rental-mpesa.service';
 import { RentalService } from './rental.service';
 import { RentalPlansService } from './rental-plans.service';
+import { RentalPlatformBillingService } from './rental-platform-billing.service';
+import { RentalReadOnlyInterceptor } from './rental-read-only.interceptor';
+import { RentalSubscriptionController } from './rental-subscription.controller';
 import { RentalCaretakersService } from './rental-caretakers.service';
 import { RentalBillingService } from './rental-billing.service';
 import { RentalSchedulerService } from './rental-scheduler.service';
@@ -42,10 +45,12 @@ import { RentalSchedulerService } from './rental-scheduler.service';
       }),
     }),
   ],
-  controllers: [RentalController, RentalTenantAuthController, RentalTenantPortalController, RentalOpsController, RentalMpesaController, RentalCallbackController],
+  controllers: [RentalSubscriptionController, RentalController, RentalTenantAuthController, RentalTenantPortalController, RentalOpsController, RentalMpesaController, RentalCallbackController],
   providers: [
     RentalService,
     RentalPlansService,
+    RentalPlatformBillingService,
+    RentalReadOnlyInterceptor,
     RentalCaretakersService,
     RentalBillingService,
     RentalMpesaService,
@@ -79,6 +84,8 @@ export class RentalModule implements OnModuleInit {
         { tableName: 'rental_meter_readings', description: 'Water and electricity readings billed to tenants' },
         { tableName: 'rental_reminder_logs', description: 'Which rent reminders were sent, so none repeats' },
         { tableName: 'rental_tenant_otps', description: 'One-time email sign-in codes for tenants' },
+        { tableName: 'rental_platform_invoices', description: 'What ZARODA bills the landlord for the rental plan (flat fee or 1% collection fee)' },
+        { tableName: 'rental_caretaker_properties', description: 'Which properties each caretaker may work on' },
         { tableName: 'rental_payment_allocations', description: 'Which invoice each payment was applied to' },
       ],
     });

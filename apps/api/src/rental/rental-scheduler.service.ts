@@ -5,6 +5,7 @@ import { RentalBillingService } from './rental-billing.service';
 import { RentalMpesaService } from './rental-mpesa.service';
 import { RentalRemindersService } from './rental-reminders.service';
 import { trimCaretakersToPlan } from './rental-plans.service';
+import { RentalPlatformBillingService } from './rental-platform-billing.service';
 
 // First run shortly after boot (so a restart after downtime catches up), then once an hour. Generating
 // invoices is idempotent, so a pass with nothing to do is cheap.
@@ -29,6 +30,7 @@ export class RentalSchedulerService implements OnModuleInit, OnModuleDestroy {
     private readonly billing: RentalBillingService,
     private readonly mpesa: RentalMpesaService,
     private readonly reminders: RentalRemindersService,
+    private readonly platformBilling: RentalPlatformBillingService,
     private readonly config: ConfigService,
   ) {}
 
@@ -64,8 +66,12 @@ export class RentalSchedulerService implements OnModuleInit, OnModuleDestroy {
           await tx.$executeRaw`SELECT set_config('app.current_tenant', ${org.id}, true)`;
           const dropped = await trimCaretakersToPlan(tx, org.id);
           if (dropped > 0) this.logger.log({ organizationId: org.id, dropped }, 'Caretaker accounts deactivated: plan includes fewer');
+          // ZARODA's own invoice to the landlord for the rental plan (once a month, on or after the 1st).
+          const invoices = await this.platformBilling.generateForOrganization(tx, org.id);
+          if (invoices.length > 0) this.logger.log({ organizationId: org.id, invoices: invoices.map((i) => i.invoiceNumber) }, 'Rental plan invoices issued');
           return this.billing.syncOrganization(tx, org.id);
         }, TX_OPTIONS);
+        await this.platformBilling.sendNotices(org.id).catch((e) => this.logger.warn({ err: e }, 'Rental plan invoice emails failed'));
         // Prompts still waiting after a missed callback: ask Safaricom (free) for landlords on their own Paybill/Till.
         await this.mpesa.reconcileDaraja(org.id).catch((e) => this.logger.warn({ err: e }, 'Rent prompt reconcile failed'));
         // Rent reminders for landlords who switched them on (daytime only; each stage goes out once).
