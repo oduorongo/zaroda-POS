@@ -853,6 +853,13 @@ CREATE POLICY tenant_isolation ON rental_reminder_logs
   USING ("organizationId" = current_setting('app.current_tenant', true))
   WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
 
+ALTER TABLE rental_caretaker_properties ENABLE ROW LEVEL SECURITY;
+ALTER TABLE rental_caretaker_properties FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON rental_caretaker_properties;
+CREATE POLICY tenant_isolation ON rental_caretaker_properties
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
 -- ── Rental tenant sign-in (rental_tenant_otps + one extra rule on rental_tenants) ──
 -- rental_tenant_otps has deliberately NO row-level security, like rider_otps: a sign-in
 -- attempt has no business behind it yet (listed in rls-coverage.spec.ts's exclusions).

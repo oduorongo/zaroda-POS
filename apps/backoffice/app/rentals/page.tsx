@@ -7,6 +7,7 @@ import { getSession, clearSession, isBackofficeRole, isCaretaker, type Session }
 import { Nav } from "../../components/nav";
 import { RentSection } from "./rent-section";
 import { PlanSection } from "./plan-section";
+import { CaretakersSection } from "./caretakers-section";
 import { ExpensesSection, MaintenanceSection, MetersSection, ReportsSection } from "./ops-sections";
 import { PageHeader } from "../../components/page-header";
 
@@ -52,9 +53,9 @@ interface Lease {
 
 // A caretaker records rent and logs repairs and meter readings; everything else is the landlord's.
 const CARETAKER_TABS: Tab[] = ["rent", "maintenance", "meters"];
-const OWNER_TABS: Tab[] = ["properties", "tenants", "leases", "rent", "expenses", "maintenance", "meters", "reports", "plan"];
+const OWNER_TABS: Tab[] = ["properties", "tenants", "leases", "rent", "expenses", "maintenance", "meters", "reports", "caretakers", "plan"];
 
-type Tab = "properties" | "tenants" | "leases" | "rent" | "expenses" | "maintenance" | "meters" | "reports" | "plan";
+type Tab = "properties" | "tenants" | "leases" | "rent" | "expenses" | "maintenance" | "meters" | "reports" | "caretakers" | "plan";
 
 const input = "w-full rounded-md border border-border bg-surface p-2 text-sm";
 const button = "rounded-md bg-primary-600 px-3 py-2 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-50";
@@ -573,6 +574,7 @@ How much of the deposit are you handing back (KES)? Enter 0 for none.`,
         {tab === "maintenance" && <MaintenanceSection properties={properties} units={units} />}
         {tab === "meters" && <MetersSection units={units} />}
         {tab === "reports" && <ReportsSection />}
+        {tab === "caretakers" && <CaretakersSection properties={properties} />}
         {tab === "plan" && <PlanSection onChanged={() => void load()} />}
       </main>
     </div>

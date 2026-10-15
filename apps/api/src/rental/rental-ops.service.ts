@@ -2,6 +2,7 @@ import { BadRequestException, ConflictException, Injectable, NotFoundException }
 import { Prisma } from '@prisma/client';
 import { TenantScopedPrismaService } from '../common/prisma/tenant-scoped-prisma.service';
 import { getTenantStore } from '../common/tenant/tenant-context';
+import { assertInScope, caretakerPropertyIds, propertyFilter } from './rental-caretaker-scope';
 import { RentalBillingService } from './rental-billing.service';
 import { fromCents, nairobiToday, toCents } from './rental-billing.util';
 import {
@@ -89,6 +90,7 @@ export class RentalOpsService {
   async createMaintenance(dto: CreateMaintenanceDto) {
     const { organizationId } = getTenantStore();
     return this.tenantPrisma.run(async (tx) => {
+      assertInScope(await caretakerPropertyIds(tx), dto.propertyId, 'Property');
       if (!(await tx.rentalProperty.findUnique({ where: { id: dto.propertyId } }))) throw new NotFoundException('Property not found');
       if (dto.unitId) {
         const unit = await tx.rentalUnit.findUnique({ where: { id: dto.unitId } });
@@ -111,10 +113,10 @@ export class RentalOpsService {
   }
 
   async listMaintenance(filters: { status?: string; propertyId?: string }) {
-    const rows = await this.tenantPrisma.run((tx) =>
+    const rows = await this.tenantPrisma.run(async (tx) =>
       tx.rentalMaintenanceRequest.findMany({
         where: {
-          propertyId: filters.propertyId,
+          propertyId: propertyFilter(await caretakerPropertyIds(tx), filters.propertyId),
           status: filters.status ? (filters.status as 'OPEN') : undefined,
         },
         orderBy: [{ reportedAt: 'desc' }, { createdAt: 'desc' }],
@@ -148,6 +150,7 @@ export class RentalOpsService {
     return this.tenantPrisma.run(async (tx) => {
       const current = await tx.rentalMaintenanceRequest.findUnique({ where: { id } });
       if (!current) throw new NotFoundException('Request not found');
+      assertInScope(await caretakerPropertyIds(tx), current.propertyId, 'Request');
       const closing = dto.status === 'DONE' || dto.status === 'CANCELLED';
       return tx.rentalMaintenanceRequest.update({
         where: { id },
@@ -175,6 +178,7 @@ export class RentalOpsService {
       return await this.tenantPrisma.run(async (tx) => {
         const unit = await tx.rentalUnit.findUnique({ where: { id: dto.unitId }, include: { property: { select: { name: true } } } });
         if (!unit) throw new NotFoundException('Unit not found');
+        assertInScope(await caretakerPropertyIds(tx), unit.propertyId, 'Unit');
 
         const previous = await tx.rentalMeterReading.findFirst({
           where: { unitId: unit.id, kind: dto.kind, readingDate: { lt: readingDate } },
@@ -253,14 +257,15 @@ export class RentalOpsService {
   }
 
   async listReadings(filters: { unitId?: string }) {
-    const rows = await this.tenantPrisma.run((tx) =>
-      tx.rentalMeterReading.findMany({
-        where: { unitId: filters.unitId },
+    const rows = await this.tenantPrisma.run(async (tx) => {
+      const scope = await caretakerPropertyIds(tx);
+      return tx.rentalMeterReading.findMany({
+        where: { unitId: filters.unitId, ...(scope ? { unit: { propertyId: { in: scope } } } : {}) },
         orderBy: [{ readingDate: 'desc' }, { createdAt: 'desc' }],
         take: 300,
         include: { unit: { select: { label: true, property: { select: { name: true } } } } },
-      }),
-    );
+      });
+    });
     return rows.map((r) => ({
       id: r.id,
       unit: `${r.unit.property.name} ${r.unit.label}`,

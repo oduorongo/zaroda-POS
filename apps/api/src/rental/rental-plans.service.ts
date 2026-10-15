@@ -60,17 +60,25 @@ export async function assertCaretakerAllowed(tx: Tx, organizationId: string, exc
   const org = await tx.organization.findUnique({ where: { id: organizationId }, select: { industryType: true } });
   if (org?.industryType !== 'RENTAL') throw new BadRequestException('Caretaker accounts are only for rental businesses');
   await assertFeature(tx, organizationId, 'caretaker');
+  const { caretakerLimit } = await loadPlan(tx, organizationId);
   const others = await tx.orgUser.count({ where: { organizationId, role: 'CARETAKER', isActive: true, ...(exceptOrgUserId ? { id: { not: exceptOrgUserId } } : {}) } });
-  if (others >= 1) throw new BadRequestException('You already have a caretaker. Your plan includes one caretaker account - deactivate them first to add another.');
+  if (others >= caretakerLimit) {
+    throw new BadRequestException(
+      `Your plan includes ${caretakerLimit} caretaker ${caretakerLimit === 1 ? 'account' : 'accounts'} and you already have ${others}. Deactivate one first${caretakerLimit === 1 ? ', or move to Pay-as-you-collect for up to 5' : ''}.`,
+    );
+  }
 }
 
 /**
- * A landlord whose plan no longer includes a caretaker (after a move down takes effect) loses the caretaker account:
- * it is deactivated, never deleted, so what they recorded stays. Returns how many were deactivated.
+ * After a move to a smaller plan takes effect, caretakers beyond what the plan includes are deactivated (the longest-serving
+ * are kept), never deleted, so what they recorded stays. Returns how many were deactivated.
  */
-export async function dropCaretakerIfNotCovered(tx: Tx, organizationId: string): Promise<number> {
-  if (planHas(await loadPlan(tx, organizationId), 'caretaker')) return 0;
-  const { count } = await tx.orgUser.updateMany({ where: { organizationId, role: 'CARETAKER', isActive: true }, data: { isActive: false } });
+export async function trimCaretakersToPlan(tx: Tx, organizationId: string): Promise<number> {
+  const { caretakerLimit } = await loadPlan(tx, organizationId);
+  const active = await tx.orgUser.findMany({ where: { organizationId, role: 'CARETAKER', isActive: true }, orderBy: { createdAt: 'asc' }, select: { id: true } });
+  const extra = active.slice(caretakerLimit).map((u) => u.id);
+  if (extra.length === 0) return 0;
+  const { count } = await tx.orgUser.updateMany({ where: { id: { in: extra } }, data: { isActive: false } });
   return count;
 }
 
@@ -88,7 +96,7 @@ export class RentalPlansService {
     const { organizationId } = getTenantStore();
     return this.tenantPrisma.run(async (tx) => {
       // A move down that has just taken effect also takes the caretaker account away.
-      await dropCaretakerIfNotCovered(tx, organizationId);
+      await trimCaretakersToPlan(tx, organizationId);
       const settings = await tx.rentalSettings.findUnique({ where: { organizationId } });
       const plan = effectivePlan(settings);
       const occupiedUnits = await countOccupiedUnits(tx, organizationId);
@@ -96,6 +104,7 @@ export class RentalPlansService {
         plan: plan.code,
         name: plan.name,
         unitLimit: plan.unitLimit,
+        caretakerLimit: plan.caretakerLimit,
         occupiedUnits,
         features: plan.features,
         billingCycle: settings?.billingCycle ?? 'monthly',

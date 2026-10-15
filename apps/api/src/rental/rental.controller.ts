@@ -6,6 +6,7 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Put,
   Query,
 } from '@nestjs/common';
 import { Role } from '@prisma/client';
@@ -13,7 +14,8 @@ import { Roles } from '../auth/roles.decorator';
 import { RentalService } from './rental.service';
 import { RentalBillingService } from './rental-billing.service';
 import { RentalPlansService } from './rental-plans.service';
-import { ChangePlanDto } from './dto/rental-plans.dto';
+import { RentalCaretakersService } from './rental-caretakers.service';
+import { ChangePlanDto, SetCaretakerPropertiesDto } from './dto/rental-plans.dto';
 import {
   BulkCreateUnitsDto,
   CreateChargeDto,
@@ -37,6 +39,7 @@ export class RentalController {
     private readonly rental: RentalService,
     private readonly billing: RentalBillingService,
     private readonly plans: RentalPlansService,
+    private readonly caretakers: RentalCaretakersService,
   ) {}
 
   @Roles(Role.MANAGER, Role.OWNER)
@@ -208,5 +211,18 @@ export class RentalController {
   @Post('plan')
   changePlan(@Body() dto: ChangePlanDto) {
     return this.plans.changePlan(dto);
+  }
+
+  // Which properties each caretaker may work on.
+  @Roles(Role.MANAGER, Role.OWNER)
+  @Get('caretakers')
+  listCaretakers() {
+    return this.caretakers.list();
+  }
+
+  @Roles(Role.MANAGER, Role.OWNER)
+  @Put('caretakers/:id/properties')
+  setCaretakerProperties(@Param('id', ParseUUIDPipe) id: string, @Body() dto: SetCaretakerPropertiesDto) {
+    return this.caretakers.setProperties(id, dto.propertyIds);
   }
 }

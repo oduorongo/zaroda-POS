@@ -53,59 +53,60 @@ model Organization {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
-  branches            Branch[]
-  orgUsers            OrgUser[]
-  categories          Category[]
-  products            Product[]
-  taxClasses          TaxClass[]
-  sales               Sale[]
-  auditLogs           AuditLog[]
-  stockTransfers      StockTransfer[]
-  stockTakes          StockTake[]
-  lowStockAlerts      LowStockAlert[]
-  customers           Customer[]
-  layaways            Layaway[]
-  restaurantTables    RestaurantTable[]
-  rentalProperties    RentalProperty[]
-  rentalUnits         RentalUnit[]
-  rentalTenants       RentalTenant[]
-  rentalLeases        RentalLease[]
-  rentalInvoices      RentalInvoice[]
-  rentalPayments      RentalPayment[]
-  rentalAllocations   RentalPaymentAllocation[]
-  rentalSettings      RentalSettings?
-  rentalRequests      RentalPaymentRequest[]
-  rentalMaintenance   RentalMaintenanceRequest[]
-  rentalExpenses      RentalExpense[]
-  rentalMeterReadings RentalMeterReading[]
-  rentalReminderLogs  RentalReminderLog[]
-  kitchenStations     KitchenStation[]
-  salonResources      SalonResource[]
-  salonAppointments   SalonAppointment[]
-  suppliers           Supplier[]
-  purchaseOrders      PurchaseOrder[]
-  repackagings        Repackaging[]
-  wasteLogs           WasteLog[]
-  productionOrders    ProductionOrder[]
-  serviceJobs         ServiceJob[]
-  payrollProfiles     PayrollProfile[]
-  payrollRuns         PayrollRun[]
-  rosterShifts        RosterShift[]
-  mpesaStkRequests    MpesaStkRequest[]
-  subscription        Subscription?
-  onlineStore         OnlineStore?
-  onlineOrders        OnlineOrder[]
-  commissionInvoices  CommissionInvoice[]
-  riders              Rider[]
+  branches                  Branch[]
+  orgUsers                  OrgUser[]
+  categories                Category[]
+  products                  Product[]
+  taxClasses                TaxClass[]
+  sales                     Sale[]
+  auditLogs                 AuditLog[]
+  stockTransfers            StockTransfer[]
+  stockTakes                StockTake[]
+  lowStockAlerts            LowStockAlert[]
+  customers                 Customer[]
+  layaways                  Layaway[]
+  restaurantTables          RestaurantTable[]
+  rentalProperties          RentalProperty[]
+  rentalUnits               RentalUnit[]
+  rentalTenants             RentalTenant[]
+  rentalLeases              RentalLease[]
+  rentalInvoices            RentalInvoice[]
+  rentalPayments            RentalPayment[]
+  rentalAllocations         RentalPaymentAllocation[]
+  rentalSettings            RentalSettings?
+  rentalRequests            RentalPaymentRequest[]
+  rentalMaintenance         RentalMaintenanceRequest[]
+  rentalExpenses            RentalExpense[]
+  rentalMeterReadings       RentalMeterReading[]
+  rentalReminderLogs        RentalReminderLog[]
+  rentalCaretakerProperties RentalCaretakerProperty[]
+  kitchenStations           KitchenStation[]
+  salonResources            SalonResource[]
+  salonAppointments         SalonAppointment[]
+  suppliers                 Supplier[]
+  purchaseOrders            PurchaseOrder[]
+  repackagings              Repackaging[]
+  wasteLogs                 WasteLog[]
+  productionOrders          ProductionOrder[]
+  serviceJobs               ServiceJob[]
+  payrollProfiles           PayrollProfile[]
+  payrollRuns               PayrollRun[]
+  rosterShifts              RosterShift[]
+  mpesaStkRequests          MpesaStkRequest[]
+  subscription              Subscription?
+  onlineStore               OnlineStore?
+  onlineOrders              OnlineOrder[]
+  commissionInvoices        CommissionInvoice[]
+  riders                    Rider[]
   // The marketing team (and the member of it) that onboarded this business. Set once, when a team
   // member creates the account; only the platform owner can change it. Self-signups have neither.
-  salesTeamId         String?
-  salesAgentId        String?
-  salesTeam           SalesTeam?                 @relation(fields: [salesTeamId], references: [id], onDelete: SetNull)
-  salesAgent          SalesAgent?                @relation(fields: [salesAgentId], references: [id], onDelete: SetNull)
-  deliveryJobs        DeliveryJob[]
-  deliveryQuotes      DeliveryQuote[]
-  deliveryJobContacts DeliveryJobContact[]
+  salesTeamId               String?
+  salesAgentId              String?
+  salesTeam                 SalesTeam?                 @relation(fields: [salesTeamId], references: [id], onDelete: SetNull)
+  salesAgent                SalesAgent?                @relation(fields: [salesAgentId], references: [id], onDelete: SetNull)
+  deliveryJobs              DeliveryJob[]
+  deliveryQuotes            DeliveryQuote[]
+  deliveryJobContacts       DeliveryJobContact[]
 
   @@map("organizations")
 }
@@ -204,11 +205,12 @@ model OrgUser {
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  shiftsOpened        Shift[]           @relation("ShiftOpenedBy")
-  salesCashier        Sale[]            @relation("SaleCashier")
-  discounts           Discount[]        @relation("DiscountApprovedBy")
-  refunds             Refund[]          @relation("RefundApprovedBy")
-  auditActions        AuditLog[]        @relation("AuditActor")
+  caretakerProperties RentalCaretakerProperty[]
+  shiftsOpened        Shift[]                   @relation("ShiftOpenedBy")
+  salesCashier        Sale[]                    @relation("SaleCashier")
+  discounts           Discount[]                @relation("DiscountApprovedBy")
+  refunds             Refund[]                  @relation("RefundApprovedBy")
+  auditActions        AuditLog[]                @relation("AuditActor")
   cashierSessions     CashierSession[]
   stockTransfers      StockTransfer[]
   stockTakes          StockTake[]
@@ -219,10 +221,10 @@ model OrgUser {
   serviceJobs         ServiceJob[]
   payrollProfile      PayrollProfile?
   payslips            Payslip[]
-  payrollRunsCreated  PayrollRun[]      @relation("PayrollRunCreatedBy")
-  payrollRunsApproved PayrollRun[]      @relation("PayrollRunApprovedBy")
-  rosterShifts        RosterShift[]     @relation("RosterShiftFor")
-  rosterShiftsCreated RosterShift[]     @relation("RosterShiftCreatedBy")
+  payrollRunsCreated  PayrollRun[]              @relation("PayrollRunCreatedBy")
+  payrollRunsApproved PayrollRun[]              @relation("PayrollRunApprovedBy")
+  rosterShifts        RosterShift[]             @relation("RosterShiftFor")
+  rosterShiftsCreated RosterShift[]             @relation("RosterShiftCreatedBy")
 
   @@unique([organizationId, userId])
   @@index([organizationId])
@@ -2445,6 +2447,7 @@ model RentalProperty {
   units        RentalUnit[]
   maintenance  RentalMaintenanceRequest[]
   expenses     RentalExpense[]
+  caretakers   RentalCaretakerProperty[]
 
   @@unique([organizationId, name])
   @@index([organizationId])
@@ -2627,9 +2630,9 @@ enum RentalPaymentRequestStatus {
 // (Safaricom Daraja). The same fields and rules as the online shop's OnlineStore, kept separate so a landlord does
 // not need the shop add-on. Keys are stored encrypted (SECRETS_ENCRYPTION_KEY) and never sent back to the browser.
 model RentalSettings {
-  id                           String   @id @default(uuid())
-  organizationId               String   @unique
-  paymentGateway               String   @default("TUMA") // 'TUMA' | 'DARAJA'
+  id                           String    @id @default(uuid())
+  organizationId               String    @unique
+  paymentGateway               String    @default("TUMA") // 'TUMA' | 'DARAJA'
   tumaEmail                    String?
   tumaApiKeyEncrypted          String?
   mpesaAccountType             String? // 'PAYBILL' | 'TILL'
@@ -2638,14 +2641,14 @@ model RentalSettings {
   mpesaConsumerKeyEncrypted    String?
   mpesaConsumerSecretEncrypted String?
   mpesaPasskeyEncrypted        String?
-  mpesaEnvironment             String   @default("production")
-  remindersEnabled             Boolean  @default(false)
-  smsReminders                 Boolean  @default(false)
+  mpesaEnvironment             String    @default("production")
+  remindersEnabled             Boolean   @default(false)
+  smsReminders                 Boolean   @default(false)
   paymentInstructions          String?
   // The landlord's ZARODA plan (see rental-plans.util.ts). A landlord with no row yet is on 'bure'. Strings, not enums,
   // so the later 'growth' and 'agency' plans need no migration.
-  plan                         String   @default("bure") // 'bure' | 'starter' | 'collect'
-  billingCycle                 String   @default("monthly") // 'monthly' | 'annual'
+  plan                         String    @default("bure") // 'bure' | 'starter' | 'collect'
+  billingCycle                 String    @default("monthly") // 'monthly' | 'annual'
   // A move to a cheaper plan waits for the next billing cycle (pendingPlanFrom); a move up applies at once.
   pendingPlan                  String?
   pendingPlanFrom              DateTime?
@@ -2653,8 +2656,8 @@ model RentalSettings {
   foundingPriceUntil           DateTime?
   // Landlords who were already using rentals before plans existed: no charge until this date.
   planFreeUntil                DateTime?
-  createdAt                    DateTime @default(now())
-  updatedAt                    DateTime @updatedAt
+  createdAt                    DateTime  @default(now())
+  updatedAt                    DateTime  @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
@@ -2809,6 +2812,24 @@ model RentalReminderLog {
   @@unique([invoiceId, stage, channel])
   @@index([organizationId])
   @@map("rental_reminder_logs")
+}
+
+// Which properties a caretaker may work on. A caretaker with no rows here sees nothing; owners and managers are never
+// limited. Checked on the server for every rental screen (rental-caretaker-scope.ts).
+model RentalCaretakerProperty {
+  id             String   @id @default(uuid())
+  organizationId String
+  orgUserId      String
+  propertyId     String
+  createdAt      DateTime @default(now())
+
+  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  orgUser      OrgUser        @relation(fields: [orgUserId], references: [id], onDelete: Cascade)
+  property     RentalProperty @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  @@unique([orgUserId, propertyId])
+  @@index([organizationId])
+  @@map("rental_caretaker_properties")
 }
 
 // ── Rental module, phase 4: the tenant's own sign-in ─────────────────────
