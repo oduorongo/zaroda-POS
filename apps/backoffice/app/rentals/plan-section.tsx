@@ -25,6 +25,7 @@ interface PlanView {
   pendingPlan: PlanCode | null;
   pendingPlanFrom: string | null;
   freeUntil: string | null;
+  foundingPriceUntil: string | null;
   gatewayReady: boolean;
   plans: PlanDef[];
 }
@@ -93,6 +94,9 @@ export function PlanSection({ onChanged }: { onChanged: () => void }) {
           {view.unitLimit !== null ? ` of ${view.unitLimit} allowed` : " (no limit)"}
         </p>
         {view.freeUntil && <p className="mt-2 text-sm text-green-400">No charge until {day(view.freeUntil)}. Choose the plan you want before then.</p>}
+        {view.foundingPriceUntil && new Date(view.foundingPriceUntil) > new Date() && (
+          <p className="mt-2 text-sm text-green-400">Founding landlord: you keep the launch price until {day(view.foundingPriceUntil)}.</p>
+        )}
         {view.pendingPlan && view.pendingPlanFrom && (
           <p className="mt-2 text-sm text-amber-400">
             Moving to {view.plans.find((p) => p.code === view.pendingPlan)?.name} on {day(view.pendingPlanFrom)}.{" "}

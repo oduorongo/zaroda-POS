@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Prisma, Role } from '@prisma/client';
+import { Prisma, RentalPlatformInvoice, Role } from '@prisma/client';
 import { PrismaService } from '../common/prisma/prisma.service';
 import { TenantScopedPrismaService } from '../common/prisma/tenant-scoped-prisma.service';
 import { getTenantStore } from '../common/tenant/tenant-context';
@@ -181,7 +181,7 @@ export class RentalPlatformBillingService {
   }
 
   /** Active owners' emails (managers if there is no owner), and the business name. */
-  private async recipientsFor(organizationId: string): Promise<{ emails: string[]; name: string }> {
+  async recipientsFor(organizationId: string): Promise<{ emails: string[]; name: string }> {
     return this.runAsTenant(organizationId, async (tx) => {
       const [org, staff] = await Promise.all([
         tx.organization.findUnique({ where: { id: organizationId }, select: { name: true } }),
@@ -265,21 +265,7 @@ export class RentalPlatformBillingService {
         readOnly: isAccountReadOnly(invoices),
         // False until online payment is switched on: the account is never actually locked while this is false.
         enforced: this.enforcesReadOnly(),
-        invoices: invoices.map((i) => ({
-          id: i.id,
-          invoiceNumber: i.invoiceNumber,
-          kind: i.kind,
-          invoiceMonth: i.invoiceMonth,
-          periodStart: i.periodStart,
-          periodEnd: i.periodEnd,
-          plan: i.plan,
-          occupiedUnits: i.occupiedUnits,
-          matchedRentTotal: i.matchedRentTotal === null ? null : Number(i.matchedRentTotal),
-          amountDue: i.amountDue,
-          status: i.status,
-          dueDate: i.dueDate,
-          paidAt: i.paidAt,
-        })),
+        invoices: invoices.map((i) => toPlatformInvoiceView(i)),
       };
     });
   }
@@ -289,4 +275,31 @@ function nextMonth(month: string): string {
   const [year, mon] = month.split('-').map(Number);
   const d = new Date(Date.UTC(year, mon, 1));
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+}
+
+/** What the screens see of an invoice. paymentPending = an M-Pesa prompt went out in the last 15 minutes and has not failed. */
+export function toPlatformInvoiceView(i: RentalPlatformInvoice, now: Date = new Date()) {
+  return {
+    id: i.id,
+    invoiceNumber: i.invoiceNumber,
+    kind: i.kind,
+    invoiceMonth: i.invoiceMonth,
+    periodStart: i.periodStart,
+    periodEnd: i.periodEnd,
+    plan: i.plan,
+    occupiedUnits: i.occupiedUnits,
+    matchedRentTotal: i.matchedRentTotal === null ? null : Number(i.matchedRentTotal),
+    amountDue: i.amountDue,
+    status: i.status,
+    issuedAt: i.issuedAt,
+    dueDate: i.dueDate,
+    pastDue: i.status === 'ISSUED' && i.dueDate.getTime() <= now.getTime(),
+    paidAt: i.paidAt,
+    paymentMethod: i.paymentMethod,
+    paymentReference: i.paymentReference,
+    waivedReason: i.waivedReason,
+    payPhone: i.payPhone,
+    paymentPending: i.status === 'ISSUED' && Boolean(i.tumaMerchantRequestId) && Boolean(i.payAttemptedAt) && now.getTime() - i.payAttemptedAt!.getTime() < 15 * 60_000 && !i.lastPaymentError,
+    lastPaymentError: i.lastPaymentError,
+  };
 }

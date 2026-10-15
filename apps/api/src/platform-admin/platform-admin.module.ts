@@ -9,6 +9,7 @@ import { PlatformAuditLogService } from './platform-audit-log.service';
 import { PlatformAdminJwtStrategy } from './platform-admin-jwt.strategy';
 import { OnlineStoreModule } from '../online-store/online-store.module';
 import { RidersModule } from '../riders/riders.module';
+import { RentalModule } from '../rental/rental.module';
 
 @Module({
   imports: [
@@ -17,6 +18,8 @@ import { RidersModule } from '../riders/riders.module';
     OnlineStoreModule,
     // RidersService - approving delivery riders is a platform-admin job.
     RidersModule,
+    // RentalPlatformPaymentsService - recording and waiving landlords' rental invoices is a platform-admin job.
+    RentalModule,
     // A second, independent JwtModule registration (separate from
     // AuthModule's) - its own secret (PLATFORM_ADMIN_JWT_SECRET), its
     // own JwtService instance. Deliberately not sharing JWT_SECRET with

@@ -87,3 +87,19 @@ export function buildPlatformInvoiceEmail(stage: PlatformReminderStage, invoice:
   const text = `${lead}\n\nInvoice ${invoice.invoiceNumber}\nPlan: ${invoice.planName}\nOccupied units on the 1st: ${invoice.occupiedUnits}\nAmount to pay: ${money(invoice.amountDue)}\nDue: ${date(invoice.dueDate)}\n${payUrl ? `\nView invoice: ${payUrl}\n` : ''}`;
   return { subject, html, text };
 }
+
+/** Sent once an invoice is settled (online, or recorded by Zaroda for a bank or cash payment). */
+export function buildPlatformReceiptEmail(invoice: PlatformInvoiceEmailFacts, businessName: string, reference: string | null): BuiltEmail {
+  const subject = `Payment received - rentals invoice ${invoice.invoiceNumber}`;
+  const lead = `Thank you - we received ${money(invoice.amountDue)} for rentals invoice ${invoice.invoiceNumber}.${reference ? ` Reference: ${reference}.` : ''}`;
+  const html = brandedEmail({
+    title: 'Payment received',
+    maxWidth: 560,
+    accent: '#15803d',
+    bodyHtml: `
+        <p>Hello ${escapeHtml(businessName)},</p>
+        <p>${escapeHtml(lead)}</p>
+        <p style="font-size:12px;color:#64748b">Your rentals account is fully open. Keep this email as your receipt.</p>`,
+  });
+  return { subject, html, text: lead };
+}

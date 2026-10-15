@@ -19,6 +19,8 @@ import { RentalMpesaService } from './rental-mpesa.service';
 import { RentalService } from './rental.service';
 import { RentalPlansService } from './rental-plans.service';
 import { RentalPlatformBillingService } from './rental-platform-billing.service';
+import { RentalPlatformCallbackController } from './rental-platform-billing.controller';
+import { RentalPlatformPaymentsService } from './rental-platform-payments.service';
 import { RentalReadOnlyInterceptor } from './rental-read-only.interceptor';
 import { RentalSubscriptionController } from './rental-subscription.controller';
 import { RentalCaretakersService } from './rental-caretakers.service';
@@ -45,11 +47,14 @@ import { RentalSchedulerService } from './rental-scheduler.service';
       }),
     }),
   ],
-  controllers: [RentalSubscriptionController, RentalController, RentalTenantAuthController, RentalTenantPortalController, RentalOpsController, RentalMpesaController, RentalCallbackController],
+  // Platform admin records and waives the landlords' ZARODA invoices.
+  exports: [RentalPlatformPaymentsService],
+  controllers: [RentalPlatformCallbackController, RentalSubscriptionController, RentalController, RentalTenantAuthController, RentalTenantPortalController, RentalOpsController, RentalMpesaController, RentalCallbackController],
   providers: [
     RentalService,
     RentalPlansService,
     RentalPlatformBillingService,
+    RentalPlatformPaymentsService,
     RentalReadOnlyInterceptor,
     RentalCaretakersService,
     RentalBillingService,

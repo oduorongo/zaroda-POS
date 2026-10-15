@@ -25,6 +25,8 @@ import { SetOnlineStoreAddonDto, SetOrganizationActiveDto, UpdateOrganizationDto
 import { ResetUserPasswordDto } from './dto/reset-user-password.dto';
 import { CommissionService } from '../online-store/commission.service';
 import { RidersService } from '../riders/riders.service';
+import { RentalPlatformPaymentsService } from '../rental/rental-platform-payments.service';
+import { ListPlatformInvoicesQueryDto, RecordPlatformInvoicePaymentDto, WaivePlatformInvoiceDto } from '../rental/dto/rental-platform-invoice.dto';
 import { ListRidersQueryDto, SetRiderStatusDto } from '../riders/dto/rider.dto';
 import {
   GenerateInvoicesDto,
@@ -54,6 +56,7 @@ export class PlatformAdminController {
     private readonly auditLog: PlatformAuditLogService,
     private readonly commission: CommissionService,
     private readonly riders: RidersService,
+    private readonly rentalBilling: RentalPlatformPaymentsService,
   ) {}
 
   @Public()
@@ -377,6 +380,69 @@ export class PlatformAdminController {
       platformAdminId: req.user!.platformAdminId,
       action: 'platform_admin.waived_commission_invoice',
       entityType: 'CommissionInvoice',
+      entityId: invoiceId,
+      organizationId: id,
+    });
+    return result;
+  }
+
+  // ── Rental plan billing (what landlords owe Zaroda) ──────────────────
+
+  @Public()
+  @UseGuards(PlatformAdminAuthGuard)
+  @Get('rental-billing/invoices')
+  listRentalInvoices(@Query() query: ListPlatformInvoicesQueryDto) {
+    return this.rentalBilling.listInvoices(query);
+  }
+
+  // Issues this month's invoices and any notices that are due, now. The scheduler does this by itself every hour.
+  @Public()
+  @UseGuards(PlatformAdminAuthGuard)
+  @Post('rental-billing/run')
+  async runRentalBilling(@Req() req: PlatformAdminRequest) {
+    const result = await this.rentalBilling.runNow();
+    await this.auditLog.log({
+      platformAdminId: req.user!.platformAdminId,
+      action: 'platform_admin.ran_rental_billing',
+      entityType: 'RentalPlatformInvoice',
+    });
+    return result;
+  }
+
+  @Public()
+  @UseGuards(PlatformAdminAuthGuard)
+  @Post('organizations/:id/rental-invoices/:invoiceId/payment')
+  async recordRentalInvoicePayment(
+    @Req() req: PlatformAdminRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('invoiceId', ParseUUIDPipe) invoiceId: string,
+    @Body() dto: RecordPlatformInvoicePaymentDto,
+  ) {
+    const result = await this.rentalBilling.recordPayment(id, invoiceId, dto, req.user!.platformAdminId);
+    await this.auditLog.log({
+      platformAdminId: req.user!.platformAdminId,
+      action: 'platform_admin.recorded_rental_invoice_payment',
+      entityType: 'RentalPlatformInvoice',
+      entityId: invoiceId,
+      organizationId: id,
+    });
+    return result;
+  }
+
+  @Public()
+  @UseGuards(PlatformAdminAuthGuard)
+  @Post('organizations/:id/rental-invoices/:invoiceId/waive')
+  async waiveRentalInvoice(
+    @Req() req: PlatformAdminRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('invoiceId', ParseUUIDPipe) invoiceId: string,
+    @Body() dto: WaivePlatformInvoiceDto,
+  ) {
+    const result = await this.rentalBilling.waive(id, invoiceId, dto.reason, req.user!.platformAdminId);
+    await this.auditLog.log({
+      platformAdminId: req.user!.platformAdminId,
+      action: 'platform_admin.waived_rental_invoice',
+      entityType: 'RentalPlatformInvoice',
       entityId: invoiceId,
       organizationId: id,
     });
