@@ -4,13 +4,16 @@ import { RentalRemindersService } from './rental-reminders.service';
 const d = (iso: string) => new Date(`${iso}T00:00:00.000Z`);
 
 /** A tiny in-memory stand-in for the database: just enough for one landlord's reminder pass. */
-function fakeWorld(opts: { enabled?: boolean; sms?: boolean; tenantEmail?: string | null; tenantPhone?: string | null; dueDate?: string; paid?: number } = {}) {
+function fakeWorld(opts: { plan?: string; enabled?: boolean; sms?: boolean; tenantEmail?: string | null; tenantPhone?: string | null; dueDate?: string; paid?: number } = {}) {
   const logs = new Map<string, { id: string; invoiceId: string; stage: string; channel: string }>();
   let nextId = 1;
   const tx = {
     $executeRaw: jest.fn(async () => 1),
     rentalSettings: {
       findUnique: jest.fn(async () => ({
+        plan: opts.plan ?? 'starter',
+        pendingPlan: null,
+        pendingPlanFrom: null,
         remindersEnabled: opts.enabled ?? true,
         smsReminders: opts.sms ?? false,
         paymentInstructions: 'Paybill 123456',
@@ -113,6 +116,13 @@ describe('RentalRemindersService.runForOrganization', () => {
     expect(world.logs.size).toBe(0);
     const working = build(world, { emailOk: true });
     expect(await working.service.runForOrganization('org-1', DAYTIME)).toBe(1);
+  });
+
+  it('sends nothing for a landlord on the free Bure plan, even with reminders switched on', async () => {
+    const world = fakeWorld({ plan: 'bure' });
+    const { service, email } = build(world);
+    expect(await service.runForOrganization('org-1', DAYTIME)).toBe(0);
+    expect(email.sendEmail).not.toHaveBeenCalled();
   });
 
   it('skips a tenant with no email address, and sends SMS only when the landlord turned it on', async () => {

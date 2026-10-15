@@ -2,6 +2,8 @@ import { BadRequestException, Injectable, Logger, NotFoundException } from '@nes
 import { ConfigService } from '@nestjs/config';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../common/prisma/prisma.service';
+import { assertFeature, loadPlan } from './rental-plans.service';
+import { planHas } from './rental-plans.util';
 import { TenantScopedPrismaService } from '../common/prisma/tenant-scoped-prisma.service';
 import { getTenantStore } from '../common/tenant/tenant-context';
 import { AfricasTalkingSmsProvider } from '../notifications/africas-talking-sms.provider';
@@ -70,9 +72,11 @@ export class RentalRemindersService {
       smsReminders: dto.smsReminders,
       paymentInstructions: dto.paymentInstructions === undefined ? undefined : dto.paymentInstructions.trim() || null,
     };
-    const s = await this.tenantPrisma.run((tx) =>
-      tx.rentalSettings.upsert({ where: { organizationId }, create: { organizationId, ...data }, update: data }),
-    );
+    const s = await this.tenantPrisma.run(async (tx) => {
+      // Switching reminders on is part of Starter and above (switching them off is always allowed).
+      if (dto.remindersEnabled || dto.smsReminders) await assertFeature(tx, organizationId, 'reminders');
+      return tx.rentalSettings.upsert({ where: { organizationId }, create: { organizationId, ...data }, update: data });
+    });
     return this.view(s);
   }
 
@@ -95,6 +99,8 @@ export class RentalRemindersService {
   async sendPortalInvite(tenantId: string) {
     const { organizationId } = getTenantStore();
     const { tenant, org } = await this.tenantPrisma.run(async (tx) => ({
+      // The tenant portal is part of Starter and above.
+      plan: await assertFeature(tx, organizationId, 'portal'),
       tenant: await tx.rentalTenant.findUnique({ where: { id: tenantId }, select: { name: true, email: true } }),
       org: await tx.organization.findUnique({ where: { id: organizationId }, select: { name: true } }),
     }));
@@ -114,6 +120,7 @@ export class RentalRemindersService {
     const { organizationId } = getTenantStore();
     const today = nairobiToday();
     const { lease, settings, org } = await this.tenantPrisma.run(async (tx) => ({
+      plan: await assertFeature(tx, organizationId, 'reminders'),
       lease: await this.loadLease(tx, leaseId),
       settings: await tx.rentalSettings.findUnique({ where: { organizationId } }),
       org: await tx.organization.findUnique({ where: { id: organizationId }, select: { name: true } }),
@@ -172,7 +179,8 @@ export class RentalRemindersService {
     if (nairobiHour < SEND_FROM_HOUR || nairobiHour >= SEND_UNTIL_HOUR) return 0;
     const today = nairobiToday(now);
 
-    const { settings, org, leases } = await this.runAsTenant(organizationId, async (tx) => ({
+    const { settings, org, leases, plan } = await this.runAsTenant(organizationId, async (tx) => ({
+      plan: await loadPlan(tx, organizationId, now),
       settings: await tx.rentalSettings.findUnique({ where: { organizationId } }),
       org: await tx.organization.findUnique({ where: { id: organizationId }, select: { name: true } }),
       leases: await tx.rentalLease.findMany({
@@ -184,7 +192,7 @@ export class RentalRemindersService {
         },
       }),
     }));
-    if (!settings?.remindersEnabled) return 0;
+    if (!settings?.remindersEnabled || !planHas(plan, 'reminders')) return 0;
     const emailOn = this.email.isConfigured();
     const smsOn = settings.smsReminders && this.smsConfigured();
     if (!emailOn && !smsOn) return 0;

@@ -17,6 +17,7 @@ import { normalizeKenyanPhone } from '../online-orders/online-orders.util';
 import { DarajaClient } from '../online-store/daraja.client';
 import { darajaFailureMessage, evaluateDarajaCallback, parseDarajaCallback } from '../online-store/daraja.util';
 import { ConnectMpesaDto, ConnectTumaDto } from '../online-store/dto/update-online-store.dto';
+import { assertFeature } from './rental-plans.service';
 import { darajaConnected, darajaCredentials, gatewayOf, paymentsReady, tumaConnected } from '../online-store/payment-gateway';
 import { TumaClient } from '../online-store/tuma.client';
 import { evaluateCallback, parseCallback } from '../online-store/tuma.util';
@@ -220,6 +221,8 @@ export class RentalMpesaService {
   async requestPayment(dto: RequestPaymentDto) {
     const { organizationId } = getTenantStore();
     const { settings, lease } = await this.tenantPrisma.run(async (tx) => ({
+      // Collecting rent by M-Pesa (landlord-sent or tenant-sent prompts) is the Pay-as-you-collect plan.
+      plan: await assertFeature(tx, organizationId, 'collect'),
       settings: await tx.rentalSettings.findUnique({ where: { organizationId } }),
       lease: await tx.rentalLease.findUnique({
         where: { id: dto.leaseId },

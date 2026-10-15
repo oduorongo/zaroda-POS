@@ -5,6 +5,8 @@ import { tenantContext } from '../../common/tenant/tenant-context';
 import { paymentsReady } from '../../online-store/payment-gateway';
 import { RentalBillingService } from '../rental-billing.service';
 import { fromCents, invoiceStatus, nairobiToday, toCents } from '../rental-billing.util';
+import { loadPlan } from '../rental-plans.service';
+import { planHas } from '../rental-plans.util';
 import { RentalMpesaService } from '../rental-mpesa.service';
 import { PortalMaintenanceDto, PortalPayDto } from './dto/tenant-portal.dto';
 
@@ -53,13 +55,19 @@ export class RentalTenantPortalService {
     return tenantContext.run({ organizationId, orgUserId: 'tenant-portal', role: Role.CASHIER }, fn);
   }
 
+  /** The tenant's records, leaving out landlords whose plan has no tenant portal (Bure). */
   private async records(email: string): Promise<TenantRecord[]> {
-    return this.runAsEmail(email, (tx) =>
+    const all = await this.runAsEmail(email, (tx) =>
       tx.rentalTenant.findMany({
         where: { email: { equals: email, mode: 'insensitive' } },
         select: { id: true, organizationId: true, name: true },
       }),
     );
+    const withPortal = new Map<string, boolean>();
+    for (const organizationId of new Set(all.map((r) => r.organizationId))) {
+      withPortal.set(organizationId, planHas(await this.runAsOrg(organizationId, (tx) => loadPlan(tx, organizationId)), 'portal'));
+    }
+    return all.filter((r) => withPortal.get(r.organizationId));
   }
 
   /** The records grouped by landlord, so one pass per business. */
@@ -78,9 +86,10 @@ export class RentalTenantPortalService {
 
     for (const [organizationId, tenantIds] of this.byOrg(records)) {
       const view = await this.runAsOrg(organizationId, async (tx) => {
-        const [org, settings, leases, maintenance] = await Promise.all([
+        const [org, settings, plan, leases, maintenance] = await Promise.all([
           tx.organization.findUnique({ where: { id: organizationId }, select: { name: true } }),
           tx.rentalSettings.findUnique({ where: { organizationId } }),
+          loadPlan(tx, organizationId),
           tx.rentalLease.findMany({
             where: { tenantId: { in: tenantIds } },
             orderBy: [{ status: 'asc' }, { startDate: 'desc' }],
@@ -102,7 +111,7 @@ export class RentalTenantPortalService {
 
         return {
           business: org?.name ?? '',
-          canPayByMpesa: settings ? paymentsReady(settings) : false,
+          canPayByMpesa: settings ? paymentsReady(settings) && planHas(plan, 'collect') : false,
           paymentInstructions: settings?.paymentInstructions ?? null,
           leases: leases.map((l) => {
             const invoices = fresh.filter((i) => i.leaseId === l.id);
