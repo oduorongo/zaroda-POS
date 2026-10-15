@@ -874,3 +874,10 @@ DROP POLICY IF EXISTS tenant_email_access ON rental_tenants;
 CREATE POLICY tenant_email_access ON rental_tenants
   FOR SELECT
   USING (email IS NOT NULL AND lower(email) = current_setting('app.current_tenant_email', true));
+
+-- The same read-only rule for a tenant who signs in by text message: matches the rows whose normalized phone equals
+-- app.current_tenant_phone, set only from a verified tenant token. Alongside tenant_isolation, never instead of it.
+DROP POLICY IF EXISTS tenant_phone_access ON rental_tenants;
+CREATE POLICY tenant_phone_access ON rental_tenants
+  FOR SELECT
+  USING ("phoneNormalized" IS NOT NULL AND "phoneNormalized" = current_setting('app.current_tenant_phone', true));

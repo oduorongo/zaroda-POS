@@ -167,7 +167,8 @@ export interface TenantTenancy {
 }
 
 export interface TenantMe {
-  email: string;
+  email: string | null;
+  phone: string | null;
   tenancies: TenantTenancy[];
 }
 
@@ -208,11 +209,15 @@ export interface TenantStatement {
   printedOn: string;
 }
 
-export const requestTenantCode = (email: string) =>
-  request<{ sent: boolean; email: string }>("/tenant-auth/request-code", { method: "POST", body: JSON.stringify({ email }) });
+/** What the sign-in screen may offer: email always, text message only when the server has it set up. */
+export const getTenantSignInMethods = () => request<{ email: boolean; sms: boolean }>("/tenant-auth/methods");
 
-export const verifyTenantCode = (email: string, code: string) =>
-  request<{ accessToken: string; email: string }>("/tenant-auth/verify", { method: "POST", body: JSON.stringify({ email, code }) });
+/** Exactly one of email and phone. */
+export const requestTenantCode = (identity: { email?: string; phone?: string }) =>
+  request<{ sent: boolean; channel: "EMAIL" | "SMS"; identifier: string }>("/tenant-auth/request-code", { method: "POST", body: JSON.stringify(identity) });
+
+export const verifyTenantCode = (identity: { email?: string; phone?: string }, code: string) =>
+  request<{ accessToken: string; identifier: string; email: string | null }>("/tenant-auth/verify", { method: "POST", body: JSON.stringify({ ...identity, code }) });
 
 export const getTenantMe = (token: string) => request<TenantMe>("/tenant-portal/me", { token });
 

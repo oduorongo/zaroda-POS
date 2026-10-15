@@ -1,15 +1,28 @@
 import { IsEmail, IsNumber, IsOptional, IsString, IsUUID, Length, Matches, Max, MaxLength, Min, MinLength } from 'class-validator';
 
+// Exactly one of email and phone (the service checks).
 export class RequestTenantCodeDto {
   @IsEmail()
   @MaxLength(200)
-  email!: string;
+  @IsOptional()
+  email?: string;
+
+  @IsString()
+  @MaxLength(20)
+  @IsOptional()
+  phone?: string;
 }
 
 export class VerifyTenantCodeDto {
   @IsEmail()
   @MaxLength(200)
-  email!: string;
+  @IsOptional()
+  email?: string;
+
+  @IsString()
+  @MaxLength(20)
+  @IsOptional()
+  phone?: string;
 
   @IsString()
   @Length(6, 6)

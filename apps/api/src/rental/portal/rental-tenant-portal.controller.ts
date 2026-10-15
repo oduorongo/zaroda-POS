@@ -4,7 +4,7 @@ import { Public } from '../../auth/public.decorator';
 import { PortalMaintenanceDto, PortalPayDto, RequestTenantCodeDto, VerifyTenantCodeDto } from './dto/tenant-portal.dto';
 import { RentalTenantAuthService } from './rental-tenant-auth.service';
 import { RentalTenantPortalService } from './rental-tenant-portal.service';
-import { CurrentTenantEmail, TenantAuthGuard } from './tenant-auth';
+import { CurrentTenantIdentity, TenantAuthGuard } from './tenant-auth';
 
 // Same tight shape as shopper, rider and staff sign-in - public endpoints that send email or check codes.
 const AUTH_THROTTLE = { default: { limit: 5, ttl: 60_000 } };
@@ -16,12 +16,19 @@ const PAY_THROTTLE = { default: { limit: 4, ttl: 60_000 } };
 export class RentalTenantAuthController {
   constructor(private readonly auth: RentalTenantAuthService) {}
 
+  /** What the sign-in screen may offer (email always; text message when it is set up on the server). */
+  @Public()
+  @Get('methods')
+  methods() {
+    return this.auth.methods();
+  }
+
   @Public()
   @Throttle(AUTH_THROTTLE)
   @Post('request-code')
   @HttpCode(200)
   requestCode(@Body() dto: RequestTenantCodeDto) {
-    return this.auth.requestCode(dto.email);
+    return this.auth.requestCode(dto);
   }
 
   @Public()
@@ -29,7 +36,7 @@ export class RentalTenantAuthController {
   @Post('verify')
   @HttpCode(200)
   verify(@Body() dto: VerifyTenantCodeDto) {
-    return this.auth.verifyCode(dto.email, dto.code);
+    return this.auth.verifyCode(dto);
   }
 }
 
@@ -41,34 +48,34 @@ export class RentalTenantPortalController {
   constructor(private readonly portal: RentalTenantPortalService) {}
 
   @Get('me')
-  me(@CurrentTenantEmail() email: string) {
-    return this.portal.me(email);
+  me(@CurrentTenantIdentity() identity: string) {
+    return this.portal.me(identity);
   }
 
   @Get('leases/:id/statement')
-  statement(@CurrentTenantEmail() email: string, @Param('id', ParseUUIDPipe) id: string) {
-    return this.portal.statement(email, id);
+  statement(@CurrentTenantIdentity() identity: string, @Param('id', ParseUUIDPipe) id: string) {
+    return this.portal.statement(identity, id);
   }
 
   @Get('payments/:id')
-  receipt(@CurrentTenantEmail() email: string, @Param('id', ParseUUIDPipe) id: string) {
-    return this.portal.receipt(email, id);
+  receipt(@CurrentTenantIdentity() identity: string, @Param('id', ParseUUIDPipe) id: string) {
+    return this.portal.receipt(identity, id);
   }
 
   @Throttle(PAY_THROTTLE)
   @Post('pay')
-  pay(@CurrentTenantEmail() email: string, @Body() dto: PortalPayDto) {
-    return this.portal.pay(email, dto);
+  pay(@CurrentTenantIdentity() identity: string, @Body() dto: PortalPayDto) {
+    return this.portal.pay(identity, dto);
   }
 
   @Get('prompts/:id')
-  promptStatus(@CurrentTenantEmail() email: string, @Param('id', ParseUUIDPipe) id: string) {
-    return this.portal.promptStatus(email, id);
+  promptStatus(@CurrentTenantIdentity() identity: string, @Param('id', ParseUUIDPipe) id: string) {
+    return this.portal.promptStatus(identity, id);
   }
 
   @Throttle(PAY_THROTTLE)
   @Post('maintenance')
-  reportProblem(@CurrentTenantEmail() email: string, @Body() dto: PortalMaintenanceDto) {
-    return this.portal.reportProblem(email, dto);
+  reportProblem(@CurrentTenantIdentity() identity: string, @Body() dto: PortalMaintenanceDto) {
+    return this.portal.reportProblem(identity, dto);
   }
 }

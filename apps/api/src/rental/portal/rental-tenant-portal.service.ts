@@ -22,8 +22,9 @@ interface TenantRecord {
 }
 
 /**
- * What a signed-in tenant may see and do. The tenant's token proves only their email address, so every call starts by
- * finding the tenant records that carry that address (across landlords, through the narrow email-only access rule);
+ * What a signed-in tenant may see and do. The tenant's token proves only their email address or mobile number, so every
+ * call starts by finding the tenant records that carry it (across landlords, through the narrow email-only or phone-only
+ * access rule);
  * after that all work happens inside the owning landlord's own context, and every lease, payment and request is
  * checked to belong to one of those records before anything is read or changed. A tenant can therefore never reach
  * another tenant's rows by guessing an id - it simply is not found.
@@ -36,9 +37,11 @@ export class RentalTenantPortalService {
     private readonly mpesa: RentalMpesaService,
   ) {}
 
-  private runAsEmail<T>(email: string, fn: (tx: Tx) => Promise<T>): Promise<T> {
+  /** An email address contains an "@"; a phone number (2547XXXXXXXX) is digits only. */
+  private runAsIdentity<T>(identity: string, fn: (tx: Tx) => Promise<T>): Promise<T> {
+    const setting = identity.includes('@') ? 'app.current_tenant_email' : 'app.current_tenant_phone';
     return this.prisma.$transaction(async (tx) => {
-      await tx.$executeRaw`SELECT set_config('app.current_tenant_email', ${email}, true)`;
+      await tx.$executeRaw`SELECT set_config(${setting}, ${identity}, true)`;
       return fn(tx);
     }, TX_OPTIONS);
   }
@@ -56,10 +59,11 @@ export class RentalTenantPortalService {
   }
 
   /** The tenant's records, leaving out landlords whose plan has no tenant portal (Bure). */
-  private async records(email: string): Promise<TenantRecord[]> {
-    const all = await this.runAsEmail(email, (tx) =>
+  private async records(identity: string): Promise<TenantRecord[]> {
+    const byEmail = identity.includes('@');
+    const all = await this.runAsIdentity(identity, (tx) =>
       tx.rentalTenant.findMany({
-        where: { email: { equals: email, mode: 'insensitive' } },
+        where: byEmail ? { email: { equals: identity, mode: 'insensitive' } } : { phoneNormalized: identity },
         select: { id: true, organizationId: true, name: true },
       }),
     );
@@ -79,8 +83,8 @@ export class RentalTenantPortalService {
 
   // ── Everything for the home screen ──────────────────────────────────────
 
-  async me(email: string) {
-    const records = await this.records(email);
+  async me(identity: string) {
+    const records = await this.records(identity);
     const today = nairobiToday();
     const tenancies = [];
 
@@ -171,14 +175,14 @@ export class RentalTenantPortalService {
       });
       tenancies.push({ tenantName: records.find((r) => r.organizationId === organizationId)?.name ?? '', ...view });
     }
-    return { email, tenancies };
+    return { email: identity.includes('@') ? identity : null, phone: identity.includes('@') ? null : identity, tenancies };
   }
 
   // ── Ownership checks ────────────────────────────────────────────────────
 
   /** The landlord and tenant record this lease belongs to - or "not found" if it is not this tenant's. */
-  private async ownLease(email: string, leaseId: string) {
-    const records = await this.records(email);
+  private async ownLease(identity: string, leaseId: string) {
+    const records = await this.records(identity);
     for (const [organizationId, tenantIds] of this.byOrg(records)) {
       const lease = await this.runAsOrg(organizationId, (tx) =>
         tx.rentalLease.findFirst({
@@ -191,8 +195,8 @@ export class RentalTenantPortalService {
     throw new NotFoundException('Lease not found');
   }
 
-  private async ownPayment(email: string, paymentId: string): Promise<string> {
-    const records = await this.records(email);
+  private async ownPayment(identity: string, paymentId: string): Promise<string> {
+    const records = await this.records(identity);
     for (const [organizationId, tenantIds] of this.byOrg(records)) {
       const found = await this.runAsOrg(organizationId, (tx) =>
         tx.rentalPayment.findFirst({ where: { id: paymentId, lease: { tenantId: { in: tenantIds } } }, select: { id: true } }),
@@ -204,21 +208,21 @@ export class RentalTenantPortalService {
 
   // ── Documents ───────────────────────────────────────────────────────────
 
-  async statement(email: string, leaseId: string) {
-    const { organizationId } = await this.ownLease(email, leaseId);
+  async statement(identity: string, leaseId: string) {
+    const { organizationId } = await this.ownLease(identity, leaseId);
     return this.asOrg(organizationId, () => this.billing.statement(leaseId));
   }
 
-  async receipt(email: string, paymentId: string) {
-    const organizationId = await this.ownPayment(email, paymentId);
+  async receipt(identity: string, paymentId: string) {
+    const organizationId = await this.ownPayment(identity, paymentId);
     return this.asOrg(organizationId, () => this.billing.getReceipt(paymentId));
   }
 
   // ── Paying ──────────────────────────────────────────────────────────────
 
   /** Sends an M-Pesa prompt to the tenant's phone for part or all of what they owe. */
-  async pay(email: string, dto: PortalPayDto) {
-    const { organizationId, lease } = await this.ownLease(email, dto.leaseId);
+  async pay(identity: string, dto: PortalPayDto) {
+    const { organizationId, lease } = await this.ownLease(identity, dto.leaseId);
     if (lease.status !== 'ACTIVE') throw new BadRequestException('This tenancy has ended - please contact your landlord about any balance');
     const owed = lease.invoices.reduce((s, i) => s + Math.max(toCents(i.amountDue) - toCents(i.amountPaid), 0), 0);
     if (owed <= 0) throw new BadRequestException('You do not owe anything right now');
@@ -227,8 +231,8 @@ export class RentalTenantPortalService {
   }
 
   /** Whether a prompt the tenant sent has been paid yet (the page polls this). */
-  async promptStatus(email: string, requestId: string) {
-    const records = await this.records(email);
+  async promptStatus(identity: string, requestId: string) {
+    const records = await this.records(identity);
     for (const [organizationId, tenantIds] of this.byOrg(records)) {
       const request = await this.runAsOrg(organizationId, (tx) =>
         tx.rentalPaymentRequest.findFirst({
@@ -243,8 +247,8 @@ export class RentalTenantPortalService {
 
   // ── Telling the landlord about a problem ────────────────────────────────
 
-  async reportProblem(email: string, dto: PortalMaintenanceDto) {
-    const { organizationId, lease } = await this.ownLease(email, dto.leaseId);
+  async reportProblem(identity: string, dto: PortalMaintenanceDto) {
+    const { organizationId, lease } = await this.ownLease(identity, dto.leaseId);
     return this.runAsOrg(organizationId, async (tx) => {
       const open = await tx.rentalMaintenanceRequest.count({ where: { tenantId: lease.tenantId, status: { in: ['OPEN', 'IN_PROGRESS'] } } });
       if (open >= MAX_OPEN_REQUESTS) {

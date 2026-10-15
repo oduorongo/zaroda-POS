@@ -7,6 +7,7 @@ import {
   getTenantPrompt,
   getTenantReceipt,
   getTenantStatement,
+  getTenantSignInMethods,
   requestTenantCode,
   tenantPay,
   tenantReportProblem,
@@ -107,18 +108,31 @@ export default function TenantPortal() {
 // ── Sign in ───────────────────────────────────────────────────────────────
 
 function SignIn({ onSignedIn }: { onSignedIn: (token: string) => void }) {
-  const [step, setStep] = useState<"email" | "code">("email");
+  const [step, setStep] = useState<"start" | "code">("start");
+  // Text message is offered only when the server has it set up.
+  const [smsAvailable, setSmsAvailable] = useState(false);
+  const [method, setMethod] = useState<"email" | "phone">("email");
   const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    getTenantSignInMethods()
+      .then((m) => setSmsAvailable(m.sms))
+      .catch(() => {});
+  }, []);
+
+  const identity = method === "email" ? { email: email.trim() } : { phone: phone.trim() };
+  const target = method === "email" ? email.trim() : phone.trim();
 
   async function send(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
     setError(null);
     try {
-      await requestTenantCode(email.trim());
+      await requestTenantCode(identity);
       setStep("code");
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not send the code.");
@@ -132,7 +146,7 @@ function SignIn({ onSignedIn }: { onSignedIn: (token: string) => void }) {
     setBusy(true);
     setError(null);
     try {
-      const result = await verifyTenantCode(email.trim(), code.trim());
+      const result = await verifyTenantCode(identity, code.trim());
       onSignedIn(result.accessToken);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not verify the code.");
@@ -148,17 +162,44 @@ function SignIn({ onSignedIn }: { onSignedIn: (token: string) => void }) {
         <p className="mt-1 text-secondary-500">See what you owe, pay by M-Pesa, get your receipts and tell your landlord about anything that needs fixing.</p>
       </div>
       <div className="rounded-lg border border-border bg-surface p-6">
-        {step === "email" ? (
+        {step === "start" ? (
           <form onSubmit={send} className="space-y-4">
-            <div>
-              <label htmlFor="tenant-email" className="block text-sm font-medium">
-                The email address your landlord has for you
-              </label>
-              <input id="tenant-email" type="email" inputMode="email" autoComplete="email" required placeholder="you@example.com" value={email} onChange={(e) => setEmail(e.target.value)} className={inputClass} />
-              <p className="mt-1 text-xs text-secondary-500">We&apos;ll email you a 6-digit code. No password needed. If you have not got an account yet, ask your landlord to add your email address.</p>
-            </div>
+            {smsAvailable && (
+              <div className="flex gap-2 text-sm">
+                {(["email", "phone"] as const).map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    onClick={() => {
+                      setMethod(m);
+                      setError(null);
+                    }}
+                    className={`rounded-md px-3 py-1.5 ${method === m ? "bg-primary-600 text-white" : "border border-border"}`}
+                  >
+                    {m === "email" ? "Email me a code" : "Text me a code"}
+                  </button>
+                ))}
+              </div>
+            )}
+            {method === "email" ? (
+              <div>
+                <label htmlFor="tenant-email" className="block text-sm font-medium">
+                  The email address your landlord has for you
+                </label>
+                <input id="tenant-email" type="email" inputMode="email" autoComplete="email" required placeholder="you@example.com" value={email} onChange={(e) => setEmail(e.target.value)} className={inputClass} />
+                <p className="mt-1 text-xs text-secondary-500">We&apos;ll email you a 6-digit code. No password needed. If you have not got an account yet, ask your landlord to add your email address.</p>
+              </div>
+            ) : (
+              <div>
+                <label htmlFor="tenant-phone" className="block text-sm font-medium">
+                  The mobile number your landlord has for you
+                </label>
+                <input id="tenant-phone" type="tel" inputMode="tel" autoComplete="tel" required placeholder="0712 345 678" value={phone} onChange={(e) => setPhone(e.target.value)} className={inputClass} />
+                <p className="mt-1 text-xs text-secondary-500">We&apos;ll text you a 6-digit code. No password needed. If you have not got an account yet, ask your landlord to add your number.</p>
+              </div>
+            )}
             {error && <p className="text-sm text-error-600">{error}</p>}
-            <button type="submit" disabled={busy || !email.trim()} className={`w-full ${primaryButton}`}>
+            <button type="submit" disabled={busy || !target} className={`w-full ${primaryButton}`}>
               {busy ? "Sending..." : "Send code"}
             </button>
           </form>
@@ -166,7 +207,7 @@ function SignIn({ onSignedIn }: { onSignedIn: (token: string) => void }) {
           <form onSubmit={verify} className="space-y-4">
             <div>
               <label htmlFor="tenant-code" className="block text-sm font-medium">
-                Enter the 6-digit code we emailed to {email.trim()}
+                Enter the 6-digit code we {method === "email" ? "emailed" : "texted"} to {target}
               </label>
               <input
                 id="tenant-code"
@@ -179,7 +220,9 @@ function SignIn({ onSignedIn }: { onSignedIn: (token: string) => void }) {
                 onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
                 className={`${inputClass} text-center text-2xl tracking-[0.5em]`}
               />
-              <p className="mt-1 text-xs text-secondary-500">No email? Check spam or promotions. A code is only sent if your landlord has this exact address on file.</p>
+              <p className="mt-1 text-xs text-secondary-500">
+                {method === "email" ? "No email? Check spam or promotions. " : "No text yet? Give it a minute. "}A code is only sent if your landlord has this exact {method === "email" ? "address" : "number"} on file.
+              </p>
             </div>
             {error && <p className="text-sm text-error-600">{error}</p>}
             <button type="submit" disabled={busy || code.length !== 6} className={`w-full ${primaryButton}`}>
@@ -188,13 +231,13 @@ function SignIn({ onSignedIn }: { onSignedIn: (token: string) => void }) {
             <button
               type="button"
               onClick={() => {
-                setStep("email");
+                setStep("start");
                 setCode("");
                 setError(null);
               }}
               className="w-full text-sm text-primary-600 hover:underline"
             >
-              Use a different email address
+              Use {method === "email" ? "a different email address" : "a different number"}
             </button>
           </form>
         )}
@@ -227,7 +270,7 @@ function Home({ token, me, onRefresh, onSignOut }: { token: string; me: TenantMe
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <h1 className="text-2xl font-bold">My rent account</h1>
-          <p className="text-sm text-secondary-500">{me.email}</p>
+          <p className="text-sm text-secondary-500">{me.email ?? me.phone}</p>
         </div>
         <button className={smallButton} onClick={onSignOut}>Sign out</button>
       </div>
