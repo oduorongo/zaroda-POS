@@ -1,5 +1,5 @@
 import { HttpException } from '@nestjs/common';
-import { assertCaretakerAllowed, dropCaretakerIfNotCovered } from './rental-plans.service';
+import { assertCaretakerAllowed, trimCaretakersToPlan } from './rental-plans.service';
 
 function fakeTx(opts: { industryType?: string; plan?: string; otherCaretakers?: number }) {
   return {
@@ -25,7 +25,7 @@ describe('assertCaretakerAllowed', () => {
   });
 
   it('refuses a second caretaker', async () => {
-    await expect(assertCaretakerAllowed(fakeTx({ otherCaretakers: 1 }), 'org-1')).rejects.toThrow(/already have a caretaker/);
+    await expect(assertCaretakerAllowed(fakeTx({ otherCaretakers: 1 }), 'org-1')).rejects.toThrow(/includes 1 caretaker account/);
   });
 
   it('refuses a business that is not a rental business', async () => {
@@ -41,34 +41,42 @@ describe('assertCaretakerAllowed', () => {
   });
 });
 
-describe('dropCaretakerIfNotCovered', () => {
-  const txFor = (plan: string) => {
-    const updateMany = jest.fn(async () => ({ count: 1 }));
+describe('caretaker limits per plan', () => {
+  it('allows up to 5 caretakers on Pay-as-you-collect and refuses a 6th', async () => {
+    await expect(assertCaretakerAllowed(fakeTx({ plan: 'collect', otherCaretakers: 4 }), 'org-1')).resolves.toBeUndefined();
+    await expect(assertCaretakerAllowed(fakeTx({ plan: 'collect', otherCaretakers: 5 }), 'org-1')).rejects.toThrow(/includes 5 caretaker accounts/);
+  });
+
+  it('points a Starter landlord with one caretaker at Pay-as-you-collect', async () => {
+    await expect(assertCaretakerAllowed(fakeTx({ plan: 'starter', otherCaretakers: 1 }), 'org-1')).rejects.toThrow(/Pay-as-you-collect for up to 5/);
+  });
+});
+
+describe('trimCaretakersToPlan', () => {
+  const txFor = (plan: string, caretakerIds: string[]) => {
+    const updateMany = jest.fn(async () => ({ count: 0 }));
     const tx = {
       rentalSettings: { findUnique: jest.fn(async () => ({ plan, pendingPlan: null, pendingPlanFrom: null })) },
-      orgUser: { updateMany },
+      orgUser: { findMany: jest.fn(async () => caretakerIds.map((id) => ({ id }))), updateMany },
     } as never;
     return { tx, updateMany };
   };
 
-  it('deactivates the caretaker once the plan has no caretaker (Bure)', async () => {
-    const { tx, updateMany } = txFor('bure');
-    expect(await dropCaretakerIfNotCovered(tx, 'org-1')).toBe(1);
-    expect(updateMany).toHaveBeenCalledWith({ where: { organizationId: 'org-1', role: 'CARETAKER', isActive: true }, data: { isActive: false } });
+  it('deactivates every caretaker on Bure', async () => {
+    const { tx, updateMany } = txFor('bure', ['a', 'b']);
+    await trimCaretakersToPlan(tx, 'org-1');
+    expect(updateMany).toHaveBeenCalledWith({ where: { id: { in: ['a', 'b'] } }, data: { isActive: false } });
   });
 
-  it('leaves the caretaker alone on Starter', async () => {
-    const { tx, updateMany } = txFor('starter');
-    expect(await dropCaretakerIfNotCovered(tx, 'org-1')).toBe(0);
+  it('keeps the longest-serving caretaker on Starter and deactivates the rest', async () => {
+    const { tx, updateMany } = txFor('starter', ['oldest', 'newer', 'newest']);
+    await trimCaretakersToPlan(tx, 'org-1');
+    expect(updateMany).toHaveBeenCalledWith({ where: { id: { in: ['newer', 'newest'] } }, data: { isActive: false } });
+  });
+
+  it('touches nobody when the plan covers them all', async () => {
+    const { tx, updateMany } = txFor('collect', ['a', 'b', 'c']);
+    expect(await trimCaretakersToPlan(tx, 'org-1')).toBe(0);
     expect(updateMany).not.toHaveBeenCalled();
-  });
-
-  it('drops the caretaker when a waiting move down to Bure has reached its date', async () => {
-    const updateMany = jest.fn(async () => ({ count: 1 }));
-    const tx = {
-      rentalSettings: { findUnique: jest.fn(async () => ({ plan: 'starter', pendingPlan: 'bure', pendingPlanFrom: new Date('2020-01-01') })) },
-      orgUser: { updateMany },
-    } as never;
-    expect(await dropCaretakerIfNotCovered(tx, 'org-1')).toBe(1);
   });
 });

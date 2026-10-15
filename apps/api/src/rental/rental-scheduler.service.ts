@@ -4,7 +4,7 @@ import { PrismaService } from '../common/prisma/prisma.service';
 import { RentalBillingService } from './rental-billing.service';
 import { RentalMpesaService } from './rental-mpesa.service';
 import { RentalRemindersService } from './rental-reminders.service';
-import { dropCaretakerIfNotCovered } from './rental-plans.service';
+import { trimCaretakersToPlan } from './rental-plans.service';
 
 // First run shortly after boot (so a restart after downtime catches up), then once an hour. Generating
 // invoices is idempotent, so a pass with nothing to do is cheap.
@@ -62,8 +62,8 @@ export class RentalSchedulerService implements OnModuleInit, OnModuleDestroy {
           const rows = await tx.$queryRaw<{ locked: boolean }[]>`SELECT pg_try_advisory_xact_lock(hashtext(${'zaroda-rental-billing:' + org.id})) AS locked`;
           if (!rows[0]?.locked) return 0; // another instance is already on this business
           await tx.$executeRaw`SELECT set_config('app.current_tenant', ${org.id}, true)`;
-          const dropped = await dropCaretakerIfNotCovered(tx, org.id);
-          if (dropped > 0) this.logger.log({ organizationId: org.id, dropped }, 'Caretaker account deactivated: plan no longer includes one');
+          const dropped = await trimCaretakersToPlan(tx, org.id);
+          if (dropped > 0) this.logger.log({ organizationId: org.id, dropped }, 'Caretaker accounts deactivated: plan includes fewer');
           return this.billing.syncOrganization(tx, org.id);
         }, TX_OPTIONS);
         // Prompts still waiting after a missed callback: ask Safaricom (free) for landlords on their own Paybill/Till.

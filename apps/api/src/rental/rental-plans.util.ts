@@ -13,6 +13,8 @@ export interface RentalPlanDef {
   name: string;
   /** Most occupied units (units with an active lease); null = no limit. */
   unitLimit: number | null;
+  /** Caretaker accounts included (each limited to the properties the landlord assigns). */
+  caretakerLimit: number;
   monthlyPrice: number;
   annualPrice: number | null;
   /** Percent of rent matched through the landlord's gateway (collect only). */
@@ -21,11 +23,12 @@ export interface RentalPlanDef {
 }
 
 export const RENTAL_PLANS: Record<RentalPlanCode, RentalPlanDef> = {
-  bure: { code: 'bure', name: 'Bure (free)', unitLimit: 5, monthlyPrice: 0, annualPrice: null, feePercent: 0, features: [] },
+  bure: { code: 'bure', name: 'Bure (free)', unitLimit: 5, caretakerLimit: 0, monthlyPrice: 0, annualPrice: null, feePercent: 0, features: [] },
   starter: {
     code: 'starter',
     name: 'Starter',
     unitLimit: 30,
+    caretakerLimit: 1,
     monthlyPrice: 1000,
     annualPrice: 10000, // 12 months for the price of 10
     feePercent: 0,
@@ -35,6 +38,7 @@ export const RENTAL_PLANS: Record<RentalPlanCode, RentalPlanDef> = {
     code: 'collect',
     name: 'Pay-as-you-collect',
     unitLimit: null,
+    caretakerLimit: 5,
     monthlyPrice: 0,
     annualPrice: null,
     feePercent: 1,

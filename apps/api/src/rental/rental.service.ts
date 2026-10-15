@@ -10,6 +10,7 @@ import { RentalBillingService } from './rental-billing.service';
 import { fromCents, nairobiToday, toCents } from './rental-billing.util';
 import { getTenantStore } from '../common/tenant/tenant-context';
 import { assertUnitRoom } from './rental-plans.service';
+import { assertInScope, caretakerPropertyIds, propertyFilter } from './rental-caretaker-scope';
 import {
   BulkCreateUnitsDto,
   CreateLeaseDto,
@@ -52,12 +53,14 @@ export class RentalService {
 
   // Each property comes with its unit counts so the list can show occupancy without a second call.
   async listProperties() {
-    const properties = await this.tenantPrisma.run((tx) =>
-      tx.rentalProperty.findMany({
+    const properties = await this.tenantPrisma.run(async (tx) => {
+      const scope = await caretakerPropertyIds(tx);
+      return tx.rentalProperty.findMany({
+        where: scope ? { id: { in: scope } } : undefined,
         orderBy: { name: 'asc' },
         include: { units: { select: { status: true, monthlyRent: true } } },
-      }),
-    );
+      });
+    });
     return properties.map(({ units, ...p }) => ({
       ...p,
       unitCount: units.length,
@@ -66,8 +69,9 @@ export class RentalService {
   }
 
   async getProperty(id: string) {
-    const property = await this.tenantPrisma.run((tx) =>
-      tx.rentalProperty.findUnique({
+    const { property, scope } = await this.tenantPrisma.run(async (tx) => ({
+      scope: await caretakerPropertyIds(tx),
+      property: await tx.rentalProperty.findUnique({
         where: { id },
         include: {
           units: {
@@ -81,8 +85,9 @@ export class RentalService {
           },
         },
       }),
-    );
+    }));
     if (!property) throw new NotFoundException('Property not found');
+    assertInScope(scope, id, 'Property');
     return property;
   }
 
@@ -157,9 +162,9 @@ export class RentalService {
   }
 
   listUnits(filters: { propertyId?: string; status?: 'VACANT' | 'OCCUPIED' }) {
-    return this.tenantPrisma.run((tx) =>
+    return this.tenantPrisma.run(async (tx) =>
       tx.rentalUnit.findMany({
-        where: { propertyId: filters.propertyId, status: filters.status },
+        where: { propertyId: propertyFilter(await caretakerPropertyIds(tx), filters.propertyId), status: filters.status },
         orderBy: [{ propertyId: 'asc' }, { label: 'asc' }],
         include: {
           property: { select: { id: true, name: true } },
@@ -223,8 +228,11 @@ export class RentalService {
   }
 
   listTenants() {
-    return this.tenantPrisma.run((tx) =>
-      tx.rentalTenant.findMany({
+    return this.tenantPrisma.run(async (tx) => {
+      const scope = await caretakerPropertyIds(tx);
+      return tx.rentalTenant.findMany({
+        // A caretaker sees only tenants who rent in their properties.
+        where: scope ? { leases: { some: { unit: { propertyId: { in: scope } } } } } : undefined,
         orderBy: { name: 'asc' },
         include: {
           leases: {
@@ -235,25 +243,26 @@ export class RentalService {
             },
           },
         },
-      }),
-    );
+      });
+    });
   }
 
   async getTenant(id: string) {
-    const tenant = await this.tenantPrisma.run((tx) =>
-      tx.rentalTenant.findUnique({
+    const { tenant, scope } = await this.tenantPrisma.run(async (tx) => ({
+      scope: await caretakerPropertyIds(tx),
+      tenant: await tx.rentalTenant.findUnique({
         where: { id },
         include: {
           leases: {
             orderBy: { startDate: 'desc' },
             include: {
-              unit: { select: { label: true, property: { select: { name: true } } } },
+              unit: { select: { label: true, propertyId: true, property: { select: { name: true } } } },
             },
           },
         },
       }),
-    );
-    if (!tenant) throw new NotFoundException('Tenant not found');
+    }));
+    if (!tenant || (scope && !tenant.leases.some((l) => scope.includes(l.unit.propertyId)))) throw new NotFoundException('Tenant not found');
     return tenant;
   }
 
@@ -325,16 +334,17 @@ export class RentalService {
   }
 
   listLeases(filters: { status?: 'ACTIVE' | 'ENDED'; unitId?: string; tenantId?: string }) {
-    return this.tenantPrisma.run((tx) =>
-      tx.rentalLease.findMany({
-        where: filters,
+    return this.tenantPrisma.run(async (tx) => {
+      const scope = await caretakerPropertyIds(tx);
+      return tx.rentalLease.findMany({
+        where: { ...filters, ...(scope ? { unit: { propertyId: { in: scope } } } : {}) },
         orderBy: { startDate: 'desc' },
         include: {
           tenant: { select: { id: true, name: true, phone: true } },
           unit: { select: { id: true, label: true, property: { select: { id: true, name: true } } } },
         },
-      }),
-    );
+      });
+    });
   }
 
   async endLease(id: string, dto: EndLeaseDto) {

@@ -2,6 +2,7 @@ import { BadRequestException, ConflictException, Injectable, NotFoundException }
 import { Prisma, RentalPaymentMethod } from '@prisma/client';
 import { TenantScopedPrismaService } from '../common/prisma/tenant-scoped-prisma.service';
 import { getTenantStore } from '../common/tenant/tenant-context';
+import { assertLeaseInScope, caretakerPropertyIds } from './rental-caretaker-scope';
 import { CreateChargeDto, RecordPaymentDto } from './dto/rental.dto';
 import {
   billingMonths,
@@ -194,8 +195,9 @@ export class RentalBillingService {
 
   async recordPayment(dto: RecordPaymentDto) {
     const { organizationId } = getTenantStore();
-    const payment = await this.tenantPrisma.run((tx) =>
-      this.recordPaymentInTx(tx, organizationId, {
+    const payment = await this.tenantPrisma.run(async (tx) => {
+      await assertLeaseInScope(tx, dto.leaseId);
+      return this.recordPaymentInTx(tx, organizationId, {
         leaseId: dto.leaseId,
         amount: dto.amount,
         method: dto.method,
@@ -203,8 +205,8 @@ export class RentalBillingService {
         paidAt: dto.paidAt ? new Date(dto.paidAt) : undefined,
         note: dto.note,
         invoiceId: dto.invoiceId,
-      }),
-    );
+      });
+    });
     return this.getReceipt(payment.id);
   }
 
@@ -223,9 +225,10 @@ export class RentalBillingService {
   }
 
   async listPayments(filters: { leaseId?: string; limit?: number }) {
-    const payments = await this.tenantPrisma.run((tx) =>
-      tx.rentalPayment.findMany({
-        where: { leaseId: filters.leaseId },
+    const payments = await this.tenantPrisma.run(async (tx) => {
+      const scope = await caretakerPropertyIds(tx);
+      return tx.rentalPayment.findMany({
+        where: { leaseId: filters.leaseId, ...(scope ? { lease: { unit: { propertyId: { in: scope } } } } : {}) },
         orderBy: [{ paidAt: 'desc' }, { createdAt: 'desc' }],
         take: Math.min(filters.limit ?? 100, 500),
         include: {
@@ -236,8 +239,8 @@ export class RentalBillingService {
             },
           },
         },
-      }),
-    );
+      });
+    });
     return payments.map((p) => ({
       id: p.id,
       receiptNumber: p.receiptNumber,
@@ -281,8 +284,9 @@ export class RentalBillingService {
     const today = nairobiToday();
     return this.tenantPrisma.run(async (tx) => {
       await this.syncOrganization(tx, organizationId, today);
+      const scope = await caretakerPropertyIds(tx);
       const leases = await tx.rentalLease.findMany({
-        where: { status: 'ACTIVE' },
+        where: { status: 'ACTIVE', ...(scope ? { unit: { propertyId: { in: scope } } } : {}) },
         include: {
           tenant: { select: { id: true, name: true, phone: true } },
           unit: { select: { id: true, label: true, property: { select: { id: true, name: true } } } },
@@ -325,13 +329,14 @@ export class RentalBillingService {
 
   async listInvoices(filters: { leaseId?: string; onlyOpen?: boolean }) {
     const today = nairobiToday();
-    const invoices = await this.tenantPrisma.run((tx) =>
-      tx.rentalInvoice.findMany({
-        where: { leaseId: filters.leaseId },
+    const invoices = await this.tenantPrisma.run(async (tx) => {
+      const scope = await caretakerPropertyIds(tx);
+      return tx.rentalInvoice.findMany({
+        where: { leaseId: filters.leaseId, ...(scope ? { lease: { unit: { propertyId: { in: scope } } } } : {}) },
         orderBy: [{ dueDate: 'desc' }, { createdAt: 'desc' }],
         take: 500,
-      }),
-    );
+      });
+    });
     return invoices
       .map((i) => ({
         id: i.id,
@@ -365,6 +370,7 @@ export class RentalBillingService {
         },
       });
       if (!payment) throw new NotFoundException('Payment not found');
+      await assertLeaseInScope(tx, payment.leaseId);
       const org = await tx.organization.findUnique({ where: { id: organizationId }, select: { name: true } });
       const balance = payment.lease.invoices.reduce((s, i) => s + toCents(i.amountDue) - toCents(i.amountPaid), 0);
       const applied = payment.allocations.reduce((s, a) => s + toCents(a.amount), 0);
@@ -404,6 +410,7 @@ export class RentalBillingService {
         },
       });
       if (!lease) throw new NotFoundException('Lease not found');
+      await assertLeaseInScope(tx, leaseId);
       const org = await tx.organization.findUnique({ where: { id: organizationId }, select: { name: true } });
 
       const entries = [
