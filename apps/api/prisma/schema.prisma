@@ -2854,6 +2854,12 @@ model RentalPlatformInvoice {
   paymentReference          String?
   recordedByPlatformAdminId String?
   waivedReason              String?
+  // Online payment through ZARODA's own Tuma account (like a shop's commission): the latest M-Pesa prompt and why the
+  // last attempt failed.
+  tumaMerchantRequestId     String?
+  payPhone                  String?
+  payAttemptedAt            DateTime?
+  lastPaymentError          String?
   // Furthest notice emailed (0 none, 1 issued, 2 reminder, 3 final reminder, 4 account read-only) - each goes out once.
   reminderStage             Int                         @default(0)
   emailedAt                 DateTime?
