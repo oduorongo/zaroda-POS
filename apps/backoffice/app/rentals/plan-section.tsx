@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { apiGet, apiPost, ApiError } from "../../lib/api";
+import { InvoicesPanel } from "./invoices-panel";
 
 type PlanCode = "bure" | "starter" | "collect";
 
@@ -145,6 +146,7 @@ export function PlanSection({ onChanged }: { onChanged: () => void }) {
           );
         })}
       </div>
+      <InvoicesPanel />
       <p className="text-xs text-secondary-500">
         Moving up to a bigger plan starts at once. Moving to a smaller plan starts on the 1st of next month. Plans are billed on occupied units, meaning units with an active lease. ZARODA never holds your tenants&apos; rent: it goes straight to your own account.
       </p>

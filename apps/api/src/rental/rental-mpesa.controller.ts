@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Post, UseInterceptors } from '@nestjs/common';
 import { Role } from '@prisma/client';
 import { Throttle } from '@nestjs/throttler';
 import { Public } from '../auth/public.decorator';
@@ -6,6 +6,7 @@ import { Roles } from '../auth/roles.decorator';
 import { ConnectMpesaDto, ConnectTumaDto, SetGatewayDto } from '../online-store/dto/update-online-store.dto';
 import { RequestPaymentDto } from './dto/rental-mpesa.dto';
 import { RentalMpesaService } from './rental-mpesa.service';
+import { RentalReadOnlyInterceptor } from './rental-read-only.interceptor';
 
 // A Tuma status check costs the landlord KES 1, so "check now" is throttled here as well as in the service.
 const CHECK_THROTTLE = { default: { limit: 4, ttl: 60_000 } };
@@ -13,6 +14,7 @@ const CHECK_THROTTLE = { default: { limit: 4, ttl: 60_000 } };
 /** The landlord's M-Pesa collection settings and the prompts they send to tenants. Managers and owners only. */
 @Controller('rental/mpesa')
 @Roles(Role.MANAGER, Role.OWNER)
+@UseInterceptors(RentalReadOnlyInterceptor)
 export class RentalMpesaController {
   constructor(private readonly mpesa: RentalMpesaService) {}
 

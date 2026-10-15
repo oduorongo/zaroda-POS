@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Query, UseInterceptors } from '@nestjs/common';
 import { Role } from '@prisma/client';
 import { Roles } from '../auth/roles.decorator';
 import {
@@ -10,12 +10,14 @@ import {
   UpdateReminderSettingsDto,
 } from './dto/rental-ops.dto';
 import { RentalOpsService } from './rental-ops.service';
+import { RentalReadOnlyInterceptor } from './rental-read-only.interceptor';
 import { RentalRemindersService } from './rental-reminders.service';
 import { RentalReportService } from './rental-report.service';
 
 /** Running the properties: expenses, maintenance, meters, reminders and the monthly report. Managers and owners only. */
 @Controller('rental')
 @Roles(Role.MANAGER, Role.OWNER)
+@UseInterceptors(RentalReadOnlyInterceptor)
 export class RentalOpsController {
   constructor(
     private readonly ops: RentalOpsService,
