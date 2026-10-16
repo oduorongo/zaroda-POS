@@ -5,6 +5,9 @@ import { PassportModule } from '@nestjs/passport';
 import { PlatformAdminModule } from '../platform-admin/platform-admin.module';
 import { RidersModule } from '../riders/riders.module';
 import { PasswordChangedGuard, SalesAgentJwtStrategy } from './sales-agent-auth';
+import { TumaClient } from '../online-store/tuma.client';
+import { MpesaB2cClient } from './mpesa-b2c.client';
+import { SalesPayoutsService } from './sales-payouts.service';
 import { SalesAgentService } from './sales-agent.service';
 import { SalesEarningsScheduler } from './sales-earnings.scheduler';
 import { SalesEarningsService } from './sales-earnings.service';
@@ -14,6 +17,7 @@ import {
   SalesAgentsAdminController,
   SalesEarningsAdminController,
   SalesEarningsAgentController,
+  SalesPayoutCallbackController,
   SalesPortalController,
   SalesTeamsAdminController,
 } from './sales-teams.controller';
@@ -43,8 +47,9 @@ import { SalesTeamsService } from './sales-teams.service';
     SalesPortalController,
     SalesEarningsAgentController,
     SalesEarningsAdminController,
+    SalesPayoutCallbackController,
   ],
-  providers: [SalesAgentJwtStrategy, PasswordChangedGuard, SalesAgentService, SalesPortalService, SalesTeamsService, SalesEarningsService, SalesEarningsScheduler],
+  providers: [SalesAgentJwtStrategy, PasswordChangedGuard, SalesAgentService, SalesPortalService, SalesTeamsService, SalesEarningsService, SalesPayoutsService, MpesaB2cClient, TumaClient, SalesEarningsScheduler],
   exports: [SalesTeamsService],
 })
 export class SalesTeamsModule {}

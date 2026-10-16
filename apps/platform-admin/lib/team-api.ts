@@ -27,8 +27,11 @@ export interface TeamTerms {
   region: string | null;
   status: "ACTIVE" | "PAUSED";
   memberShareRate: number;
+  subscriptionShareRate: number;
+  earningMonths: number;
   leaderOverrideRate: number;
   onboardingBonusKes: number;
+  payoutCapRate: number;
 }
 
 export interface AgentProfile {
@@ -39,6 +42,8 @@ export interface AgentProfile {
   phone: string | null;
   status: "ACTIVE" | "SUSPENDED";
   mustChangePassword: boolean;
+  payoutGateway: "MPESA_B2C" | "TUMA" | null;
+  payoutAccount: string | null;
 }
 
 export interface TeamMe {
@@ -102,20 +107,35 @@ export const teamPatch = <T>(path: string, body: unknown) => request<T>(`/sales-
 
 export interface EarningLine {
   id: string;
-  kind: "COMMISSION_SHARE" | "LEADER_OVERRIDE" | "ONBOARDING_BONUS";
+  kind: "COMMISSION_SHARE" | "SUBSCRIPTION_SHARE" | "LEADER_OVERRIDE" | "ONBOARDING_BONUS" | "ADJUSTMENT";
   shop: string;
   baseKes: number;
   rate: number | null;
   amountKes: number;
+  capped: boolean;
   earnedAt: string;
-  status: "ACCRUED" | "PAID";
+  status: "PENDING" | "PAYABLE" | "PAID" | "ACCRUED" | "VOID";
 }
 
 export interface EarningsStatement {
   month: string;
-  thisMonth: { commissionShare: number; leaderOverride: number; onboardingBonus: number; total: number };
-  allTime: { unpaid: number; paid: number };
+  thisMonth: { commissionShare: number; subscriptionShare: number; leaderOverride: number; onboardingBonus: number; adjustments: number; total: number };
+  byShop: { shop: string; pending: number; payable: number; paid: number; total: number }[];
+  allTime: { pending: number; payable: number; paid: number };
+  payoutTerms: { minimumKes: number; payoutDay: number; holdDays: number; withholdingTaxRate: number };
+  payoutDetails: { gateway: "MPESA_B2C" | "TUMA" | null; account: string | null };
   lines: EarningLine[];
-  payouts: { id: string; amountKes: number; throughMonth: string; method: string; reference: string | null; paidAt: string }[];
-  team: { agentId: string; fullName: string; role: "LEADER" | "MEMBER"; earnedThisMonth: number; unpaid: number }[] | null;
+  payouts: {
+    id: string;
+    amountKes: number;
+    taxWithheldKes: number;
+    netKes: number;
+    throughMonth: string;
+    gateway: string;
+    reference: string | null;
+    status: "QUEUED" | "PAID" | "FAILED";
+    paidAt: string | null;
+    failureReason: string | null;
+  }[];
+  team: { agentId: string; fullName: string; role: "LEADER" | "MEMBER"; earnedThisMonth: number; pending: number; payable: number; paid: number }[] | null;
 }

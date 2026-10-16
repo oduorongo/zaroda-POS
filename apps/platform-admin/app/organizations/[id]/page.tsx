@@ -6,6 +6,7 @@ import { apiGet, apiPatch, ApiError } from "../../../lib/api";
 import { getSession, type Session } from "../../../lib/auth";
 import { Nav } from "../../../components/nav";
 import { Badge } from "@zaroda/ui";
+import { MarketingTeamCard } from "./marketing-team-card";
 
 interface Branch {
   id: string;
@@ -402,6 +403,8 @@ export default function OrganizationDetailPage() {
                 </div>
               )}
             </section>
+
+            <MarketingTeamCard organizationId={org.id} />
 
             <section className="mt-4 rounded-lg border border-border">
               <h2 className="border-b border-border bg-surface p-3 font-semibold">Online Shop add-on</h2>

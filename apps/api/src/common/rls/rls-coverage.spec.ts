@@ -45,6 +45,7 @@ const INTENTIONALLY_EXCLUDED = new Set([
   'sales_agents',
   'sales_earnings',
   'sales_payouts',
+  'sales_payout_settings',
   // A global price list with no organizationId - see rls.sql's "platform
   // billing tables" comment.
   'plans',

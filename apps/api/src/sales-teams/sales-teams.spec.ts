@@ -67,10 +67,10 @@ describe('SalesTeamsService.createTeam', () => {
     await expect(service.createTeam(ADMIN, { name: 'X Team', memberShareRate: 0.8, leaderOverrideRate: 0.3 })).rejects.toThrow(BadRequestException);
   });
 
-  it('creates a team with zero rates by default and logs it', async () => {
+  it('creates a team on the spec defaults (left to the schema) and logs it', async () => {
     const { service, prisma } = teamsSetup();
     await service.createTeam(ADMIN, { name: ' Coast Team ' });
-    expect(prisma.salesTeam.create).toHaveBeenCalledWith({ data: expect.objectContaining({ name: 'Coast Team', memberShareRate: 0, leaderOverrideRate: 0, onboardingBonusKes: 0 }) });
+    expect(prisma.salesTeam.create).toHaveBeenCalledWith({ data: expect.objectContaining({ name: 'Coast Team', memberShareRate: undefined, leaderOverrideRate: undefined, onboardingBonusKes: undefined }) });
     expect(prisma.platformAuditLog.create).toHaveBeenCalledWith({ data: expect.objectContaining({ action: 'sales_team.create', platformAdminId: ADMIN }) });
   });
 });
@@ -203,5 +203,39 @@ describe('SalesAgentJwtStrategy', () => {
   it('cuts off everyone on a paused team', async () => {
     const s = strategy({ id: 'agent-1', teamId: TEAM, role: 'MEMBER', status: 'ACTIVE', team: { status: 'PAUSED' } });
     await expect(s.validate({ sub: 'agent-1', scope: 'sales-agent' })).resolves.toBe(false);
+  });
+});
+
+describe('SalesTeamsService.assignShop', () => {
+  it('gives the shop to the person, stamps when, and logs it', async () => {
+    const { service, prisma } = teamsSetup();
+    prisma.organization = { findUnique: jest.fn().mockResolvedValue({ id: 'org-1' }), update: jest.fn() };
+    prisma.salesAgent.findUnique.mockResolvedValue(agentRow({ id: 'member-1', teamId: 'team-2' }));
+    await service.assignShop(ADMIN, 'org-1', { teamId: 'team-2', agentId: 'member-1' });
+    expect(prisma.organization.update).toHaveBeenCalledWith({ where: { id: 'org-1' }, data: { salesTeamId: 'team-2', salesAgentId: 'member-1', salesAssignedAt: expect.any(Date) } });
+    expect(prisma.platformAuditLog.create).toHaveBeenCalledWith({ data: expect.objectContaining({ action: 'sales_team.assign_shop', platformAdminId: ADMIN }) });
+  });
+
+  it('refuses a person who is not in that team', async () => {
+    const { service, prisma } = teamsSetup();
+    prisma.organization = { findUnique: jest.fn().mockResolvedValue({ id: 'org-1' }), update: jest.fn() };
+    prisma.salesAgent.findUnique.mockResolvedValue(agentRow({ id: 'member-1', teamId: 'team-9' }));
+    await expect(service.assignShop(ADMIN, 'org-1', { teamId: 'team-2', agentId: 'member-1' })).rejects.toThrow(/not in that team/);
+    expect(prisma.organization.update).not.toHaveBeenCalled();
+  });
+});
+
+describe('SalesTeamsService.setPayoutDetails', () => {
+  it('saves a gateway and phone number', async () => {
+    const { service, prisma } = teamsSetup();
+    prisma.salesAgent.findUnique.mockResolvedValue(agentRow({ id: 'member-1' }));
+    await service.setPayoutDetails(ADMIN, 'member-1', { payoutGateway: 'MPESA_B2C', payoutAccount: '0712345678' });
+    expect(prisma.salesAgent.update).toHaveBeenCalledWith({ where: { id: 'member-1' }, data: { payoutGateway: 'MPESA_B2C', payoutAccount: '0712345678' } });
+  });
+
+  it('refuses a gateway with no phone number to pay', async () => {
+    const { service, prisma } = teamsSetup();
+    prisma.salesAgent.findUnique.mockResolvedValue(agentRow({ id: 'member-1', payoutAccount: null, payoutGateway: null }));
+    await expect(service.setPayoutDetails(ADMIN, 'member-1', { payoutGateway: 'TUMA' })).rejects.toThrow(/phone number/);
   });
 });

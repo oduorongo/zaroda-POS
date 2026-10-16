@@ -147,6 +147,39 @@ export class TumaClient {
     }
   }
 
+  /** Payouts through Tuma are only offered once TUMA_PAYOUT_PATH (Tuma's send-money endpoint) is set - see sendMoney. */
+  hasPayoutSupport(): boolean {
+    return this.hasPlatformCredentials() && Boolean(this.config.get<string>('TUMA_PAYOUT_PATH'));
+  }
+
+  /**
+   * Sends money from Zaroda's Tuma account to `phone`. UNVERIFIED AGAINST TUMA'S REAL API: Tuma's send-money
+   * endpoint and body are not documented in this repo, so the path comes from TUMA_PAYOUT_PATH and the body mirrors
+   * the STK push (amount, phone, description, reference). Check both against Tuma's docs before turning it on; until
+   * then a payout through it is left QUEUED for the admin to confirm by hand.
+   */
+  async sendMoney(input: { amount: number; phone: string; description: string; reference: string }): Promise<{ requestId?: string }> {
+    const path = this.config.get<string>('TUMA_PAYOUT_PATH');
+    if (!path) throw new ServiceUnavailableException('TUMA payouts are not set up on this server');
+    const token = await this.getToken(this.platformCredentials());
+    let response: Response;
+    try {
+      response = await fetch(`${this.baseUrl}${path.startsWith('/') ? path : `/${path}`}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ amount: input.amount, phone: input.phone, description: input.description.slice(0, 255), reference: input.reference }),
+        signal: AbortSignal.timeout(20_000),
+      });
+    } catch {
+      throw new ServiceUnavailableException('Could not reach Tuma to send the payout');
+    }
+    const body = (await response.json().catch(() => ({}))) as { message?: unknown };
+    if (!response.ok) {
+      throw new BadRequestException(`Tuma refused the payout: ${typeof body.message === 'string' ? body.message : response.status}`);
+    }
+    return parseStkResponse(body).merchantRequestId ? { requestId: parseStkResponse(body).merchantRequestId } : {};
+  }
+
   private async getToken(credentials: TumaCredentials, opts: { fresh?: boolean } = {}): Promise<string> {
     const cached = this.tokenCache.get(credentials.email);
     if (!opts.fresh && cached && cached.expiresAt - 60_000 > Date.now()) return cached.token;
