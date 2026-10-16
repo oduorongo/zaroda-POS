@@ -114,9 +114,11 @@ function HomeBody({ me, reload }: { me: TeamMe; reload: () => Promise<void> }) {
       <section className="space-y-2 rounded-lg border border-border bg-surface p-4">
         <h2 className="font-semibold">Your team&apos;s earning terms</h2>
         <ul className="space-y-1 text-sm text-secondary-600">
-          <li>Members earn {pct(me.team.memberShareRate)} of what Zaroda collects as online-order commission from the shops they onboard.</li>
-          <li>The team leader also earns {pct(me.team.leaderOverrideRate)} of the commission collected from all the team&apos;s shops.</li>
-          <li>A bonus of KES {me.team.onboardingBonusKes.toLocaleString("en-KE")} for each shop, once it pays its first monthly subscription.</li>
+          <li>Members earn {pct(me.team.memberShareRate)} of what Zaroda collects as online-order commission from the shops they sign, and {pct(me.team.subscriptionShareRate)} of each monthly subscription those shops pay.</li>
+          <li>You earn on a shop for {me.team.earningMonths} months after it signs up.</li>
+          <li>The team leader also earns {pct(me.team.leaderOverrideRate)} of the commission and subscriptions from all the team&apos;s shops, paid by Zaroda on top (never deducted from members).</li>
+          <li>A bonus of KES {me.team.onboardingBonusKes.toLocaleString("en-KE")} for each shop, once it pays its second monthly subscription.</li>
+          <li>Member and leader together never earn more than {pct(me.team.payoutCapRate)} of Zaroda&apos;s revenue from one shop in one month.</li>
         </ul>
         <p className="text-xs text-secondary-500">Only money Zaroda has actually received counts. See the Earnings page for what you have earned and been paid.</p>
       </section>

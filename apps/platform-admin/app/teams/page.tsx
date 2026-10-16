@@ -16,6 +16,9 @@ interface TeamRow {
   memberShareRate: number;
   leaderOverrideRate: number;
   onboardingBonusKes: number;
+  subscriptionShareRate: number;
+  earningMonths: number;
+  payoutCapRate: number;
   leader: { id: string; fullName: string; email: string } | null;
   memberCount: number;
   tenantCount: number;
@@ -35,9 +38,12 @@ export default function TeamsPage() {
   const [showNew, setShowNew] = useState(false);
   const [name, setName] = useState("");
   const [region, setRegion] = useState("");
-  const [memberPct, setMemberPct] = useState("");
-  const [leaderPct, setLeaderPct] = useState("");
-  const [bonus, setBonus] = useState("");
+  const [memberPct, setMemberPct] = useState("25");
+  const [subPct, setSubPct] = useState("10");
+  const [months, setMonths] = useState("12");
+  const [leaderPct, setLeaderPct] = useState("5");
+  const [bonus, setBonus] = useState("500");
+  const [capPct, setCapPct] = useState("35");
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
@@ -77,6 +83,9 @@ export default function TeamsPage() {
         memberShareRate: Number(memberPct || 0) / 100,
         leaderOverrideRate: Number(leaderPct || 0) / 100,
         onboardingBonusKes: Number(bonus || 0),
+        subscriptionShareRate: Number(subPct || 0) / 100,
+        earningMonths: Number(months || 12),
+        payoutCapRate: Number(capPct || 0) / 100,
       });
       router.push(`/teams/${team.id}`);
     } catch (err) {
@@ -114,15 +123,27 @@ export default function TeamsPage() {
               </label>
               <label className="text-sm">
                 Member share (% of Zaroda&apos;s online-order commission)
-                <input type="number" min={0} max={100} step="0.01" className="mt-1 w-full rounded-md border border-border bg-background p-2" value={memberPct} onChange={(e) => setMemberPct(e.target.value)} placeholder="e.g. 30" />
+                <input type="number" min={0} max={100} step="0.01" className="mt-1 w-full rounded-md border border-border bg-background p-2" value={memberPct} onChange={(e) => setMemberPct(e.target.value)} placeholder="e.g. 25" />
               </label>
               <label className="text-sm">
-                Leader override (% of the commission from all the team&apos;s shops)
-                <input type="number" min={0} max={100} step="0.01" className="mt-1 w-full rounded-md border border-border bg-background p-2" value={leaderPct} onChange={(e) => setLeaderPct(e.target.value)} placeholder="e.g. 5" />
+                Subscription share (% of each monthly subscription the shop pays)
+                <input type="number" min={0} max={100} step="0.01" className="mt-1 w-full rounded-md border border-border bg-background p-2" value={subPct} onChange={(e) => setSubPct(e.target.value)} />
               </label>
               <label className="text-sm">
-                Bonus per shop (KES, once it pays its first monthly subscription)
-                <input type="number" min={0} step="1" className="mt-1 w-full rounded-md border border-border bg-background p-2" value={bonus} onChange={(e) => setBonus(e.target.value)} placeholder="e.g. 500" />
+                Earning months (after the shop signs up)
+                <input type="number" min={1} max={120} step="1" className="mt-1 w-full rounded-md border border-border bg-background p-2" value={months} onChange={(e) => setMonths(e.target.value)} />
+              </label>
+              <label className="text-sm">
+                Leader override (% of commission + subscriptions from all the team&apos;s shops)
+                <input type="number" min={0} max={100} step="0.01" className="mt-1 w-full rounded-md border border-border bg-background p-2" value={leaderPct} onChange={(e) => setLeaderPct(e.target.value)} />
+              </label>
+              <label className="text-sm">
+                Bonus per shop (KES, once it pays its second monthly subscription)
+                <input type="number" min={0} step="1" className="mt-1 w-full rounded-md border border-border bg-background p-2" value={bonus} onChange={(e) => setBonus(e.target.value)} />
+              </label>
+              <label className="text-sm">
+                Payout cap (max % of Zaroda&apos;s revenue from one shop in a month, member + leader together)
+                <input type="number" min={0} max={100} step="0.01" className="mt-1 w-full rounded-md border border-border bg-background p-2" value={capPct} onChange={(e) => setCapPct(e.target.value)} />
               </label>
             </div>
             <p className="text-xs text-secondary-500">You can change all of these later. A change only affects what is earned after it, never what was already earned.</p>

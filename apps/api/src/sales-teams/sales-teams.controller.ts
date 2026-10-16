@@ -1,4 +1,5 @@
-import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { timingSafeEqual } from 'node:crypto';
+import { Body, Controller, ForbiddenException, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { SalesAgentRole } from '@prisma/client';
 import { Request } from 'express';
@@ -14,7 +15,19 @@ import {
 } from './dto/sales-team.dto';
 import { CreateShopRiderDto } from '../riders/dto/rider.dto';
 import { AddMemberDto, OnboardTenantByAgentDto, SetMemberStatusDto } from './dto/sales-portal.dto';
-import { EarningsMonthQueryDto, PayoutsQueryDto, RecordSalesPayoutDto } from './dto/sales-earnings.dto';
+import {
+  EarningsMonthQueryDto,
+  ManualPayoutDto,
+  PayoutsQueryDto,
+  RecordSalesAdjustmentDto,
+  ResolvePayoutDto,
+  SendPayoutDto,
+  UpdatePayoutDetailsDto,
+  UpdatePayoutSettingsDto,
+} from './dto/sales-earnings.dto';
+import { AssignShopDto } from './dto/sales-shop.dto';
+import { MpesaB2cClient, parseB2cResult } from './mpesa-b2c.client';
+import { SalesPayoutsService } from './sales-payouts.service';
 import { AuthenticatedAgent, CurrentAgent, PasswordChangedGuard, SalesAgentAuthGuard } from './sales-agent-auth';
 import { SalesAgentService } from './sales-agent.service';
 import { SalesEarningsService } from './sales-earnings.service';
@@ -73,6 +86,22 @@ export class SalesTeamsAdminController {
   addMember(@Req() req: PlatformAdminRequest, @Param('id', ParseUUIDPipe) id: string, @Body() dto: CreateSalesAgentDto) {
     return this.teams.addAgent(req.user!.platformAdminId, id, SalesAgentRole.MEMBER, dto);
   }
+
+  /** Who signed a shop, and the people it could be given to. */
+  @Public()
+  @UseGuards(PlatformAdminAuthGuard)
+  @Get('shops/:organizationId')
+  shopAssignment(@Param('organizationId', ParseUUIDPipe) organizationId: string) {
+    return this.teams.shopAssignment(organizationId);
+  }
+
+  /** Give a shop to a team and member - the only way a shop's team or signer can change after sign-up. */
+  @Public()
+  @UseGuards(PlatformAdminAuthGuard)
+  @Patch('shops/:organizationId')
+  assignShop(@Req() req: PlatformAdminRequest, @Param('organizationId', ParseUUIDPipe) organizationId: string, @Body() dto: AssignShopDto) {
+    return this.teams.assignShop(req.user!.platformAdminId, organizationId, dto);
+  }
 }
 
 /** The platform owner acting on one person (any team). */
@@ -89,6 +118,13 @@ export class SalesAgentsAdminController {
 
   @Public()
   @UseGuards(PlatformAdminAuthGuard)
+  @Patch(':id/payout')
+  setPayoutDetails(@Req() req: PlatformAdminRequest, @Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdatePayoutDetailsDto) {
+    return this.teams.setPayoutDetails(req.user!.platformAdminId, id, dto);
+  }
+
+  @Public()
+  @UseGuards(PlatformAdminAuthGuard)
   @Post(':id/reset-password')
   @HttpCode(200)
   resetPassword(@Req() req: PlatformAdminRequest, @Param('id', ParseUUIDPipe) id: string) {
@@ -99,7 +135,18 @@ export class SalesAgentsAdminController {
 /** A leader or member's own sign-in and profile. */
 @Controller('sales-agent')
 export class SalesAgentController {
-  constructor(private readonly agents: SalesAgentService) {}
+  constructor(
+    private readonly agents: SalesAgentService,
+    private readonly teams: SalesTeamsService,
+  ) {}
+
+  /** Where I am paid (an M-Pesa number). */
+  @Public()
+  @UseGuards(SalesAgentAuthGuard, PasswordChangedGuard)
+  @Patch('me/payout')
+  setMyPayoutDetails(@CurrentAgent() agent: AuthenticatedAgent, @Body() dto: UpdatePayoutDetailsDto) {
+    return this.teams.setPayoutDetails(null, agent.agentId, dto);
+  }
 
   @Public()
   @Throttle(LOGIN_THROTTLE)
@@ -215,10 +262,13 @@ export class SalesEarningsAgentController {
   }
 }
 
-/** The platform owner's side of the money: what every team has earned and is owed, and recording a payment made. */
+/** The platform owner's side of the money: what every team has earned and is owed, payout settings, and paying people. */
 @Controller('platform-admin/sales-earnings')
 export class SalesEarningsAdminController {
-  constructor(private readonly earnings: SalesEarningsService) {}
+  constructor(
+    private readonly earnings: SalesEarningsService,
+    private readonly payouts: SalesPayoutsService,
+  ) {}
 
   @Public()
   @UseGuards(PlatformAdminAuthGuard)
@@ -229,15 +279,92 @@ export class SalesEarningsAdminController {
 
   @Public()
   @UseGuards(PlatformAdminAuthGuard)
-  @Get('payouts')
-  payouts(@Query() query: PayoutsQueryDto) {
-    return this.earnings.payouts(query.agentId);
+  @Get('settings')
+  settings() {
+    return this.payouts.settingsView();
   }
 
   @Public()
   @UseGuards(PlatformAdminAuthGuard)
+  @Patch('settings')
+  updateSettings(@Req() req: PlatformAdminRequest, @Body() dto: UpdatePayoutSettingsDto) {
+    return this.payouts.updateSettings(req.user!.platformAdminId, dto);
+  }
+
+  @Public()
+  @UseGuards(PlatformAdminAuthGuard)
+  @Get('payouts')
+  list(@Query() query: PayoutsQueryDto) {
+    return this.payouts.list(query.agentId);
+  }
+
+  /** Record a payment made by hand, with its reference. */
+  @Public()
+  @UseGuards(PlatformAdminAuthGuard)
   @Post('payouts')
-  recordPayout(@Req() req: PlatformAdminRequest, @Body() dto: RecordSalesPayoutDto) {
-    return this.earnings.recordPayout(req.user!.platformAdminId, dto);
+  recordManual(@Req() req: PlatformAdminRequest, @Body() dto: ManualPayoutDto) {
+    return this.payouts.recordManual(req.user!.platformAdminId, dto);
+  }
+
+  /** Send one person's payable balance now through their gateway (M-Pesa B2C or TUMA). */
+  @Public()
+  @UseGuards(PlatformAdminAuthGuard)
+  @Post('payouts/send')
+  send(@Req() req: PlatformAdminRequest, @Body() dto: SendPayoutDto) {
+    return this.payouts.sendNow(req.user!.platformAdminId, dto.agentId);
+  }
+
+  /** A payout stuck queued: say whether it was in fact paid or failed. */
+  @Public()
+  @UseGuards(PlatformAdminAuthGuard)
+  @Post('payouts/:id/resolve')
+  @HttpCode(200)
+  resolve(@Req() req: PlatformAdminRequest, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ResolvePayoutDto) {
+    return this.payouts.resolve(req.user!.platformAdminId, id, dto);
+  }
+
+  /** A refund after earnings accrued: reverses the matching part of what the member and leader earned. */
+  @Public()
+  @UseGuards(PlatformAdminAuthGuard)
+  @Post('adjustments')
+  adjust(@Req() req: PlatformAdminRequest, @Body() dto: RecordSalesAdjustmentDto) {
+    return this.earnings.recordAdjustment(req.user!.platformAdminId, dto);
+  }
+}
+
+/**
+ * Safaricom's B2C result and timeout notifications. Public (Safaricom has no login) but the URL carries a secret only
+ * Safaricom was given, and the result is matched to a payout by its own request id, so an outsider can settle nothing.
+ */
+@Controller('sales-payouts/mpesa-b2c')
+export class SalesPayoutCallbackController {
+  constructor(
+    private readonly payouts: SalesPayoutsService,
+    private readonly b2c: MpesaB2cClient,
+  ) {}
+
+  private check(secret: string) {
+    const expected = this.b2c.callbackSecret();
+    const a = Buffer.from(secret);
+    const b = Buffer.from(expected ?? '');
+    if (!expected || a.length !== b.length || !timingSafeEqual(a, b)) throw new ForbiddenException();
+  }
+
+  @Public()
+  @Post('result/:secret')
+  @HttpCode(200)
+  async result(@Param('secret') secret: string, @Body() body: unknown) {
+    this.check(secret);
+    await this.payouts.settleB2c(parseB2cResult(body));
+    return { ResultCode: 0, ResultDesc: 'Accepted' };
+  }
+
+  // A timeout does not say whether the money moved, so nothing is settled: the payout stays queued for an admin to resolve.
+  @Public()
+  @Post('timeout/:secret')
+  @HttpCode(200)
+  timeout(@Param('secret') secret: string) {
+    this.check(secret);
+    return { ResultCode: 0, ResultDesc: 'Accepted' };
   }
 }

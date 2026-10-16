@@ -4,6 +4,8 @@ import * as bcrypt from 'bcryptjs';
 import { generateTempPassword } from '../common/crypto/temp-password';
 import { PrismaService } from '../common/prisma/prisma.service';
 import { CreateSalesAgentDto, CreateSalesTeamDto, UpdateSalesTeamDto } from './dto/sales-team.dto';
+import { UpdatePayoutDetailsDto } from './dto/sales-earnings.dto';
+import { AssignShopDto } from './dto/sales-shop.dto';
 
 const SALT_ROUNDS = 10;
 
@@ -17,6 +19,8 @@ export const toAgentView = (agent: SalesAgent) => ({
   status: agent.status,
   mustChangePassword: agent.mustChangePassword,
   lastLoginAt: agent.lastLoginAt,
+  payoutGateway: agent.payoutGateway,
+  payoutAccount: agent.payoutAccount,
   createdAt: agent.createdAt,
 });
 
@@ -26,6 +30,9 @@ export const toTeamView = (team: SalesTeam) => ({
   region: team.region,
   status: team.status,
   memberShareRate: Number(team.memberShareRate),
+  subscriptionShareRate: Number(team.subscriptionShareRate),
+  earningMonths: team.earningMonths,
+  payoutCapRate: Number(team.payoutCapRate),
   leaderOverrideRate: Number(team.leaderOverrideRate),
   onboardingBonusKes: Number(team.onboardingBonusKes),
   createdAt: team.createdAt,
@@ -93,15 +100,19 @@ export class SalesTeamsService {
   }
 
   async createTeam(platformAdminId: string, dto: CreateSalesTeamDto) {
-    assertRatesFit(dto.memberShareRate ?? 0, dto.leaderOverrideRate ?? 0);
+    assertRatesFit(dto.memberShareRate ?? 0.25, dto.leaderOverrideRate ?? 0.05);
     try {
       const team = await this.prisma.salesTeam.create({
         data: {
           name: dto.name.trim(),
           region: dto.region?.trim() || null,
-          memberShareRate: dto.memberShareRate ?? 0,
-          leaderOverrideRate: dto.leaderOverrideRate ?? 0,
-          onboardingBonusKes: dto.onboardingBonusKes ?? 0,
+          // Anything left out takes the schema default (the commission spec's terms).
+          memberShareRate: dto.memberShareRate,
+          subscriptionShareRate: dto.subscriptionShareRate,
+          earningMonths: dto.earningMonths,
+          leaderOverrideRate: dto.leaderOverrideRate,
+          onboardingBonusKes: dto.onboardingBonusKes,
+          payoutCapRate: dto.payoutCapRate,
         },
       });
       await this.audit(platformAdminId, 'sales_team.create', 'SalesTeam', team.id);
@@ -126,8 +137,11 @@ export class SalesTeamsService {
           region: dto.region === undefined ? undefined : dto.region.trim() || null,
           status: dto.status,
           memberShareRate: dto.memberShareRate,
+          subscriptionShareRate: dto.subscriptionShareRate,
+          earningMonths: dto.earningMonths,
           leaderOverrideRate: dto.leaderOverrideRate,
           onboardingBonusKes: dto.onboardingBonusKes,
+          payoutCapRate: dto.payoutCapRate,
         },
       });
       await this.audit(platformAdminId, 'sales_team.update', 'SalesTeam', id);
@@ -199,5 +213,46 @@ export class SalesTeamsService {
     });
     await this.audit(platformAdminId, 'sales_agent.reset_password', 'SalesAgent', agentId);
     return { agent: toAgentView(updated), temporaryPassword };
+  }
+
+  /**
+   * Where a person is paid. A phone number for M-Pesa B2C or TUMA; clearing the gateway leaves them to be paid by hand.
+   * The platform owner does it for anyone; people do their own through SalesAgentService.
+   */
+  async setPayoutDetails(platformAdminId: string | null, agentId: string, dto: UpdatePayoutDetailsDto) {
+    const agent = await this.prisma.salesAgent.findUnique({ where: { id: agentId } });
+    if (!agent) throw new NotFoundException('Person not found');
+    const gateway = dto.payoutGateway === undefined ? agent.payoutGateway : dto.payoutGateway;
+    const account = dto.payoutAccount === undefined ? agent.payoutAccount : dto.payoutAccount.trim();
+    if (gateway && !account) throw new BadRequestException('Enter the phone number to pay');
+    const updated = await this.prisma.salesAgent.update({ where: { id: agentId }, data: { payoutGateway: gateway, payoutAccount: account } });
+    await this.audit(platformAdminId, 'sales_agent.set_payout_details', 'SalesAgent', agentId);
+    return toAgentView(updated);
+  }
+
+  /** Who signed a shop, plus the teams and people it could be given to - for the platform admin's business page. */
+  async shopAssignment(organizationId: string) {
+    const [org, teams] = await Promise.all([
+      this.prisma.organization.findUnique({ where: { id: organizationId }, select: { id: true, createdAt: true, salesTeamId: true, salesAgentId: true, salesAssignedAt: true } }),
+      this.prisma.salesTeam.findMany({ orderBy: { name: 'asc' }, select: { id: true, name: true, agents: { orderBy: [{ role: 'asc' }, { fullName: 'asc' }], select: { id: true, fullName: true, role: true, status: true } } } }),
+    ]);
+    if (!org) throw new NotFoundException('Business not found');
+    return { signedUpAt: org.createdAt, teamId: org.salesTeamId, agentId: org.salesAgentId, assignedAt: org.salesAssignedAt, teams };
+  }
+
+  /**
+   * Gives a shop to a team and member. Only the platform owner can (a team never changes who signed a shop). The
+   * new member earns only from money Zaroda receives from now on, so this never moves earnings already made.
+   */
+  async assignShop(platformAdminId: string, organizationId: string, dto: AssignShopDto) {
+    const [org, agent] = await Promise.all([
+      this.prisma.organization.findUnique({ where: { id: organizationId }, select: { id: true } }),
+      this.prisma.salesAgent.findUnique({ where: { id: dto.agentId } }),
+    ]);
+    if (!org) throw new NotFoundException('Business not found');
+    if (!agent || agent.teamId !== dto.teamId) throw new BadRequestException('That person is not in that team');
+    await this.prisma.organization.update({ where: { id: organizationId }, data: { salesTeamId: dto.teamId, salesAgentId: dto.agentId, salesAssignedAt: new Date() } });
+    await this.audit(platformAdminId, 'sales_team.assign_shop', 'Organization', organizationId);
+    return { organizationId, teamId: dto.teamId, agentId: dto.agentId };
   }
 }

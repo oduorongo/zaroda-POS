@@ -16,6 +16,8 @@ interface Agent {
   status: "ACTIVE" | "SUSPENDED";
   mustChangePassword: boolean;
   lastLoginAt: string | null;
+  payoutGateway: "MPESA_B2C" | "TUMA" | null;
+  payoutAccount: string | null;
 }
 
 interface Team {
@@ -24,8 +26,11 @@ interface Team {
   region: string | null;
   status: "ACTIVE" | "PAUSED";
   memberShareRate: number;
+  subscriptionShareRate: number;
+  earningMonths: number;
   leaderOverrideRate: number;
   onboardingBonusKes: number;
+  payoutCapRate: number;
   tenantCount: number;
   riderCount: number;
   agents: Agent[];
@@ -47,6 +52,9 @@ export default function TeamDetailPage() {
   const [memberPct, setMemberPct] = useState("");
   const [leaderPct, setLeaderPct] = useState("");
   const [bonus, setBonus] = useState("");
+  const [subPct, setSubPct] = useState("");
+  const [months, setMonths] = useState("");
+  const [capPct, setCapPct] = useState("");
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
@@ -60,6 +68,9 @@ export default function TeamDetailPage() {
 
   const [secret, setSecret] = useState<{ who: string; email: string; password: string } | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [payoutFor, setPayoutFor] = useState<string | null>(null);
+  const [payoutGateway, setPayoutGateway] = useState<"" | "MPESA_B2C" | "TUMA">("");
+  const [payoutAccount, setPayoutAccount] = useState("");
 
   useEffect(() => {
     const s = getSession();
@@ -77,6 +88,9 @@ export default function TeamDetailPage() {
     setMemberPct(toPct(t.memberShareRate));
     setLeaderPct(toPct(t.leaderOverrideRate));
     setBonus(String(t.onboardingBonusKes));
+    setSubPct(toPct(t.subscriptionShareRate));
+    setMonths(String(t.earningMonths));
+    setCapPct(toPct(t.payoutCapRate));
   }
 
   async function load() {
@@ -107,6 +121,9 @@ export default function TeamDetailPage() {
         memberShareRate: Number(memberPct || 0) / 100,
         leaderOverrideRate: Number(leaderPct || 0) / 100,
         onboardingBonusKes: Number(bonus || 0),
+        subscriptionShareRate: Number(subPct || 0) / 100,
+        earningMonths: Number(months || 12),
+        payoutCapRate: Number(capPct || 0) / 100,
       });
       setSaved(true);
       await load();
@@ -169,6 +186,23 @@ export default function TeamDetailPage() {
     }
   }
 
+  async function savePayoutDetails(agent: Agent) {
+    setBusyId(agent.id);
+    setError(null);
+    try {
+      await apiPatch(`/platform-admin/sales-agents/${agent.id}/payout`, {
+        payoutGateway: payoutGateway || null,
+        ...(payoutAccount.trim() ? { payoutAccount: payoutAccount.trim() } : {}),
+      });
+      setPayoutFor(null);
+      await load();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not save the payout details.");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   async function resetPassword(agent: Agent) {
     if (!confirm(`Give ${agent.fullName} a new temporary password? Their current password stops working.`)) return;
     setBusyId(agent.id);
@@ -201,8 +235,36 @@ export default function TeamDetailPage() {
           {a.email}
           {a.phone ? ` · ${a.phone}` : ""} · {a.lastLoginAt ? `last signed in ${new Date(a.lastLoginAt).toLocaleDateString("en-KE")}` : "never signed in"}
         </p>
+        <p className="text-sm text-secondary-500">
+          Paid by: {a.payoutGateway === "MPESA_B2C" ? `M-Pesa to ${a.payoutAccount}` : a.payoutGateway === "TUMA" ? `TUMA to ${a.payoutAccount}` : "recorded by hand"}
+        </p>
+        {payoutFor === a.id && (
+          <div className="mt-2 flex flex-wrap items-end gap-2">
+            <label className="text-xs">
+              How to pay
+              <select className="mt-1 block rounded-md border border-border bg-background p-2 text-sm" value={payoutGateway} onChange={(e) => setPayoutGateway(e.target.value as "" | "MPESA_B2C" | "TUMA")}>
+                <option value="">By hand</option>
+                <option value="MPESA_B2C">M-Pesa (B2C)</option>
+                <option value="TUMA">TUMA</option>
+              </select>
+            </label>
+            <label className="text-xs">
+              M-Pesa phone
+              <input className="mt-1 block rounded-md border border-border bg-background p-2 text-sm" value={payoutAccount} onChange={(e) => setPayoutAccount(e.target.value)} placeholder="0712 345 678" />
+            </label>
+            <Button size="sm" disabled={busyId === a.id} onClick={() => void savePayoutDetails(a)}>
+              Save
+            </Button>
+            <Button size="sm" variant="secondary" onClick={() => setPayoutFor(null)}>
+              Cancel
+            </Button>
+          </div>
+        )}
       </div>
       <div className="flex gap-2">
+        <Button variant="secondary" size="sm" onClick={() => { setPayoutFor(a.id); setPayoutGateway(a.payoutGateway ?? ""); setPayoutAccount(a.payoutAccount ?? ""); }}>
+          Payout details
+        </Button>
         <Button variant="secondary" size="sm" disabled={busyId === a.id} onClick={() => void resetPassword(a)}>
           New password
         </Button>
@@ -288,12 +350,24 @@ export default function TeamDetailPage() {
                   <input type="number" min={0} max={100} step="0.01" className="mt-1 w-full rounded-md border border-border bg-background p-2" value={memberPct} onChange={(e) => setMemberPct(e.target.value)} />
                 </label>
                 <label className="text-sm">
-                  Leader override (% of the commission from all the team&apos;s shops)
+                  Subscription share (% of each monthly subscription the shop pays)
+                  <input type="number" min={0} max={100} step="0.01" className="mt-1 w-full rounded-md border border-border bg-background p-2" value={subPct} onChange={(e) => setSubPct(e.target.value)} />
+                </label>
+                <label className="text-sm">
+                  Earning months (how long after sign-up the shop keeps earning)
+                  <input type="number" min={1} max={120} step="1" className="mt-1 w-full rounded-md border border-border bg-background p-2" value={months} onChange={(e) => setMonths(e.target.value)} />
+                </label>
+                <label className="text-sm">
+                  Leader override (% of commission + subscriptions from all the team&apos;s shops, paid on top)
                   <input type="number" min={0} max={100} step="0.01" className="mt-1 w-full rounded-md border border-border bg-background p-2" value={leaderPct} onChange={(e) => setLeaderPct(e.target.value)} />
                 </label>
                 <label className="text-sm">
-                  Bonus per shop (KES, when it pays its first monthly subscription)
+                  Bonus per shop (KES, when it pays its second monthly subscription)
                   <input type="number" min={0} step="1" className="mt-1 w-full rounded-md border border-border bg-background p-2" value={bonus} onChange={(e) => setBonus(e.target.value)} />
+                </label>
+                <label className="text-sm">
+                  Payout cap (max % of Zaroda&apos;s revenue from one shop in a month that member + leader earn together)
+                  <input type="number" min={0} max={100} step="0.01" className="mt-1 w-full rounded-md border border-border bg-background p-2" value={capPct} onChange={(e) => setCapPct(e.target.value)} />
                 </label>
               </div>
               <p className="text-xs text-secondary-500">A change only affects what is earned after it, never what was already earned.</p>

@@ -229,7 +229,7 @@ export class PlatformAdminService {
             name: dto.organizationName,
             industryType: dto.industryType,
             kraPin: dto.kraPin,
-            ...(options.attribution ?? {}),
+            ...(options.attribution ? { ...options.attribution, salesAssignedAt: new Date() } : {}),
           },
         });
 

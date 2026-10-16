@@ -1,5 +1,5 @@
 import { SalesAgentStatus, SalesTeamStatus } from '@prisma/client';
-import { IsBoolean, IsEmail, IsEnum, IsNumber, IsOptional, IsString, Matches, Max, MaxLength, Min, MinLength } from 'class-validator';
+import { IsBoolean, IsEmail, IsEnum, IsInt, IsNumber, IsOptional, IsString, Matches, Max, MaxLength, Min, MinLength } from 'class-validator';
 
 /** Rates are fractions: 0.3 = 30%. */
 export class CreateSalesTeamDto {
@@ -30,6 +30,24 @@ export class CreateSalesTeamDto {
   @Min(0)
   @Max(1_000_000)
   onboardingBonusKes?: number;
+
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 4 })
+  @Min(0)
+  @Max(1)
+  subscriptionShareRate?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(120)
+  earningMonths?: number;
+
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 4 })
+  @Min(0)
+  @Max(1)
+  payoutCapRate?: number;
 }
 
 export class UpdateSalesTeamDto {
@@ -65,6 +83,24 @@ export class UpdateSalesTeamDto {
   @Min(0)
   @Max(1_000_000)
   onboardingBonusKes?: number;
+
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 4 })
+  @Min(0)
+  @Max(1)
+  subscriptionShareRate?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(120)
+  earningMonths?: number;
+
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 4 })
+  @Min(0)
+  @Max(1)
+  payoutCapRate?: number;
 }
 
 export class CreateSalesAgentDto {

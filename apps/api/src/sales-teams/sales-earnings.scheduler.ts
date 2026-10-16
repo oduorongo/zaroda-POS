@@ -2,6 +2,7 @@ import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/commo
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../common/prisma/prisma.service';
 import { SalesEarningsService } from './sales-earnings.service';
+import { SalesPayoutsService } from './sales-payouts.service';
 
 // First run shortly after boot, then hourly - so what is earned is written down close to when Zaroda is paid,
 // which is what pins the rate used (a later change of a team's terms only affects what is earned after it).
@@ -24,6 +25,7 @@ export class SalesEarningsScheduler implements OnModuleInit, OnModuleDestroy {
   constructor(
     private readonly prisma: PrismaService,
     private readonly earnings: SalesEarningsService,
+    private readonly payouts: SalesPayoutsService,
     private readonly config: ConfigService,
   ) {}
 
@@ -49,11 +51,14 @@ export class SalesEarningsScheduler implements OnModuleInit, OnModuleDestroy {
         async (tx) => {
           const rows = await tx.$queryRaw<{ locked: boolean }[]>`SELECT pg_try_advisory_xact_lock(hashtext('zaroda-sales-earnings')) AS locked`;
           if (!rows[0]?.locked) return null;
-          return this.earnings.accrue(true);
+          const accrued = await this.earnings.accrue(true);
+          // The monthly payout run (a no-op except on and after the payout day, once a month, with a gateway set up).
+          const payout = await this.payouts.runDue();
+          return { ...accrued, payout };
         },
         { timeout: RUN_TIMEOUT_MS, maxWait: 15_000 },
       );
-      if (result && (result.commission || result.bonuses)) this.logger.log(result, 'Sales earnings accrued');
+      if (result && (result.commission || result.subscriptions || result.bonuses || result.released || result.payout.ran)) this.logger.log(result, 'Sales earnings accrued');
     } catch (e) {
       this.logger.error({ err: e }, 'Sales earnings accrual failed');
     }

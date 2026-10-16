@@ -9,6 +9,8 @@ import { teamGet, type EarningsStatement, type TeamMe } from "../../../lib/team-
 const kes = (n: number) => `KES ${n.toLocaleString("en-KE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const KIND: Record<string, string> = {
   COMMISSION_SHARE: "Commission share",
+  SUBSCRIPTION_SHARE: "Subscription share",
+  ADJUSTMENT: "Adjustment (refund)",
   LEADER_OVERRIDE: "Leader share of the team",
   ONBOARDING_BONUS: "Onboarding bonus",
 };
@@ -67,14 +69,18 @@ function EarningsBody({ me }: { me: TeamMe }) {
 
       {data && (
         <>
-          <div className="grid gap-3 sm:grid-cols-3">
+          <div className="grid gap-3 sm:grid-cols-4">
             <div className="rounded-lg border border-border bg-surface p-4">
               <p className="text-2xl font-bold">{kes(data.thisMonth.total)}</p>
               <p className="text-sm text-secondary-500">Earned in {monthLabel(month)}</p>
             </div>
             <div className="rounded-lg border border-border bg-surface p-4">
-              <p className="text-2xl font-bold">{kes(data.allTime.unpaid)}</p>
-              <p className="text-sm text-secondary-500">Waiting to be paid to you (all months)</p>
+              <p className="text-2xl font-bold">{kes(data.allTime.pending)}</p>
+              <p className="text-sm text-secondary-500">Pending (held {data.payoutTerms.holdDays} days after the month ends)</p>
+            </div>
+            <div className="rounded-lg border border-border bg-surface p-4">
+              <p className="text-2xl font-bold">{kes(data.allTime.payable)}</p>
+              <p className="text-sm text-secondary-500">Payable (paid on the {data.payoutTerms.payoutDay}th once it reaches {kes(data.payoutTerms.minimumKes)})</p>
             </div>
             <div className="rounded-lg border border-border bg-surface p-4">
               <p className="text-2xl font-bold">{kes(data.allTime.paid)}</p>
@@ -83,11 +89,29 @@ function EarningsBody({ me }: { me: TeamMe }) {
           </div>
 
           <p className="text-sm text-secondary-500">
-            {kes(data.thisMonth.commissionShare)} commission share
-            {isLeader ? ` · ${kes(data.thisMonth.leaderOverride)} leader share of the team` : ""} · {kes(data.thisMonth.onboardingBonus)} onboarding bonuses. Only money Zaroda has actually
-            received counts: a shop&apos;s commission once its invoice is paid, and the bonus once it pays its first monthly subscription.
+            {kes(data.thisMonth.commissionShare)} commission share · {kes(data.thisMonth.subscriptionShare)} subscription share
+            {isLeader ? ` · ${kes(data.thisMonth.leaderOverride)} leader share of the team` : ""} · {kes(data.thisMonth.onboardingBonus)} bonuses
+            {data.thisMonth.adjustments !== 0 ? ` · ${kes(data.thisMonth.adjustments)} refund adjustments` : ""}. Only money Zaroda has actually received counts. Balances under{" "}
+            {kes(data.payoutTerms.minimumKes)} carry over to the next payout.
+            {data.payoutTerms.withholdingTaxRate > 0 ? ` Withholding tax of ${Math.round(data.payoutTerms.withholdingTaxRate * 10000) / 100}% is deducted from each payout.` : ""}{" "}
+            {data.payoutDetails.gateway ? `You are paid by ${data.payoutDetails.gateway === "MPESA_B2C" ? "M-Pesa" : "TUMA"} to ${data.payoutDetails.account}.` : "Payouts to you are recorded by hand."}
           </p>
 
+          {data.byShop.length > 0 && (
+            <section className="space-y-2">
+              <h2 className="font-semibold">By shop, {monthLabel(month)}</h2>
+              <ul className="space-y-2">
+                {data.byShop.map((s) => (
+                  <li key={s.shop} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-surface p-3 text-sm">
+                    <span className="font-semibold">{s.shop}</span>
+                    <span className="text-secondary-500">
+                      {kes(s.pending)} pending · {kes(s.payable)} payable · {kes(s.paid)} paid · <b className="text-foreground">{kes(s.total)}</b>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
           <section className="space-y-2">
             <h2 className="font-semibold">What you earned</h2>
             {data.lines.length === 0 ? (
@@ -105,7 +129,8 @@ function EarningsBody({ me }: { me: TeamMe }) {
                     </div>
                     <div className="flex items-center gap-2">
                       <span className="font-semibold">{kes(l.amountKes)}</span>
-                      <Badge variant={l.status === "PAID" ? "success" : "warning"}>{l.status === "PAID" ? "Paid" : "To be paid"}</Badge>
+                      {l.capped && <Badge variant="neutral">Capped</Badge>}
+                      <Badge variant={l.status === "PAID" ? "success" : l.status === "PENDING" ? "neutral" : "warning"}>{l.status === "PAID" ? "Paid" : l.status === "PENDING" ? "Pending" : "Payable"}</Badge>
                     </div>
                   </li>
                 ))}
@@ -123,7 +148,7 @@ function EarningsBody({ me }: { me: TeamMe }) {
                       {p.fullName} {p.role === "LEADER" && <span className="font-normal text-secondary-500">(leader)</span>}
                     </span>
                     <span className="text-secondary-500">
-                      earned {kes(p.earnedThisMonth)} · {kes(p.unpaid)} still to be paid
+                      earned {kes(p.earnedThisMonth)} · {kes(p.pending)} pending · {kes(p.payable)} payable · {kes(p.paid)} paid
                     </span>
                   </li>
                 ))}
@@ -140,11 +165,11 @@ function EarningsBody({ me }: { me: TeamMe }) {
                 {data.payouts.map((p) => (
                   <li key={p.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-surface p-3 text-sm">
                     <span>
-                      {new Date(p.paidAt).toLocaleDateString("en-KE")} · {p.method}
-                      {p.reference ? ` · ${p.reference}` : ""}
+                      {p.paidAt ? new Date(p.paidAt).toLocaleDateString("en-KE") : "In progress"} · {p.gateway === "MPESA_B2C" ? "M-Pesa" : p.gateway === "MANUAL" ? "Paid by hand" : p.gateway}
+                      {p.reference ? ` · ${p.reference}` : ""} · {p.status === "QUEUED" ? "being sent" : p.status === "FAILED" ? `failed: ${p.failureReason ?? "will be retried"}` : "paid"}
                     </span>
                     <span className="font-semibold">
-                      {kes(p.amountKes)} <span className="font-normal text-secondary-500">for everything up to {monthLabel(p.throughMonth)}</span>
+                      {kes(p.netKes)} <span className="font-normal text-secondary-500">{p.taxWithheldKes > 0 ? `(${kes(p.amountKes)} less ${kes(p.taxWithheldKes)} tax) ` : ""}up to {monthLabel(p.throughMonth)}</span>
                     </span>
                   </li>
                 ))}

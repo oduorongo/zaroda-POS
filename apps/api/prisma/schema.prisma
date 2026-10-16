@@ -103,6 +103,9 @@ model Organization {
   // member creates the account; only the platform owner can change it. Self-signups have neither.
   salesTeamId               String?
   salesAgentId              String?
+  // When the current member took over this shop (its sign-up date unless an admin reassigned it): the
+  // member earns only from money Zaroda received after this, so a reassignment never back-pays history.
+  salesAssignedAt           DateTime?
   salesTeam                 SalesTeam?                 @relation(fields: [salesTeamId], references: [id], onDelete: SetNull)
   salesAgent                SalesAgent?                @relation(fields: [salesAgentId], references: [id], onDelete: SetNull)
   deliveryJobs              DeliveryJob[]
@@ -2299,20 +2302,27 @@ enum SalesTeamStatus {
 }
 
 model SalesTeam {
-  id                 String          @id @default(uuid())
-  name               String          @unique
-  region             String?
-  status             SalesTeamStatus @default(ACTIVE)
-  // The earning terms, as fractions (0.3000 = 30%). A member earns memberShareRate of what Zaroda
-  // collects as online-order commission from the businesses they onboarded; the leader also earns
-  // leaderOverrideRate of the commission collected from ALL the team's businesses (so the two rates
-  // together can never exceed 100% of that commission). The bonus is paid once per business, when it
-  // pays its first monthly subscription. All zero until the platform owner sets them.
-  memberShareRate    Decimal         @default(0) @db.Decimal(5, 4)
-  leaderOverrideRate Decimal         @default(0) @db.Decimal(5, 4)
-  onboardingBonusKes Decimal         @default(0) @db.Decimal(12, 2)
-  createdAt          DateTime        @default(now())
-  updatedAt          DateTime        @updatedAt
+  id                    String          @id @default(uuid())
+  name                  String          @unique
+  region                String?
+  status                SalesTeamStatus @default(ACTIVE)
+  // The earning terms, as fractions (0.2500 = 25%); defaults are the spec's, all editable per team.
+  // - memberShareRate: of the online-order commission Zaroda collects from a shop, to the member who signed it.
+  // - subscriptionShareRate: of each monthly subscription the shop pays, to the same member.
+  // - earningMonths: how long after the shop's sign-up the member (and leader) keep earning on it.
+  // - leaderOverrideRate: of Zaroda's commission + subscriptions from ALL the team's shops, to the leader.
+  //   Paid by Zaroda on top, never deducted from the member.
+  // - onboardingBonusKes: once per shop, when it pays its SECOND monthly subscription.
+  // - payoutCapRate: the most of Zaroda's revenue from one shop in one month that member + leader can earn together.
+  // A change only affects what is earned after it: each earning row stores the rate it was worked out on.
+  memberShareRate       Decimal         @default(0.25) @db.Decimal(5, 4)
+  subscriptionShareRate Decimal         @default(0.10) @db.Decimal(5, 4)
+  earningMonths         Int             @default(12)
+  leaderOverrideRate    Decimal         @default(0.05) @db.Decimal(5, 4)
+  onboardingBonusKes    Decimal         @default(500) @db.Decimal(12, 2)
+  payoutCapRate         Decimal         @default(0.35) @db.Decimal(5, 4)
+  createdAt             DateTime        @default(now())
+  updatedAt             DateTime        @updatedAt
 
   agents        SalesAgent[]
   organizations Organization[]
@@ -2335,6 +2345,9 @@ model SalesAgent {
   mustChangePassword Boolean          @default(true)
   status             SalesAgentStatus @default(ACTIVE)
   lastLoginAt        DateTime?
+  // Where this person is paid: "MPESA_B2C" (account = their M-Pesa number) or "TUMA". Null = paid manually.
+  payoutGateway      String?
+  payoutAccount      String?
   createdAt          DateTime         @default(now())
   updatedAt          DateTime         @updatedAt
 
@@ -2350,25 +2363,40 @@ model SalesAgent {
 
 // ── What the teams earn ───────────────────────────────────────────────────
 // An append-only ledger: one row per thing earned, with the rate and base it was worked out on (so a later
-// change to a team's terms never rewrites what was already earned). Three kinds, each from one source:
-//   COMMISSION_SHARE  a member's share of the commission Zaroda collected from a business they onboarded;
-//                     source = the PAID commission invoice.
-//   LEADER_OVERRIDE   the team leader's slice of the same commission, from every business in the team.
-//   ONBOARDING_BONUS  a flat amount to the member, once per business, when it pays its first monthly
-//                     subscription; source = that subscription payment.
+// change to a team's terms never rewrites what was already earned). Kinds, each from one source:
+//   COMMISSION_SHARE    a member's share of the commission Zaroda collected from a shop they signed;
+//                       source = the PAID commission invoice.
+//   SUBSCRIPTION_SHARE  a member's share of a monthly subscription the shop paid; source = that payment.
+//   LEADER_OVERRIDE     the team leader's slice of the same commission or subscription, from every shop in the team.
+//   ONBOARDING_BONUS    a flat amount to the member, once per shop, when it pays its second monthly subscription.
+//   ADJUSTMENT          a negative row reversing part of an earlier one (a refund after it accrued).
 // Only money Zaroda has actually received earns anything. (kind, sourceId) is unique, so however many
-// times accrual runs, or whoever leads the team at the time, a source is credited once.
+// times accrual runs, a source is credited once. A source that must never pay (shop suspended or unpaid at
+// the time, member no longer active) is recorded as a VOID row, so a later reinstatement cannot back-pay it.
+// Status: PENDING until the hold period after the month ends, then PAYABLE, then PAID (set when a payout
+// is queued; a failed payout puts its earnings back to PAYABLE). ACCRUED is the old pre-hold status, no longer written.
 // Platform-level, like the other sales_* tables: access rules live in SalesEarningsService.
 
 enum SalesEarningKind {
   COMMISSION_SHARE
   LEADER_OVERRIDE
   ONBOARDING_BONUS
+  SUBSCRIPTION_SHARE
+  ADJUSTMENT
 }
 
 enum SalesEarningStatus {
   ACCRUED
   PAID
+  PENDING
+  PAYABLE
+  VOID
+}
+
+enum SalesPayoutStatus {
+  QUEUED
+  PAID
+  FAILED
 }
 
 model SalesEarning {
@@ -2379,14 +2407,17 @@ model SalesEarning {
   organizationName String
   kind             SalesEarningKind
   sourceId         String
-  // The commission collected (or, for a bonus, the bonus amount), and the rate applied to it.
+  // The commission / subscription collected (for a bonus, the bonus amount), and the rate applied to it.
   baseKes          Decimal            @db.Decimal(12, 2)
   rate             Decimal?           @db.Decimal(5, 4)
   amountKes        Decimal            @db.Decimal(12, 2)
+  // True when the payout cap shrank this row; note says why a VOID row never pays, or why an adjustment was made.
+  capped           Boolean            @default(false)
+  note             String?
   // When Zaroda received the money, and that moment's month in Nairobi ("2026-10").
   earnedAt         DateTime
   periodMonth      String
-  status           SalesEarningStatus @default(ACCRUED)
+  status           SalesEarningStatus @default(PENDING)
   payoutId         String?
   createdAt        DateTime           @default(now())
 
@@ -2397,26 +2428,51 @@ model SalesEarning {
   @@unique([kind, sourceId])
   @@index([agentId, status])
   @@index([teamId, periodMonth])
+  @@index([organizationId, periodMonth])
   @@map("sales_earnings")
 }
 
-// Money Zaroda paid a person (by M-Pesa, bank or cash) against what they had earned up to a month.
+// Money Zaroda pays a person against what they earned, through M-Pesa B2C, TUMA, or recorded by hand.
+// amountKes is the gross; taxWithheldKes is held back at payout, so they receive amountKes - taxWithheldKes.
 model SalesPayout {
-  id                        String   @id @default(uuid())
+  id                        String            @id @default(uuid())
   agentId                   String
-  amountKes                 Decimal  @db.Decimal(12, 2)
+  amountKes                 Decimal           @db.Decimal(12, 2)
+  taxWithheldKes            Decimal           @default(0) @db.Decimal(12, 2)
   // Covers everything earned up to and including this month ("2026-10").
   throughMonth              String
-  method                    String // "MPESA" | "BANK" | "CASH"
+  method                    String // gateway: "MPESA_B2C" | "TUMA" | "MANUAL" (older rows: "MPESA" | "BANK" | "CASH")
   reference                 String?
-  recordedByPlatformAdminId String
-  paidAt                    DateTime @default(now())
+  status                    SalesPayoutStatus @default(PAID)
+  // The gateway's id for the request, to match its result callback; why it failed.
+  gatewayRequestId          String?
+  failureReason             String?
+  recordedByPlatformAdminId String?
+  paidAt                    DateTime?
+  createdAt                 DateTime          @default(now())
 
   agent    SalesAgent     @relation(fields: [agentId], references: [id], onDelete: Cascade)
   earnings SalesEarning[]
 
   @@index([agentId])
+  @@index([gatewayRequestId])
   @@map("sales_payouts")
+}
+
+// One row ("default"): how and when the platform pays teams. Platform-level, like the other sales_* tables.
+model SalesPayoutSettings {
+  id                 String   @id @default("default")
+  // "MANUAL" (admin marks payouts paid with a reference), "MPESA_B2C" or "TUMA".
+  payoutGateway      String   @default("MANUAL")
+  payoutMinKes       Decimal  @default(500) @db.Decimal(12, 2)
+  payoutDay          Int      @default(5)
+  holdDays           Int      @default(30)
+  withholdingTaxRate Decimal  @default(0) @db.Decimal(5, 4)
+  // The month ("2026-10") the automatic payout run last covered, so it runs once a month.
+  lastRunMonth       String?
+  updatedAt          DateTime @updatedAt
+
+  @@map("sales_payout_settings")
 }
 
 // ── Rental / property management module (industryType "RENTAL") ──────────
