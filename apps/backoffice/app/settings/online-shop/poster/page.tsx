@@ -24,15 +24,40 @@ const STOREFRONT_URL = (process.env.NEXT_PUBLIC_STOREFRONT_URL ?? "https://shop.
 const NAVY = "#0a1633";
 const GOLD = "#c99a2e";
 
+type PosterKind = "shop" | "menu" | "salon" | "pharmacy";
+
+// Posters exist for retail shops, hotels / restaurants, salons and pharmacies. Salons point at the booking page,
+// the rest at the shop's online page.
+const KIND_BY_INDUSTRY: Record<string, PosterKind> = { RETAIL: "shop", RESTAURANT: "menu", SALON: "salon", PHARMACY: "pharmacy" };
+const TITLE: Record<PosterKind, string> = { shop: "Shop poster", menu: "Menu poster", salon: "Booking poster", pharmacy: "Pharmacy poster" };
+const WHAT_THEY_SEE: Record<PosterKind, string> = {
+  shop: "lands on your shop and can see what you have in stock and order",
+  menu: "lands on your menu and can order",
+  salon: "lands on your booking page and can choose a service and a time",
+  pharmacy: "lands on your pharmacy page and can see your products and order",
+};
+
+interface OrgMe {
+  id: string;
+  name: string;
+}
+interface BranchRow {
+  id: string;
+  name: string;
+}
+
 /**
- * A print-ready A4 poster for the shop: a big QR code that opens the shop's own page, with the shop's name
- * and three steps. Printed from the browser ("Save as PDF" works too). The poster is laid out in millimetres
- * so it prints the same on any printer; on screen it is shown smaller.
+ * A print-ready A4 poster with a big QR code that opens the business's own page, laid out in millimetres so it
+ * prints the same on any printer (print from the browser; "Save as PDF" works too). Which poster you get depends on
+ * the business type: retail shop, restaurant / hotel, salon or pharmacy.
  */
 export default function ShopPosterPage() {
   const router = useRouter();
   const [session, setSessionState] = useState<Session | null>(null);
   const [store, setStore] = useState<OnlineStore | null>(null);
+  const [org, setOrg] = useState<OrgMe | null>(null);
+  const [branches, setBranches] = useState<BranchRow[]>([]);
+  const [branchId, setBranchId] = useState("");
   const [qr, setQr] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -49,36 +74,56 @@ export default function ShopPosterPage() {
       return;
     }
     setSessionState(s);
+    const poster = KIND_BY_INDUSTRY[s.industryType];
     void (async () => {
       try {
-        const result = await apiGet<OnlineStore>("/online-store/me");
-        setStore(result);
-        if (result.slug) {
-          setQr(
-            await QRCode.toDataURL(`${STOREFRONT_URL}/s/${result.slug}`, {
-              errorCorrectionLevel: "H",
-              margin: 1,
-              width: 1000,
-              color: { dark: NAVY, light: "#ffffff" },
-            }),
-          );
+        if (poster === "salon") {
+          const [me, branchList] = await Promise.all([apiGet<OrgMe>("/organizations/me"), apiGet<BranchRow[]>("/branches")]);
+          setOrg(me);
+          setBranches(branchList);
+          setBranchId(branchList[0]?.id ?? "");
+        } else if (poster) {
+          setStore(await apiGet<OnlineStore>("/online-store/me"));
         }
       } catch (err) {
-        setError(err instanceof ApiError ? err.message : "Could not load your shop.");
+        setError(err instanceof ApiError ? err.message : "Could not load your details.");
       } finally {
         setLoading(false);
       }
     })();
   }, [router]);
 
+  const kind: PosterKind | null = session ? (KIND_BY_INDUSTRY[session.industryType] ?? null) : null;
+  const targetUrl =
+    kind === "salon"
+      ? org && branchId && typeof window !== "undefined"
+        ? `${window.location.origin}/book/${org.id}/${branchId}`
+        : null
+      : store?.slug
+        ? `${STOREFRONT_URL}/s/${store.slug}`
+        : null;
+
+  useEffect(() => {
+    if (!targetUrl) {
+      setQr(null);
+      return;
+    }
+    let cancelled = false;
+    void QRCode.toDataURL(targetUrl, { errorCorrectionLevel: "H", margin: 1, width: 1000, color: { dark: NAVY, light: "#ffffff" } }).then((url) => {
+      if (!cancelled) setQr(url);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [targetUrl]);
+
   if (!session) return null;
 
   const isManager = session.role === "MANAGER" || session.role === "OWNER";
-  // Posters exist for retail shops and for hotels / restaurants only.
-  const kind: "shop" | "menu" | null = session.industryType === "RETAIL" ? "shop" : session.industryType === "RESTAURANT" ? "menu" : null;
-  const shopUrl = store?.slug ? `${STOREFRONT_URL}/s/${store.slug}` : null;
-  const shopName = store?.displayName ?? "Our shop";
+  const shopUrl = targetUrl;
+  const shopName = (kind === "salon" ? (org?.name ?? session.orgName) : store?.displayName) ?? (kind === "salon" ? "Our salon" : "Our shop");
   const ways = [store?.pickupEnabled ? "Pickup" : null, store?.deliveryEnabled ? "Delivery" : null].filter(Boolean).join("  ·  ");
+  const phone = store?.contactPhone ?? null;
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -102,23 +147,37 @@ export default function ShopPosterPage() {
 
       <main className="mx-auto max-w-4xl p-4 sm:p-6">
         <div className="space-y-4 print:hidden">
-          <h1 className="text-xl font-bold">{kind === "menu" ? "Menu poster" : "Shop poster"}</h1>
-          <p className="text-sm text-secondary-500">
-            Print this and pin it where your customers pass - at your counter, your gate, a notice board. Anyone who scans the code with their phone camera lands
-            on your shop and can see what you have in stock and order.
-          </p>
-          {!kind && <EmptyState title="Posters are for retail shops and restaurants" description="A QR poster is available for retail shops and for hotels and restaurants." />}
-          {loading && <LoadingState label="Preparing your poster..." />}
+          <h1 className="text-xl font-bold">{kind ? TITLE[kind] : "Poster"}</h1>
+          {kind && (
+            <p className="text-sm text-secondary-500">
+              Print this and pin it where your customers pass - at your counter, your gate, a notice board. Anyone who scans the code with their phone camera {WHAT_THEY_SEE[kind]}.
+            </p>
+          )}
+          {!kind && <EmptyState title="Posters are not available for this business type" description="QR posters are available for retail shops, hotels and restaurants, salons and pharmacies." />}
+          {loading && kind && <LoadingState label="Preparing your poster..." />}
           {error && <p className="text-sm text-error-600">{error}</p>}
-          {!loading && !isManager && <EmptyState title="Owners and managers only" description="Ask your business owner or a manager to print the poster." />}
-          {!loading && kind && isManager && store && !store.slug && (
+          {!loading && kind && !isManager && <EmptyState title="Owners and managers only" description="Ask your business owner or a manager to print the poster." />}
+          {!loading && kind && kind !== "salon" && isManager && store && !store.slug && (
             <EmptyState title="Choose a shop link first" description="Set your shop link in Online Shop settings, then come back to print the poster." />
           )}
-          {!loading && kind && isManager && store?.slug && !store.isPublished && (
+          {!loading && kind && kind !== "salon" && isManager && store?.slug && !store.isPublished && (
             <p className="rounded-md border border-warning-600/40 bg-warning-50 p-3 text-sm">
               Your shop is not live yet, so the code will not open anything until you publish it. You can still prepare the poster.
             </p>
           )}
+          {!loading && kind === "salon" && isManager && branches.length > 1 && (
+            <label className="block text-sm">
+              Which branch should the code book?
+              <select className="mt-1 block rounded-md border border-border bg-background p-2" value={branchId} onChange={(e) => setBranchId(e.target.value)}>
+                {branches.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          {!loading && kind === "salon" && isManager && branches.length === 0 && <EmptyState title="Add a branch first" description="The booking page belongs to a branch." />}
           {!loading && kind && isManager && qr && (
             <div className="flex flex-wrap gap-3">
               <Button onClick={() => window.print()}>
@@ -127,7 +186,7 @@ export default function ShopPosterPage() {
               </Button>
               <a
                 href={qr}
-                download={`${store?.slug ?? "shop"}-qr.png`}
+                download={`${store?.slug ?? "poster"}-qr.png`}
                 className="inline-flex items-center rounded-md border border-border px-4 py-2 text-sm font-medium hover:bg-secondary-500/5"
               >
                 <Download size={16} className="mr-2" />
@@ -141,7 +200,11 @@ export default function ShopPosterPage() {
           <div className="poster-stage mt-6 flex justify-center bg-secondary-500/10 p-4 print:mt-0 print:block print:bg-white print:p-0">
             <div className="poster-zoom">
               {kind === "menu" ? (
-                <MenuPoster qr={qr} shopName={shopName} shopUrl={shopUrl} phone={store?.contactPhone ?? null} />
+                <MenuPoster qr={qr} shopName={shopName} shopUrl={shopUrl} phone={phone} />
+              ) : kind === "salon" ? (
+                <SalonPoster qr={qr} shopName={shopName} shopUrl={shopUrl} />
+              ) : kind === "pharmacy" ? (
+                <PharmacyPoster qr={qr} shopName={shopName} shopUrl={shopUrl} phone={phone} ways={ways} />
               ) : (
               <div
                 style={{
@@ -329,6 +392,146 @@ function MenuPoster({ qr, shopName, shopUrl, phone }: { qr: string; shopName: st
       <div style={{ background: NAVY, color: "#cbd5e1", textAlign: "center", fontSize: "3.6mm", padding: "4.5mm 10mm", marginTop: "8mm" }}>
         Fresh &amp; delicious meals · Fast &amp; convenient · Powered by <strong style={{ color: "#ffffff" }}>ZARODA SOLUTIONS</strong>
       </div>
+    </div>
+  );
+}
+
+const POSTER_BOX = {
+  width: "210mm",
+  height: "297mm",
+  background: "#ffffff",
+  color: NAVY,
+  fontFamily: "Arial, Helvetica, sans-serif",
+  display: "flex",
+  flexDirection: "column",
+  overflow: "hidden",
+  boxShadow: "0 4px 24px rgba(0,0,0,0.25)",
+} as const;
+
+/** Shared blue-and-gold top band: the Zaroda logo on the left, the poster's title and tagline on the right. */
+function PosterHeader({ title, subtitle, tagline }: { title: string; subtitle?: string; tagline: string }) {
+  return (
+    <>
+      <div style={{ background: NAVY, padding: "11mm 14mm 8mm", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        {/* eslint-disable-next-line @next/next/no-img-element -- fixed brand asset */}
+        <img src="/zaroda-logo-white.png" alt="Zaroda" style={{ height: "22mm", width: "auto" }} />
+        <div style={{ textAlign: "right", color: GOLD }}>
+          <div style={{ fontSize: "8.5mm", fontWeight: 800, letterSpacing: "0.6mm", lineHeight: 1.05 }}>{title}</div>
+          {subtitle && <div style={{ fontSize: "4.4mm", color: "#ffffff", marginTop: "2mm", fontWeight: 700 }}>{subtitle}</div>}
+          <div style={{ fontSize: "3.8mm", color: "#cbd5e1", marginTop: "1mm" }}>{tagline}</div>
+        </div>
+      </div>
+      <div style={{ height: "3mm", background: GOLD }} />
+    </>
+  );
+}
+
+/** A navy card with the QR in a gold frame, headed by `heading` and captioned with `caption`. */
+function QrCard({ qr, heading, caption, sub }: { qr: string; heading: string; caption: string; sub?: string }) {
+  return (
+    <div style={{ background: NAVY, borderRadius: "6mm", padding: "6mm 9mm 7mm", textAlign: "center", color: "#ffffff", width: "112mm" }}>
+      <div style={{ color: GOLD, fontSize: "7.5mm", fontWeight: 800, letterSpacing: "0.6mm" }}>{heading}</div>
+      <div style={{ fontSize: "4.2mm", marginTop: "1mm" }}>{caption}</div>
+      <div style={{ border: `2.5mm solid ${GOLD}`, borderRadius: "5mm", padding: "4mm", background: "#ffffff", margin: "4mm auto 0", width: "84mm" }}>
+        {/* eslint-disable-next-line @next/next/no-img-element -- generated data URL */}
+        <img src={qr} alt="QR code" style={{ width: "76mm", height: "76mm", display: "block" }} />
+      </div>
+      {sub && <div style={{ fontSize: "3.6mm", color: GOLD, marginTop: "3mm", fontWeight: 700, letterSpacing: "0.4mm" }}>{sub}</div>}
+    </div>
+  );
+}
+
+function StepsRow({ steps }: { steps: [string, string, string][] }) {
+  return (
+    <div style={{ display: "flex", gap: "6mm", padding: "6mm 14mm 0", marginTop: "auto" }}>
+      {steps.map(([n, title, text]) => (
+        <div key={n} style={{ flex: 1, textAlign: "center" }}>
+          <div style={{ width: "12mm", height: "12mm", borderRadius: "50%", background: NAVY, color: GOLD, fontSize: "6.5mm", fontWeight: 800, lineHeight: "12mm", margin: "0 auto" }}>{n}</div>
+          <div style={{ fontSize: "5mm", fontWeight: 800, marginTop: "2mm" }}>{title}</div>
+          <div style={{ fontSize: "3.6mm", color: "#475569", marginTop: "1mm" }}>{text}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function FooterBand({ items }: { items: string[] }) {
+  return (
+    <div style={{ background: NAVY, color: "#e2e8f0", display: "flex", justifyContent: "space-around", gap: "4mm", fontSize: "3.4mm", fontWeight: 700, textAlign: "center", padding: "5mm 8mm", marginTop: "7mm" }}>
+      {items.map((t) => (
+        <span key={t} style={{ flex: 1 }}>
+          {t}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function Chips({ items, align = "center" }: { items: string[]; align?: "center" | "left" }) {
+  return (
+    <div style={{ display: "flex", flexWrap: "wrap", justifyContent: align === "center" ? "center" : "flex-start", gap: "3mm 9mm", padding: "6mm 14mm 0", fontSize: "3.9mm", fontWeight: 700 }}>
+      {items.map((t) => (
+        <div key={t} style={{ display: "flex", alignItems: "center", gap: "2mm" }}>
+          <span style={{ width: "4mm", height: "4mm", borderRadius: "50%", background: GOLD, display: "inline-block" }} />
+          {t}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** Salon / beauty: "book your service right from your phone". The code opens the branch's booking page. */
+function SalonPoster({ qr, shopName, shopUrl }: { qr: string; shopName: string; shopUrl: string }) {
+  return (
+    <div style={POSTER_BOX}>
+      <PosterHeader title="ONLINE BOOKING" subtitle="for salons & beauty spas" tagline="Scan · Choose · Book · Be beautiful" />
+      <div style={{ textAlign: "center", padding: "9mm 14mm 0" }}>
+        <div style={{ fontSize: "4.6mm", letterSpacing: "1.4mm", fontWeight: 700 }}>LOOKING GREAT?</div>
+        <div style={{ fontSize: "15mm", fontWeight: 800, lineHeight: 1.0, marginTop: "2mm" }}>BOOK YOUR</div>
+        <div style={{ fontSize: "15mm", fontWeight: 800, lineHeight: 1.0, color: GOLD }}>SALON SERVICE</div>
+        <div style={{ fontSize: "7mm", fontWeight: 800, marginTop: "2mm" }}>RIGHT FROM YOUR PHONE</div>
+        <div style={{ fontSize: "4.4mm", marginTop: "4mm", color: "#334155", lineHeight: 1.35 }}>
+          Scan the QR code, choose your service, pick a time and book instantly. It&apos;s fast, easy and convenient!
+        </div>
+      </div>
+      <Chips items={["No calling, no waiting", "Choose your preferred time", "View services and prices", "Confirmed instantly"]} />
+      <div style={{ display: "flex", justifyContent: "center", padding: "7mm 0 0" }}>
+        <QrCard qr={qr} heading="OUR SERVICES" caption="Scan to view & book" sub="BEAUTY  ·  CARE  ·  CONFIDENCE" />
+      </div>
+      <div style={{ textAlign: "center", padding: "5mm 14mm 0" }}>
+        <div style={{ fontSize: shopName.length > 26 ? "7mm" : "9.5mm", fontWeight: 800, lineHeight: 1.05 }}>{shopName}</div>
+        <div style={{ fontSize: "3.8mm", color: "#475569", marginTop: "1.5mm", wordBreak: "break-all" }}>{shopUrl.replace(/^https?:\/\//, "")}</div>
+      </div>
+      <StepsRow steps={[["1", "Scan", "Open your phone camera and scan the QR code"], ["2", "Choose", "Select your service and preferred time"], ["3", "Book", "Confirm and get instant booking"]]} />
+      <FooterBand items={["Professional services", "Affordable prices", "Safe & hygienic environment", "Look good, feel confident"]} />
+    </div>
+  );
+}
+
+/** Pharmacy: "need medicines or health products? scan, view our products and order". */
+function PharmacyPoster({ qr, shopName, shopUrl, phone, ways }: { qr: string; shopName: string; shopUrl: string; phone: string | null; ways: string }) {
+  return (
+    <div style={POSTER_BOX}>
+      <PosterHeader title="ORDER FROM OUR PHARMACY" tagline="Scan · Browse · Order · Collect or get delivery" />
+      <div style={{ textAlign: "center", padding: "9mm 14mm 0" }}>
+        <div style={{ fontSize: "13mm", fontWeight: 800, lineHeight: 1.0 }}>Need Medicines or</div>
+        <div style={{ fontSize: "13mm", fontWeight: 800, lineHeight: 1.05, color: GOLD }}>Health Products?</div>
+        <div style={{ background: NAVY, color: "#ffffff", borderRadius: "5mm", fontSize: "5.2mm", fontWeight: 700, padding: "4mm 8mm", margin: "6mm auto 0", maxWidth: "150mm", lineHeight: 1.3 }}>
+          Scan, view our products and order right from your phone.
+        </div>
+      </div>
+      <Chips items={["Prescription & OTC medicines", "Health & wellness", "Personal care", "Baby & maternity care", "Medical supplies"]} />
+      <div style={{ display: "flex", justifyContent: "center", padding: "7mm 0 0" }}>
+        <QrCard qr={qr} heading="OUR PHARMACY" caption="Scan to view & order" sub="GENUINE PRODUCTS  ·  FAST SERVICE  ·  TRUSTED QUALITY" />
+      </div>
+      <div style={{ textAlign: "center", padding: "5mm 14mm 0" }}>
+        <div style={{ fontSize: shopName.length > 26 ? "7mm" : "9.5mm", fontWeight: 800, lineHeight: 1.05 }}>{shopName}</div>
+        <div style={{ fontSize: "3.8mm", color: "#475569", marginTop: "1.5mm" }}>
+          {[shopUrl.replace(/^https?:\/\//, ""), ways, phone ? `Call ${phone}` : null].filter(Boolean).join("   ·   ")}
+        </div>
+      </div>
+      <StepsRow steps={[["1", "Scan", "Open your phone camera and scan the QR code"], ["2", "Browse", "Find the medicines or products you need"], ["3", "Order", "Add to cart and place your order"]]} />
+      <FooterBand items={["Collect at our pharmacy or get delivery", "Authentic & quality products", "Easy & secure payments (M-Pesa)", "Better health for you and your family"]} />
     </div>
   );
 }
