@@ -28,8 +28,11 @@ export function QrSection({ tables, stationCount }: { tables: Table[]; stationCo
   const [store, setStore] = useState<OnlineStore | null>(null);
   const [codes, setCodes] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
+  // Set when Zaroda has switched table ordering off for this business.
+  const [blockedReason, setBlockedReason] = useState<string | null>(null);
 
   useEffect(() => {
+    apiGet<{ blockedReason: string | null }>("/restaurant/dishes/ordering-status").then((r) => setBlockedReason(r.blockedReason)).catch(() => undefined);
     apiGet<OnlineStore>("/online-store/me")
       .then(setStore)
       .catch((err) => setError(err instanceof ApiError ? err.message : "Could not load your shop details."));
@@ -57,6 +60,11 @@ export function QrSection({ tables, stationCount }: { tables: Table[]; stationCo
     <div className="space-y-4">
       <div className="space-y-2 print:hidden">
         {error && <p className="rounded-md bg-red-950 p-3 text-sm text-red-300">{error}</p>}
+        {blockedReason && (
+          <p className="rounded-md bg-red-950 p-3 text-sm text-red-300">
+            Zaroda has switched off ordering from your table QR codes: {blockedReason}. Diners who scan them are told ordering is off. Orders already paid for carry on as normal. Please contact Zaroda.
+          </p>
+        )}
         {store && !store.addonActive && <p className="rounded-md bg-amber-950 p-3 text-sm text-amber-200">Table ordering uses the Online Shop add-on, which is not switched on for your business yet. Contact Zaroda to enable it.</p>}
         {store?.addonActive && (!slug || !store.isPublished) && (
           <p className="rounded-md bg-amber-950 p-3 text-sm text-amber-200">Set your shop link and switch your shop live under Settings → Online Shop first. The QR codes only work while the shop is live.</p>

@@ -2,13 +2,13 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { MapPin, Phone, Search } from "lucide-react";
+import { CalendarClock, MapPin, Phone, Search } from "lucide-react";
 import { locationLabel } from "../lib/format";
 import type { Shop } from "../lib/types";
 import CartSummary from "./cart-summary";
 import ProductCard from "./product-card";
 
-export default function ShopView({ shop }: { shop: Shop }) {
+export default function ShopView({ shop, canReserve = false }: { shop: Shop; canReserve?: boolean }) {
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<string | null>(null);
 
@@ -50,6 +50,11 @@ export default function ShopView({ shop }: { shop: Shop }) {
             </a>
           )}
           {fulfilment && <span>{fulfilment}</span>}
+          {canReserve && (
+            <Link href={`/s/${shop.slug}/reserve`} className="flex items-center gap-1 font-medium text-primary-600 hover:underline">
+              <CalendarClock size={14} aria-hidden /> Reserve a table
+            </Link>
+          )}
         </div>
       </div>
 

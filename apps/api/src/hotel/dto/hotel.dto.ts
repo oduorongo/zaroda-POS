@@ -126,3 +126,21 @@ export class ConfirmBookingPaymentDto {
   @MaxLength(30)
   receipt!: string;
 }
+
+/** Why ZARODA is taking a hotel off the marketplace - shown to the hotel. */
+export class BlockHotelDto {
+  @Transform(trim)
+  @IsString()
+  @MinLength(3)
+  @MaxLength(300)
+  reason!: string;
+}
+
+/** Why ZARODA is switching off table ordering for a business - shown to the restaurant. */
+export class BlockTableOrderingDto {
+  @Transform(trim)
+  @IsString()
+  @MinLength(3)
+  @MaxLength(300)
+  reason!: string;
+}

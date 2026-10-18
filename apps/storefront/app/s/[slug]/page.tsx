@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import ShopView from "../../../components/shop-view";
-import { ApiError, getShop } from "../../../lib/api";
+import { ApiError, getReservationInfo, getShop } from "../../../lib/api";
 import type { Shop } from "../../../lib/types";
 
 export const revalidate = 30;
@@ -32,5 +32,7 @@ export async function generateMetadata({ params }: { params: { slug: string } })
 
 export default async function ShopPage({ params }: { params: { slug: string } }) {
   const shop = await loadShop(params.slug);
-  return <ShopView shop={shop} />;
+  // Never let a hiccup here break the shop page: no button is better than no page.
+  const canReserve = await getReservationInfo(params.slug).then((r) => r.enabled).catch(() => false);
+  return <ShopView shop={shop} canReserve={canReserve} />;
 }

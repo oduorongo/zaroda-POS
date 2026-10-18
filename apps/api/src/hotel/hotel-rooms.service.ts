@@ -10,6 +10,8 @@ import { CancelBookingDto, UpsertRoomTypeDto } from './dto/hotel.dto';
 import { bookingHoldsRooms, eachNight, roomsTaken, todayInKenya } from './room-availability.util';
 
 export const MAX_ROOM_PHOTOS = 8;
+
+/** The hotel side of the business is blocked (taken off the marketplace by ZARODA), with the reason - or null. */
 export const roomPhotoPrefix = (organizationId: string, roomTypeId: string) => `orgs/${organizationId}/rooms/${roomTypeId}/`;
 
 const BOOKING_PAGE = 300;
@@ -63,10 +65,28 @@ export class HotelRoomsService {
     return roomType;
   }
 
+  /** Why ZARODA has taken this hotel off the marketplace, or null if it has not. */
+  async blockedReason(tx: TenantTx): Promise<string | null> {
+    const store = await tx.onlineStore.findFirst({ select: { hotelBlockedAt: true, hotelBlockedReason: true } });
+    return store?.hotelBlockedAt ? (store.hotelBlockedReason ?? 'Taken off the marketplace by Zaroda') : null;
+  }
+
+  async status() {
+    const reason = await this.tenantPrisma.run((tx) => this.blockedReason(tx));
+    return { blockedReason: reason };
+  }
+
+  private async refuseListingIfBlocked(tx: TenantTx, wantsListed: boolean | undefined) {
+    if (!wantsListed) return;
+    const reason = await this.blockedReason(tx);
+    if (reason) throw new ConflictException(`Zaroda has taken your hotel off the marketplace: ${reason}. Please contact Zaroda.`);
+  }
+
   async createRoomType(dto: UpsertRoomTypeDto) {
     const { organizationId } = getTenantStore();
-    const created = await this.tenantPrisma.run((tx) =>
-      tx.hotelRoomType.create({
+    const created = await this.tenantPrisma.run(async (tx) => {
+      await this.refuseListingIfBlocked(tx, dto.isListed);
+      return tx.hotelRoomType.create({
         data: {
           organizationId,
           name: dto.name,
@@ -80,14 +100,16 @@ export class HotelRoomsService {
           isActive: dto.isActive ?? true,
         },
         include: { photos: true },
-      }),
-    );
+      });
+    });
     return this.view(created);
   }
 
   async updateRoomType(id: string, dto: UpsertRoomTypeDto) {
     const updated = await this.tenantPrisma.run(async (tx) => {
-      await this.requireRoomType(tx, id);
+      const existing = await this.requireRoomType(tx, id);
+      // Staying listed is not a change; turning listing ON while blocked is refused.
+      await this.refuseListingIfBlocked(tx, dto.isListed === true && !existing.isListed ? true : undefined);
       return tx.hotelRoomType.update({
         where: { id },
         data: {

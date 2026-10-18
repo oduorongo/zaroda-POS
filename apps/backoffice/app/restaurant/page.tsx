@@ -8,6 +8,7 @@ import { Nav } from "../../components/nav";
 import { PageHeader } from "../../components/page-header";
 import { SetupSection } from "./setup-section";
 import { QrSection } from "./qr-section";
+import { ReservationsSection, TodaysReservations } from "./reservations-section";
 
 interface Branch {
   id: string;
@@ -67,7 +68,7 @@ export default function RestaurantPage() {
   const [tickets, setTickets] = useState<KitchenTicket[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<"floor" | "setup" | "qr">("floor");
+  const [tab, setTab] = useState<"floor" | "setup" | "qr" | "reservations">("floor");
 
   useEffect(() => {
     const s = getSession();
@@ -166,6 +167,7 @@ export default function RestaurantPage() {
                 ["floor", "Floor & kitchen"],
                 ["setup", "Menu & kitchen setup"],
                 ["qr", "Table QR codes"],
+                ["reservations", "Reservations"],
               ] as const
             ).map(([key, label]) => (
               <button key={key} onClick={() => setTab(key)} className={`rounded-md px-3 py-2 text-sm ${tab === key ? "bg-primary-600 text-white" : "border border-border bg-surface"}`}>
@@ -177,9 +179,11 @@ export default function RestaurantPage() {
 
         {!loading && tab === "setup" && branchId && <SetupSection branchId={branchId} tables={tables} stations={stations} onChanged={() => void loadFloor()} />}
         {!loading && tab === "qr" && <QrSection tables={tables} stationCount={stations.length} />}
+        {!loading && tab === "reservations" && <ReservationsSection tables={tables} />}
 
         {!loading && tab === "floor" && (
           <>
+            <TodaysReservations />
             <h2 className="mb-2 font-semibold">Tables</h2>
             <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
               {tables.map((t) => (

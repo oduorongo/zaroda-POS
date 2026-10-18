@@ -5,11 +5,13 @@ import {
   IsArray,
   IsEnum,
   IsIn,
+  IsInt,
   IsNumber,
   IsOptional,
   IsString,
   IsUUID,
   Matches,
+  Max,
   MaxLength,
   Min,
   MinLength,
@@ -62,6 +64,12 @@ export class OrderLineDto {
   @IsNumber({ maxDecimalPlaces: 3 })
   @Min(0.001)
   quantity!: number;
+
+  /** What the buyer asked for on this dish, e.g. "no onions". Shown on the kitchen ticket. */
+  @IsString()
+  @IsOptional()
+  @MaxLength(120)
+  note?: string;
 }
 
 export class CreateOnlineOrderDto {
@@ -160,6 +168,13 @@ export class CreateTableOrderDto {
   @IsOptional()
   @MaxLength(300)
   note?: string;
+
+  /** A tip for the staff, in whole shillings. Paid in the same M-Pesa prompt as the order. */
+  @IsInt()
+  @IsOptional()
+  @Min(0)
+  @Max(10000)
+  tipAmount?: number;
 }
 
 /** The secret the diner's browser was given when the order was placed. */

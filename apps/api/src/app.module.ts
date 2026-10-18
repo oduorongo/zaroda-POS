@@ -37,6 +37,7 @@ import { AllExceptionsFilter } from './common/logging/all-exceptions.filter';
 import { RestaurantModule } from './restaurant/restaurant.module';
 import { RentalModule } from './rental/rental.module';
 import { HotelModule } from './hotel/hotel.module';
+import { ReservationsModule } from './reservations/reservations.module';
 import { PharmacyModule } from './pharmacy/pharmacy.module';
 import { SalonModule } from './salon/salon.module';
 import { ManufacturingModule } from './manufacturing/manufacturing.module';
@@ -138,6 +139,7 @@ import { DeliveryModule } from './delivery/delivery.module';
     RestaurantModule,
     RentalModule,
     HotelModule,
+    ReservationsModule,
     PharmacyModule,
     SalonModule,
     ManufacturingModule,

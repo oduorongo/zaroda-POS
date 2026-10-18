@@ -38,6 +38,13 @@ export class HotelController {
     private readonly bookings: RoomBookingsService,
   ) {}
 
+  /** Whether ZARODA has taken this hotel off the marketplace, and why. */
+  @Roles(Role.MANAGER, Role.OWNER)
+  @Get('status')
+  status() {
+    return this.rooms.status();
+  }
+
   @Roles(Role.MANAGER, Role.OWNER)
   @Get('room-types')
   listRoomTypes() {

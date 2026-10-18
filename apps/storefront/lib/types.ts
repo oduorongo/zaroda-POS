@@ -51,6 +51,8 @@ export interface OrderLine {
   quantity: number;
   unitPrice: number;
   lineTotal: number;
+  /** What the buyer asked for on this dish ("no onions"). */
+  note?: string | null;
 }
 
 export interface Order {
@@ -65,6 +67,8 @@ export interface Order {
   buyerNote: string | null;
   subtotal: number;
   amountDue: number;
+  /** A tip included in amountDue (table orders). */
+  tipAmount?: number;
   paymentPhone: string;
   paymentDeadline: string;
   mpesaReceiptNumber: string | null;
@@ -257,4 +261,22 @@ export interface RoomBooking {
   paidAt: string | null;
   lastPaymentError: string | null;
   cancelReason: string | null;
+}
+
+// ── Table reservations ───────────────────────────────────────────────────
+
+export type ReservationStatus = "REQUESTED" | "CONFIRMED" | "DECLINED" | "CANCELLED" | "SEATED" | "NO_SHOW";
+
+export interface Reservation {
+  id: string;
+  reservationNumber: string;
+  status: ReservationStatus;
+  shop: { name: string; slug: string };
+  guestName: string;
+  partySize: number;
+  date: string;
+  time: string;
+  notes: string | null;
+  restaurantNote: string | null;
+  tableLabel: string | null;
 }

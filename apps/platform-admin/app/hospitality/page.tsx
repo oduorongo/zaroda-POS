@@ -2,10 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { apiGet, ApiError } from "../../lib/api";
+import { apiGet, apiPost, ApiError } from "../../lib/api";
 import { getSession, type Session } from "../../lib/auth";
 import { Nav } from "../../components/nav";
-import { Badge, EmptyState, LoadingState } from "@zaroda/ui";
+import { Badge, Button, EmptyState, Input, LoadingState, Modal, ModalFooter } from "@zaroda/ui";
 
 interface HotelRow {
   organizationId: string;
@@ -23,6 +23,10 @@ interface HotelRow {
   commissionRecorded: number;
   flaggedPayments: number;
   watch: string | null;
+  contactPhone: string | null;
+  whatsapp: string | null;
+  ownerEmail: string | null;
+  hotelBlockedReason: string | null;
 }
 interface RecentBooking {
   id: string;
@@ -58,6 +62,11 @@ interface RestaurantRow {
   notPaid: number;
   stuck: number;
   flagged: number;
+  contactPhone: string | null;
+  whatsapp: string | null;
+  ownerEmail: string | null;
+  hotelBlockedReason: string | null;
+  tableOrderingBlockedReason: string | null;
 }
 interface Attention {
   id: string;
@@ -79,6 +88,31 @@ const kes = (n: number) => `KES ${n.toLocaleString("en-KE")}`;
 const day = (iso: string) => new Date(iso).toLocaleDateString("en-KE");
 const STATUS_LABEL: Record<string, string> = { PENDING_PAYMENT: "Waiting for deposit", CONFIRMED: "Confirmed", CHECKED_IN: "In the house", CHECKED_OUT: "Checked out", CANCELLED: "Cancelled", EXPIRED: "Expired", NO_SHOW: "No-show" };
 
+/** Call, WhatsApp and email links for a business, so a problem can be raised in one tap. */
+function ContactLinks({ phone, whatsapp, email }: { phone: string | null; whatsapp: string | null; email: string | null }) {
+  const link = "text-xs underline";
+  if (!phone && !email) return <span className="text-xs text-secondary-500">No contact details</span>;
+  return (
+    <div className="flex flex-wrap gap-x-3 gap-y-1">
+      {phone && (
+        <a href={`tel:${whatsapp ? `+${whatsapp}` : phone}`} className={link}>
+          Call {phone}
+        </a>
+      )}
+      {whatsapp && (
+        <a href={`https://wa.me/${whatsapp}`} target="_blank" rel="noreferrer" className={link}>
+          WhatsApp
+        </a>
+      )}
+      {email && (
+        <a href={`mailto:${email}`} className={link}>
+          Email
+        </a>
+      )}
+    </div>
+  );
+}
+
 const Stat = ({ label, value, tone }: { label: string; value: string | number; tone?: string }) => (
   <div className="rounded-lg border border-border bg-surface p-3">
     <p className="text-xs text-secondary-500">{label}</p>
@@ -99,6 +133,11 @@ export default function HospitalityPage() {
   const [hotels, setHotels] = useState<HotelOverview | null>(null);
   const [orders, setOrders] = useState<OrderOverview | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [target, setTarget] = useState<{ kind: "hotel" | "ordering"; organizationId: string; name: string } | null>(null);
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [modalError, setModalError] = useState<string | null>(null);
 
   useEffect(() => {
     const s = getSession();
@@ -115,6 +154,47 @@ export default function HospitalityPage() {
     const load = tab === "hotels" ? apiGet<HotelOverview>(`/platform-admin/hotel-overview?days=${days}`).then(setHotels) : apiGet<OrderOverview>(`/platform-admin/table-order-overview?days=${days}`).then(setOrders);
     load.catch((err) => setError(err instanceof ApiError ? err.message : "Could not load this overview."));
   }, [session, tab, days]);
+
+  async function reload() {
+    if (tab === "hotels") setHotels(await apiGet<HotelOverview>(`/platform-admin/hotel-overview?days=${days}`));
+    else setOrders(await apiGet<OrderOverview>(`/platform-admin/table-order-overview?days=${days}`));
+  }
+
+  const WORDS = {
+    hotel: { path: "hotel", off: "Take off marketplace", offDone: "is now off the marketplace. Its existing bookings are untouched.", onDone: "can list rooms on the marketplace again - it switches its room types back on itself.", failOff: "Could not take the hotel off the marketplace.", failOn: "Could not restore the hotel." },
+    ordering: { path: "table-ordering", off: "Switch off table ordering", offDone: "table ordering is now switched off. Orders already placed carry on.", onDone: "table ordering is on again.", failOff: "Could not switch table ordering off.", failOn: "Could not switch table ordering back on." },
+  } as const;
+
+  async function takeOff() {
+    if (!target) return;
+    const w = WORDS[target.kind];
+    setBusy(true);
+    setModalError(null);
+    try {
+      await apiPost(`/platform-admin/organizations/${target.organizationId}/${w.path}/block`, { reason: reason.trim() });
+      setNotice(`${target.name}: ${w.offDone}`);
+      setTarget(null);
+      setReason("");
+      await reload();
+    } catch (err) {
+      setModalError(err instanceof ApiError ? err.message : w.failOff);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function restore(kind: "hotel" | "ordering", organizationId: string, name: string) {
+    const w = WORDS[kind];
+    setError(null);
+    setNotice(null);
+    try {
+      await apiPost(`/platform-admin/organizations/${organizationId}/${w.path}/unblock`, {});
+      setNotice(`${name}: ${w.onDone}`);
+      await reload();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : w.failOn);
+    }
+  }
 
   if (!session) return null;
   const data = tab === "hotels" ? hotels : orders;
@@ -146,6 +226,7 @@ export default function HospitalityPage() {
         </div>
 
         {error && <p className="mt-4 rounded-md bg-error-50 p-3 text-sm text-error-700">{error}</p>}
+        {notice && <p className="mt-4 rounded-md bg-success-50 p-3 text-sm text-success-700">{notice}</p>}
         {!data && !error && <div className="mt-6"><LoadingState label="Loading..." /></div>}
 
         {tab === "hotels" && hotels && (
@@ -175,6 +256,8 @@ export default function HospitalityPage() {
                       <th className="p-3 text-right">To refund</th>
                       <th className="p-3 text-right">Commission</th>
                       <th className="p-3">Notes</th>
+                      <th className="p-3">Contact</th>
+                      <th className="p-3" />
                     </tr>
                   </thead>
                   <tbody>
@@ -197,6 +280,26 @@ export default function HospitalityPage() {
                         <td className="p-3 text-right font-mono">{kes(h.commissionRecorded)}</td>
                         <td className="p-3">
                           {h.watch && <Badge variant="error">On watch</Badge>} {h.flaggedPayments > 0 && <Badge variant="warning">{h.flaggedPayments} payment note{h.flaggedPayments === 1 ? "" : "s"}</Badge>}
+                          {h.hotelBlockedReason && (
+                            <>
+                              <Badge variant="neutral">Off the marketplace</Badge>
+                              <span className="mt-1 block max-w-[14rem] text-xs text-secondary-500">{h.hotelBlockedReason}</span>
+                            </>
+                          )}
+                        </td>
+                        <td className="p-3">
+                          <ContactLinks phone={h.contactPhone} whatsapp={h.whatsapp} email={h.ownerEmail} />
+                        </td>
+                        <td className="whitespace-nowrap p-3 text-right">
+                          {h.hotelBlockedReason ? (
+                            <Button size="sm" variant="secondary" onClick={() => void restore("hotel", h.organizationId, h.organizationName)}>
+                              Restore
+                            </Button>
+                          ) : (
+                            <Button size="sm" variant="danger" onClick={() => { setTarget({ kind: "hotel", organizationId: h.organizationId, name: h.organizationName }); setReason(""); setModalError(null); }}>
+                              Take off marketplace
+                            </Button>
+                          )}
                         </td>
                       </tr>
                     ))}
@@ -305,6 +408,8 @@ export default function HospitalityPage() {
                       <th className="p-3 text-right">Refunds owed</th>
                       <th className="p-3 text-right">Commission</th>
                       <th className="p-3">Notes</th>
+                      <th className="p-3">Contact</th>
+                      <th className="p-3" />
                     </tr>
                   </thead>
                   <tbody>
@@ -320,6 +425,26 @@ export default function HospitalityPage() {
                         <td className="p-3 text-right font-mono">{kes(r.commissionRecorded)}</td>
                         <td className="p-3">
                           {r.stuck > 0 && <Badge variant="error">{r.stuck} stuck</Badge>} {r.flagged > 0 && <Badge variant="warning">{r.flagged} payment mismatch</Badge>}
+                          {r.tableOrderingBlockedReason && (
+                            <>
+                              <Badge variant="neutral">Ordering off</Badge>
+                              <span className="mt-1 block max-w-[14rem] text-xs text-secondary-500">{r.tableOrderingBlockedReason}</span>
+                            </>
+                          )}
+                        </td>
+                        <td className="p-3">
+                          <ContactLinks phone={r.contactPhone} whatsapp={r.whatsapp} email={r.ownerEmail} />
+                        </td>
+                        <td className="whitespace-nowrap p-3 text-right">
+                          {r.tableOrderingBlockedReason ? (
+                            <Button size="sm" variant="secondary" onClick={() => void restore("ordering", r.organizationId, r.organizationName)}>
+                              Switch on
+                            </Button>
+                          ) : (
+                            <Button size="sm" variant="danger" onClick={() => { setTarget({ kind: "ordering", organizationId: r.organizationId, name: r.organizationName }); setReason(""); setModalError(null); }}>
+                              Switch off ordering
+                            </Button>
+                          )}
                         </td>
                       </tr>
                     ))}
@@ -329,6 +454,34 @@ export default function HospitalityPage() {
             )}
           </div>
         )}
+        <Modal open={!!target} onClose={() => setTarget(null)} title={target ? `${WORDS[target.kind].off} - ${target.name}` : ""}>
+          {target && (
+            <div className="space-y-3">
+              {target.kind === "hotel" ? (
+                <p className="text-sm">
+                  The hotel disappears from the Hotels page straight away and cannot take new bookings, and it cannot list rooms again until you restore it. Bookings it already has are not touched - those guests have paid deposits, so contact the hotel about them.
+                </p>
+              ) : (
+                <p className="text-sm">
+                  The table QR codes stop taking orders straight away: diners who scan them are told ordering is off. Orders already paid for carry on to the kitchen as normal, and the restaurant is shown your reason. Switch it back on whenever the problem is sorted.
+                </p>
+              )}
+              <div>
+                <label className="mb-1.5 block text-sm text-secondary-500">Reason (the business sees this)</label>
+                <Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder={target.kind === "hotel" ? "e.g. Repeated complaints about cancelled bookings" : "e.g. Orders are not reaching the kitchen"} />
+              </div>
+              {modalError && <p className="text-sm text-error-600">{modalError}</p>}
+            </div>
+          )}
+          <ModalFooter>
+            <Button variant="secondary" onClick={() => setTarget(null)}>
+              Cancel
+            </Button>
+            <Button variant="danger" onClick={() => void takeOff()} disabled={busy || reason.trim().length < 3}>
+              {busy ? "Working..." : target ? WORDS[target.kind].off : ""}
+            </Button>
+          </ModalFooter>
+        </Modal>
       </main>
     </div>
   );

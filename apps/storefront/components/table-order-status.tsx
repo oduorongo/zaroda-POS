@@ -200,15 +200,24 @@ export default function TableOrderStatus({ orderId }: { orderId: string }) {
         </h2>
         <ul className="space-y-1 text-sm">
           {order.lines.map((l) => (
-            <li key={l.id} className="flex justify-between gap-2">
-              <span>
-                {formatQty(l.quantity)} x {l.productName}
-              </span>
-              <span className="font-mono">{kes(l.lineTotal)}</span>
+            <li key={l.id}>
+              <div className="flex justify-between gap-2">
+                <span>
+                  {formatQty(l.quantity)} x {l.productName}
+                </span>
+                <span className="font-mono">{kes(l.lineTotal)}</span>
+              </div>
+              {l.note && <p className="text-xs text-secondary-500">{l.note}</p>}
             </li>
           ))}
         </ul>
         {order.buyerNote && <p className="text-xs text-secondary-500">Note: {order.buyerNote}</p>}
+        {order.tipAmount ? (
+          <p className="flex justify-between border-t border-border pt-2 text-sm text-secondary-600">
+            <span>Tip for the staff</span>
+            <span>{kes(order.tipAmount)}</span>
+          </p>
+        ) : null}
         <p className="flex justify-between border-t border-border pt-2 font-semibold">
           <span>Total</span>
           <span>{kes(order.amountDue)}</span>

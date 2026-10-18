@@ -15,6 +15,13 @@ export class SetDishStationDto {
 export class RestaurantDishesController {
   constructor(private readonly dishes: RestaurantDishesService) {}
 
+  /** Whether ZARODA has switched off table ordering for this business. */
+  @Roles(Role.MANAGER, Role.OWNER)
+  @Get('ordering-status')
+  orderingStatus() {
+    return this.dishes.orderingStatus();
+  }
+
   @Roles(Role.MANAGER, Role.OWNER)
   @Get()
   list() {
