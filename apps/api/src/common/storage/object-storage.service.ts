@@ -64,7 +64,7 @@ export class ObjectStorageService {
       // Only the Blob SDK's own messages are shown (they never contain the token); anything else could, so it
       // goes to the server log only.
       this.logger.error({ err: e }, 'Blob upload failed');
-      const isBlobError = e instanceof Error && e.name.startsWith('BlobError');
+      const isBlobError = e instanceof Error && e.message.startsWith('Vercel Blob:');
       throw new BadGatewayException(
         isBlobError ? `Photo storage rejected the upload: ${(e as Error).message}` : 'Photo storage rejected the upload - see the server log',
       );
