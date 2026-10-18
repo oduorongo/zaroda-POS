@@ -11,6 +11,8 @@ import { RestaurantSalesService } from './restaurant-sales.service';
 import { KitchenStationsService } from './kitchen-stations.service';
 import { KitchenTicketsService } from './kitchen-tickets.service';
 import { RestaurantHooksService } from './restaurant-hooks.service';
+import { RestaurantDishesController } from './restaurant-dishes.controller';
+import { RestaurantDishesService } from './restaurant-dishes.service';
 
 /**
  * Phase 4's proof that DESIGN.md §3's module contract actually works:
@@ -29,6 +31,7 @@ import { RestaurantHooksService } from './restaurant-hooks.service';
     RestaurantSalesController,
     KitchenStationsController,
     KitchenTicketsController,
+    RestaurantDishesController,
   ],
   providers: [
     RestaurantTablesService,
@@ -36,6 +39,7 @@ import { RestaurantHooksService } from './restaurant-hooks.service';
     KitchenStationsService,
     KitchenTicketsService,
     RestaurantHooksService,
+    RestaurantDishesService,
   ],
 })
 export class RestaurantModule implements OnModuleInit {
@@ -64,6 +68,10 @@ export class RestaurantModule implements OnModuleInit {
         {
           tableName: 'kitchen_stations',
           description: 'Prep areas (Grill, Bar, Cold...) orders route to',
+        },
+        {
+          tableName: 'restaurant_dishes',
+          description: 'Which kitchen station prepares each dish, for orders from a table QR code',
         },
         {
           tableName: 'kitchen_tickets',

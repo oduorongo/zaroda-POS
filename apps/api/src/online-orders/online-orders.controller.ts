@@ -22,6 +22,8 @@ import {
   CancelOnlineOrderDto,
   ConfirmOrderPaymentDto,
   CreateOnlineOrderDto,
+  CreateTableOrderDto,
+  GuestTokenDto,
   ListOnlineOrdersQueryDto,
   RequestBuyerCodeDto,
   RetryPaymentDto,
@@ -223,5 +225,55 @@ export class OnlineOrdersController {
   @HttpCode(200)
   cancel(@Param('id', ParseUUIDPipe) id: string, @Body() dto: CancelOnlineOrderDto) {
     return this.orders.cancelByBusiness(id, dto);
+  }
+}
+
+/**
+ * A diner at a restaurant table, ordering from the table's QR code. Public and unauthenticated: no sign-in, just a
+ * phone number to pay with. The diner's browser holds a secret (given when the order is placed) that proves the order
+ * is theirs - see OnlineOrdersService.findGuestOrder.
+ */
+@Controller('public')
+export class TableOrdersController {
+  constructor(private readonly orders: OnlineOrdersService) {}
+
+  /** What the QR page needs: the table's name, and whether the restaurant can take orders at it. */
+  @Public()
+  @Throttle({ default: { limit: 60, ttl: 60_000 } })
+  @Get('shops/:slug/tables/:tableId')
+  getTable(@Param('slug') slug: string, @Param('tableId', ParseUUIDPipe) tableId: string) {
+    return this.orders.getTable(slug, tableId);
+  }
+
+  // Generous on purpose: diners on a restaurant's wifi all share one address, so a tight limit would turn people away
+  // at a busy time. Each order still needs a real M-Pesa number and a payment to go anywhere.
+  @Public()
+  @Throttle({ default: { limit: 40, ttl: 60_000 } })
+  @Post('table-orders')
+  create(@Body() dto: CreateTableOrderDto) {
+    return this.orders.createTableOrder(dto);
+  }
+
+  @Public()
+  @Throttle({ default: { limit: 60, ttl: 60_000 } })
+  @Get('table-orders/:id')
+  get(@Param('id', ParseUUIDPipe) id: string, @Query('k') token: string) {
+    return this.orders.getForGuest(id, token ?? '');
+  }
+
+  @Public()
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
+  @Post('table-orders/:id/retry')
+  @HttpCode(200)
+  retry(@Param('id', ParseUUIDPipe) id: string, @Body() dto: GuestTokenDto) {
+    return this.orders.retryForGuest(id, dto.token, dto.phone);
+  }
+
+  @Public()
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
+  @Post('table-orders/:id/check')
+  @HttpCode(200)
+  check(@Param('id', ParseUUIDPipe) id: string, @Body() dto: GuestTokenDto) {
+    return this.orders.checkPaymentForGuest(id, dto.token);
   }
 }

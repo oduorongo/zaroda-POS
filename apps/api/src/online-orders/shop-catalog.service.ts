@@ -5,6 +5,7 @@ import { TenantTx } from '../common/prisma/tenant-scoped-prisma.service';
 import { ObjectStorageService } from '../common/storage/object-storage.service';
 import { hasOverdueCommission } from '../online-store/commission.service';
 import { paymentsReady } from '../online-store/payment-gateway';
+import { availablePortions, loadRecipeMap, stockNeeds } from './dish-stock.util';
 
 const TX_OPTIONS = { timeout: 15_000, maxWait: 15_000 };
 const MAX_DIRECTORY_SHOPS = 60;
@@ -71,56 +72,55 @@ export class ShopCatalogService {
   }
 
   /**
-   * Quantity that can still be sold online per variant at a branch:
-   * stock on hand minus what open online orders are holding (unpaid
-   * orders still inside their payment window, and paid orders the
-   * business hasn't accepted yet - accepting deducts the real stock, so
-   * accepted orders are already reflected in on-hand).
+   * Quantity that can still be sold online per variant at a branch. An ordinary item: stock on hand minus what open
+   * online orders are holding (unpaid orders still inside their payment window, and paid orders not yet accepted -
+   * accepting deducts the real stock, so accepted orders are already reflected in on-hand). A dish made from a recipe
+   * has no stock of its own: it is as many portions as its scarcest INGREDIENT allows, after the ingredients that
+   * open orders (for that dish or any other dish sharing them) are holding. So a dish drops off the menu the moment
+   * an ingredient runs out, and nobody can order what the kitchen can no longer make.
    */
   async availableQuantities(tx: TenantTx, branchId: string, variantIds: string[]): Promise<Map<string, number>> {
     if (variantIds.length === 0) return new Map();
-    const [items, held] = await Promise.all([
-      tx.inventoryItem.findMany({ where: { branchId, variantId: { in: variantIds } } }),
-      tx.onlineOrderLine.groupBy({
-        by: ['variantId'],
-        where: {
-          variantId: { in: variantIds },
-          order: {
-            branchId,
-            OR: [
-              { status: OnlineOrderStatus.PAID },
-              { status: OnlineOrderStatus.PENDING_PAYMENT, paymentDeadline: { gt: new Date() } },
-            ],
-          },
+    const heldLines = await tx.onlineOrderLine.findMany({
+      where: {
+        order: {
+          branchId,
+          OR: [
+            { status: OnlineOrderStatus.PAID },
+            { status: OnlineOrderStatus.PENDING_PAYMENT, paymentDeadline: { gt: new Date() } },
+          ],
         },
-        _sum: { quantity: true },
-      }),
-    ]);
-    const heldBy = new Map(held.map((h) => [h.variantId, Number(h._sum.quantity ?? 0)]));
-    const result = new Map<string, number>();
+      },
+      select: { variantId: true, quantity: true },
+    });
+    const recipes = await loadRecipeMap(tx, [...variantIds, ...heldLines.map((l) => l.variantId)]);
+    const held = stockNeeds(heldLines.map((l) => ({ variantId: l.variantId, quantity: Number(l.quantity) })), recipes);
+
+    // The things actually kept in stock behind what was asked for: a dish's ingredients, or the item itself.
+    const stockIds = new Set<string>();
     for (const id of variantIds) {
-      const onHand = Number(items.find((i) => i.variantId === id)?.quantity ?? 0);
-      result.set(id, Math.max(0, onHand - (heldBy.get(id) ?? 0)));
+      const recipe = recipes.get(id);
+      if (recipe && recipe.length > 0) recipe.forEach((i) => stockIds.add(i.ingredientVariantId));
+      else stockIds.add(id);
     }
-    return result;
+    const items = await tx.inventoryItem.findMany({ where: { branchId, variantId: { in: [...stockIds] } } });
+    const onHand = new Map(items.map((i) => [i.variantId, Number(i.quantity)]));
+    return availablePortions(variantIds, recipes, onHand, held);
   }
 
   /**
-   * Products a buyer can see: marked onlineVisible, with at least one
-   * variant. Variants made from a recipe (a restaurant dish built from
-   * ingredients at cook time) have no stock of their own and aren't
-   * sellable online yet, so they're left out.
+   * Products a buyer can see: marked onlineVisible, with at least one variant. This includes restaurant dishes made
+   * from a recipe - their availability comes from their ingredients (see availableQuantities).
    */
   sellableProducts(tx: TenantTx, productIds?: string[]) {
     return tx.product.findMany({
       where: {
         onlineVisible: true,
         ...(productIds ? { id: { in: productIds } } : {}),
-        variants: { some: { recipeIngredients: { none: {} } } },
-      },
+        variants: { some: {} },      },
       include: {
         category: { select: { id: true, name: true } },
-        variants: { where: { recipeIngredients: { none: {} } }, orderBy: { price: 'asc' } },
+        variants: { orderBy: { price: 'asc' } },
         images: { orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }] },
       },
       orderBy: { name: 'asc' },

@@ -934,3 +934,11 @@ DROP POLICY IF EXISTS tenant_isolation ON rental_listing_payments;
 CREATE POLICY tenant_isolation ON rental_listing_payments
   USING ("organizationId" = current_setting('app.current_tenant', true))
   WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+-- Which kitchen station prepares each dish (used for orders from a table QR code). Tenant-isolated like every restaurant table.
+ALTER TABLE restaurant_dishes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE restaurant_dishes FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON restaurant_dishes;
+CREATE POLICY tenant_isolation ON restaurant_dishes
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));

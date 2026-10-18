@@ -13,6 +13,7 @@ import {
   BuyerController,
   OnlineOrdersController,
   PublicShopsController,
+  TableOrdersController,
   TumaCallbackController,
 } from './online-orders.controller';
 import { OnlineOrdersService } from './online-orders.service';
@@ -38,6 +39,7 @@ import { ShopCatalogService } from './shop-catalog.service';
   ],
   controllers: [
     PublicShopsController,
+    TableOrdersController,
     TumaCallbackController,
     BuyerAuthController,
     BuyerController,

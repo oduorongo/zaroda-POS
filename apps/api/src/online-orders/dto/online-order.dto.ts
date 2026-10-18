@@ -129,3 +129,47 @@ export class ListOnlineOrdersQueryDto {
   @IsOptional()
   status?: OnlineOrderStatus;
 }
+
+/** A diner at a table, ordering from the table's QR code. No account - just a phone number to pay with. */
+export class CreateTableOrderDto {
+  @IsString()
+  @MaxLength(60)
+  shopSlug!: string;
+
+  @IsUUID()
+  tableId!: string;
+
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(50)
+  @ValidateNested({ each: true })
+  @Type(() => OrderLineDto)
+  lines!: OrderLineDto[];
+
+  /** The M-Pesa number that gets the payment prompt. */
+  @IsString()
+  @MaxLength(20)
+  phone!: string;
+
+  @IsString()
+  @IsOptional()
+  @MaxLength(100)
+  name?: string;
+
+  @IsString()
+  @IsOptional()
+  @MaxLength(300)
+  note?: string;
+}
+
+/** The secret the diner's browser was given when the order was placed. */
+export class GuestTokenDto {
+  @IsString()
+  @MaxLength(200)
+  token!: string;
+
+  @IsString()
+  @IsOptional()
+  @MaxLength(20)
+  phone?: string;
+}
