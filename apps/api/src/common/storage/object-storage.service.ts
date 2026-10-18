@@ -29,6 +29,13 @@ export class ObjectStorageService {
     if (!value) {
       throw new ServiceUnavailableException('Photo storage is not configured on this server yet');
     }
+    // A pasted value with quotes, spaces or the wrong prefix is the commonest setup mistake. Say so plainly,
+    // without echoing the value back.
+    if (!/^vercel_blob_rw_[A-Za-z0-9]+_[A-Za-z0-9]+$/.test(value)) {
+      throw new ServiceUnavailableException(
+        'Photo storage setting BLOB_READ_WRITE_TOKEN is not a valid Blob token (it should start with vercel_blob_rw_, with no quotes or spaces)',
+      );
+    }
     return value;
   }
 
@@ -54,9 +61,13 @@ export class ObjectStorageService {
     } catch (e) {
       // Without this the manager only sees a bare "Internal server error". The usual causes are a wrong or
       // revoked token, or a Private store (shop photos need a Public one) - say so.
-      const reason = e instanceof Error ? e.message : String(e);
+      // Only the Blob SDK's own messages are shown (they never contain the token); anything else could, so it
+      // goes to the server log only.
       this.logger.error({ err: e }, 'Blob upload failed');
-      throw new BadGatewayException(`Photo storage rejected the upload: ${reason}`);
+      const isBlobError = e instanceof Error && e.name.startsWith('BlobError');
+      throw new BadGatewayException(
+        isBlobError ? `Photo storage rejected the upload: ${(e as Error).message}` : 'Photo storage rejected the upload - see the server log',
+      );
     }
   }
 
