@@ -28,6 +28,7 @@ import { RidersService } from '../riders/riders.service';
 import { RentalPlatformPaymentsService } from '../rental/rental-platform-payments.service';
 import { RentalListingAdminService } from '../rental/rental-listing-admin.service';
 import { RoomBookingAutoCompleteService } from '../hotel/room-booking-autocomplete.service';
+import { HospitalityAdminService } from '../hotel/hospitality-admin.service';
 import { BlockListingDto } from '../rental/dto/rental-listing.dto';
 import { ListPlatformInvoicesQueryDto, RecordPlatformInvoicePaymentDto, WaivePlatformInvoiceDto } from '../rental/dto/rental-platform-invoice.dto';
 import { ListRidersQueryDto, SetRiderStatusDto } from '../riders/dto/rider.dto';
@@ -62,6 +63,7 @@ export class PlatformAdminController {
     private readonly rentalBilling: RentalPlatformPaymentsService,
     private readonly listingAdmin: RentalListingAdminService,
     private readonly hotelStays: RoomBookingAutoCompleteService,
+    private readonly hospitality: HospitalityAdminService,
   ) {}
 
   @Public()
@@ -452,6 +454,22 @@ export class PlatformAdminController {
       organizationId: id,
     });
     return result;
+  }
+
+  // ── Restaurants and hotels: how bookings and table orders are going ──
+
+  @Public()
+  @UseGuards(PlatformAdminAuthGuard)
+  @Get('hotel-overview')
+  hotelOverview(@Query('days') days?: string) {
+    return this.hospitality.hotels(Math.min(Math.max(Number.parseInt(days ?? '90', 10) || 90, 1), 365));
+  }
+
+  @Public()
+  @UseGuards(PlatformAdminAuthGuard)
+  @Get('table-order-overview')
+  tableOrderOverview(@Query('days') days?: string) {
+    return this.hospitality.tableOrders(Math.min(Math.max(Number.parseInt(days ?? '30', 10) || 30, 1), 365));
   }
 
   // Completes paid hotel stays whose check-out date is well past and nobody checked out, so their commission is billed.

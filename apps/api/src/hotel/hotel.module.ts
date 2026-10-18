@@ -8,6 +8,7 @@ import { HotelPublicService } from './hotel-public.service';
 import { HotelRoomsService } from './hotel-rooms.service';
 import { RoomBookingsService } from './room-bookings.service';
 import { RoomBookingAutoCompleteService } from './room-booking-autocomplete.service';
+import { HospitalityAdminService } from './hospitality-admin.service';
 
 /**
  * Hotel rooms for a restaurant business: room types with photos and a nightly price, advertised on the marketplace's
@@ -18,8 +19,8 @@ import { RoomBookingAutoCompleteService } from './room-booking-autocomplete.serv
 @Module({
   imports: [OnlineOrdersModule, OnlineStoreModule, NotificationsModule],
   controllers: [HotelController, PublicHotelsController],
-  providers: [HotelRoomsService, HotelPublicService, RoomBookingsService, RoomBookingAutoCompleteService, ObjectStorageService],
-  // The platform admin can run the automatic completion by hand.
-  exports: [RoomBookingAutoCompleteService],
+  providers: [HotelRoomsService, HotelPublicService, RoomBookingsService, RoomBookingAutoCompleteService, HospitalityAdminService, ObjectStorageService],
+  // The platform admin can run the automatic completion by hand and reads the hotel and table-order overviews.
+  exports: [RoomBookingAutoCompleteService, HospitalityAdminService],
 })
 export class HotelModule {}

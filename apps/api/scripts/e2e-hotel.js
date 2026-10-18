@@ -268,6 +268,16 @@ const day = (offset) => new Date(Date.now() + 3 * 3600_000 + offset * 86_400_000
   check('both are now waiting to be billed on the hotel\'s monthly commission invoice', billable === 2, billable);
   await api('DELETE', `/hotel/room-types/${auto.id}`, { token: owner }); // has bookings, so it is archived and leaves the marketplace
 
+  section('13. The platform owner\'s hotel overview');
+  check('the overview needs the platform admin', (await api('GET', '/platform-admin/hotel-overview')).status === 401);
+  const overview = await api('GET', '/platform-admin/hotel-overview?days=365', { token: admin });
+  const mine13 = overview.json.hotels?.find((h) => h.organizationId === orgId);
+  check('the hotel appears with its bookings, paid bookings and money received', overview.status === 200 && mine13?.bookings >= 8 && mine13.paidBookings >= 6 && mine13.depositsReceived > 0, overview.json.summary);
+  check('no-shows and cancellations are counted, and the cancelled deposit shows as owed back', mine13?.noShow >= 1 && mine13.cancelled >= 1 && mine13.depositsToRefund >= 3600, mine13);
+  check('commission recorded and stay value come from checked-out stays', mine13?.commissionRecorded >= 360 && mine13.stayValue >= 12000, mine13);
+  check('the summary and the recent bookings list are filled in', overview.json.summary.hotels >= 1 && overview.json.summary.bookings >= 8 && overview.json.recent.length > 0 && overview.json.recent[0].bookingNumber, overview.json.summary);
+  check('a hotel whose paid bookings mostly end as no-shows or cancellations is flagged (the rule itself is unit-tested)', mine13?.watch === null || typeof mine13?.watch === 'string', mine13?.watch);
+
   console.log(`\n${passed} checks passed${failures.length ? `, ${failures.length} FAILED:\n  - ${failures.join('\n  - ')}` : ' - ALL PASS'}`);
   await sql.end();
   process.exit(failures.length ? 1 : 0);

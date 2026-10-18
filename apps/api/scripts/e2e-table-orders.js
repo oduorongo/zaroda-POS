@@ -239,6 +239,23 @@ const tag = Date.now().toString(36);
     check('(could not create a second branch to test this)', false, { branch2, table2 });
   }
 
+  section('11. The platform owner\'s table-order overview');
+  const adminLogin = await api('POST', '/platform-admin/auth/login', { body: { email: 'admin@test.local', password: 'test-admin-password' } });
+  const admin = adminLogin.json.accessToken;
+  check('the overview needs the platform admin', (await api('GET', '/platform-admin/table-order-overview')).status === 401);
+  const orderOrg = (await sql.query(`SELECT "organizationId" o FROM online_orders WHERE id = $1`, [lastOrderId])).rows[0].o;
+  const overview = await api('GET', '/platform-admin/table-order-overview?days=365', { token: admin });
+  const row = overview.json.restaurants?.find((r) => r.organizationId === orderOrg);
+  check('the restaurant appears with its table orders, sales and commission', overview.status === 200 && row?.orders >= 2 && row.paidOrders >= 2 && row.sales >= 980 && row.commissionRecorded >= 29.4, row);
+  check('a refund owed on a cancelled paid order shows', row?.refundsOwed >= 450, row);
+  // Make one order look "paid but never reached the kitchen" the way a real fault would leave it.
+  await sql.query(`UPDATE online_orders SET status = 'PAID' WHERE id = $1`, [lastOrderId]);
+  const stuckView = await api('GET', '/platform-admin/table-order-overview?days=365', { token: admin });
+  const stuckRow = stuckView.json.restaurants.find((r) => r.organizationId === orderOrg);
+  const attention = stuckView.json.attention.find((a) => a.id === lastOrderId);
+  check('a paid order that never reached the kitchen is listed as needing attention', stuckRow?.stuck >= 1 && /not sent to the kitchen/.test(attention?.problem ?? ''), { stuck: stuckRow?.stuck, attention });
+  await sql.query(`UPDATE online_orders SET status = 'CANCELLED' WHERE id = $1`, [lastOrderId]);
+
   console.log(`\n${passed} checks passed${failures.length ? `, ${failures.length} FAILED:\n  - ${failures.join('\n  - ')}` : ' - ALL PASS'}`);
   await sql.end();
   process.exit(failures.length ? 1 : 0);
