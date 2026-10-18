@@ -6,8 +6,6 @@ import {
   Headers,
   HttpCode,
   Param,
-  ParseFloatPipe,
-  ParseIntPipe,
   ParseUUIDPipe,
   PayloadTooLargeException,
   Post,
@@ -30,6 +28,13 @@ import { RentalReadOnlyInterceptor } from './rental-read-only.interceptor';
 
 const UPLOAD_THROTTLE = { default: { limit: 30, ttl: 60_000 } };
 const PUBLIC_THROTTLE = { default: { limit: 60, ttl: 60_000 } };
+
+/** A filter typed into the page: a number, or nothing. Anything unreadable is ignored rather than rejected. */
+const optionalNumber = (value?: string): number | undefined => {
+  if (value === undefined || value.trim() === '') return undefined;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : undefined;
+};
 
 /** Landlord side: manage the "Houses to let" adverts for vacant units. Owners and managers only. */
 @Controller('rental')
@@ -112,11 +117,11 @@ export class PublicHousesController {
   list(
     @Query('area') area?: string,
     @Query('type') type?: string,
-    @Query('minRent', new ParseFloatPipe({ optional: true })) minRent?: number,
-    @Query('maxRent', new ParseFloatPipe({ optional: true })) maxRent?: number,
-    @Query('page', new ParseIntPipe({ optional: true })) page?: number,
+    @Query('minRent') minRent?: string,
+    @Query('maxRent') maxRent?: string,
+    @Query('page') page?: string,
   ) {
-    return this.houses.list({ area, type, minRent, maxRent, page });
+    return this.houses.list({ area, type, minRent: optionalNumber(minRent), maxRent: optionalNumber(maxRent), page: optionalNumber(page) });
   }
 
   @Public()
