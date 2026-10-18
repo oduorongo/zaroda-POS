@@ -5,7 +5,7 @@ import { getTenantStore } from '../common/tenant/tenant-context';
 import { ObjectStorageService } from '../common/storage/object-storage.service';
 import { IMAGE_CONTENT_TYPES, MAX_IMAGE_BYTES, looksLikeImage } from '../catalog/product-images.service';
 import { LISTING_DAYS, LISTING_FEE_KES, ListingState, listingState } from './rental-listing-fee.util';
-import { SetListingActiveDto, UpsertListingDto } from './dto/rental-listing.dto';
+import { CopyListingDto, SetListingActiveDto, UpsertListingDto } from './dto/rental-listing.dto';
 
 export const MAX_LISTING_PHOTOS = 8;
 export const listingPhotoPrefix = (organizationId: string, listingId: string) => `orgs/${organizationId}/listings/${listingId}/`;
@@ -117,6 +117,52 @@ export class RentalListingsService {
       });
     });
     return this.view(saved);
+  }
+
+  /**
+   * Saves typing for a landlord with many similar units: creates an advert for each chosen vacant unit using this
+   * advert's headline, type, estate, description and contact details. Rent and deposit come from each unit's own
+   * figures (or this advert's, if asked). Photos are NOT copied - they show a particular unit. The new adverts are
+   * unpaid, so none goes public until paid for (all together, with one M-Pesa prompt, if the landlord likes).
+   * Units that are let, or already have an advert, are skipped and reported.
+   */
+  async copyTo(id: string, dto: CopyListingDto) {
+    const { organizationId } = getTenantStore();
+    const unitIds = [...new Set(dto.unitIds)];
+    const result = await this.tenantPrisma.run(async (tx) => {
+      const source = await this.requireListing(tx, id);
+      if (source.blockedAt) throw new ConflictException('Zaroda has taken this advert down, so it cannot be copied.');
+      const units = await tx.rentalUnit.findMany({ where: { id: { in: unitIds } }, include: { listing: { select: { id: true } } } });
+      if (units.length !== unitIds.length) throw new NotFoundException('One of the units was not found');
+
+      const created: string[] = [];
+      const skipped: { unitId: string; reason: string }[] = [];
+      for (const unit of units) {
+        if (unit.id === source.unitId) skipped.push({ unitId: unit.id, reason: 'This is the advert being copied' });
+        else if (unit.status !== 'VACANT') skipped.push({ unitId: unit.id, reason: 'The unit is let' });
+        else if (unit.listing) skipped.push({ unitId: unit.id, reason: 'The unit already has an advert' });
+        else {
+          const listing = await tx.rentalListing.create({
+            data: {
+              organizationId,
+              unitId: unit.id,
+              title: source.title,
+              unitType: source.unitType,
+              area: source.area,
+              monthlyRent: dto.useOwnRent ? unit.monthlyRent : source.monthlyRent,
+              depositAmount: dto.useOwnRent ? unit.depositAmount : source.depositAmount,
+              description: source.description,
+              contactName: source.contactName,
+              contactPhone: source.contactPhone,
+              isActive: true,
+            },
+          });
+          created.push(listing.id);
+        }
+      }
+      return { created, skipped };
+    });
+    return { createdIds: result.created, created: result.created.length, skipped: result.skipped };
   }
 
   async remove(id: string) {

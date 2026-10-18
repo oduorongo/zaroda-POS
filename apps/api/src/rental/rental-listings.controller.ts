@@ -21,7 +21,7 @@ import type { Request } from 'express';
 import { Public } from '../auth/public.decorator';
 import { Roles } from '../auth/roles.decorator';
 import { MAX_IMAGE_BYTES } from '../catalog/product-images.service';
-import { PayListingDto, PayListingsDto, SetListingActiveDto, UpsertListingDto } from './dto/rental-listing.dto';
+import { CopyListingDto, PayListingDto, PayListingsDto, SetListingActiveDto, UpsertListingDto } from './dto/rental-listing.dto';
 import { RentalListingPaymentsService } from './rental-listing-payments.service';
 import { PublicHousesService } from './public-houses.service';
 import { RentalListingsService } from './rental-listings.service';
@@ -64,6 +64,14 @@ export class RentalListingsController {
   @Post('listings/:id/pay')
   pay(@Param('id', ParseUUIDPipe) id: string, @Body() dto: PayListingDto) {
     return this.payments.pay([id], dto.phone);
+  }
+
+  /** Creates adverts for other vacant units from this one's details (no photos, unpaid until paid for). */
+  @Roles(Role.MANAGER, Role.OWNER)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @Post('listings/:id/copy')
+  copy(@Param('id', ParseUUIDPipe) id: string, @Body() dto: CopyListingDto) {
+    return this.listings.copyTo(id, dto);
   }
 
   /** One M-Pesa prompt for KES 100 per advert, for several adverts at once. */

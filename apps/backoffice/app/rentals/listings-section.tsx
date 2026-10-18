@@ -336,6 +336,25 @@ export function ListingsSection({ units, onChanged }: { units: UnitOption[]; onC
               onError={(message) => setError(message)}
             />
           )}
+
+          {editing.listing && editing.listing.state !== "BLOCKED" && (
+            <CopyPanel
+              listing={editing.listing}
+              candidates={vacant.filter((u) => u.id !== editing.unit.id && !byUnit.has(u.id))}
+              onCopied={async (result) => {
+                setSelected(new Set(result.createdIds));
+                setBulkOpen(false);
+                setEditing(null);
+                await load();
+                const skippedNote = result.skipped.length > 0 ? ` ${result.skipped.length} unit${result.skipped.length === 1 ? " was" : "s were"} skipped.` : "";
+                setNotice(
+                  `Created ${result.created} advert${result.created === 1 ? "" : "s"}. They are not public until paid for - they are ticked below, so you can pay for all of them at once.${skippedNote}`,
+                );
+                onChanged();
+              }}
+              onError={(message) => setError(message)}
+            />
+          )}
         </div>
       ) : (
         <>
@@ -592,6 +611,92 @@ function PayBox({
           </button>
         )}
       </div>
+    </div>
+  );
+}
+
+/**
+ * Saves retyping when several units are alike: creates an advert for each ticked empty unit with this advert's headline,
+ * type, estate, description and contact. Photos are not copied (each unit looks different). The copies start unpaid.
+ */
+function CopyPanel({
+  listing,
+  candidates,
+  onCopied,
+  onError,
+}: {
+  listing: Listing;
+  candidates: UnitOption[];
+  onCopied: (result: { createdIds: string[]; created: number; skipped: { unitId: string; reason: string }[] }) => Promise<void>;
+  onError: (message: string) => void;
+}) {
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [useOwnRent, setUseOwnRent] = useState(true);
+  const [busy, setBusy] = useState(false);
+
+  if (candidates.length === 0) return null;
+
+  const toggle = (id: string) =>
+    setPicked((cur) => {
+      const next = new Set(cur);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+
+  async function copy() {
+    setBusy(true);
+    onError("");
+    try {
+      const result = await apiPost<{ createdIds: string[]; created: number; skipped: { unitId: string; reason: string }[] }>(`/rental/listings/${listing.id}/copy`, {
+        unitIds: [...picked],
+        useOwnRent,
+      });
+      await onCopied(result);
+    } catch (err) {
+      onError(err instanceof ApiError ? err.message : "Could not create the adverts.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="space-y-3 border-t border-border pt-4">
+      <h3 className="font-semibold">Copy these details to your other empty units</h3>
+      <p className="text-sm text-secondary-500">
+        Creates an advert for each unit you tick, with the same headline, type, estate, description and contact as this one, so you do not retype them. Photos are not copied, because each unit looks different. Save your changes above first. The new adverts start unpaid - you pay for them all at once afterwards.
+      </p>
+      <div className="flex flex-wrap gap-2 text-sm">
+        <button type="button" className={ghost} onClick={() => setPicked(new Set(candidates.map((u) => u.id)))}>
+          Select all ({candidates.length})
+        </button>
+        {picked.size > 0 && (
+          <button type="button" className={ghost} onClick={() => setPicked(new Set())}>
+            Clear
+          </button>
+        )}
+      </div>
+      <div className="grid max-h-64 gap-1 overflow-y-auto rounded-md border border-border p-2 sm:grid-cols-2">
+        {candidates.map((u) => (
+          <label key={u.id} className="flex items-center gap-2 text-sm">
+            <input type="checkbox" checked={picked.has(u.id)} onChange={() => toggle(u.id)} />
+            <span className="truncate">
+              {u.property.name} - {u.label} <span className="text-secondary-500">(KES {money(u.monthlyRent)})</span>
+            </span>
+          </label>
+        ))}
+      </div>
+      <div className="space-y-1 text-sm">
+        <label className="flex items-center gap-2">
+          <input type="radio" checked={useOwnRent} onChange={() => setUseOwnRent(true)} /> Use each unit&apos;s own rent and deposit
+        </label>
+        <label className="flex items-center gap-2">
+          <input type="radio" checked={!useOwnRent} onChange={() => setUseOwnRent(false)} /> Use this advert&apos;s rent (KES {money(listing.monthlyRent)}) and deposit (KES {money(listing.depositAmount)}) for all
+        </label>
+      </div>
+      <button className={button} disabled={busy || picked.size === 0} onClick={() => void copy()}>
+        {busy ? "Creating..." : picked.size === 0 ? "Create adverts" : `Create ${picked.size} advert${picked.size === 1 ? "" : "s"}`}
+      </button>
     </div>
   );
 }
