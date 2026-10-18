@@ -8,7 +8,7 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { CommissionInvoice, CommissionInvoiceStatus, OnlineOrderStatus, Prisma, Role } from '@prisma/client';
+import { CommissionInvoice, CommissionInvoiceStatus, OnlineOrderStatus, Prisma, Role, RoomBookingStatus } from '@prisma/client';
 import { parseEncryptionKey } from '../common/crypto/secret-box';
 import { PrismaService } from '../common/prisma/prisma.service';
 import { TenantScopedPrismaService, TenantTx } from '../common/prisma/tenant-scoped-prisma.service';
@@ -136,23 +136,29 @@ export class CommissionService {
     const { organizationId } = getTenantStore();
     const now = new Date();
     return this.tenantPrisma.run(async (tx) => {
-      const [store, unbilled, invoices] = await Promise.all([
+      const [store, unbilledOrders, unbilledBookings, invoices] = await Promise.all([
         tx.onlineStore.findUnique({ where: { organizationId }, select: { commissionRate: true, contactPhone: true } }),
         tx.onlineOrder.aggregate({
           where: { status: OnlineOrderStatus.COMPLETED, commissionInvoiceId: null },
           _count: true,
           _sum: { subtotal: true, commissionAmount: true },
         }),
+        // Hotel bookings whose guest has checked out count too: commission on the deposit paid online.
+        tx.roomBooking.aggregate({
+          where: { status: RoomBookingStatus.CHECKED_OUT, commissionInvoiceId: null, paidAt: { not: null } },
+          _count: true,
+          _sum: { depositAmount: true, commissionAmount: true },
+        }),
         tx.commissionInvoice.findMany({ orderBy: { periodMonth: 'desc' }, take: 24 }),
       ]);
       const views = invoices.map((i) => toInvoiceView(i, now));
       return {
         commissionRate: store?.commissionRate != null ? Number(store.commissionRate) : DEFAULT_COMMISSION_RATE,
-        // Completed orders not yet on an invoice - billed once their month closes.
+        // Completed orders and checked-out bookings not yet on an invoice - billed once their month closes.
         unbilled: {
-          orderCount: unbilled._count,
-          salesTotal: Number(unbilled._sum.subtotal ?? 0),
-          commissionTotal: Number(unbilled._sum.commissionAmount ?? 0),
+          orderCount: unbilledOrders._count + unbilledBookings._count,
+          salesTotal: roundMoney(Number(unbilledOrders._sum.subtotal ?? 0) + Number(unbilledBookings._sum.depositAmount ?? 0)),
+          commissionTotal: roundMoney(Number(unbilledOrders._sum.commissionAmount ?? 0) + Number(unbilledBookings._sum.commissionAmount ?? 0)),
         },
         invoices: views,
         outstandingTotal: roundMoney(
@@ -497,8 +503,8 @@ export class CommissionService {
   // ── Invoice generation ────────────────────────────────────────────────
 
   /**
-   * Rolls each business's completed-but-unbilled orders into one invoice
-   * per closed month. Safe to run as often as you like: an order is only
+   * Rolls each business's completed-but-unbilled orders (and hotel bookings whose guest has checked out) into one
+   * invoice per closed month. Safe to run as often as you like: an order is only
    * ever billed once (commissionInvoiceId), and a month that already has an
    * invoice is topped up only while that invoice is still unpaid.
    *
@@ -529,18 +535,40 @@ export class CommissionService {
           },
           select: { id: true, subtotal: true, commissionAmount: true, completedAt: true },
         });
-        const byMonth = new Map<string, typeof orders>();
-        for (const order of orders) {
-          const month = monthOf(order.completedAt!);
+        // Hotel bookings count as well, once the guest has checked out: the commission is on the deposit that was paid
+        // online (that is the "sale" the hotel did through Zaroda). Billed once, like an order.
+        const bookings = await tx.roomBooking.findMany({
+          where: {
+            status: RoomBookingStatus.CHECKED_OUT,
+            commissionInvoiceId: null,
+            paidAt: { not: null },
+            checkedOutAt: { not: null, lt: currentMonthStart },
+          },
+          select: { id: true, depositAmount: true, commissionAmount: true, checkedOutAt: true },
+        });
+        type Billable = { id: string; kind: 'order' | 'booking'; sales: number; commission: number; at: Date };
+        const billable: Billable[] = [
+          ...orders.map((o) => ({ id: o.id, kind: 'order' as const, sales: Number(o.subtotal), commission: Number(o.commissionAmount ?? 0), at: o.completedAt! })),
+          ...bookings.map((b) => ({ id: b.id, kind: 'booking' as const, sales: b.depositAmount, commission: Number(b.commissionAmount ?? 0), at: b.checkedOutAt! })),
+        ];
+        const byMonth = new Map<string, Billable[]>();
+        for (const item of billable) {
+          const month = monthOf(item.at);
           if (opts.month && month !== opts.month) continue;
-          byMonth.set(month, [...(byMonth.get(month) ?? []), order]);
+          byMonth.set(month, [...(byMonth.get(month) ?? []), item]);
         }
+        const linkBilled = async (items: Billable[], invoiceId: string) => {
+          const orderIds = items.filter((i) => i.kind === 'order').map((i) => i.id);
+          const bookingIds = items.filter((i) => i.kind === 'booking').map((i) => i.id);
+          if (orderIds.length > 0) await tx.onlineOrder.updateMany({ where: { id: { in: orderIds } }, data: { commissionInvoiceId: invoiceId } });
+          if (bookingIds.length > 0) await tx.roomBooking.updateMany({ where: { id: { in: bookingIds } }, data: { commissionInvoiceId: invoiceId } });
+        };
 
         const made: CommissionInvoice[] = [];
-        for (const [month, monthOrders] of Array.from(byMonth.entries())) {
-          const salesTotal = roundMoney(monthOrders.reduce((sum, o) => sum + Number(o.subtotal), 0));
-          const commissionTotal = roundMoney(monthOrders.reduce((sum, o) => sum + Number(o.commissionAmount ?? 0), 0));
-          const orderIds = monthOrders.map((o) => o.id);
+        for (const [month, monthItems] of Array.from(byMonth.entries())) {
+          const salesTotal = roundMoney(monthItems.reduce((sum, i) => sum + i.sales, 0));
+          const commissionTotal = roundMoney(monthItems.reduce((sum, i) => sum + i.commission, 0));
+          const itemCount = monthItems.length;
 
           const existing = await tx.commissionInvoice.findUnique({
             where: { organizationId_periodMonth: { organizationId: org.id, periodMonth: month } },
@@ -550,11 +578,11 @@ export class CommissionService {
               this.logger.warn({ organizationId: org.id, month }, 'Completed orders found for a month whose invoice is already settled - left unbilled for review');
               continue;
             }
-            await tx.onlineOrder.updateMany({ where: { id: { in: orderIds } }, data: { commissionInvoiceId: existing.id } });
+            await linkBilled(monthItems, existing.id);
             await tx.commissionInvoice.update({
               where: { id: existing.id },
               data: {
-                orderCount: { increment: orderIds.length },
+                orderCount: { increment: itemCount },
                 salesTotal: { increment: salesTotal },
                 commissionTotal: { increment: commissionTotal },
                 amountDue: Math.ceil(roundMoney(Number(existing.commissionTotal) + commissionTotal)),
@@ -575,7 +603,7 @@ export class CommissionService {
                   periodMonth: month,
                   periodStart: start,
                   periodEnd: end,
-                  orderCount: orderIds.length,
+                  orderCount: itemCount,
                   salesTotal,
                   commissionTotal,
                   amountDue: Math.ceil(commissionTotal),
@@ -593,7 +621,7 @@ export class CommissionService {
             }
           }
           if (!invoice) throw new ConflictException('Could not allocate an invoice number - try again');
-          await tx.onlineOrder.updateMany({ where: { id: { in: orderIds } }, data: { commissionInvoiceId: invoice.id } });
+          await linkBilled(monthItems, invoice.id);
           made.push(invoice);
         }
         return made;

@@ -261,7 +261,7 @@ export class HotelRoomsService {
     return this.transition(id, [RoomBookingStatus.CONFIRMED], { status: RoomBookingStatus.CHECKED_IN, checkedInAt: new Date() });
   }
 
-  /** The guest leaves. The commission on what was paid online is recorded now (not yet invoiced - see RoomBooking). */
+  /** The guest leaves. The commission on what was paid online is recorded now and billed on the hotel's next monthly commission invoice. */
   checkOut(id: string) {
     return this.transition(id, [RoomBookingStatus.CHECKED_IN], (b) => ({
       status: RoomBookingStatus.CHECKED_OUT,

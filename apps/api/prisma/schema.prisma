@@ -1426,8 +1426,10 @@ model RoomBooking {
   /// What is paid online now; the balance (total - deposit) is paid at the hotel.
   depositAmount  Int
   commissionRate Decimal           @db.Decimal(5, 4)
-  /// Recorded when the guest checks out (rate x deposit paid online). Not yet rolled into the monthly commission invoices.
+  /// Recorded when the guest checks out (rate x deposit paid online), then rolled into the hotel's monthly commission invoice.
   commissionAmount Decimal?        @db.Decimal(12, 2)
+  /// Set when this booking's commission is rolled into a monthly invoice - a booking can only ever be billed once.
+  commissionInvoiceId String?
 
   paymentPhone          String
   paymentDeadline       DateTime
@@ -1446,11 +1448,13 @@ model RoomBooking {
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
-  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  roomType     HotelRoomType @relation(fields: [roomTypeId], references: [id])
+  organization      Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  roomType          HotelRoomType      @relation(fields: [roomTypeId], references: [id])
+  commissionInvoice CommissionInvoice? @relation(fields: [commissionInvoiceId], references: [id])
 
   @@index([organizationId, status])
   @@index([roomTypeId, checkIn, checkOut])
+  @@index([commissionInvoiceId])
   @@map("room_bookings")
 }
 
@@ -2246,6 +2250,7 @@ model CommissionInvoice {
 
   organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   orders       OnlineOrder[]
+  roomBookings RoomBooking[]
 
   @@unique([organizationId, periodMonth])
   @@index([organizationId, status])

@@ -28,6 +28,9 @@ const http = require('http');
 const PORT = Number(process.env.MOCK_TUMA_PORT || 4010);
 const pushes = new Map(); // merchant_request_id -> push record
 let counter = 0;
+// Receipts must be unique across runs against the same database (the API refuses one receipt for two payments), so each
+// start of this pretend Tuma stamps its receipts with a short random run id.
+const RUN = Math.random().toString(36).slice(2, 5).toUpperCase();
 let statusCalls = 0;
 
 const send = (res, status, body) => {
@@ -93,7 +96,7 @@ http
         description: body.description,
         callback_url: body.callback_url,
         status: 'pending',
-        receipt: `QTEST${String(counter).padStart(5, '0')}`,
+        receipt: `QTEST${RUN}${String(counter).padStart(5, '0')}`,
       };
       pushes.set(push.merchant_request_id, push);
       return send(res, 201, {

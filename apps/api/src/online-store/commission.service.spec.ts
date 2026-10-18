@@ -52,13 +52,18 @@ type Confirmation =
   | { outcome: 'unconfirmed'; detail: string }
   | { outcome: 'unavailable'; detail: string };
 
-function setup(opts: { existing?: Record<string, unknown> | null; invoice?: Record<string, unknown>; confirmation?: Confirmation; emailSent?: boolean } = {}) {
+function setup(opts: { existing?: Record<string, unknown> | null; invoice?: Record<string, unknown>; confirmation?: Confirmation; emailSent?: boolean; bookings?: Record<string, unknown>[] } = {}) {
   const invoice = opts.invoice ?? issuedInvoice();
   const tx = {
     $executeRaw: jest.fn(),
     onlineOrder: {
       findMany: jest.fn().mockResolvedValue(orders),
       updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+    },
+    roomBooking: {
+      findMany: jest.fn().mockResolvedValue(opts.bookings ?? []),
+      updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+      aggregate: jest.fn().mockResolvedValue({ _count: 0, _sum: { depositAmount: null, commissionAmount: null } }),
     },
     commissionInvoice: {
       // `existing: null` means "no invoice yet for this month" (not "use the default").
@@ -135,6 +140,52 @@ describe('CommissionService.generateInvoices', () => {
     expect(where.status).toBe('COMPLETED');
     expect(where.commissionInvoiceId).toBeNull();
     expect(where.completedAt.lt.toISOString()).toBe('2026-10-31T21:00:00.000Z');
+  });
+
+  describe('with hotel bookings', () => {
+    // A guest who checked out in October paid a KES 3,600 deposit online: KES 108 commission at 3%.
+    const booking = { id: 'b1', depositAmount: 3600, commissionAmount: 108, checkedOutAt: new Date('2026-10-12T10:00:00Z') };
+
+    it('bills checked-out bookings in the same monthly invoice as the shop orders', async () => {
+      const { service, tx } = setup({ existing: null, bookings: [booking] });
+      await service.generateInvoices({ month: '2026-10' });
+      const data = tx.commissionInvoice.create.mock.calls[0][0].data;
+      expect(data).toMatchObject({ periodMonth: '2026-10', orderCount: 3, salesTotal: 6600.5, commissionTotal: 198.02, amountDue: 199 });
+      expect(tx.roomBooking.updateMany).toHaveBeenCalledWith({ where: { id: { in: ['b1'] } }, data: { commissionInvoiceId: 'inv-2026-10' } });
+      expect(tx.onlineOrder.updateMany).toHaveBeenCalledWith({ where: { id: { in: ['o1', 'o2'] } }, data: { commissionInvoiceId: 'inv-2026-10' } });
+    });
+
+    it('a hotel with only bookings in a month still gets an invoice for them', async () => {
+      const { service, tx } = setup({ existing: null, bookings: [{ ...booking, checkedOutAt: new Date('2026-08-20T10:00:00Z') }] });
+      await service.generateInvoices({ month: '2026-08' });
+      expect(tx.commissionInvoice.create.mock.calls[0][0].data).toMatchObject({ periodMonth: '2026-08', orderCount: 1, salesTotal: 3600, commissionTotal: 108, amountDue: 108 });
+      expect(tx.onlineOrder.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('only bills paid, checked-out, not-yet-billed bookings from before this month', async () => {
+      const { service, tx } = setup({ existing: null });
+      await service.generateInvoices();
+      const where = tx.roomBooking.findMany.mock.calls[0][0].where;
+      expect(where.status).toBe('CHECKED_OUT');
+      expect(where.commissionInvoiceId).toBeNull();
+      expect(where.paidAt).toEqual({ not: null });
+      expect(where.checkedOutAt.lt.toISOString()).toBe('2026-10-31T21:00:00.000Z');
+    });
+
+    it('tops up an unpaid invoice with a late booking instead of creating a second invoice', async () => {
+      const { service, tx } = setup({ bookings: [booking] });
+      await service.generateInvoices({ month: '2026-10' });
+      expect(tx.commissionInvoice.create).not.toHaveBeenCalled();
+      expect(tx.commissionInvoice.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ orderCount: { increment: 3 } }) }));
+      expect(tx.roomBooking.updateMany).toHaveBeenCalledWith({ where: { id: { in: ['b1'] } }, data: { commissionInvoiceId: INVOICE } });
+    });
+
+    it('leaves bookings unbilled when their month was already settled', async () => {
+      const { service, tx } = setup({ existing: issuedInvoice({ status: 'PAID' }), bookings: [booking] });
+      const result = await service.generateInvoices({ month: '2026-10' });
+      expect(result.created).toBe(0);
+      expect(tx.roomBooking.updateMany).not.toHaveBeenCalled();
+    });
   });
 
   it('can be limited to one month, and refuses one that has not ended', async () => {

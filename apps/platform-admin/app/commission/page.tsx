@@ -206,7 +206,7 @@ export default function CommissionPage() {
                 <tr>
                   <th className="p-3">Business</th>
                   <th className="p-3">Invoice</th>
-                  <th className="p-3 text-right">Orders</th>
+                  <th className="p-3 text-right">Orders and bookings</th>
                   <th className="p-3 text-right">Sales</th>
                   <th className="p-3 text-right">Commission</th>
                   <th className="p-3">Due</th>

@@ -184,6 +184,30 @@ const day = (offset) => new Date(Date.now() + 3 * 3600_000 + offset * 86_400_000
   const removed = await api('DELETE', `/hotel/room-types/${roomType.id}`, { token: owner });
   check('a room type with bookings is archived, not erased (history kept)', removed.json.archived === true, removed);
 
+  section('11. The hotel is billed commission on checked-out bookings');
+  const adminLogin = await api('POST', '/platform-admin/auth/login', { body: { email: 'admin@test.local', password: 'test-admin-password' } });
+  const admin = adminLogin.json.accessToken;
+  check('the platform admin can sign in', Boolean(admin), adminLogin);
+  // Pretend that guest Amina checked out in the middle of a closed month four months ago (invoices are only made for months that have ended; recent test months may already be settled).
+  const kenya = new Date(Date.now() + 3 * 3600_000);
+  const prev = new Date(Date.UTC(kenya.getUTCFullYear(), kenya.getUTCMonth() - 4, 15, 10, 0, 0));
+  const month = prev.toISOString().slice(0, 7);
+  await sql.query(`UPDATE room_bookings SET "checkedOutAt" = $1 WHERE id = $2`, [prev, g1.id]);
+  const orgId = (await sql.query(`SELECT "organizationId" o FROM room_bookings WHERE id = $1`, [g1.id])).rows[0].o;
+  const invoiceNow = async () => (await sql.query(`SELECT id, "orderCount" n, "commissionTotal" c, "amountDue" due FROM commission_invoices WHERE "organizationId" = $1 AND "periodMonth" = $2`, [orgId, month])).rows[0];
+  const before = await invoiceNow();
+  const run1 = await api('POST', '/platform-admin/commission/generate', { token: admin, body: { month } });
+  check('the monthly commission run succeeds for last month', run1.status === 201 || run1.status === 200, run1);
+  const after = await invoiceNow();
+  const linked = (await sql.query(`SELECT "commissionInvoiceId" i FROM room_bookings WHERE id = $1`, [g1.id])).rows[0].i;
+  check('the booking is attached to that month\'s invoice for the hotel', Boolean(after) && linked === after.id, { after, linked });
+  check('the invoice grew by exactly the booking: one more item and KES 108 more commission', Number(after.n) === Number(before?.n ?? 0) + 1 && Math.abs(Number(after.c) - (Number(before?.c ?? 0) + 108)) < 0.01, { before, after });
+  const run2 = await api('POST', '/platform-admin/commission/generate', { token: admin, body: { month } });
+  const again = await invoiceNow();
+  check('running it again never bills the booking twice', (run2.status === 201 || run2.status === 200) && Number(again.n) === Number(after.n) && Number(again.c) === Number(after.c), { after, again });
+  const commissionPage = await api('GET', '/online-store/me/commission', { token: owner });
+  check('the hotel sees the invoice on its commission page', commissionPage.status === 200 && JSON.stringify(commissionPage.json).includes(after.id), commissionPage.status);
+
   console.log(`\n${passed} checks passed${failures.length ? `, ${failures.length} FAILED:\n  - ${failures.join('\n  - ')}` : ' - ALL PASS'}`);
   await sql.end();
   process.exit(failures.length ? 1 : 0);

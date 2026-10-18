@@ -445,7 +445,7 @@ export default function OnlineShopSettingsPage() {
                       <p className="text-xs text-secondary-500">Building up this month</p>
                       <p className="text-xl font-bold">{kes(commission.unbilled.commissionTotal)}</p>
                       <p className="text-xs text-secondary-500">
-                        from {commission.unbilled.orderCount} completed {commission.unbilled.orderCount === 1 ? "order" : "orders"}
+                        from {commission.unbilled.orderCount} completed {commission.unbilled.orderCount === 1 ? "order or booking" : "orders and bookings"}
                       </p>
                     </div>
                   </div>
@@ -461,7 +461,7 @@ export default function OnlineShopSettingsPage() {
                           <div className="flex flex-wrap items-center justify-between gap-2">
                             <div>
                               <span className="font-mono text-xs">{inv.invoiceNumber}</span>
-                              <span className="ml-2 text-secondary-500">{inv.periodMonth} · {inv.orderCount} orders</span>
+                              <span className="ml-2 text-secondary-500">{inv.periodMonth} · {inv.orderCount} orders and bookings</span>
                               {inv.status === "ISSUED" && <span className="block text-xs text-secondary-500">Due {new Date(inv.dueDate).toLocaleDateString("en-KE")}</span>}
                               {inv.status === "PAID" && inv.paymentReference && (
                                 <span className="block text-xs text-secondary-500">Paid {inv.paidAt ? new Date(inv.paidAt).toLocaleDateString("en-KE") : ""} · {inv.paymentMethod} {inv.paymentReference}</span>
