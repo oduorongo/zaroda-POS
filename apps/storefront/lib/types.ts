@@ -58,7 +58,9 @@ export interface Order {
   orderNumber: string;
   status: OrderStatus;
   shop: { name: string; slug: string };
-  fulfilmentType: "PICKUP" | "DELIVERY";
+  fulfilmentType: "PICKUP" | "DELIVERY" | "DINE_IN";
+  tableId?: string | null;
+  tableLabel?: string | null;
   deliveryAddress: string | null;
   buyerNote: string | null;
   subtotal: number;
@@ -179,3 +181,16 @@ export interface HouseDetail {
   postedAt: string;
   images: string[];
 }
+
+/** What a table's QR page needs. */
+export interface TableInfo {
+  id: string;
+  label: string;
+  /** False when the restaurant has not set up its kitchen stations yet. */
+  acceptsOrders: boolean;
+}
+
+export type KitchenStage = "WAITING" | "SENT" | "PREPARING" | "READY" | "SERVED";
+
+/** A diner's order, with how far the kitchen has got. */
+export type TableOrder = Order & { kitchen: { stage: KitchenStage; total: number; served: number; ready: number; inProgress: number } };
