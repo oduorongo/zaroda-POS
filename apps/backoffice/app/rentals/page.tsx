@@ -503,32 +503,50 @@ How much of the deposit are you handing back (KES)? Enter 0 for none.`,
 
         {tab === "leases" && (
           <div className="space-y-6">
-            <form onSubmit={addLease} className="grid gap-2 rounded-lg border border-border bg-surface p-3 sm:grid-cols-3">
-              <select
-                className={input}
-                required
-                value={leaseForm.unitId}
-                onChange={(e) => {
-                  const unit = units.find((u) => u.id === e.target.value);
-                  setLeaseForm({ ...leaseForm, unitId: e.target.value, monthlyRent: unit ? String(Number(unit.monthlyRent)) : "", depositAmount: unit ? String(Number(unit.depositAmount)) : "" });
-                }}
-              >
-                <option value="">Vacant unit...</option>
-                {vacantUnits.map((u) => (
-                  <option key={u.id} value={u.id}>{u.property.name} - {u.label}</option>
-                ))}
-              </select>
-              <select className={input} required value={leaseForm.tenantId} onChange={(e) => setLeaseForm({ ...leaseForm, tenantId: e.target.value })}>
-                <option value="">Tenant...</option>
-                {tenants.map((t) => (
-                  <option key={t.id} value={t.id}>{t.name}</option>
-                ))}
-              </select>
-              <input className={input} type="date" required value={leaseForm.startDate} onChange={(e) => setLeaseForm({ ...leaseForm, startDate: e.target.value })} />
-              <input className={input} type="number" min="0" step="0.01" placeholder="Monthly rent" value={leaseForm.monthlyRent} onChange={(e) => setLeaseForm({ ...leaseForm, monthlyRent: e.target.value })} />
-              <input className={input} type="number" min="0" step="0.01" placeholder="Deposit" value={leaseForm.depositAmount} onChange={(e) => setLeaseForm({ ...leaseForm, depositAmount: e.target.value })} />
-              <div className="flex gap-2">
-                <input className={input} type="number" min="1" max="28" title="Day of the month rent is due" value={leaseForm.dueDay} onChange={(e) => setLeaseForm({ ...leaseForm, dueDay: e.target.value })} />
+            <form onSubmit={addLease} className="grid gap-3 rounded-lg border border-border bg-surface p-3 sm:grid-cols-3">
+              <label className="text-sm">
+                Vacant unit
+                <select
+                  className={input}
+                  required
+                  value={leaseForm.unitId}
+                  onChange={(e) => {
+                    const unit = units.find((u) => u.id === e.target.value);
+                    setLeaseForm({ ...leaseForm, unitId: e.target.value, monthlyRent: unit ? String(Number(unit.monthlyRent)) : "", depositAmount: unit ? String(Number(unit.depositAmount)) : "" });
+                  }}
+                >
+                  <option value="">Choose a vacant unit...</option>
+                  {vacantUnits.map((u) => (
+                    <option key={u.id} value={u.id}>{u.property.name} - {u.label}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="text-sm">
+                Tenant
+                <select className={input} required value={leaseForm.tenantId} onChange={(e) => setLeaseForm({ ...leaseForm, tenantId: e.target.value })}>
+                  <option value="">Choose a tenant...</option>
+                  {tenants.map((t) => (
+                    <option key={t.id} value={t.id}>{t.name}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="text-sm">
+                Lease start date
+                <input className={input} type="date" required value={leaseForm.startDate} onChange={(e) => setLeaseForm({ ...leaseForm, startDate: e.target.value })} />
+              </label>
+              <label className="text-sm">
+                Monthly rent (KES)
+                <input className={input} type="number" min="0" step="0.01" placeholder="Monthly rent" value={leaseForm.monthlyRent} onChange={(e) => setLeaseForm({ ...leaseForm, monthlyRent: e.target.value })} />
+              </label>
+              <label className="text-sm">
+                Deposit (KES)
+                <input className={input} type="number" min="0" step="0.01" placeholder="Deposit" value={leaseForm.depositAmount} onChange={(e) => setLeaseForm({ ...leaseForm, depositAmount: e.target.value })} />
+              </label>
+              <label className="text-sm">
+                Rent is due on day (1-28) of each month
+                <input className={input} type="number" min="1" max="28" value={leaseForm.dueDay} onChange={(e) => setLeaseForm({ ...leaseForm, dueDay: e.target.value })} />
+              </label>
+              <div className="sm:col-span-3">
                 <button className={button} disabled={busy}>Start lease</button>
               </div>
             </form>

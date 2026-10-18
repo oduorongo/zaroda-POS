@@ -19,7 +19,7 @@ interface Photo {
   sortOrder: number;
 }
 
-type State = "UNPAID" | "LIVE" | "EXPIRED" | "PAUSED";
+type State = "UNPAID" | "LIVE" | "EXPIRED" | "PAUSED" | "BLOCKED";
 
 interface Listing {
   id: string;
@@ -37,6 +37,7 @@ interface Listing {
   isActive: boolean;
   state: State;
   paidUntil: string | null;
+  blockedReason: string | null;
   feeKes: number;
   days: number;
   photos: Photo[];
@@ -69,8 +70,11 @@ const STATE_STYLE: Record<State, string> = {
   PAUSED: "bg-secondary-500/15 text-secondary-500",
   EXPIRED: "bg-amber-500/15 text-amber-600",
   UNPAID: "bg-amber-500/15 text-amber-600",
+  BLOCKED: "bg-red-500/15 text-red-500",
 };
-const STATE_LABEL: Record<State, string> = { LIVE: "Live", PAUSED: "Paused", EXPIRED: "Expired", UNPAID: "Not paid" };
+const STATE_LABEL: Record<State, string> = { LIVE: "Live", PAUSED: "Paused", EXPIRED: "Expired", UNPAID: "Not paid", BLOCKED: "Taken down" };
+// Adverts the landlord can pay for: not paused (resume first) and not taken down by Zaroda.
+const payable = (l: Listing) => l.state === "UNPAID" || l.state === "EXPIRED" || l.state === "LIVE";
 
 function statusLine(l: Listing): string {
   switch (l.state) {
@@ -82,6 +86,8 @@ function statusLine(l: Listing): string {
       return `Lapsed - pay KES ${l.feeKes} for ${l.days} more days`;
     case "PAUSED":
       return "Paused - not shown to the public";
+    case "BLOCKED":
+      return `Taken down by Zaroda: ${l.blockedReason ?? "please contact Zaroda"}`;
   }
 }
 
@@ -132,6 +138,9 @@ export function ListingsSection({ units, onChanged }: { units: UnitOption[]; onC
   const [draft, setDraft] = useState<Draft | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [payingId, setPayingId] = useState<string | null>(null);
+  // Adverts ticked to be paid for with ONE M-Pesa prompt (KES 100 each).
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkOpen, setBulkOpen] = useState(false);
 
   const fail = (err: unknown, fallback: string) => setError(err instanceof ApiError ? err.message : fallback);
 
@@ -209,26 +218,42 @@ export function ListingsSection({ units, onChanged }: { units: UnitOption[]; onC
 
   if (listings === null) return <p className="text-sm text-secondary-500">{error ?? "Loading..."}</p>;
 
-  const payBox = (listing: Listing) => (
+  const payBox = (targets: Listing[], close?: () => void) => (
     <PayBox
-      listing={listing}
-      refresh={async () => (await load())?.find((l) => l.id === listing.id) ?? null}
+      listings={targets}
+      refresh={async () => {
+        const rows = await load();
+        return rows ? rows.filter((l) => targets.some((t) => t.id === l.id)) : null;
+      }}
       onDone={(message) => {
         setPayingId(null);
+        setBulkOpen(false);
+        setSelected(new Set());
         setNotice(message);
         onChanged();
       }}
-      onCancel={() => setPayingId(null)}
+      onCancel={close}
       onError={(message) => setError(message)}
     />
   );
+
+  const toggle = (id: string) =>
+    setSelected((cur) => {
+      const next = new Set(cur);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  const payableListings = vacant.map((u) => byUnit.get(u.id)).filter((l): l is Listing => !!l && payable(l));
+  const needPayment = payableListings.filter((l) => l.state !== "LIVE");
+  const chosen = payableListings.filter((l) => selected.has(l.id));
 
   return (
     <div className="space-y-4">
       <div className="rounded-lg border border-border bg-surface p-3 text-sm text-secondary-600">
         Advertise your empty units on the Zaroda Marketplace under <strong>Houses to let</strong>. House-hunters see your photos, rent and
         estate, then call or WhatsApp the number you give. Your exact address is never shown. <strong>Each advert costs KES 100 for 30 days</strong>,
-        paid by M-Pesa. Pay again before it ends to add another 30 days. It switches off by itself when you give the unit to a tenant.
+        paid by M-Pesa. Advertising several units? Tick them and pay for all of them with one M-Pesa prompt. Pay again before it ends to add another 30 days. An advert switches off by itself when you give the unit to a tenant.
       </div>
 
       {error && <p className="rounded-md bg-red-950 p-3 text-sm text-red-300">{error}</p>}
@@ -251,7 +276,8 @@ export function ListingsSection({ units, onChanged }: { units: UnitOption[]; onC
                 <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATE_STYLE[editing.listing.state]}`}>{STATE_LABEL[editing.listing.state]}</span>
                 <span className="text-sm text-secondary-500">{statusLine(editing.listing)}</span>
               </div>
-              {editing.listing.state !== "PAUSED" && payBox(editing.listing)}
+              {payable(editing.listing) && payBox([editing.listing])}
+              {editing.listing.state === "BLOCKED" && <p className="rounded-md bg-red-950 p-2 text-sm text-red-300">{statusLine(editing.listing)}</p>}
             </div>
           )}
 
@@ -318,11 +344,41 @@ export function ListingsSection({ units, onChanged }: { units: UnitOption[]; onC
               You have no empty units. When a unit becomes vacant it shows up here, ready to advertise.
             </p>
           )}
+          {payableListings.length > 1 && (
+            <div className="space-y-2 rounded-lg border border-border bg-surface p-3">
+              <div className="flex flex-wrap items-center gap-2 text-sm">
+                <span className="font-medium">Pay for several adverts at once</span>
+                {needPayment.length > 1 && (
+                  <button className={ghost} onClick={() => setSelected(new Set(needPayment.map((l) => l.id)))}>
+                    Select all that need payment ({needPayment.length})
+                  </button>
+                )}
+                {selected.size > 0 && (
+                  <button className={ghost} onClick={() => { setSelected(new Set()); setBulkOpen(false); }}>
+                    Clear
+                  </button>
+                )}
+              </div>
+              {chosen.length > 0 && !bulkOpen && (
+                <button className={button} onClick={() => setBulkOpen(true)}>
+                  Pay KES {money(chosen.reduce((sum, l) => sum + l.feeKes, 0))} for {chosen.length} {chosen.length === 1 ? "advert" : "adverts"}
+                </button>
+              )}
+              {chosen.length > 0 && bulkOpen && payBox(chosen, () => setBulkOpen(false))}
+              {chosen.length === 0 && <p className="text-xs text-secondary-500">Tick the adverts you want to pay for on the cards below.</p>}
+            </div>
+          )}
           <div className="grid gap-3 sm:grid-cols-2">
             {vacant.map((unit) => {
               const listing = byUnit.get(unit.id);
               return (
                 <div key={unit.id} className="flex flex-col gap-2 rounded-lg border border-border bg-surface p-3">
+                  {listing && payable(listing) && payableListings.length > 1 && (
+                    <label className="flex items-center gap-2 text-xs text-secondary-500">
+                      <input type="checkbox" checked={selected.has(listing.id)} onChange={() => { toggle(listing.id); setBulkOpen(false); }} />
+                      Tick to pay together with others
+                    </label>
+                  )}
                   <div className="flex items-start justify-between gap-2">
                     <div>
                       <p className="font-medium">
@@ -346,9 +402,9 @@ export function ListingsSection({ units, onChanged }: { units: UnitOption[]; onC
                           <p className="text-xs text-secondary-500">{statusLine(listing)}</p>
                         </div>
                       </div>
-                      {payingId === listing.id && payBox(listing)}
+                      {payingId === listing.id && payBox([listing], () => setPayingId(null))}
                       <div className="flex flex-wrap gap-2">
-                        {listing.state !== "PAUSED" && payingId !== listing.id && (
+                        {payable(listing) && payingId !== listing.id && (
                           <button className={listing.state === "LIVE" ? ghost : button} disabled={busy !== null} onClick={() => setPayingId(listing.id)}>
                             {listing.state === "LIVE" ? `Add ${listing.days} days (KES ${listing.feeKes})` : `Pay KES ${listing.feeKes} to ${listing.state === "UNPAID" ? "publish" : "renew"}`}
                           </button>
@@ -405,26 +461,28 @@ const readPhone = () => {
 };
 
 /**
- * Pays KES 100 for 30 days by M-Pesa. Sends the prompt, then watches the advert (free reads) until the payment lands;
- * "I've paid - check now" is the rate-limited backup if the confirmation is slow.
+ * Pays KES 100 per advert (30 days each) with ONE M-Pesa prompt, for one advert or several. Sends the prompt, then watches
+ * the adverts (free reads) until every payment lands; "I've paid - check now" is the rate-limited backup if it is slow.
  */
 function PayBox({
-  listing,
+  listings,
   refresh,
   onDone,
   onCancel,
   onError,
 }: {
-  listing: Listing;
-  refresh: () => Promise<Listing | null>;
+  listings: Listing[];
+  refresh: () => Promise<Listing[] | null>;
   onDone: (message: string) => void;
-  onCancel: () => void;
+  onCancel?: () => void;
   onError: (message: string) => void;
 }) {
+  const total = listings.reduce((sum, l) => sum + l.feeKes, 0);
+  const many = listings.length > 1;
   const [phone, setPhone] = useState("");
   const [stage, setStage] = useState<"idle" | "sending" | "waiting" | "slow">("idle");
   const [hint, setHint] = useState<string | null>(null);
-  const before = useRef(paidTime(listing));
+  const before = useRef<Map<string, number>>(new Map());
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => setPhone(readPhone()), []);
@@ -437,9 +495,10 @@ function PayBox({
 
   async function landed(): Promise<boolean> {
     const fresh = await refresh();
-    if (fresh && paidTime(fresh) > before.current) {
+    if (fresh && listings.every((l) => (fresh.find((f) => f.id === l.id) ? paidTime(fresh.find((f) => f.id === l.id) as Listing) : 0) > (before.current.get(l.id) ?? 0))) {
       stopPolling();
-      onDone(`Payment received. Your advert is live for ${daysLeft(fresh.paidUntil)} days.`);
+      const first = fresh.find((f) => f.id === listings[0].id);
+      onDone(many ? `Payment received. ${listings.length} adverts are live for 30 days.` : `Payment received. Your advert is live for ${daysLeft(first?.paidUntil ?? null)} days.`);
       return true;
     }
     return false;
@@ -463,9 +522,10 @@ function PayBox({
     setStage("sending");
     setHint(null);
     onError("");
-    before.current = paidTime(listing);
+    before.current = new Map(listings.map((l) => [l.id, paidTime(l)]));
     try {
-      await apiPost(`/rental/listings/${listing.id}/pay`, { phone });
+      if (many) await apiPost("/rental/listings/pay", { listingIds: listings.map((l) => l.id), phone });
+      else await apiPost(`/rental/listings/${listings[0].id}/pay`, { phone });
       try {
         localStorage.setItem(PHONE_KEY, phone);
       } catch {
@@ -482,7 +542,7 @@ function PayBox({
   async function checkNow() {
     setHint(null);
     try {
-      const result = await apiPost<{ result: string }>(`/rental/listings/${listing.id}/pay/check`, {});
+      const result = await apiPost<{ result: string }>(`/rental/listings/${listings[0].id}/pay/check`, {});
       if (await landed()) return;
       setHint(result.result === "unavailable" ? "We could not check just now. Try again in a few minutes." : "Not received yet. If you have entered your PIN, wait a moment and check again.");
     } catch (err) {
@@ -493,7 +553,7 @@ function PayBox({
   if (stage === "waiting" || stage === "slow") {
     return (
       <div className="space-y-2 rounded-md bg-primary-600/10 p-3 text-sm">
-        <p className="font-medium">Check your phone and enter your M-Pesa PIN to pay KES {listing.feeKes}.</p>
+        <p className="font-medium">Check your phone and enter your M-Pesa PIN to pay KES {money(total)}.</p>
         <p className="text-xs text-secondary-500">{stage === "waiting" ? "Waiting for the payment..." : "Still nothing yet."} This screen updates by itself.</p>
         {hint && <p className="text-xs text-amber-600">{hint}</p>}
         <div className="flex flex-wrap gap-2">
@@ -519,16 +579,18 @@ function PayBox({
   return (
     <div className="space-y-2 rounded-md bg-secondary-500/10 p-3">
       <label className="block text-sm">
-        M-Pesa number to pay KES {listing.feeKes} ({listing.days} days)
+        M-Pesa number to pay KES {money(total)} {many ? `(${listings.length} adverts x KES ${listings[0].feeKes}, 30 days each)` : `(${listings[0].days} days)`}
         <input className={input} inputMode="tel" placeholder="0712 345 678" value={phone} onChange={(e) => setPhone(e.target.value)} />
       </label>
       <div className="flex flex-wrap gap-2">
         <button className={button} disabled={stage === "sending" || phone.trim().length < 9} onClick={() => void pay()}>
-          {stage === "sending" ? "Sending..." : `Pay KES ${listing.feeKes} with M-Pesa`}
+          {stage === "sending" ? "Sending..." : `Pay KES ${money(total)} with M-Pesa`}
         </button>
-        <button className={ghost} onClick={onCancel}>
-          Close
-        </button>
+        {onCancel && (
+          <button className={ghost} onClick={onCancel}>
+            Close
+          </button>
+        )}
       </div>
     </div>
   );
