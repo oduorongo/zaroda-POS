@@ -81,3 +81,11 @@ body {
 #till-screen .min-h-screen {
   min-height: 100%;
 }
+
+/* Light mode: give the many hand-built white boxes (rounded panels using the surface colour) the same
+   soft lift as <Card>, so pages don't read as flat paper. Inputs (rounded-md) are left alone. */
+.rounded-lg.bg-surface,
+.rounded-xl.bg-surface,
+.rounded-2xl.bg-surface {
+  box-shadow: var(--card-shadow);
+}

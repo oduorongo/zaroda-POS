@@ -16,7 +16,7 @@ export function PageHeader({ title }: { title?: string }) {
   const isDashboard = pathname === "/dashboard";
 
   return (
-    <div className="flex items-center justify-between gap-3 border-b border-border bg-background px-4 py-2.5 sm:px-6">
+    <div className="flex items-center justify-between gap-3 border-b border-border bg-surface/80 shadow-sm backdrop-blur px-4 py-2.5 sm:px-6">
       <div className="flex min-w-0 items-center gap-4">
         {!isDashboard && (
           <button

@@ -81,3 +81,11 @@ body {
 :root[data-theme="dark"] .bg-success-50 { background-color: rgb(22 163 74 / 0.16); }
 :root[data-theme="dark"] .bg-warning-50 { background-color: rgb(217 119 6 / 0.16); }
 :root[data-theme="dark"] .bg-error-50 { background-color: rgb(220 38 38 / 0.16); }
+
+/* Light mode: give the many hand-built white boxes (rounded panels using the surface colour) the same
+   soft lift as <Card>, so pages don't read as flat paper. Inputs (rounded-md) are left alone. */
+.rounded-lg.bg-surface,
+.rounded-xl.bg-surface,
+.rounded-2xl.bg-surface {
+  box-shadow: var(--card-shadow);
+}
