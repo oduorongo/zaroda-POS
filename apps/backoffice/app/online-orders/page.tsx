@@ -19,19 +19,22 @@ interface OrderLine {
   quantity: number;
   unitPrice: number;
   lineTotal: number;
+  note?: string | null;
 }
 
 interface OnlineOrder {
   id: string;
   orderNumber: string;
   status: OrderStatus;
-  fulfilmentType: "PICKUP" | "DELIVERY";
+  fulfilmentType: "PICKUP" | "DELIVERY" | "DINE_IN";
   deliveryAddress: string | null;
   buyerNote: string | null;
   buyerName: string | null;
   buyerPhone: string;
   subtotal: number;
   amountDue: number;
+  tipAmount?: number;
+  tableLabel?: string | null;
   commissionAmount: number | null;
   mpesaReceiptNumber: string | null;
   lastPaymentError: string | null;
@@ -216,12 +219,13 @@ Enter the M-Pesa confirmation code, e.g. SJK1ABC2DE:`);
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="font-mono font-semibold">{order.orderNumber}</span>
                       <Badge variant={badge.variant}>{badge.label}</Badge>
-                      <Badge variant="neutral">{order.fulfilmentType === "PICKUP" ? "Pickup" : "Delivery"}</Badge>
+                      <Badge variant="neutral">{order.fulfilmentType === "PICKUP" ? "Pickup" : order.fulfilmentType === "DINE_IN" ? (order.tableLabel ? `Table: ${order.tableLabel}` : "Dine-in") : "Delivery"}</Badge>
                     </div>
                     <p className="mt-1 text-xs text-secondary-500">{new Date(order.createdAt).toLocaleString()}</p>
                   </div>
                   <div className="text-right">
                     <p className="font-mono font-semibold">KES {order.amountDue.toLocaleString()}</p>
+                    {order.tipAmount ? <p className="text-xs text-secondary-500">includes KES {order.tipAmount.toLocaleString()} tip for the staff</p> : null}
                     {order.mpesaReceiptNumber && <p className="text-xs text-secondary-500">M-Pesa {order.mpesaReceiptNumber}</p>}
                   </div>
                 </div>
@@ -252,6 +256,7 @@ Enter the M-Pesa confirmation code, e.g. SJK1ABC2DE:`);
                       <tr key={l.id} className="border-t border-border">
                         <td className="py-1.5">
                           {formatQty(l.quantity)} × {l.productName} <span className="text-secondary-500">({l.variantSku})</span>
+                          {l.note && <span className="block text-xs text-amber-500">{l.note}</span>}
                         </td>
                         <td className="py-1.5 text-right font-mono">KES {l.lineTotal.toFixed(2)}</td>
                       </tr>

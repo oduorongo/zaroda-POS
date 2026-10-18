@@ -51,6 +51,8 @@ export interface OrderLine {
   quantity: number;
   unitPrice: number;
   lineTotal: number;
+  /** What the buyer asked for on this dish ("no onions"). */
+  note?: string | null;
 }
 
 export interface Order {
@@ -65,6 +67,8 @@ export interface Order {
   buyerNote: string | null;
   subtotal: number;
   amountDue: number;
+  /** A tip included in amountDue (table orders). */
+  tipAmount?: number;
   paymentPhone: string;
   paymentDeadline: string;
   mpesaReceiptNumber: string | null;

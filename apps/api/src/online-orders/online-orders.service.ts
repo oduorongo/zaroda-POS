@@ -66,6 +66,7 @@ export function toOrderView(order: OrderWithLines) {
     buyerPhone: order.buyerPhone,
     subtotal: Number(order.subtotal),
     amountDue: order.amountDue,
+    tipAmount: order.tipAmount,
     commissionRate: Number(order.commissionRate),
     commissionAmount: order.commissionAmount != null ? Number(order.commissionAmount) : null,
     paymentPhone: order.paymentPhone,
@@ -88,6 +89,7 @@ export function toOrderView(order: OrderWithLines) {
       quantity: Number(l.quantity),
       unitPrice: Number(l.unitPrice),
       lineTotal: Number(l.lineTotal),
+      note: l.note,
     })),
   };
 }
@@ -191,6 +193,9 @@ export class OnlineOrdersService {
     // Same variant listed twice = one line with the combined quantity.
     const wanted = new Map<string, number>();
     for (const line of dto.lines) wanted.set(line.variantId, (wanted.get(line.variantId) ?? 0) + line.quantity);
+    // One note per dish (the last non-empty one given for it).
+    const notes = new Map<string, string>();
+    for (const line of dto.lines) if (line.note?.trim()) notes.set(line.variantId, line.note.trim());
 
     let created: OrderWithLines | undefined;
     for (let attempt = 0; attempt < 3 && !created; attempt++) {
@@ -233,6 +238,7 @@ export class OnlineOrdersService {
                 quantity,
                 unitPrice,
                 lineTotal: roundMoney(unitPrice * quantity),
+                note: notes.get(v.id) ?? null,
               };
             });
             const subtotal = roundMoney(lines.reduce((sum, l) => sum + l.lineTotal, 0));
@@ -391,7 +397,11 @@ export class OnlineOrdersService {
 
     const wanted = new Map<string, number>();
     for (const line of dto.lines) wanted.set(line.variantId, (wanted.get(line.variantId) ?? 0) + line.quantity);
+    // One note per dish (the last non-empty one given for it).
+    const notes = new Map<string, string>();
+    for (const line of dto.lines) if (line.note?.trim()) notes.set(line.variantId, line.note.trim());
 
+    const tip = dto.tipAmount ?? 0;
     const { token, hash } = generateCallbackToken();
     let created: OrderWithLines | undefined;
     for (let attempt = 0; attempt < 3 && !created; attempt++) {
@@ -425,7 +435,7 @@ export class OnlineOrdersService {
               throw new ConflictException(left > 0 ? `Only ${left} of ${v.product.name} left` : `Sorry, ${v.product.name} is finished`);
             }
             const unitPrice = Number(v.price);
-            return { variantId: v.id, productName: v.product.name, variantSku: v.sku, quantity, unitPrice, lineTotal: roundMoney(unitPrice * quantity) };
+            return { variantId: v.id, productName: v.product.name, variantSku: v.sku, quantity, unitPrice, lineTotal: roundMoney(unitPrice * quantity), note: notes.get(v.id) ?? null };
           });
           const subtotal = roundMoney(lines.reduce((sum, l) => sum + l.lineTotal, 0));
           if (subtotal < 1) throw new BadRequestException('Order total must be at least KES 1');
@@ -446,7 +456,9 @@ export class OnlineOrdersService {
               shopName: shop.displayName,
               shopSlug: shop.slug,
               subtotal,
-              amountDue: Math.ceil(subtotal),
+              // The tip is paid in the same prompt, but it is the staff's: no commission, not part of the sale.
+              amountDue: Math.ceil(subtotal) + tip,
+              tipAmount: tip,
               commissionRate: shop.commissionRate ?? DEFAULT_COMMISSION_RATE,
               paymentPhone,
               paymentDeadline: new Date(Date.now() + PAYMENT_WINDOW_MS),
@@ -946,6 +958,10 @@ export class OnlineOrdersService {
     await this.moveStock(tx, current, -1, InventoryTxnType.ONLINE_SALE);
     const saleId = await recordOnlineSale(tx, current, actor);
     if (current.tableId) await sendTableOrderToKitchen(tx, current, saleId);
+    // Tracked apart from the sale, exactly like a tip taken at the till (see RestaurantSaleTip).
+    if (current.tableId && current.tipAmount > 0) {
+      await tx.restaurantSaleTip.upsert({ where: { saleId }, create: { saleId, tipAmount: current.tipAmount }, update: { tipAmount: current.tipAmount } });
+    }
     return { status: OnlineOrderStatus.ACCEPTED, acceptedAt: new Date(), stockCommitted: true, saleId };
   }
 
@@ -989,7 +1005,10 @@ export class OnlineOrdersService {
       async (tx, current) => {
         if (current.stockCommitted) await this.moveStock(tx, current, 1, InventoryTxnType.RETURN);
         // Whatever the kitchen has not finished is no longer wanted.
-        if (current.tableId && current.saleId) await tx.kitchenTicket.deleteMany({ where: { saleId: current.saleId } });
+        if (current.tableId && current.saleId) {
+          await tx.kitchenTicket.deleteMany({ where: { saleId: current.saleId } });
+          await tx.restaurantSaleTip.deleteMany({ where: { saleId: current.saleId } });
+        }
         await voidOnlineSale(tx, current.saleId);
         await cancelJobsOnOrderCancel(tx, current.id, dto.reason.trim());
         return {

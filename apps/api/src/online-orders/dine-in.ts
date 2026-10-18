@@ -51,7 +51,8 @@ export async function sendTableOrderToKitchen(tx: TenantTx, order: OrderWithLine
             variantId: l.variantId,
             // A kitchen ticket is a "make N of these" instruction, so it is a whole number (see KitchenTicketLine).
             quantity: Math.max(1, Math.round(Number(l.quantity))),
-            notes: order.buyerNote ?? undefined,
+            // The dish's own request first ("no onions"), then anything said about the whole order.
+            notes: [l.note, order.buyerNote].filter((n): n is string => Boolean(n)).join(' - ') || undefined,
           })),
         },
       },

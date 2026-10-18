@@ -76,10 +76,12 @@ export const getTable = (slug: string, tableId: string) =>
 export interface CreateTableOrderInput {
   shopSlug: string;
   tableId: string;
-  lines: { variantId: string; quantity: number }[];
+  lines: { variantId: string; quantity: number; note?: string }[];
   phone: string;
   name?: string;
   note?: string;
+  /** A tip for the staff in whole shillings, paid in the same M-Pesa prompt. */
+  tipAmount?: number;
 }
 
 /** The order, plus the secret (guestToken) that opens its status page. */

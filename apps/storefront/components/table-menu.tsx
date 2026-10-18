@@ -54,6 +54,10 @@ export default function TableMenu({ shop, table }: { shop: Shop; table: TableInf
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [note, setNote] = useState("");
+  // A request for each dish ("no onions"), by dish.
+  const [dishNotes, setDishNotes] = useState<Record<string, string>>({});
+  const [tipChoice, setTipChoice] = useState<"none" | "5" | "10" | "custom">("none");
+  const [customTip, setCustomTip] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -87,7 +91,10 @@ export default function TableMenu({ shop, table }: { shop: Shop; table: TableInf
     }
     return { lines: ok, dropped: gone };
   }, [shop, cartFor, cartKey]);
-  const { amountDue } = cartTotals(lines);
+  const { amountDue: foodDue } = cartTotals(lines);
+  // Tips are whole shillings, like everything M-Pesa moves.
+  const tip = tipChoice === "none" ? 0 : tipChoice === "custom" ? Math.min(10_000, Math.max(0, Math.floor(Number(customTip) || 0))) : Math.round((foodDue * Number(tipChoice)) / 100);
+  const amountDue = foodDue + tip;
   const count = lines.reduce((sum, l) => sum + l.quantity, 0);
 
   async function placeOrder(e: React.FormEvent) {
@@ -98,8 +105,9 @@ export default function TableMenu({ shop, table }: { shop: Shop; table: TableInf
       const order = await createTableOrder({
         shopSlug: shop.slug,
         tableId: table.id,
-        lines: lines.map((l) => ({ variantId: l.variantId, quantity: l.quantity })),
+        lines: lines.map((l) => ({ variantId: l.variantId, quantity: l.quantity, note: dishNotes[l.variantId]?.trim() || undefined })),
         phone: phone.trim(),
+        tipAmount: tip > 0 ? tip : undefined,
         name: name.trim() || undefined,
         note: note.trim() || undefined,
       });
@@ -176,18 +184,56 @@ export default function TableMenu({ shop, table }: { shop: Shop; table: TableInf
           {checkingOut && (
             <form onSubmit={placeOrder} className="space-y-4 rounded-lg border border-border bg-surface p-4">
               <h2 className="text-lg font-semibold">Your order</h2>
-              <ul className="space-y-1 text-sm">
+              <ul className="space-y-2 text-sm">
                 {lines.map((l) => (
-                  <li key={l.variantId} className="flex justify-between gap-2">
-                    <span>
-                      {formatQty(l.quantity)} x {l.productName}
-                    </span>
-                    <span className="font-mono">{kes(Math.round(l.price * l.quantity * 100) / 100)}</span>
+                  <li key={l.variantId} className="space-y-1">
+                    <div className="flex justify-between gap-2">
+                      <span>
+                        {formatQty(l.quantity)} x {l.productName}
+                      </span>
+                      <span className="font-mono">{kes(Math.round(l.price * l.quantity * 100) / 100)}</span>
+                    </div>
+                    <input
+                      value={dishNotes[l.variantId] ?? ""}
+                      onChange={(e) => setDishNotes({ ...dishNotes, [l.variantId]: e.target.value })}
+                      maxLength={120}
+                      placeholder="Anything for this dish? e.g. no onions, extra spicy"
+                      aria-label={`Note for ${l.productName}`}
+                      className="w-full rounded-md border border-border bg-surface px-2 py-1.5 text-xs"
+                    />
                   </li>
                 ))}
               </ul>
               {dropped.length > 0 && <p className="rounded-md bg-warning-50 p-2 text-xs text-warning-700">Just finished and left out: {dropped.join(", ")}.</p>}
-              <div className="flex justify-between border-t border-border pt-3 text-lg font-bold">
+              <div className="space-y-2 border-t border-border pt-3">
+                <p className="text-sm font-medium">
+                  Add a tip for the staff? <span className="font-normal text-secondary-500">(optional)</span>
+                </p>
+                <div className="flex flex-wrap gap-2 text-sm">
+                  {(
+                    [
+                      ["none", "No tip"],
+                      ["5", "5%"],
+                      ["10", "10%"],
+                      ["custom", "Other"],
+                    ] as const
+                  ).map(([value, label]) => (
+                    <button key={value} type="button" onClick={() => setTipChoice(value)} className={`rounded-full border px-3 py-1 ${tipChoice === value ? "border-primary-600 bg-primary-600 text-white" : "border-border"}`}>
+                      {label}
+                    </button>
+                  ))}
+                  {tipChoice === "custom" && (
+                    <input type="number" inputMode="numeric" min={0} max={10000} value={customTip} onChange={(e) => setCustomTip(e.target.value)} placeholder="KES" aria-label="Tip amount in shillings" className="w-24 rounded-md border border-border bg-surface px-2 py-1" />
+                  )}
+                </div>
+                {tip > 0 && (
+                  <p className="flex justify-between text-sm text-secondary-600">
+                    <span>Food and drink {kes(foodDue)}</span>
+                    <span>Tip {kes(tip)}</span>
+                  </p>
+                )}
+              </div>
+              <div className="flex justify-between text-lg font-bold">
                 <span>To pay</span>
                 <span>{kes(amountDue)}</span>
               </div>
