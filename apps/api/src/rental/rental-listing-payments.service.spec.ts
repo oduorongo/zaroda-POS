@@ -6,26 +6,53 @@ import { RentalListingPaymentsService } from './rental-listing-payments.service'
 
 const KEY = randomBytes(32);
 const ORG = '11111111-1111-1111-1111-111111111111';
-const LISTING = '22222222-2222-2222-2222-222222222222';
+const L1 = '22222222-2222-2222-2222-222222222221';
+const L2 = '22222222-2222-2222-2222-222222222222';
+const L3 = '22222222-2222-2222-2222-222222222223';
 const PAYMENT = '33333333-3333-3333-3333-333333333333';
 const token = (id = PAYMENT) => createHmac('sha256', KEY).update(`rental-listing-callback:${id}`).digest('base64url');
 const DAY = 86_400_000;
 
-function build(opts: { unitStatus?: 'VACANT' | 'OCCUPIED'; paidUntil?: Date | null; hasCredentials?: boolean } = {}) {
+interface Opts {
+  unitStatus?: 'VACANT' | 'OCCUPIED';
+  paidUntil?: Date | null;
+  hasCredentials?: boolean;
+  blocked?: string[]; // listing ids taken down by ZARODA
+  paused?: string[];
+}
+
+function build(opts: Opts = {}) {
   let payment: Record<string, unknown> | null = null;
-  let listing: Record<string, unknown> = { id: LISTING, unitId: 'unit-1', isActive: false, paidUntil: opts.paidUntil ?? null };
+  const listings = new Map<string, Record<string, unknown>>(
+    [L1, L2, L3].map((id) => [
+      id,
+      {
+        id,
+        unitId: `unit-${id}`,
+        title: `Advert ${id.slice(-1)}`,
+        isActive: !(opts.paused ?? []).includes(id),
+        paidUntil: opts.paidUntil ?? null,
+        blockedAt: (opts.blocked ?? []).includes(id) ? new Date() : null,
+      },
+    ]),
+  );
 
   const tx = {
     $executeRaw: jest.fn(async () => 1),
-    rentalUnit: { findUnique: jest.fn(async () => ({ id: 'unit-1', status: opts.unitStatus ?? 'VACANT' })) },
+    rentalUnit: {
+      findMany: jest.fn(async ({ where }: { where: { id: { in: string[] } } }) => where.id.in.map((id) => ({ id, status: opts.unitStatus ?? 'VACANT' }))),
+    },
     rentalListing: {
-      findUnique: jest.fn(async () => listing),
-      update: jest.fn(async ({ data }: { data: Record<string, unknown> }) => {
-        listing = { ...listing, ...data };
-        return listing;
+      findMany: jest.fn(async ({ where }: { where: { id: { in: string[] } } }) => where.id.in.map((id) => listings.get(id)).filter(Boolean)),
+      findUnique: jest.fn(async ({ where }: { where: { id: string } }) => listings.get(where.id) ?? null),
+      update: jest.fn(async ({ where, data }: { where: { id: string }; data: Record<string, unknown> }) => {
+        const next = { ...listings.get(where.id), ...data };
+        listings.set(where.id, next);
+        return next;
       }),
     },
     rentalListingPayment: {
+      findMany: jest.fn(async () => (payment && payment.status === 'PENDING' ? [payment] : [])),
       findFirst: jest.fn(async () => (payment && payment.status === 'PENDING' ? payment : null)),
       findUnique: jest.fn(async () => payment),
       findUniqueOrThrow: jest.fn(async () => payment),
@@ -37,8 +64,9 @@ function build(opts: { unitStatus?: 'VACANT' | 'OCCUPIED'; paidUntil?: Date | nu
         payment = { ...payment, ...data };
         return payment;
       }),
-      updateMany: jest.fn(async ({ where, data }: { where: { id?: string; status?: string }; data: Record<string, unknown> }) => {
-        if (!payment || (where.id && payment.id !== where.id) || (where.status && payment.status !== where.status)) return { count: 0 };
+      updateMany: jest.fn(async ({ where, data }: { where: { id?: string | { in: string[] }; status?: string }; data: Record<string, unknown> }) => {
+        const idOk = !where.id || (typeof where.id === 'string' ? payment?.id === where.id : where.id.in.includes(String(payment?.id)));
+        if (!payment || !idOk || (where.status && payment.status !== where.status)) return { count: 0 };
         payment = { ...payment, ...data };
         return { count: 1 };
       }),
@@ -58,17 +86,18 @@ function build(opts: { unitStatus?: 'VACANT' | 'OCCUPIED'; paidUntil?: Date | nu
   };
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const service = new RentalListingPaymentsService(prisma as any, tenantPrisma as any, tuma as any, config as any);
-  return { service, tx, stkPush, getListing: () => listing, getPayment: () => payment };
+  return { service, tx, stkPush, listing: (id: string) => listings.get(id) as Record<string, unknown>, getPayment: () => payment };
 }
 
 const asTenant = <T>(fn: () => Promise<T>) => tenantContext.run({ organizationId: ORG, orgUserId: 'ou-1', role: Role.OWNER }, fn);
-const paidCallback = (over: Record<string, unknown> = {}) => ({ status: 'completed', merchant_request_id: 'req-1', amount: 100, mpesa_receipt_number: 'QAB123', ...over });
+const paidCallback = (amount: number, over: Record<string, unknown> = {}) => ({ status: 'completed', merchant_request_id: 'req-1', amount, mpesa_receipt_number: 'QAB123', ...over });
+const daysAhead = (d: unknown) => ((d as Date).getTime() - Date.now()) / DAY;
 
 describe('RentalListingPaymentsService', () => {
-  describe('pay', () => {
+  describe('pay - one advert', () => {
     it('sends an M-Pesa prompt for exactly KES 100 to the landlord’s number', async () => {
       const { service, stkPush } = build();
-      await asTenant(() => service.pay(LISTING, '0712 345 678'));
+      await asTenant(() => service.pay([L1], '0712 345 678'));
       expect(stkPush).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ amount: 100, phone: '254712345678' }));
       const url = (stkPush.mock.calls[0] as unknown as [unknown, { callbackUrl: string }])[1].callbackUrl;
       expect(url).toContain(`/public/rental-listing-payments/${ORG}/${PAYMENT}/tuma-callback/${token()}`);
@@ -76,87 +105,144 @@ describe('RentalListingPaymentsService', () => {
 
     it('rejects a bad phone number without sending anything', async () => {
       const { service, stkPush } = build();
-      await expect(asTenant(() => service.pay(LISTING, '123'))).rejects.toThrow(BadRequestException);
+      await expect(asTenant(() => service.pay([L1], '123'))).rejects.toThrow(BadRequestException);
       expect(stkPush).not.toHaveBeenCalled();
     });
 
     it('refuses to charge for a unit that has been let', async () => {
       const { service, stkPush } = build({ unitStatus: 'OCCUPIED' });
-      await expect(asTenant(() => service.pay(LISTING, '0712345678'))).rejects.toThrow(ConflictException);
+      await expect(asTenant(() => service.pay([L1], '0712345678'))).rejects.toThrow(ConflictException);
       expect(stkPush).not.toHaveBeenCalled();
     });
 
     it('stops a second prompt within a minute', async () => {
       const { service } = build();
-      await asTenant(() => service.pay(LISTING, '0712345678'));
-      await expect(asTenant(() => service.pay(LISTING, '0712345678'))).rejects.toThrow(/try again in a minute/);
+      await asTenant(() => service.pay([L1], '0712345678'));
+      await expect(asTenant(() => service.pay([L1], '0712345678'))).rejects.toThrow(/try again in a minute/);
     });
 
     it('records a failed prompt as FAILED and says why', async () => {
       const { service, stkPush, getPayment } = build();
       stkPush.mockRejectedValueOnce(new Error('Tuma is down'));
-      await expect(asTenant(() => service.pay(LISTING, '0712345678'))).rejects.toThrow(/Tuma is down/);
+      await expect(asTenant(() => service.pay([L1], '0712345678'))).rejects.toThrow(/Tuma is down/);
       expect(getPayment()?.status).toBe('FAILED');
     });
 
     it('is unavailable until ZARODA’s Tuma account is set up', async () => {
       const { service } = build({ hasCredentials: false });
-      await expect(asTenant(() => service.pay(LISTING, '0712345678'))).rejects.toThrow(/not available/);
+      await expect(asTenant(() => service.pay([L1], '0712345678'))).rejects.toThrow(/not available/);
+    });
+  });
+
+  describe('pay - several adverts at once', () => {
+    it('sends ONE prompt for KES 100 per advert', async () => {
+      const { service, stkPush, getPayment } = build();
+      const result = await asTenant(() => service.pay([L1, L2, L3], '0712345678'));
+      expect(stkPush).toHaveBeenCalledTimes(1);
+      expect(stkPush).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ amount: 300 }));
+      expect(result.amount).toBe(300);
+      expect(getPayment()?.listingIds).toEqual([L1, L2, L3]);
+    });
+
+    it('counts a repeated advert once', async () => {
+      const { service, stkPush } = build();
+      await asTenant(() => service.pay([L1, L1, L2], '0712345678'));
+      expect(stkPush).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ amount: 200 }));
+    });
+
+    it('extends every advert it covers when the payment lands', async () => {
+      const { service, listing } = build();
+      await asTenant(() => service.pay([L1, L2], '0712345678'));
+      await service.handleTumaCallback(ORG, PAYMENT, token(), paidCallback(200));
+      for (const id of [L1, L2]) {
+        expect(listing(id).isActive).toBe(true);
+        expect(daysAhead(listing(id).paidUntil)).toBeGreaterThan(29.9);
+      }
+      expect(listing(L3).paidUntil).toBeNull(); // not part of this payment
+    });
+
+    it('does not accept a bulk payment that covers only part of the total', async () => {
+      const { service, listing, getPayment } = build();
+      await asTenant(() => service.pay([L1, L2, L3], '0712345678'));
+      await service.handleTumaCallback(ORG, PAYMENT, token(), paidCallback(100));
+      expect(getPayment()?.status).not.toBe('PAID');
+      expect(listing(L1).paidUntil).toBeNull();
+    });
+
+    it('refuses the whole payment if any advert is taken down, paused or missing', async () => {
+      await expect(asTenant(() => build({ blocked: [L2] }).service.pay([L1, L2], '0712345678'))).rejects.toThrow(/taken down/);
+      await expect(asTenant(() => build({ paused: [L2] }).service.pay([L1, L2], '0712345678'))).rejects.toThrow(/paused/);
+      await expect(asTenant(() => build().service.pay([L1, '99999999-9999-9999-9999-999999999999'], '0712345678'))).rejects.toThrow(NotFoundException);
+    });
+
+    it('refuses an empty list and an over-large one', async () => {
+      const { service, stkPush } = build();
+      await expect(asTenant(() => service.pay([], '0712345678'))).rejects.toThrow(/at least one/);
+      const many = Array.from({ length: 31 }, (_, i) => `00000000-0000-0000-0000-${String(i).padStart(12, '0')}`);
+      await expect(asTenant(() => service.pay(many, '0712345678'))).rejects.toThrow(/up to 30/);
+      expect(stkPush).not.toHaveBeenCalled();
+    });
+
+    it('skips an advert that was taken down while the prompt was open, but extends the others', async () => {
+      const { service, listing } = build();
+      await asTenant(() => service.pay([L1, L2], '0712345678'));
+      listing(L2).blockedAt = new Date(); // ZARODA takes L2 down before the PIN is entered
+      await service.handleTumaCallback(ORG, PAYMENT, token(), paidCallback(200));
+      expect(daysAhead(listing(L1).paidUntil)).toBeGreaterThan(29.9);
+      expect(listing(L2).paidUntil).toBeNull();
     });
   });
 
   describe('callback', () => {
     it('a genuine payment switches the advert on for 30 days', async () => {
-      const { service, getListing, getPayment } = build();
-      await asTenant(() => service.pay(LISTING, '0712345678'));
-      await service.handleTumaCallback(ORG, PAYMENT, token(), paidCallback());
+      const { service, listing, getPayment } = build();
+      await asTenant(() => service.pay([L1], '0712345678'));
+      await service.handleTumaCallback(ORG, PAYMENT, token(), paidCallback(100));
       expect(getPayment()?.status).toBe('PAID');
       expect(getPayment()?.paymentReference).toBe('QAB123');
-      const listing = getListing();
-      expect(listing.isActive).toBe(true);
-      const days = ((listing.paidUntil as Date).getTime() - Date.now()) / DAY;
-      expect(days).toBeGreaterThan(29.9);
-      expect(days).toBeLessThan(30.1);
+      expect(listing(L1).isActive).toBe(true);
+      expect(daysAhead(listing(L1).paidUntil)).toBeGreaterThan(29.9);
+      expect(daysAhead(listing(L1).paidUntil)).toBeLessThan(30.1);
     });
 
     it('paying early adds 30 days on top of the time left', async () => {
       const left = new Date(Date.now() + 10 * DAY);
-      const { service, getListing } = build({ paidUntil: left });
-      await asTenant(() => service.pay(LISTING, '0712345678'));
-      await service.handleTumaCallback(ORG, PAYMENT, token(), paidCallback());
-      expect((getListing().paidUntil as Date).getTime()).toBe(left.getTime() + 30 * DAY);
+      const { service, listing } = build({ paidUntil: left });
+      await asTenant(() => service.pay([L1], '0712345678'));
+      await service.handleTumaCallback(ORG, PAYMENT, token(), paidCallback(100));
+      expect((listing(L1).paidUntil as Date).getTime()).toBe(left.getTime() + 30 * DAY);
     });
 
     it('a repeated callback extends the advert only once', async () => {
-      const { service, getListing } = build();
-      await asTenant(() => service.pay(LISTING, '0712345678'));
-      await service.handleTumaCallback(ORG, PAYMENT, token(), paidCallback());
-      const first = (getListing().paidUntil as Date).getTime();
-      await service.handleTumaCallback(ORG, PAYMENT, token(), paidCallback());
-      expect((getListing().paidUntil as Date).getTime()).toBe(first);
+      const { service, listing } = build();
+      await asTenant(() => service.pay([L1], '0712345678'));
+      await service.handleTumaCallback(ORG, PAYMENT, token(), paidCallback(100));
+      const first = (listing(L1).paidUntil as Date).getTime();
+      await service.handleTumaCallback(ORG, PAYMENT, token(), paidCallback(100));
+      expect((listing(L1).paidUntil as Date).getTime()).toBe(first);
     });
 
     it('rejects a forged address', async () => {
       const { service, getPayment } = build();
-      await asTenant(() => service.pay(LISTING, '0712345678'));
-      await expect(service.handleTumaCallback(ORG, PAYMENT, 'not-the-token', paidCallback())).rejects.toThrow(NotFoundException);
+      await asTenant(() => service.pay([L1], '0712345678'));
+      await expect(service.handleTumaCallback(ORG, PAYMENT, 'not-the-token', paidCallback(100))).rejects.toThrow(NotFoundException);
       expect(getPayment()?.status).toBe('PENDING');
     });
 
     it('does not accept a payment for less than KES 100', async () => {
-      const { service, getListing, getPayment } = build();
-      await asTenant(() => service.pay(LISTING, '0712345678'));
-      await service.handleTumaCallback(ORG, PAYMENT, token(), paidCallback({ amount: 20 }));
+      const { service, listing, getPayment } = build();
+      await asTenant(() => service.pay([L1], '0712345678'));
+      await service.handleTumaCallback(ORG, PAYMENT, token(), paidCallback(20));
       expect(getPayment()?.status).not.toBe('PAID');
-      expect(getListing().paidUntil).toBeNull();
+      expect(listing(L1).paidUntil).toBeNull();
     });
 
     it('a cancelled payment leaves the advert unpaid and can be retried', async () => {
-      const { service, getListing, getPayment } = build();
-      await asTenant(() => service.pay(LISTING, '0712345678'));
+      const { service, listing, getPayment } = build();
+      await asTenant(() => service.pay([L1], '0712345678'));
       await service.handleTumaCallback(ORG, PAYMENT, token(), { status: 'failed', merchant_request_id: 'req-1', result_code: 1032 });
       expect(getPayment()?.status).toBe('FAILED');
-      expect(getListing().paidUntil).toBeNull();
+      expect(listing(L1).paidUntil).toBeNull();
     });
   });
 });

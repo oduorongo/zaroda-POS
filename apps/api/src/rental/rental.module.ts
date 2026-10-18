@@ -31,6 +31,7 @@ import { RentalListingsService } from './rental-listings.service';
 import { PublicHousesService } from './public-houses.service';
 import { PublicHousesController, RentalListingCallbackController, RentalListingsController } from './rental-listings.controller';
 import { RentalListingPaymentsService } from './rental-listing-payments.service';
+import { RentalListingAdminService } from './rental-listing-admin.service';
 
 /**
  * Rental / property management for landlords (industryType "RENTAL").
@@ -53,12 +54,13 @@ import { RentalListingPaymentsService } from './rental-listing-payments.service'
     }),
   ],
   // Platform admin records and waives the landlords' ZARODA invoices.
-  exports: [RentalPlatformPaymentsService],
+  exports: [RentalPlatformPaymentsService, RentalListingAdminService],
   controllers: [RentalPlatformCallbackController, RentalSubscriptionController, RentalController, RentalListingsController, RentalListingCallbackController, PublicHousesController, RentalTenantAuthController, RentalTenantPortalController, RentalOpsController, RentalMpesaController, RentalCallbackController],
   providers: [
     RentalService,
     RentalListingsService,
     RentalListingPaymentsService,
+    RentalListingAdminService,
     PublicHousesService,
     ObjectStorageService,
     RentalPlansService,

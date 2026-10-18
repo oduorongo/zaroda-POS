@@ -10,10 +10,15 @@ const DAY_MS = 86_400_000;
  * LIVE    - switched on and paid up.
  * EXPIRED - was paid for, the 30 days have run out.
  * PAUSED  - the landlord switched it off (paid time is kept and runs on).
+ * BLOCKED - ZARODA took it down; the landlord cannot switch it back on.
  */
-export type ListingState = 'UNPAID' | 'LIVE' | 'EXPIRED' | 'PAUSED';
+export type ListingState = 'UNPAID' | 'LIVE' | 'EXPIRED' | 'PAUSED' | 'BLOCKED';
 
-export function listingState(l: { isActive: boolean; paidUntil: Date | null }, now: Date = new Date()): ListingState {
+/** Most adverts one M-Pesa payment may cover. */
+export const MAX_ADVERTS_PER_PAYMENT = 30;
+
+export function listingState(l: { isActive: boolean; paidUntil: Date | null; blockedAt?: Date | null }, now: Date = new Date()): ListingState {
+  if (l.blockedAt) return 'BLOCKED';
   if (!l.isActive) return 'PAUSED';
   if (!l.paidUntil) return 'UNPAID';
   return l.paidUntil.getTime() > now.getTime() ? 'LIVE' : 'EXPIRED';

@@ -1,5 +1,5 @@
 import { Transform } from 'class-transformer';
-import { IsBoolean, IsIn, IsNumber, IsOptional, IsString, Matches, Max, MaxLength, Min, MinLength } from 'class-validator';
+import { ArrayMaxSize, ArrayMinSize, IsArray, IsBoolean, IsIn, IsNumber, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min, MinLength } from 'class-validator';
 
 export const LISTING_UNIT_TYPES = [
   'BEDSITTER',
@@ -72,4 +72,27 @@ export class PayListingDto {
   @IsString()
   @MaxLength(20)
   phone!: string;
+}
+
+/** Pay once for several adverts. */
+export class PayListingsDto {
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(30)
+  @IsUUID('all', { each: true })
+  listingIds!: string[];
+
+  @Transform(trim)
+  @IsString()
+  @MaxLength(20)
+  phone!: string;
+}
+
+/** Why ZARODA is taking an advert down - shown to the landlord. */
+export class BlockListingDto {
+  @Transform(trim)
+  @IsString()
+  @MinLength(3)
+  @MaxLength(300)
+  reason!: string;
 }

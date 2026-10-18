@@ -2558,6 +2558,9 @@ model RentalListing {
   confirmedAt    DateTime @default(now())
   /// The advert is public until this moment. Each KES 100 payment pushes it 30 days on; null = never paid yet.
   paidUntil      DateTime?
+  /// Set when ZARODA takes the advert down (abuse, fake listing...). While set the landlord cannot switch it back on.
+  blockedReason  String?
+  blockedAt      DateTime?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
@@ -2575,7 +2578,9 @@ model RentalListing {
 model RentalListingPayment {
   id                    String    @id @default(uuid())
   organizationId        String
-  listingId             String
+  listingId             String // the first advert paid for (kept for the foreign key)
+  /// Every advert this one payment covers - a landlord can pay once for several units (KES 100 each).
+  listingIds            String[] @default([])
   amount                Int
   phone                 String
   status                String    @default("PENDING") // PENDING | PAID | FAILED

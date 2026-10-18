@@ -21,7 +21,7 @@ import type { Request } from 'express';
 import { Public } from '../auth/public.decorator';
 import { Roles } from '../auth/roles.decorator';
 import { MAX_IMAGE_BYTES } from '../catalog/product-images.service';
-import { PayListingDto, SetListingActiveDto, UpsertListingDto } from './dto/rental-listing.dto';
+import { PayListingDto, PayListingsDto, SetListingActiveDto, UpsertListingDto } from './dto/rental-listing.dto';
 import { RentalListingPaymentsService } from './rental-listing-payments.service';
 import { PublicHousesService } from './public-houses.service';
 import { RentalListingsService } from './rental-listings.service';
@@ -63,7 +63,15 @@ export class RentalListingsController {
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @Post('listings/:id/pay')
   pay(@Param('id', ParseUUIDPipe) id: string, @Body() dto: PayListingDto) {
-    return this.payments.pay(id, dto.phone);
+    return this.payments.pay([id], dto.phone);
+  }
+
+  /** One M-Pesa prompt for KES 100 per advert, for several adverts at once. */
+  @Roles(Role.MANAGER, Role.OWNER)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @Post('listings/pay')
+  payMany(@Body() dto: PayListingsDto) {
+    return this.payments.pay(dto.listingIds, dto.phone);
   }
 
   /** Backup for a callback that never arrived: a rate-limited, paid Tuma status check. */
