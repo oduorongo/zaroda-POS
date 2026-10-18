@@ -194,3 +194,67 @@ export type KitchenStage = "WAITING" | "SENT" | "PREPARING" | "READY" | "SERVED"
 
 /** A diner's order, with how far the kitchen has got. */
 export type TableOrder = Order & { kitchen: { stage: KitchenStage; total: number; served: number; ready: number; inProgress: number } };
+
+// ── Hotels ───────────────────────────────────────────────────────────────
+
+export interface HotelSummary {
+  slug: string;
+  name: string;
+  description: string | null;
+  county: string | null;
+  subCounty: string | null;
+  coverImage: string | null;
+  fromPrice: number;
+  roomTypeCount: number;
+}
+
+export interface RoomOffer {
+  id: string;
+  name: string;
+  description: string | null;
+  amenities: string[];
+  pricePerNight: number;
+  maxGuests: number;
+  depositPercent: number;
+  images: string[];
+  /** Null until dates are chosen. */
+  roomsLeft: number | null;
+  quote: { nights: number; total: number; deposit: number } | null;
+}
+
+export interface HotelDetail {
+  slug: string;
+  name: string;
+  description: string | null;
+  contactPhone: string | null;
+  location: { branchName: string; county: string | null; subCounty: string | null } | null;
+  stay: { checkIn: string; checkOut: string; nights: number } | null;
+  roomTypes: RoomOffer[];
+}
+
+export type BookingStatus = "PENDING_PAYMENT" | "CONFIRMED" | "CHECKED_IN" | "CHECKED_OUT" | "CANCELLED" | "EXPIRED" | "NO_SHOW";
+
+export interface RoomBooking {
+  id: string;
+  bookingNumber: string;
+  status: BookingStatus;
+  hotel: { name: string; slug: string };
+  roomTypeName: string;
+  checkIn: string;
+  checkOut: string;
+  nights: number;
+  rooms: number;
+  guests: number;
+  guestName: string;
+  guestPhone: string;
+  notes: string | null;
+  total: number;
+  depositAmount: number;
+  balanceDue: number;
+  paymentPhone: string;
+  paymentDeadline: string;
+  mpesaReceiptNumber: string | null;
+  paidAt: string | null;
+  lastPaymentError: string | null;
+  cancelReason: string | null;
+}

@@ -72,6 +72,11 @@ export function Nav({ session }: { session: Session }) {
           {verticalLink.label}
         </RibbonLink>
       )}
+      {session.industryType === "RESTAURANT" && !caretaker && (
+        <RibbonLink href="/rooms" LinkComponent={Link} active={!!pathname?.startsWith("/rooms")} className="text-amber-300">
+          Rooms
+        </RibbonLink>
+      )}
       <a
         href={MARKETING_URL}
         target="_blank"

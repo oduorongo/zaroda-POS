@@ -15,6 +15,9 @@ export default function Header() {
       <RibbonLink href="/" LinkComponent={Link}>
         Shops
       </RibbonLink>
+      <RibbonLink href="/hotels" LinkComponent={Link}>
+        Hotels
+      </RibbonLink>
       <RibbonLink href="/houses" LinkComponent={Link}>
         Houses to let
       </RibbonLink>
