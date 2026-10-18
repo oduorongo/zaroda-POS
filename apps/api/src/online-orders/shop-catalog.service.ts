@@ -186,6 +186,47 @@ export class ShopCatalogService {
     }, { timeout: 30_000, maxWait: 15_000 });
   }
 
+  /**
+   * Runs `fn` once for every live shop, inside that shop's own tenant context, and collects what it returns (null =
+   * leave this shop out). The same rules as the shop directory: payments fully set up, and not closed for unpaid commission.
+   */
+  async mapLiveShops<T>(
+    fn: (
+      tx: TenantTx,
+      shop: { organizationId: string; slug: string; displayName: string; description: string | null; contactPhone: string | null; fulfilmentBranchId: string },
+    ) => Promise<T | null>,
+  ): Promise<T[]> {
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT set_config('app.public_catalog', 'on', true)`;
+      const stores = await tx.onlineStore.findMany({
+        where: {
+          slug: { not: null },
+          displayName: { not: null },
+          fulfilmentBranchId: { not: null },
+          OR: [{ tumaApiKeyEncrypted: { not: null } }, { mpesaConsumerKeyEncrypted: { not: null } }],
+        },
+        orderBy: { displayName: 'asc' },
+        take: MAX_DIRECTORY_SHOPS,
+      });
+      const results: T[] = [];
+      for (const store of stores) {
+        if (!paymentsReady(store)) continue;
+        await tx.$executeRaw`SELECT set_config('app.current_tenant', ${store.organizationId}, true)`;
+        if (await hasOverdueCommission(tx)) continue;
+        const result = await fn(tx, {
+          organizationId: store.organizationId,
+          slug: store.slug!,
+          displayName: store.displayName!,
+          description: store.description,
+          contactPhone: store.contactPhone,
+          fulfilmentBranchId: store.fulfilmentBranchId!,
+        });
+        if (result !== null) results.push(result);
+      }
+      return results;
+    }, { timeout: 30_000, maxWait: 15_000 });
+  }
+
   async getShop(slug: string) {
     return this.runForShop(slug, async (tx, shop) => {
       const products = await this.sellableProducts(tx);

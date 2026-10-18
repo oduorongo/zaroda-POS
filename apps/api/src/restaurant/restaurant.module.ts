@@ -70,6 +70,18 @@ export class RestaurantModule implements OnModuleInit {
           description: 'Prep areas (Grill, Bar, Cold...) orders route to',
         },
         {
+          tableName: 'hotel_room_types',
+          description: 'Hotel room types (a kind of room, its nightly price and how many there are) advertised on the marketplace',
+        },
+        {
+          tableName: 'hotel_room_photos',
+          description: 'Photos of a hotel room type',
+        },
+        {
+          tableName: 'room_bookings',
+          description: 'A guest booking of one or more rooms for dates, with the deposit paid online',
+        },
+        {
           tableName: 'restaurant_dishes',
           description: 'Which kitchen station prepares each dish, for orders from a table QR code',
         },

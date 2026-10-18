@@ -46,5 +46,7 @@ import { ShopCatalogService } from './shop-catalog.service';
     OnlineOrdersController,
   ],
   providers: [BuyerJwtStrategy, BuyerAuthService, OnlineOrdersService, ShopCatalogService, ObjectStorageService],
+  // The hotel module reads live shops (their payment setup and location) through the same catalog service.
+  exports: [ShopCatalogService],
 })
 export class OnlineOrdersModule {}

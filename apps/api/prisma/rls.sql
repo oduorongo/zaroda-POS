@@ -942,3 +942,30 @@ DROP POLICY IF EXISTS tenant_isolation ON restaurant_dishes;
 CREATE POLICY tenant_isolation ON restaurant_dishes
   USING ("organizationId" = current_setting('app.current_tenant', true))
   WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+-- ── Hotel rooms ──────────────────────────────────────────────────────────────
+-- Room types, their photos and bookings are ordinary tenant-isolated tables. The public Hotels pages and a guest's
+-- booking page read them inside that business's own tenant context (resolved from the shop's public link, or from the
+-- organisation id inside the guest's secret), so no public exception is needed.
+ALTER TABLE hotel_room_types ENABLE ROW LEVEL SECURITY;
+ALTER TABLE hotel_room_types FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON hotel_room_types;
+CREATE POLICY tenant_isolation ON hotel_room_types
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+ALTER TABLE hotel_room_photos ENABLE ROW LEVEL SECURITY;
+ALTER TABLE hotel_room_photos FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON hotel_room_photos;
+CREATE POLICY tenant_isolation ON hotel_room_photos
+  USING (EXISTS (SELECT 1 FROM hotel_room_types t WHERE t.id = hotel_room_photos."roomTypeId"
+                 AND t."organizationId" = current_setting('app.current_tenant', true)))
+  WITH CHECK (EXISTS (SELECT 1 FROM hotel_room_types t WHERE t.id = hotel_room_photos."roomTypeId"
+                 AND t."organizationId" = current_setting('app.current_tenant', true)));
+
+ALTER TABLE room_bookings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE room_bookings FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON room_bookings;
+CREATE POLICY tenant_isolation ON room_bookings
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));

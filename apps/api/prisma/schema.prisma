@@ -71,6 +71,8 @@ model Organization {
   rentalListings            RentalListing[]
   rentalListingPayments     RentalListingPayment[]
   restaurantDishes          RestaurantDish[]
+  hotelRoomTypes            HotelRoomType[]
+  roomBookings              RoomBooking[]
   rentalTenants             RentalTenant[]
   rentalLeases              RentalLease[]
   rentalInvoices            RentalInvoice[]
@@ -1340,6 +1342,116 @@ model KitchenStation {
   @@unique([branchId, name])
   @@index([organizationId])
   @@map("kitchen_stations")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Hotel rooms (a restaurant business that also lets rooms). A room TYPE is a kind of room with a nightly price and a
+// number of identical rooms; availability is counted per night from the bookings, so the hotel assigns the actual
+// room at check-in. Guests book on the marketplace with no account and pay a deposit by M-Pesa to the hotel's own
+// shop payment account; the balance is settled at the hotel.
+// ─────────────────────────────────────────────────────────────────────────
+model HotelRoomType {
+  id             String   @id @default(uuid())
+  organizationId String
+  name           String
+  description    String?
+  /// Comma-separated, e.g. "WiFi, Breakfast included, Hot shower".
+  amenities      String?
+  pricePerNight  Decimal  @db.Decimal(12, 2)
+  maxGuests      Int      @default(2)
+  /// How many identical rooms of this type the hotel has.
+  quantity       Int      @default(1)
+  /// The deposit taken online, as a percent of the whole stay (the rest is paid at the hotel).
+  depositPercent Int      @default(30)
+  /// Advertised on the marketplace's Hotels page.
+  isListed       Boolean  @default(false)
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  photos       HotelRoomPhoto[]
+  bookings     RoomBooking[]
+
+  @@index([organizationId])
+  @@map("hotel_room_types")
+}
+
+model HotelRoomPhoto {
+  id         String   @id @default(uuid())
+  roomTypeId String
+  /// Object key in the Blob store: orgs/<organizationId>/rooms/<roomTypeId>/<uuid>.<ext>
+  storageKey String   @unique
+  sortOrder  Int      @default(0)
+  createdAt  DateTime @default(now())
+
+  roomType HotelRoomType @relation(fields: [roomTypeId], references: [id], onDelete: Cascade)
+
+  @@index([roomTypeId])
+  @@map("hotel_room_photos")
+}
+
+enum RoomBookingStatus {
+  PENDING_PAYMENT // created, M-Pesa deposit prompt sent
+  CONFIRMED // deposit paid - the rooms are held for the guest
+  CHECKED_IN
+  CHECKED_OUT
+  CANCELLED
+  EXPIRED // the deposit was never paid in time
+  NO_SHOW
+}
+
+model RoomBooking {
+  id             String            @id @default(uuid())
+  organizationId String
+  roomTypeId     String
+  /// Short code the guest quotes at the front desk, e.g. "ZB-7K3Q9P".
+  bookingNumber  String            @unique
+  status         RoomBookingStatus @default(PENDING_PAYMENT)
+  guestName      String
+  guestPhone     String
+  guestEmail     String?
+  guests         Int
+  rooms          Int               @default(1)
+  checkIn        DateTime          @db.Date
+  checkOut       DateTime          @db.Date
+  nights         Int
+  notes          String?
+  // Snapshots, so the booking reads the same after the hotel renames or reprices a room.
+  hotelName      String
+  hotelSlug      String
+  roomTypeName   String
+  pricePerNight  Decimal           @db.Decimal(12, 2)
+  total          Decimal           @db.Decimal(12, 2)
+  /// What is paid online now; the balance (total - deposit) is paid at the hotel.
+  depositAmount  Int
+  commissionRate Decimal           @db.Decimal(5, 4)
+  /// Recorded when the guest checks out (rate x deposit paid online). Not yet rolled into the monthly commission invoices.
+  commissionAmount Decimal?        @db.Decimal(12, 2)
+
+  paymentPhone          String
+  paymentDeadline       DateTime
+  tumaMerchantRequestId String?
+  paymentAttemptedAt    DateTime?
+  mpesaReceiptNumber    String?   @unique
+  paidAt                DateTime?
+  lastPaymentError      String?
+  // No account behind a booking: the guest's browser holds a secret and only its hash is kept.
+  guestTokenHash        String
+
+  checkedInAt  DateTime?
+  checkedOutAt DateTime?
+  cancelledAt  DateTime?
+  cancelReason String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  roomType     HotelRoomType @relation(fields: [roomTypeId], references: [id])
+
+  @@index([organizationId, status])
+  @@index([roomTypeId, checkIn, checkOut])
+  @@map("room_bookings")
 }
 
 // Which kitchen station prepares a dish. A till order picks the station per line; an order from a table QR code
