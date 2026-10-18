@@ -262,3 +262,21 @@ export interface RoomBooking {
   lastPaymentError: string | null;
   cancelReason: string | null;
 }
+
+// ── Table reservations ───────────────────────────────────────────────────
+
+export type ReservationStatus = "REQUESTED" | "CONFIRMED" | "DECLINED" | "CANCELLED" | "SEATED" | "NO_SHOW";
+
+export interface Reservation {
+  id: string;
+  reservationNumber: string;
+  status: ReservationStatus;
+  shop: { name: string; slug: string };
+  guestName: string;
+  partySize: number;
+  date: string;
+  time: string;
+  notes: string | null;
+  restaurantNote: string | null;
+  tableLabel: string | null;
+}

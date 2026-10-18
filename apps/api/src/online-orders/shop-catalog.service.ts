@@ -25,6 +25,8 @@ export interface LiveShop {
   hotelBlocked: boolean;
   /** ZARODA has switched off ordering from table QR codes for this business. */
   tableOrderingBlocked: boolean;
+  /** The restaurant takes table reservation requests from the marketplace. */
+  reservationsEnabled: boolean;
 }
 
 /**
@@ -73,6 +75,7 @@ export class ShopCatalogService {
         paymentGateway: store.paymentGateway,
         hotelBlocked: store.hotelBlockedAt !== null,
         tableOrderingBlocked: store.tableOrderingBlockedAt !== null,
+        reservationsEnabled: store.reservationsEnabled,
       });
     }, TX_OPTIONS);
   }

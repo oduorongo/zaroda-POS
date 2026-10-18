@@ -1,4 +1,4 @@
-import type { Buyer, BuyerDelivery, HotelDetail, HotelSummary, HouseDetail, HouseSummary, MyJob, RoomBooking, TableInfo, TableOrder, OpenJob, Order, OrderCheck, Rider, Shop, ShopSummary, VehicleType } from "./types";
+import type { Buyer, BuyerDelivery, Reservation, HotelDetail, HotelSummary, HouseDetail, HouseSummary, MyJob, RoomBooking, TableInfo, TableOrder, OpenJob, Order, OrderCheck, Rider, Shop, ShopSummary, VehicleType } from "./types";
 
 export class ApiError extends Error {
   status: number;
@@ -142,6 +142,30 @@ export const checkBooking = (id: string, token: string) =>
     method: "POST",
     body: JSON.stringify({ token }),
   });
+
+// ── Table reservations (a guest asks for a table; the restaurant confirms or declines) ──
+
+export const getReservationInfo = (slug: string) =>
+  request<{ enabled: boolean; restaurant: string }>(`/public/shops/${encodeURIComponent(slug)}/reservations/info`, { cache: "no-store" });
+
+export interface CreateReservationInput {
+  name: string;
+  phone: string;
+  partySize: number;
+  date: string;
+  time: string;
+  notes?: string;
+}
+
+/** The request, plus the secret (guestToken) that opens its page. */
+export const createReservation = (slug: string, input: CreateReservationInput) =>
+  request<Reservation & { guestToken: string }>(`/public/shops/${encodeURIComponent(slug)}/reservations`, { method: "POST", body: JSON.stringify(input) });
+
+export const getReservation = (id: string, token: string) =>
+  request<Reservation>(`/public/reservations/${encodeURIComponent(id)}?k=${encodeURIComponent(token)}`, { cache: "no-store" });
+
+export const cancelReservation = (id: string, token: string) =>
+  request<Reservation>(`/public/reservations/${encodeURIComponent(id)}/cancel`, { method: "POST", body: JSON.stringify({ token }) });
 
 // ── Buyer ────────────────────────────────────────────────────────────────
 

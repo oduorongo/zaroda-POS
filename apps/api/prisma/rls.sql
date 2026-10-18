@@ -969,3 +969,13 @@ DROP POLICY IF EXISTS tenant_isolation ON room_bookings;
 CREATE POLICY tenant_isolation ON room_bookings
   USING ("organizationId" = current_setting('app.current_tenant', true))
   WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+-- Table reservations: tenant-isolated like every restaurant table. The marketplace form and a guest's own page read and
+-- write them inside the restaurant's own tenant context (found from the shop's public link, or from the organisation id inside
+-- the guest's secret), so no public exception is needed.
+ALTER TABLE table_reservations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE table_reservations FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON table_reservations;
+CREATE POLICY tenant_isolation ON table_reservations
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));

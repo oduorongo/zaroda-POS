@@ -82,6 +82,10 @@ export class RestaurantModule implements OnModuleInit {
           description: 'A guest booking of one or more rooms for dates, with the deposit paid online',
         },
         {
+          tableName: 'table_reservations',
+          description: 'A guest\'s request for a table at a date and time, confirmed or declined by the restaurant',
+        },
+        {
           tableName: 'restaurant_dishes',
           description: 'Which kitchen station prepares each dish, for orders from a table QR code',
         },
