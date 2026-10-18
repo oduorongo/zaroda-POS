@@ -29,7 +29,8 @@ import { RentalSchedulerService } from './rental-scheduler.service';
 import { ObjectStorageService } from '../common/storage/object-storage.service';
 import { RentalListingsService } from './rental-listings.service';
 import { PublicHousesService } from './public-houses.service';
-import { PublicHousesController, RentalListingsController } from './rental-listings.controller';
+import { PublicHousesController, RentalListingCallbackController, RentalListingsController } from './rental-listings.controller';
+import { RentalListingPaymentsService } from './rental-listing-payments.service';
 
 /**
  * Rental / property management for landlords (industryType "RENTAL").
@@ -53,10 +54,11 @@ import { PublicHousesController, RentalListingsController } from './rental-listi
   ],
   // Platform admin records and waives the landlords' ZARODA invoices.
   exports: [RentalPlatformPaymentsService],
-  controllers: [RentalPlatformCallbackController, RentalSubscriptionController, RentalController, RentalListingsController, PublicHousesController, RentalTenantAuthController, RentalTenantPortalController, RentalOpsController, RentalMpesaController, RentalCallbackController],
+  controllers: [RentalPlatformCallbackController, RentalSubscriptionController, RentalController, RentalListingsController, RentalListingCallbackController, PublicHousesController, RentalTenantAuthController, RentalTenantPortalController, RentalOpsController, RentalMpesaController, RentalCallbackController],
   providers: [
     RentalService,
     RentalListingsService,
+    RentalListingPaymentsService,
     PublicHousesService,
     ObjectStorageService,
     RentalPlansService,
@@ -99,6 +101,7 @@ export class RentalModule implements OnModuleInit {
         { tableName: 'rental_platform_invoices', description: 'What ZARODA bills the landlord for the rental plan (flat fee or 1% collection fee)' },
         { tableName: 'rental_caretaker_properties', description: 'Which properties each caretaker may work on' },
         { tableName: 'rental_listings', description: 'Public "Houses to let" adverts for vacant units, with their own area, rent and contact details' },
+        { tableName: 'rental_listing_payments', description: 'KES 100 M-Pesa payments by landlords to advertise a unit for 30 days' },
         { tableName: 'rental_listing_photos', description: 'Photos on a Houses to let advert' },
         { tableName: 'rental_payment_allocations', description: 'Which invoice each payment was applied to' },
       ],

@@ -893,7 +893,7 @@ CREATE POLICY tenant_phone_access ON rental_tenants
 -- A landlord's advert for a vacant unit, plus its photos. Tenant-isolated like every rental table, with ONE
 -- deliberate, narrow public exception: the public "Houses to let" pages list adverts across all landlords, so a
 -- request opts in with set_config('app.public_listings', 'on', true) (only PublicHousesService does) and then sees
--- only adverts that are switched on AND confirmed "still available" within the last 30 days. SELECT only -
+-- only adverts that are switched on AND paid for (paidUntil in the future). SELECT only -
 -- permissive policies OR together, so this never widens what can be written. The advert carries its own area,
 -- rent and contact details, so no unit, property or tenant row is ever readable through it.
 ALTER TABLE rental_listings ENABLE ROW LEVEL SECURITY;
@@ -907,7 +907,7 @@ DROP POLICY IF EXISTS public_listings_read ON rental_listings;
 CREATE POLICY public_listings_read ON rental_listings
   FOR SELECT
   USING (current_setting('app.public_listings', true) = 'on'
-         AND "isActive" AND "confirmedAt" > now() - interval '30 days');
+         AND "isActive" AND "paidUntil" > now());
 
 ALTER TABLE rental_listing_photos ENABLE ROW LEVEL SECURITY;
 ALTER TABLE rental_listing_photos FORCE ROW LEVEL SECURITY;
@@ -924,3 +924,13 @@ CREATE POLICY public_listings_read ON rental_listing_photos
   FOR SELECT
   USING (current_setting('app.public_listings', true) = 'on'
          AND EXISTS (SELECT 1 FROM rental_listings l WHERE l.id = rental_listing_photos."listingId"));
+
+-- A landlord's KES 100 advert payments (to ZARODA's Tuma account). Tenant-isolated; the public never reads them.
+-- Tuma's callback arrives with no signed-in user and sets app.current_tenant from the organisation id in its
+-- HMAC-protected URL, like the rental invoice callback.
+ALTER TABLE rental_listing_payments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE rental_listing_payments FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON rental_listing_payments;
+CREATE POLICY tenant_isolation ON rental_listing_payments
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
