@@ -1,4 +1,4 @@
-import { bookingHoldsRooms, depositFor, eachNight, nightsBetween, parseDay, roomsTaken, stayProblem, stayTotal, todayInKenya } from './room-availability.util';
+import { autoCompleteCutoff, bookingHoldsRooms, checkedOutAtFor, depositFor, eachNight, nightsBetween, parseDay, roomsTaken, stayProblem, stayTotal, todayInKenya } from './room-availability.util';
 
 const d = (s: string) => parseDay(s) as Date;
 
@@ -95,5 +95,22 @@ describe('money', () => {
     expect(depositFor(10000, 100)).toBe(10000);
     expect(depositFor(10000, 250)).toBe(10000);
     expect(depositFor(0.5, 50)).toBe(1);
+  });
+});
+
+describe('automatic completion of stays', () => {
+  it('waits two full days after the check-out date', () => {
+    // Today in Kenya is 2026-11-10: a stay that ended 8 Nov is due, one that ended 9 Nov still has its grace.
+    const now = new Date('2026-11-10T08:00:00Z');
+    expect(autoCompleteCutoff(now).toISOString().slice(0, 10)).toBe('2026-11-08');
+  });
+
+  it('follows Kenya\'s date, which changes at 21:00 UTC', () => {
+    expect(autoCompleteCutoff(new Date('2026-11-10T20:59:00Z')).toISOString().slice(0, 10)).toBe('2026-11-08');
+    expect(autoCompleteCutoff(new Date('2026-11-10T21:00:00Z')).toISOString().slice(0, 10)).toBe('2026-11-09');
+  });
+
+  it('records the check-out at midday Kenya time on the check-out date, so it falls in the right month', () => {
+    expect(checkedOutAtFor(d('2026-10-31')).toISOString()).toBe('2026-10-31T09:00:00.000Z');
   });
 });

@@ -61,6 +61,8 @@ const day = (offset) => new Date(Date.now() + 3 * 3600_000 + offset * 86_400_000
   const store = (await api('GET', '/online-store/me', { token: owner })).json;
   check('the shop is live with payments connected (the hotel uses its payment account)', store.isPublished && store.tumaConnected, store);
   const slug = store.slug;
+  // A run that stopped half-way (or an earlier test) may have left room types on the marketplace: start from a clean shop.
+  await sql.query(`UPDATE hotel_room_types SET "isListed" = false WHERE "organizationId" = (SELECT "organizationId" FROM online_stores WHERE slug = $1)`, [slug]);
   const dto = { name: `Deluxe-${tag}`, description: 'Sea view, king bed', amenities: 'WiFi, Breakfast, Hot shower', pricePerNight: 4000, maxGuests: 2, quantity: 2, depositPercent: 30, isListed: true };
   const created = await api('POST', '/hotel/room-types', { token: owner, body: dto });
   const roomType = created.json;
@@ -219,6 +221,52 @@ const day = (offset) => new Date(Date.now() + 3 * 3600_000 + offset * 86_400_000
   check('running it again never bills the booking twice', (run2.status === 201 || run2.status === 200) && Number(again.n) === Number(after.n) && Number(again.c) === Number(after.c), { after, again });
   const commissionPage = await api('GET', '/online-store/me/commission', { token: owner });
   check('the hotel sees the invoice on its commission page', commissionPage.status === 200 && JSON.stringify(commissionPage.json).includes(after.id), commissionPage.status);
+
+  section('12. Stays nobody checked out complete by themselves');
+  const auto = (await api('POST', '/hotel/room-types', { token: owner, body: { name: `Auto-${tag}`, pricePerNight: 3000, maxGuests: 2, quantity: 6, depositPercent: 30, isListed: true } })).json;
+  const makeBooking = async (name, phone, pay) => {
+    const b = await api('POST', `/public/hotels/${slug}/bookings`, { body: { roomTypeId: auto.id, checkIn: day(80), checkOut: day(81), rooms: 1, guests: 1, name, phone } });
+    if (pay) {
+      const push = (await mock('GET', '/_test/pushes')).json.filter((x) => x.phone === `254${phone.slice(1)}`).pop();
+      await mock('POST', `/_test/pay/${push.merchant_request_id}`);
+    }
+    return b.json;
+  };
+  const oldNotCheckedIn = await makeBooking('Never pressed check-in', '0711000001', true);
+  const oldInHouse = await makeBooking('Never pressed check-out', '0711000002', true);
+  const justEnded = await makeBooking('Left yesterday', '0711000003', true);
+  const future = await makeBooking('Arrives later', '0711000004', true);
+  const noShow = await makeBooking('Marked no-show', '0711000005', true);
+  const unpaid = await makeBooking('Never paid', '0711000006', false);
+  await api('POST', `/hotel/bookings/${oldInHouse.id}/check-in`, { token: owner });
+  await api('POST', `/hotel/bookings/${noShow.id}/no-show`, { token: owner });
+  const setDates = (id, inDay, outDay) => sql.query(`UPDATE room_bookings SET "checkIn" = $1::date, "checkOut" = $2::date WHERE id = $3`, [inDay, outDay, id]);
+  await setDates(oldNotCheckedIn.id, day(-6), day(-4)); // ended 4 days ago
+  await setDates(oldInHouse.id, day(-8), day(-5)); // ended 5 days ago
+  await setDates(justEnded.id, day(-2), day(-1)); // ended yesterday: still inside the grace period
+  await setDates(noShow.id, day(-7), day(-5)); // no-show: never billed
+  await setDates(unpaid.id, day(-7), day(-5)); // never paid: nothing was ever owed
+  const state = async (id) => (await sql.query(`SELECT status, "commissionAmount" c, "checkedOutAt"::text at FROM room_bookings WHERE id = $1`, [id])).rows[0];
+  check('the six bookings start as expected', (await state(oldNotCheckedIn.id)).status === 'CONFIRMED' && (await state(oldInHouse.id)).status === 'CHECKED_IN' && (await state(unpaid.id)).status === 'PENDING_PAYMENT');
+
+  const noAdmin = await api('POST', '/platform-admin/room-bookings/complete-overdue');
+  check('only the platform admin can run it by hand', noAdmin.status === 401, noAdmin);
+  const run = await api('POST', '/platform-admin/room-bookings/complete-overdue', { token: admin });
+  check('the run completes the two stays that ended long ago', (run.status === 201 || run.status === 200) && run.json.completed >= 2, run);
+  const a = await state(oldNotCheckedIn.id);
+  const b = await state(oldInHouse.id);
+  check('a paid booking never checked in or out is completed, with 3% of the whole KES 3,000 stay (KES 90)', a.status === 'CHECKED_OUT' && Math.abs(Number(a.c) - 90) < 0.001, a);
+  check('a guest checked in but never out is completed the same way', b.status === 'CHECKED_OUT' && Math.abs(Number(b.c) - 90) < 0.001, b);
+  check('the check-out is dated midday on the real check-out day (so it lands in the right month)', a.at.startsWith(day(-4)) && /09:00:00/.test(a.at), a);
+  check('a stay that ended yesterday still has its grace period', (await state(justEnded.id)).status === 'CONFIRMED');
+  check('a booking for the future is left alone', (await state(future.id)).status === 'CONFIRMED');
+  check('a no-show is left a no-show (never billed)', (await state(noShow.id)).status === 'NO_SHOW');
+  check('a booking that was never paid is left alone', (await state(unpaid.id)).status === 'PENDING_PAYMENT');
+  const secondRun = await api('POST', '/platform-admin/room-bookings/complete-overdue', { token: admin });
+  check('running it again changes nothing', secondRun.json.completed === 0 && (await state(oldNotCheckedIn.id)).status === 'CHECKED_OUT', secondRun);
+  const billable = (await sql.query(`SELECT count(*)::int n FROM room_bookings WHERE id = ANY($1) AND status = 'CHECKED_OUT' AND "commissionInvoiceId" IS NULL AND "paidAt" IS NOT NULL`, [[oldNotCheckedIn.id, oldInHouse.id]])).rows[0].n;
+  check('both are now waiting to be billed on the hotel\'s monthly commission invoice', billable === 2, billable);
+  await api('DELETE', `/hotel/room-types/${auto.id}`, { token: owner }); // has bookings, so it is archived and leaves the marketplace
 
   console.log(`\n${passed} checks passed${failures.length ? `, ${failures.length} FAILED:\n  - ${failures.join('\n  - ')}` : ' - ALL PASS'}`);
   await sql.end();

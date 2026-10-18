@@ -80,3 +80,16 @@ export function depositFor(total: number, percent: number): number {
   const wanted = Math.ceil((total * Math.min(100, Math.max(0, percent))) / 100 - 1e-9);
   return Math.max(1, Math.min(wanted, Math.ceil(total)));
 }
+
+/** Days after the check-out date before a stay nobody checked out completes by itself (time for the hotel to mark a no-show). */
+export const AUTO_COMPLETE_GRACE_DAYS = 2;
+
+/** Stays whose check-out date is on or before this day, and are still open and paid, are completed automatically. */
+export function autoCompleteCutoff(now: Date = new Date()): Date {
+  return new Date(todayInKenya(now).getTime() - AUTO_COMPLETE_GRACE_DAYS * DAY_MS);
+}
+
+/** The moment recorded as the check-out of an automatic completion: midday Kenya time on the check-out date, so the stay (and its commission) belongs to the month it really ended in. */
+export function checkedOutAtFor(checkOut: Date): Date {
+  return new Date(checkOut.getTime() + 9 * 3_600_000);
+}
