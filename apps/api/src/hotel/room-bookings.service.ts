@@ -137,6 +137,7 @@ export class RoomBookingsService {
     for (let attempt = 0; attempt < 3 && !created; attempt++) {
       try {
         created = await this.catalog.runForShop(slug, async (tx, shop) => {
+          if (shop.hotelBlocked) throw new NotFoundException('That room is no longer on offer');
           const roomType = await tx.hotelRoomType.findFirst({ where: { id: dto.roomTypeId, isListed: true, isActive: true } });
           if (!roomType) throw new NotFoundException('That room is no longer on offer');
           if (dto.rooms > roomType.quantity) throw new BadRequestException(`This hotel has ${roomType.quantity} ${roomType.name} room${roomType.quantity === 1 ? '' : 's'}`);

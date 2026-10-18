@@ -42,6 +42,7 @@ export class HotelPublicService {
     const stay = this.stay(query);
     const needle = query.area?.trim().toLowerCase().slice(0, 80) ?? '';
     const hotels = await this.catalog.mapLiveShops(async (tx, shop) => {
+      if (shop.hotelBlocked) return null;
       const roomTypes = await this.listedRoomTypes(tx);
       if (roomTypes.length === 0) return null;
       let available = roomTypes;
@@ -87,6 +88,7 @@ export class HotelPublicService {
   async getHotel(slug: string, query: StayQuery) {
     const stay = this.stay(query);
     return this.catalog.runForShop(slug, async (tx, shop) => {
+      if (shop.hotelBlocked) throw new NotFoundException('This hotel has no rooms on offer right now');
       const roomTypes = await this.listedRoomTypes(tx);
       if (roomTypes.length === 0) throw new NotFoundException('This hotel has no rooms on offer right now');
       const branch = await tx.branch.findUnique({ where: { id: shop.fulfilmentBranchId }, select: { name: true, county: true, subCounty: true } });

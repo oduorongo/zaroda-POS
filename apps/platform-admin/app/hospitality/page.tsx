@@ -2,10 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { apiGet, ApiError } from "../../lib/api";
+import { apiGet, apiPost, ApiError } from "../../lib/api";
 import { getSession, type Session } from "../../lib/auth";
 import { Nav } from "../../components/nav";
-import { Badge, EmptyState, LoadingState } from "@zaroda/ui";
+import { Badge, Button, EmptyState, Input, LoadingState, Modal, ModalFooter } from "@zaroda/ui";
 
 interface HotelRow {
   organizationId: string;
@@ -23,6 +23,10 @@ interface HotelRow {
   commissionRecorded: number;
   flaggedPayments: number;
   watch: string | null;
+  contactPhone: string | null;
+  whatsapp: string | null;
+  ownerEmail: string | null;
+  hotelBlockedReason: string | null;
 }
 interface RecentBooking {
   id: string;
@@ -58,6 +62,10 @@ interface RestaurantRow {
   notPaid: number;
   stuck: number;
   flagged: number;
+  contactPhone: string | null;
+  whatsapp: string | null;
+  ownerEmail: string | null;
+  hotelBlockedReason: string | null;
 }
 interface Attention {
   id: string;
@@ -79,6 +87,31 @@ const kes = (n: number) => `KES ${n.toLocaleString("en-KE")}`;
 const day = (iso: string) => new Date(iso).toLocaleDateString("en-KE");
 const STATUS_LABEL: Record<string, string> = { PENDING_PAYMENT: "Waiting for deposit", CONFIRMED: "Confirmed", CHECKED_IN: "In the house", CHECKED_OUT: "Checked out", CANCELLED: "Cancelled", EXPIRED: "Expired", NO_SHOW: "No-show" };
 
+/** Call, WhatsApp and email links for a business, so a problem can be raised in one tap. */
+function ContactLinks({ phone, whatsapp, email }: { phone: string | null; whatsapp: string | null; email: string | null }) {
+  const link = "text-xs underline";
+  if (!phone && !email) return <span className="text-xs text-secondary-500">No contact details</span>;
+  return (
+    <div className="flex flex-wrap gap-x-3 gap-y-1">
+      {phone && (
+        <a href={`tel:${whatsapp ? `+${whatsapp}` : phone}`} className={link}>
+          Call {phone}
+        </a>
+      )}
+      {whatsapp && (
+        <a href={`https://wa.me/${whatsapp}`} target="_blank" rel="noreferrer" className={link}>
+          WhatsApp
+        </a>
+      )}
+      {email && (
+        <a href={`mailto:${email}`} className={link}>
+          Email
+        </a>
+      )}
+    </div>
+  );
+}
+
 const Stat = ({ label, value, tone }: { label: string; value: string | number; tone?: string }) => (
   <div className="rounded-lg border border-border bg-surface p-3">
     <p className="text-xs text-secondary-500">{label}</p>
@@ -99,6 +132,11 @@ export default function HospitalityPage() {
   const [hotels, setHotels] = useState<HotelOverview | null>(null);
   const [orders, setOrders] = useState<OrderOverview | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [blocking, setBlocking] = useState<HotelRow | null>(null);
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [modalError, setModalError] = useState<string | null>(null);
 
   useEffect(() => {
     const s = getSession();
@@ -115,6 +153,39 @@ export default function HospitalityPage() {
     const load = tab === "hotels" ? apiGet<HotelOverview>(`/platform-admin/hotel-overview?days=${days}`).then(setHotels) : apiGet<OrderOverview>(`/platform-admin/table-order-overview?days=${days}`).then(setOrders);
     load.catch((err) => setError(err instanceof ApiError ? err.message : "Could not load this overview."));
   }, [session, tab, days]);
+
+  async function reload() {
+    setHotels(await apiGet<HotelOverview>(`/platform-admin/hotel-overview?days=${days}`));
+  }
+
+  async function takeOff() {
+    if (!blocking) return;
+    setBusy(true);
+    setModalError(null);
+    try {
+      await apiPost(`/platform-admin/organizations/${blocking.organizationId}/hotel/block`, { reason: reason.trim() });
+      setNotice(`${blocking.organizationName} is now off the marketplace. Its existing bookings are untouched.`);
+      setBlocking(null);
+      setReason("");
+      await reload();
+    } catch (err) {
+      setModalError(err instanceof ApiError ? err.message : "Could not take the hotel off the marketplace.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function restore(hotel: HotelRow) {
+    setError(null);
+    setNotice(null);
+    try {
+      await apiPost(`/platform-admin/organizations/${hotel.organizationId}/hotel/unblock`, {});
+      setNotice(`${hotel.organizationName} can list rooms on the marketplace again - it switches its room types back on itself.`);
+      await reload();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not restore the hotel.");
+    }
+  }
 
   if (!session) return null;
   const data = tab === "hotels" ? hotels : orders;
@@ -146,6 +217,7 @@ export default function HospitalityPage() {
         </div>
 
         {error && <p className="mt-4 rounded-md bg-error-50 p-3 text-sm text-error-700">{error}</p>}
+        {notice && <p className="mt-4 rounded-md bg-success-50 p-3 text-sm text-success-700">{notice}</p>}
         {!data && !error && <div className="mt-6"><LoadingState label="Loading..." /></div>}
 
         {tab === "hotels" && hotels && (
@@ -175,6 +247,8 @@ export default function HospitalityPage() {
                       <th className="p-3 text-right">To refund</th>
                       <th className="p-3 text-right">Commission</th>
                       <th className="p-3">Notes</th>
+                      <th className="p-3">Contact</th>
+                      <th className="p-3" />
                     </tr>
                   </thead>
                   <tbody>
@@ -197,6 +271,26 @@ export default function HospitalityPage() {
                         <td className="p-3 text-right font-mono">{kes(h.commissionRecorded)}</td>
                         <td className="p-3">
                           {h.watch && <Badge variant="error">On watch</Badge>} {h.flaggedPayments > 0 && <Badge variant="warning">{h.flaggedPayments} payment note{h.flaggedPayments === 1 ? "" : "s"}</Badge>}
+                          {h.hotelBlockedReason && (
+                            <>
+                              <Badge variant="neutral">Off the marketplace</Badge>
+                              <span className="mt-1 block max-w-[14rem] text-xs text-secondary-500">{h.hotelBlockedReason}</span>
+                            </>
+                          )}
+                        </td>
+                        <td className="p-3">
+                          <ContactLinks phone={h.contactPhone} whatsapp={h.whatsapp} email={h.ownerEmail} />
+                        </td>
+                        <td className="whitespace-nowrap p-3 text-right">
+                          {h.hotelBlockedReason ? (
+                            <Button size="sm" variant="secondary" onClick={() => void restore(h)}>
+                              Restore
+                            </Button>
+                          ) : (
+                            <Button size="sm" variant="danger" onClick={() => { setBlocking(h); setReason(""); setModalError(null); }}>
+                              Take off marketplace
+                            </Button>
+                          )}
                         </td>
                       </tr>
                     ))}
@@ -305,6 +399,7 @@ export default function HospitalityPage() {
                       <th className="p-3 text-right">Refunds owed</th>
                       <th className="p-3 text-right">Commission</th>
                       <th className="p-3">Notes</th>
+                      <th className="p-3">Contact</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -321,6 +416,9 @@ export default function HospitalityPage() {
                         <td className="p-3">
                           {r.stuck > 0 && <Badge variant="error">{r.stuck} stuck</Badge>} {r.flagged > 0 && <Badge variant="warning">{r.flagged} payment mismatch</Badge>}
                         </td>
+                        <td className="p-3">
+                          <ContactLinks phone={r.contactPhone} whatsapp={r.whatsapp} email={r.ownerEmail} />
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -329,6 +427,28 @@ export default function HospitalityPage() {
             )}
           </div>
         )}
+        <Modal open={!!blocking} onClose={() => setBlocking(null)} title={blocking ? `Take off the marketplace - ${blocking.organizationName}` : ""}>
+          {blocking && (
+            <div className="space-y-3">
+              <p className="text-sm">
+                The hotel disappears from the Hotels page straight away and cannot take new bookings, and it cannot list rooms again until you restore it. Bookings it already has are not touched - those guests have paid deposits, so contact the hotel about them.
+              </p>
+              <div>
+                <label className="mb-1.5 block text-sm text-secondary-500">Reason (the hotel sees this)</label>
+                <Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. Repeated complaints about cancelled bookings" />
+              </div>
+              {modalError && <p className="text-sm text-error-600">{modalError}</p>}
+            </div>
+          )}
+          <ModalFooter>
+            <Button variant="secondary" onClick={() => setBlocking(null)}>
+              Cancel
+            </Button>
+            <Button variant="danger" onClick={() => void takeOff()} disabled={busy || reason.trim().length < 3}>
+              {busy ? "Working..." : "Take off marketplace"}
+            </Button>
+          </ModalFooter>
+        </Modal>
       </main>
     </div>
   );

@@ -21,6 +21,8 @@ export interface LiveShop {
   deliveryEnabled: boolean;
   commissionRate: number | null;
   paymentGateway: string;
+  /** ZARODA has taken this business's hotel rooms off the marketplace. */
+  hotelBlocked: boolean;
 }
 
 /**
@@ -67,6 +69,7 @@ export class ShopCatalogService {
         deliveryEnabled: store.deliveryEnabled,
         commissionRate: store.commissionRate != null ? Number(store.commissionRate) : null,
         paymentGateway: store.paymentGateway,
+        hotelBlocked: store.hotelBlockedAt !== null,
       });
     }, TX_OPTIONS);
   }
@@ -193,7 +196,7 @@ export class ShopCatalogService {
   async mapLiveShops<T>(
     fn: (
       tx: TenantTx,
-      shop: { organizationId: string; slug: string; displayName: string; description: string | null; contactPhone: string | null; fulfilmentBranchId: string },
+      shop: { organizationId: string; slug: string; displayName: string; description: string | null; contactPhone: string | null; fulfilmentBranchId: string; hotelBlocked: boolean },
     ) => Promise<T | null>,
   ): Promise<T[]> {
     return this.prisma.$transaction(async (tx) => {
@@ -220,6 +223,7 @@ export class ShopCatalogService {
           description: store.description,
           contactPhone: store.contactPhone,
           fulfilmentBranchId: store.fulfilmentBranchId!,
+          hotelBlocked: store.hotelBlockedAt !== null,
         });
         if (result !== null) results.push(result);
       }

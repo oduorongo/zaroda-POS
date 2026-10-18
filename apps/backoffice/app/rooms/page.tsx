@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { apiGet } from "../../lib/api";
 import { getSession, clearSession, isBackofficeRole, type Session } from "../../lib/auth";
 import { Nav } from "../../components/nav";
 import { PageHeader } from "../../components/page-header";
@@ -24,6 +25,8 @@ export default function RoomsPage() {
   const router = useRouter();
   const [session, setSession] = useState<Session | null>(null);
   const [tab, setTab] = useState<Tab>("bookings");
+  // Set when Zaroda has taken this hotel off the marketplace: the reason is shown and rooms cannot be listed.
+  const [blockedReason, setBlockedReason] = useState<string | null>(null);
 
   useEffect(() => {
     const s = getSession();
@@ -41,6 +44,7 @@ export default function RoomsPage() {
       return;
     }
     setSession(s);
+    apiGet<{ blockedReason: string | null }>("/hotel/status").then((r) => setBlockedReason(r.blockedReason)).catch(() => undefined);
   }, [router]);
 
   if (!session) return null;
@@ -55,6 +59,11 @@ export default function RoomsPage() {
           <h1 className="text-xl font-bold">Hotel rooms</h1>
           <p className="text-sm text-secondary-500">Advertise your rooms on the marketplace, take bookings with an M-Pesa deposit, and check guests in and out.</p>
         </div>
+        {blockedReason && (
+          <p className="rounded-md bg-red-950 p-3 text-sm text-red-300">
+            Zaroda has taken your hotel off the marketplace: {blockedReason}. Guests cannot find or book your rooms until this is lifted. Your existing bookings carry on as normal. Please contact Zaroda.
+          </p>
+        )}
         {!isManager ? (
           <p className="rounded-lg border border-border bg-surface p-4 text-sm text-secondary-500">Owners and managers only. Ask your business owner or a manager to manage rooms.</p>
         ) : (

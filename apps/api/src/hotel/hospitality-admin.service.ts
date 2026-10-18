@@ -1,7 +1,8 @@
 import { Injectable } from '@nestjs/common';
-import { FulfilmentType, OnlineOrderStatus, Prisma, RoomBookingStatus } from '@prisma/client';
+import { ConflictException, NotFoundException } from '@nestjs/common';
+import { FulfilmentType, OnlineOrderStatus, Prisma, Role, RoomBookingStatus } from '@prisma/client';
 import { PrismaService } from '../common/prisma/prisma.service';
-import { roundMoney } from '../online-orders/online-orders.util';
+import { normalizeKenyanPhone, roundMoney } from '../online-orders/online-orders.util';
 import { percent, watchReason } from './hotel-watch.util';
 
 type Tx = Prisma.TransactionClient;
@@ -27,6 +28,42 @@ export class HospitalityAdminService {
     }, TX_OPTIONS);
   }
 
+  /** How to reach a business: the number on its shop and its owner's email, plus the hotel block state. */
+  private async contact(tx: Tx) {
+    const [store, owner] = await Promise.all([
+      tx.onlineStore.findFirst({ select: { contactPhone: true, hotelBlockedAt: true, hotelBlockedReason: true } }),
+      tx.orgUser.findFirst({ where: { role: Role.OWNER, isActive: true }, orderBy: { createdAt: 'asc' }, include: { user: { select: { email: true } } } }),
+    ]);
+    const phone = store?.contactPhone ? normalizeKenyanPhone(store.contactPhone) : null;
+    return {
+      contactPhone: store?.contactPhone ?? null,
+      whatsapp: phone, // 2547XXXXXXXX, ready for wa.me
+      ownerEmail: owner?.user.email ?? null,
+      hotelBlockedReason: store?.hotelBlockedAt ? (store.hotelBlockedReason ?? 'Taken off the marketplace') : null,
+    };
+  }
+
+  /** Takes a business's hotel off the marketplace: not listed, no new bookings, and it cannot list rooms again until restored. */
+  async blockHotel(organizationId: string, reason: string) {
+    return this.runAsTenant(organizationId, async (tx) => {
+      const store = await tx.onlineStore.findFirst();
+      if (!store) throw new NotFoundException('This business has no online shop');
+      if (store.hotelBlockedAt) throw new ConflictException('This hotel is already off the marketplace');
+      await tx.onlineStore.update({ where: { id: store.id }, data: { hotelBlockedAt: new Date(), hotelBlockedReason: reason.trim() } });
+      return { ok: true };
+    });
+  }
+
+  async unblockHotel(organizationId: string) {
+    return this.runAsTenant(organizationId, async (tx) => {
+      const store = await tx.onlineStore.findFirst();
+      if (!store) throw new NotFoundException('This business has no online shop');
+      if (!store.hotelBlockedAt) throw new ConflictException('This hotel is not off the marketplace');
+      await tx.onlineStore.update({ where: { id: store.id }, data: { hotelBlockedAt: null, hotelBlockedReason: null } });
+      return { ok: true };
+    });
+  }
+
   async hotels(days: number) {
     const since = new Date(Date.now() - days * DAY_MS);
     const organizations = await this.prisma.organization.findMany({ select: { id: true, name: true }, orderBy: { name: 'asc' } });
@@ -50,9 +87,10 @@ export class HospitalityAdminService {
     }[] = [];
 
     for (const org of organizations) {
-      const bookings = await this.runAsTenant(org.id, (tx) =>
-        tx.roomBooking.findMany({ where: { createdAt: { gte: since } }, orderBy: { createdAt: 'desc' }, take: PER_BUSINESS_CAP }),
-      );
+      const { bookings, contact } = await this.runAsTenant(org.id, async (tx) => ({
+        bookings: await tx.roomBooking.findMany({ where: { createdAt: { gte: since } }, orderBy: { createdAt: 'desc' }, take: PER_BUSINESS_CAP }),
+        contact: await this.contact(tx),
+      }));
       if (bookings.length === 0) continue;
 
       const paid = bookings.filter((b) => b.paidAt !== null);
@@ -80,6 +118,7 @@ export class HospitalityAdminService {
         // A deposit that arrived late (rooms already taken) or did not match is left as a note on the booking.
         flaggedPayments: bookings.filter((b) => b.lastPaymentError !== null && (b.status === RoomBookingStatus.CONFIRMED || b.status === RoomBookingStatus.PENDING_PAYMENT)).length,
         watch: watchReason({ paid: paid.length, noShow, cancelled }),
+        ...contact,
       });
 
       for (const b of bookings.slice(0, 40)) {
@@ -137,13 +176,14 @@ export class HospitalityAdminService {
     }[] = [];
 
     for (const org of organizations) {
-      const orders = await this.runAsTenant(org.id, (tx) =>
-        tx.onlineOrder.findMany({
+      const { orders, contact } = await this.runAsTenant(org.id, async (tx) => ({
+        orders: await tx.onlineOrder.findMany({
           where: { fulfilmentType: FulfilmentType.DINE_IN, createdAt: { gte: since } },
           orderBy: { createdAt: 'desc' },
           take: PER_BUSINESS_CAP,
         }),
-      );
+        contact: await this.contact(tx),
+      }));
       if (orders.length === 0) continue;
 
       const paid = orders.filter((o) => o.paidAt !== null);
@@ -165,6 +205,7 @@ export class HospitalityAdminService {
         notPaid: orders.filter((o) => o.status === OnlineOrderStatus.EXPIRED || (o.status === OnlineOrderStatus.PENDING_PAYMENT && o.paymentDeadline <= new Date())).length,
         stuck: stuck.length,
         flagged: flagged.length,
+        ...contact,
       });
 
       for (const o of stuck.slice(0, 15)) {

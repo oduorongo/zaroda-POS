@@ -1960,6 +1960,10 @@ model OnlineStore {
   // override for a negotiated rate, not a copy of the default.
   commissionRate               Decimal? @db.Decimal(5, 4)
   isPublished                  Boolean  @default(false)
+  /// Set by ZARODA to take this business's hotel rooms off the marketplace (complaints, abuse). Existing bookings are untouched;
+  /// while set the hotel cannot list rooms or take new bookings.
+  hotelBlockedReason           String?
+  hotelBlockedAt               DateTime?
   // The business's own shop link, e.g. /s/mama-mboga. Globally unique
   // across tenants - enforced by this index, since RLS hides every other
   // tenant's row from an application-level pre-check.
