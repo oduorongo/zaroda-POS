@@ -332,6 +332,8 @@ export class RentalService {
       where: { id: unit.id },
       data: { status: 'OCCUPIED' },
     });
+    // A let unit must not stay advertised: switch its Houses to let advert off (the landlord can resume it later).
+    await tx.rentalListing.updateMany({ where: { unitId: unit.id }, data: { isActive: false } });
     // Start billing straight away: the first month's rent and the deposit appear as invoices.
     await this.billing.syncLease(tx, organizationId, lease);
     return lease;

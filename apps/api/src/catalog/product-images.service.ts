@@ -18,7 +18,7 @@ export function productImagePrefix(organizationId: string, productId: string): s
 }
 
 /** True if the bytes really are the image type claimed - a renamed .exe or HTML file is refused. */
-function looksLike(contentType: string, b: Buffer): boolean {
+export function looksLikeImage(contentType: string, b: Buffer): boolean {
   if (contentType === 'image/jpeg') return b.length > 3 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff;
   if (contentType === 'image/png') return b.length > 8 && b.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
   if (contentType === 'image/webp') return b.length > 12 && b.toString('ascii', 0, 4) === 'RIFF' && b.toString('ascii', 8, 12) === 'WEBP';
@@ -64,7 +64,7 @@ export class ProductImagesService {
     if (!extension) throw new BadRequestException('Photos must be JPEG, PNG or WebP');
     if (body.length === 0) throw new BadRequestException('The photo is empty');
     if (body.length > MAX_IMAGE_BYTES) throw new BadRequestException('Photos must be 5MB or smaller');
-    if (!looksLike(contentType, body)) throw new BadRequestException('That file is not a valid JPEG, PNG or WebP photo');
+    if (!looksLikeImage(contentType, body)) throw new BadRequestException('That file is not a valid JPEG, PNG or WebP photo');
 
     await this.tenantPrisma.run(async (tx) => {
       await this.requireProduct(tx, productId);

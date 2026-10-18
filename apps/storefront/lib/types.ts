@@ -151,3 +151,31 @@ export interface MyJob extends OpenJob {
   buyerPhone: string | null;
   deliveryAddress: string | null;
 }
+
+/** One "House to let" in the public list. */
+export interface HouseSummary {
+  id: string;
+  title: string;
+  unitType: string;
+  area: string;
+  monthlyRent: number;
+  depositAmount: number;
+  postedAt: string;
+  coverImage: string | null;
+  photoCount: number;
+}
+
+/** A "House to let" in full, with the landlord's contact number. */
+export interface HouseDetail {
+  id: string;
+  title: string;
+  unitType: string;
+  area: string;
+  monthlyRent: number;
+  depositAmount: number;
+  description: string | null;
+  contactName: string | null;
+  contactPhone: string;
+  postedAt: string;
+  images: string[];
+}

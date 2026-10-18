@@ -1,4 +1,4 @@
-import type { Buyer, BuyerDelivery, MyJob, OpenJob, Order, OrderCheck, Rider, Shop, ShopSummary, VehicleType } from "./types";
+import type { Buyer, BuyerDelivery, HouseDetail, HouseSummary, MyJob, OpenJob, Order, OrderCheck, Rider, Shop, ShopSummary, VehicleType } from "./types";
 
 export class ApiError extends Error {
   status: number;
@@ -45,6 +45,28 @@ export const listShops = (q?: string) =>
 
 export const getShop = (slug: string) =>
   request<Shop>(`/public/shops/${encodeURIComponent(slug)}`, { next: { revalidate: 30 } } as RequestInit);
+
+export interface HouseFilters {
+  area?: string;
+  type?: string;
+  minRent?: string;
+  maxRent?: string;
+  page?: number;
+}
+
+/** Adverts for empty rental units across all landlords ("Houses to let"). */
+export function listHouses(filters: HouseFilters) {
+  const query = new URLSearchParams();
+  if (filters.area) query.set("area", filters.area);
+  if (filters.type) query.set("type", filters.type);
+  if (filters.minRent) query.set("minRent", filters.minRent);
+  if (filters.maxRent) query.set("maxRent", filters.maxRent);
+  if (filters.page) query.set("page", String(filters.page));
+  const qs = query.toString();
+  return request<{ houses: HouseSummary[]; hasMore: boolean }>(`/public/houses${qs ? `?${qs}` : ""}`, { next: { revalidate: 30 } } as RequestInit);
+}
+
+export const getHouse = (id: string) => request<HouseDetail>(`/public/houses/${encodeURIComponent(id)}`, { next: { revalidate: 30 } } as RequestInit);
 
 // ── Buyer ────────────────────────────────────────────────────────────────
 
