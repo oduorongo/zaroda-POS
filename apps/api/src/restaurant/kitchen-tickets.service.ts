@@ -9,6 +9,7 @@ import {
   TenantTx,
 } from '../common/prisma/tenant-scoped-prisma.service';
 import { TableOrderLineItemDto } from './dto/table-order-line-item.dto';
+import { completeTableOrderIfServed } from '../online-orders/dine-in';
 
 const TICKET_INCLUDE = {
   lines: { include: { variant: { include: { product: true } } } },
@@ -167,7 +168,7 @@ export class KitchenTicketsService {
       }
 
       const timestampField = STATUS_TIMESTAMP_FIELD[next];
-      return tx.kitchenTicket.update({
+      const updated = await tx.kitchenTicket.update({
         where: { id },
         data: {
           status: next,
@@ -175,6 +176,9 @@ export class KitchenTicketsService {
         },
         include: TICKET_INCLUDE,
       });
+      // The last ticket of a diner's table order being served completes that order.
+      if (next === KitchenTicketStatus.SERVED) await completeTableOrderIfServed(tx, updated.saleId);
+      return updated;
     });
   }
 

@@ -1,4 +1,4 @@
-import type { Buyer, BuyerDelivery, HouseDetail, HouseSummary, MyJob, OpenJob, Order, OrderCheck, Rider, Shop, ShopSummary, VehicleType } from "./types";
+import type { Buyer, BuyerDelivery, HotelDetail, HotelSummary, HouseDetail, HouseSummary, MyJob, RoomBooking, TableInfo, TableOrder, OpenJob, Order, OrderCheck, Rider, Shop, ShopSummary, VehicleType } from "./types";
 
 export class ApiError extends Error {
   status: number;
@@ -67,6 +67,79 @@ export function listHouses(filters: HouseFilters) {
 }
 
 export const getHouse = (id: string) => request<HouseDetail>(`/public/houses/${encodeURIComponent(id)}`, { next: { revalidate: 30 } } as RequestInit);
+
+// ── Diner at a table (no sign-in; the order is opened with a secret the diner's browser holds) ──
+
+export const getTable = (slug: string, tableId: string) =>
+  request<TableInfo>(`/public/shops/${encodeURIComponent(slug)}/tables/${encodeURIComponent(tableId)}`, { cache: "no-store" });
+
+export interface CreateTableOrderInput {
+  shopSlug: string;
+  tableId: string;
+  lines: { variantId: string; quantity: number }[];
+  phone: string;
+  name?: string;
+  note?: string;
+}
+
+/** The order, plus the secret (guestToken) that opens its status page. */
+export const createTableOrder = (input: CreateTableOrderInput) =>
+  request<TableOrder & { guestToken: string }>("/public/table-orders", { method: "POST", body: JSON.stringify(input) });
+
+export const getTableOrder = (id: string, token: string) =>
+  request<TableOrder>(`/public/table-orders/${encodeURIComponent(id)}?k=${encodeURIComponent(token)}`, { cache: "no-store" });
+
+export const retryTableOrder = (id: string, token: string, phone?: string) =>
+  request<TableOrder>(`/public/table-orders/${encodeURIComponent(id)}/retry`, { method: "POST", body: JSON.stringify({ token, phone }) });
+
+export const checkTableOrder = (id: string, token: string) =>
+  request<TableOrder & { checkResult: "paid" | "not-paid-yet" | "unavailable" | "not-needed" }>(`/public/table-orders/${encodeURIComponent(id)}/check`, {
+    method: "POST",
+    body: JSON.stringify({ token }),
+  });
+
+/** The menu exactly as the kitchen can make it right now - for a diner at a table, never a cached copy. */
+export const getShopFresh = (slug: string) => request<Shop>(`/public/shops/${encodeURIComponent(slug)}`, { cache: "no-store" });
+
+// ── Hotels (availability changes as guests book, so none of this is cached) ──
+
+const stayQuery = (checkIn?: string, checkOut?: string) => (checkIn && checkOut ? `checkIn=${encodeURIComponent(checkIn)}&checkOut=${encodeURIComponent(checkOut)}` : "");
+
+export function listHotels(filters: { area?: string; checkIn?: string; checkOut?: string }) {
+  const parts = [filters.area ? `area=${encodeURIComponent(filters.area)}` : "", stayQuery(filters.checkIn, filters.checkOut)].filter(Boolean);
+  return request<HotelSummary[]>(`/public/hotels${parts.length ? `?${parts.join("&")}` : ""}`, { cache: "no-store" });
+}
+
+export const getHotel = (slug: string, checkIn?: string, checkOut?: string) =>
+  request<HotelDetail>(`/public/hotels/${encodeURIComponent(slug)}${checkIn && checkOut ? `?${stayQuery(checkIn, checkOut)}` : ""}`, { cache: "no-store" });
+
+export interface CreateBookingInput {
+  roomTypeId: string;
+  checkIn: string;
+  checkOut: string;
+  rooms: number;
+  guests: number;
+  name: string;
+  phone: string;
+  email?: string;
+  notes?: string;
+}
+
+/** The booking, plus the secret (guestToken) that opens its page. */
+export const createBooking = (slug: string, input: CreateBookingInput) =>
+  request<RoomBooking & { guestToken: string }>(`/public/hotels/${encodeURIComponent(slug)}/bookings`, { method: "POST", body: JSON.stringify(input) });
+
+export const getBooking = (id: string, token: string) =>
+  request<RoomBooking>(`/public/room-bookings/${encodeURIComponent(id)}?k=${encodeURIComponent(token)}`, { cache: "no-store" });
+
+export const retryBooking = (id: string, token: string, phone?: string) =>
+  request<RoomBooking>(`/public/room-bookings/${encodeURIComponent(id)}/retry`, { method: "POST", body: JSON.stringify({ token, phone }) });
+
+export const checkBooking = (id: string, token: string) =>
+  request<RoomBooking & { checkResult: "paid" | "not-paid-yet" | "unavailable" | "not-needed" }>(`/public/room-bookings/${encodeURIComponent(id)}/check`, {
+    method: "POST",
+    body: JSON.stringify({ token }),
+  });
 
 // ── Buyer ────────────────────────────────────────────────────────────────
 

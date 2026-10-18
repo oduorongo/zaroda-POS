@@ -23,6 +23,7 @@ import {
   Store,
   ShoppingBag,
   UtensilsCrossed,
+  BedDouble,
   Pill,
   Scissors,
   Factory,
@@ -158,6 +159,10 @@ export default function DashboardPage() {
     ? [...TILES, ...MANAGER_TILES]
     : TILES;
   if (verticalTile) tiles.push(verticalTile);
+  // A restaurant that also lets rooms: bookings, room types and photos.
+  if (session.industryType === "RESTAURANT" && MANAGER_ROLES.includes(session.role)) {
+    tiles.push({ href: "/rooms", label: "Hotel rooms", description: "Rooms, bookings and check-in.", icon: BedDouble, tone: "bg-amber-600" });
+  }
 
   return (
     <div className="min-h-screen bg-background text-foreground">

@@ -30,9 +30,11 @@ import { TumaClient } from '../online-store/tuma.client';
 import { evaluateCallback, parseCallback } from '../online-store/tuma.util';
 import { cancelJobsOnOrderCancel, settleJobsOnManualComplete } from '../delivery/delivery-order-hooks';
 import { recordOnlineSale, voidOnlineSale } from './online-order-sale';
+import { loadRecipeMap, stockNeeds } from './dish-stock.util';
+import { kitchenProgress, sendTableOrderToKitchen, stationsFor } from './dine-in';
 import { ShopCatalogService } from './shop-catalog.service';
-import { CancelOnlineOrderDto, CreateOnlineOrderDto } from './dto/online-order.dto';
-import { generateOrderNumber, normalizeKenyanPhone, roundMoney } from './online-orders.util';
+import { CancelOnlineOrderDto, CreateOnlineOrderDto, CreateTableOrderDto } from './dto/online-order.dto';
+import { generateCallbackToken, generateOrderNumber, normalizeKenyanPhone, roundMoney, sha256 } from './online-orders.util';
 
 const TX_OPTIONS = { timeout: 15_000, maxWait: 15_000 };
 // How long an unpaid order holds stock. An M-Pesa prompt itself times out
@@ -56,6 +58,8 @@ export function toOrderView(order: OrderWithLines) {
     status: expired ? OnlineOrderStatus.EXPIRED : order.status,
     shop: { name: order.shopName, slug: order.shopSlug },
     fulfilmentType: order.fulfilmentType,
+    tableId: order.tableId,
+    tableLabel: order.tableLabel,
     deliveryAddress: order.deliveryAddress,
     buyerNote: order.buyerNote,
     buyerName: order.buyerName,
@@ -207,7 +211,7 @@ export class OnlineOrdersService {
             await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${'online-stock:' + shop.fulfilmentBranchId}))`;
 
             const variants = await tx.productVariant.findMany({
-              where: { id: { in: [...wanted.keys()] }, recipeIngredients: { none: {} }, product: { onlineVisible: true } },
+              where: { id: { in: [...wanted.keys()] }, product: { onlineVisible: true } },
               include: { product: { select: { name: true } } },
             });
             if (variants.length !== wanted.size) {
@@ -284,6 +288,10 @@ export class OnlineOrdersService {
       tx.onlineOrder.findUnique({ where: { id: orderId }, include: { lines: true } }),
     );
     if (!order) throw new NotFoundException('Order not found');
+    return this.retryExisting(order, paymentPhoneInput);
+  }
+
+  private async retryExisting(order: OrderWithLines, paymentPhoneInput?: string) {
     if (order.status !== OnlineOrderStatus.PENDING_PAYMENT || order.paymentDeadline <= new Date()) {
       throw new BadRequestException('This order can no longer be paid - place a new order');
     }
@@ -357,6 +365,164 @@ export class OnlineOrdersService {
       }),
     );
     return toOrderView(updated);
+  }
+
+  // ── Diner at a table: ordering from the table's QR code (no account) ───
+
+  /** What the QR page needs: the table's name, and whether this restaurant can take orders at it right now. */
+  async getTable(slug: string, tableId: string) {
+    return this.catalog.runForShop(slug, async (tx) => {
+      const table = await tx.restaurantTable.findUnique({ where: { id: tableId } });
+      if (!table) throw new NotFoundException('Table not found');
+      const stations = await stationsFor(tx, table.branchId);
+      return { id: table.id, label: table.label, acceptsOrders: stations.length > 0 };
+    });
+  }
+
+  /**
+   * A diner orders and pays for dishes from their table. Same stock rules as any online order (a dish is only
+   * offered while every ingredient is in stock, and what open orders hold is counted), but there is no sign-in: the
+   * diner's browser is given a secret, and only its hash is kept. The M-Pesa prompt goes to the phone they enter.
+   * Once paid, the order is accepted automatically and goes straight to the kitchen.
+   */
+  async createTableOrder(dto: CreateTableOrderDto) {
+    const paymentPhone = normalizeKenyanPhone(dto.phone);
+    if (!paymentPhone) throw new BadRequestException('Enter a valid M-Pesa number, e.g. 0712 345 678');
+
+    const wanted = new Map<string, number>();
+    for (const line of dto.lines) wanted.set(line.variantId, (wanted.get(line.variantId) ?? 0) + line.quantity);
+
+    const { token, hash } = generateCallbackToken();
+    let created: OrderWithLines | undefined;
+    for (let attempt = 0; attempt < 3 && !created; attempt++) {
+      try {
+        created = await this.catalog.runForShop(dto.shopSlug, async (tx, shop) => {
+          const table = await tx.restaurantTable.findUnique({ where: { id: dto.tableId } });
+          if (!table) throw new NotFoundException('Table not found');
+          // A paid order that cannot reach a kitchen screen is the worst outcome, so refuse before taking any money.
+          if ((await stationsFor(tx, table.branchId)).length === 0) {
+            throw new ServiceUnavailableException('This restaurant is not taking table orders yet');
+          }
+
+          await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${'online-stock:' + table.branchId}))`;
+
+          const variants = await tx.productVariant.findMany({
+            where: { id: { in: [...wanted.keys()] }, product: { onlineVisible: true } },
+            include: { product: { select: { name: true } } },
+          });
+          if (variants.length !== wanted.size) {
+            throw new BadRequestException('Some dishes are no longer on the menu - refresh and try again');
+          }
+          const available = await this.catalog.availableQuantities(tx, table.branchId, [...wanted.keys()]);
+
+          const lines = variants.map((v) => {
+            const quantity = wanted.get(v.id)!;
+            assertQuantityMatchesMode(v.quantityMode, quantity, `Quantity for ${v.product.name}`);
+            if ((available.get(v.id) ?? 0) < quantity) {
+              const left = available.get(v.id) ?? 0;
+              throw new ConflictException(left > 0 ? `Only ${left} of ${v.product.name} left` : `Sorry, ${v.product.name} is finished`);
+            }
+            const unitPrice = Number(v.price);
+            return { variantId: v.id, productName: v.product.name, variantSku: v.sku, quantity, unitPrice, lineTotal: roundMoney(unitPrice * quantity) };
+          });
+          const subtotal = roundMoney(lines.reduce((sum, l) => sum + l.lineTotal, 0));
+          if (subtotal < 1) throw new BadRequestException('Order total must be at least KES 1');
+
+          return tx.onlineOrder.create({
+            data: {
+              organizationId: shop.organizationId,
+              buyerId: null,
+              branchId: table.branchId,
+              tableId: table.id,
+              tableLabel: table.label,
+              guestTokenHash: hash,
+              orderNumber: generateOrderNumber(),
+              fulfilmentType: FulfilmentType.DINE_IN,
+              buyerNote: dto.note?.trim() || null,
+              buyerName: dto.name?.trim() || null,
+              buyerPhone: paymentPhone,
+              shopName: shop.displayName,
+              shopSlug: shop.slug,
+              subtotal,
+              amountDue: Math.ceil(subtotal),
+              commissionRate: shop.commissionRate ?? DEFAULT_COMMISSION_RATE,
+              paymentPhone,
+              paymentDeadline: new Date(Date.now() + PAYMENT_WINDOW_MS),
+              lines: { create: lines },
+            },
+            include: { lines: true },
+          });
+        });
+      } catch (e) {
+        const collided = e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002' && JSON.stringify(e.meta?.target ?? '').includes('orderNumber');
+        if (!collided) throw e;
+      }
+    }
+    if (!created) throw new ServiceUnavailableException('Could not create the order - try again');
+
+    const view = await this.startPayment(created);
+    // The organization id is not secret (it is in every callback address); it lets the status page find the right
+    // business without a sign-in. The part after the dot is the actual secret.
+    return { ...view, guestToken: `${created.organizationId}.${token}` };
+  }
+
+  /** Finds a table order from the secret its diner holds, or says "not found" - never which part was wrong. */
+  private async findGuestOrder(guestToken: string, orderId: string): Promise<OrderWithLines> {
+    const [organizationId, secret] = guestToken.split('.');
+    const valid = /^[0-9a-f-]{36}$/.test(organizationId ?? '') && !!secret;
+    const order = valid
+      ? await this.runAsTenant(organizationId, (tx) =>
+          tx.onlineOrder.findFirst({ where: { id: orderId, organizationId, fulfilmentType: FulfilmentType.DINE_IN }, include: { lines: true } }),
+        )
+      : null;
+    const expected = order?.guestTokenHash ? Buffer.from(order.guestTokenHash) : null;
+    const actual = Buffer.from(sha256(secret ?? ''));
+    if (!order || !expected || expected.length !== actual.length || !timingSafeEqual(expected, actual)) {
+      throw new NotFoundException('Order not found');
+    }
+    return order;
+  }
+
+  /** The diner's status page: their order plus how far the kitchen has got. Plain reads - never calls Tuma. */
+  async getForGuest(orderId: string, guestToken: string) {
+    const found = await this.findGuestOrder(guestToken, orderId);
+    const { order, tickets } = await this.runAsTenant(found.organizationId, async (tx) => {
+      await this.expireStale(tx);
+      const current = await tx.onlineOrder.findUniqueOrThrow({ where: { id: orderId }, include: { lines: true } });
+      const rows = current.saleId ? await tx.kitchenTicket.findMany({ where: { saleId: current.saleId }, select: { status: true } }) : [];
+      return { order: current, tickets: rows };
+    });
+    return { ...toOrderView(order), kitchen: kitchenProgress(tickets) };
+  }
+
+  async retryForGuest(orderId: string, guestToken: string, phone?: string) {
+    return this.retryExisting(await this.findGuestOrder(guestToken, orderId), phone);
+  }
+
+  async checkPaymentForGuest(orderId: string, guestToken: string) {
+    const order = await this.findGuestOrder(guestToken, orderId);
+    return this.checkExisting(order, () => this.findGuestOrder(guestToken, orderId));
+  }
+
+  /**
+   * A table order is accepted without anyone pressing a button: once the payment lands, the stock is deducted, the
+   * sale is recorded and the dishes go to the kitchen stations. If anything here fails (say the branch lost its
+   * stations), the order simply stays PAID and appears under Online Orders for a person to accept - nothing is lost.
+   */
+  private async autoAcceptTableOrder(organizationId: string, orderId: string) {
+    try {
+      await this.runAsTenant(organizationId, async (tx) => {
+        const order = await tx.onlineOrder.findUnique({ where: { id: orderId }, include: { lines: true } });
+        if (!order || order.status !== OnlineOrderStatus.PAID || !order.tableId) return;
+        const owner = await tx.orgUser.findFirst({ where: { organizationId, role: 'OWNER', isActive: true }, orderBy: { createdAt: 'asc' } });
+        if (!owner) throw new ConflictException('The business has no active owner to record the sale under');
+        const data = await this.acceptInTx(tx, order, { organizationId, orgUserId: owner.id });
+        const result = await tx.onlineOrder.updateMany({ where: { id: orderId, status: OnlineOrderStatus.PAID }, data });
+        if (result.count === 0) throw new ConflictException('The order changed while being accepted');
+      });
+    } catch (e) {
+      this.logger.error({ err: e, orderId }, 'Could not accept a paid table order automatically - it is waiting under Online Orders');
+    }
   }
 
   // ── Buyer: order history ──────────────────────────────────────────────
@@ -581,6 +747,10 @@ export class OnlineOrdersService {
         return { contactPhone: store?.contactPhone };
       });
       if (!settled) return 'skipped';
+      if (order.fulfilmentType === FulfilmentType.DINE_IN) {
+        await this.autoAcceptTableOrder(organizationId, order.id);
+        return 'paid';
+      }
       await this.notifySms(
         settled.contactPhone,
         `New Zaroda online order ${order.orderNumber}: KES ${order.amountDue} paid (M-Pesa ${receipt}). Open Online Orders to accept it.`,
@@ -649,6 +819,10 @@ export class OnlineOrdersService {
   async checkPaymentForBuyer(buyerId: string, orderId: string) {
     const order = await this.findBuyerOrder(buyerId, orderId);
     if (!order) throw new NotFoundException('Order not found');
+    return this.checkExisting(order, () => this.findBuyerOrder(buyerId, orderId));
+  }
+
+  private async checkExisting(order: OrderWithLines, reload: () => Promise<OrderWithLines | null>) {
     if (order.status !== OnlineOrderStatus.PENDING_PAYMENT || !order.tumaMerchantRequestId) {
       return { ...toOrderView(order), checkResult: 'not-needed' as const };
     }
@@ -662,7 +836,7 @@ export class OnlineOrdersService {
     this.checks.set(order.id, { last: Date.now(), count: state.count + 1 });
 
     const result = await this.verifyPayment(order.organizationId, order.id);
-    const updated = (await this.findBuyerOrder(buyerId, orderId)) ?? order;
+    const updated = (await reload()) ?? order;
     return {
       ...toOrderView(updated),
       checkResult: (result === 'paid' ? 'paid' : result === 'unconfirmed' ? 'not-paid-yet' : result === 'unavailable' ? 'unavailable' : 'not-needed') as
@@ -692,6 +866,10 @@ export class OnlineOrdersService {
         if (result.count !== 1) throw new BadRequestException('Only an order that is waiting for payment can be marked as paid');
         return tx.onlineOrder.findUniqueOrThrow({ where: { id }, include: { lines: true } });
       });
+      if (order.fulfilmentType === FulfilmentType.DINE_IN) {
+        await this.autoAcceptTableOrder(order.organizationId, order.id);
+        return toOrderView(await this.tenantPrisma.run((tx) => tx.onlineOrder.findUniqueOrThrow({ where: { id }, include: { lines: true } })));
+      }
       return toOrderView(order);
     } catch (e) {
       if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
@@ -745,20 +923,28 @@ export class OnlineOrdersService {
 
   /** Accepting commits the stock: each line is deducted from the fulfilment branch through the normal inventory ledger. */
   async accept(id: string) {
-    const order = await this.transition(id, [OnlineOrderStatus.PAID], async (tx, current) => {
-      for (const line of current.lines) {
-        await this.inventory.recordInTx(tx, {
-          branchId: current.branchId,
-          variantId: line.variantId,
-          type: InventoryTxnType.ONLINE_SALE,
-          quantityDelta: -Number(line.quantity),
-          referenceId: current.id,
-        });
-      }
-      const saleId = await recordOnlineSale(tx, current);
-      return { status: OnlineOrderStatus.ACCEPTED, acceptedAt: new Date(), stockCommitted: true, saleId };
-    });
+    const order = await this.transition(id, [OnlineOrderStatus.PAID], (tx, current) => this.acceptInTx(tx, current));
     return toOrderView(order);
+  }
+
+  /**
+   * Moves stock through the inventory ledger for an order's lines. A dish made from a recipe moves its INGREDIENTS (a
+   * biryani takes rice and chicken off the shelf, not itself); anything else moves itself. direction -1 deducts, +1 returns.
+   */
+  private async moveStock(tx: TenantTx, order: OrderWithLines, direction: 1 | -1, type: InventoryTxnType) {
+    const recipes = await loadRecipeMap(tx, order.lines.map((l) => l.variantId));
+    const needs = stockNeeds(order.lines.map((l) => ({ variantId: l.variantId, quantity: Number(l.quantity) })), recipes);
+    for (const [variantId, quantity] of needs) {
+      await this.inventory.recordInTx(tx, { branchId: order.branchId, variantId, type, quantityDelta: direction * quantity, referenceId: order.id });
+    }
+  }
+
+  /** Everything accepting an order means: stock deducted, the sale written, and (table orders) the kitchen told. */
+  private async acceptInTx(tx: TenantTx, current: OrderWithLines, actor?: { organizationId: string; orgUserId: string }) {
+    await this.moveStock(tx, current, -1, InventoryTxnType.ONLINE_SALE);
+    const saleId = await recordOnlineSale(tx, current, actor);
+    if (current.tableId) await sendTableOrderToKitchen(tx, current, saleId);
+    return { status: OnlineOrderStatus.ACCEPTED, acceptedAt: new Date(), stockCommitted: true, saleId };
   }
 
   async markReady(id: string) {
@@ -799,17 +985,9 @@ export class OnlineOrdersService {
       id,
       [OnlineOrderStatus.PENDING_PAYMENT, OnlineOrderStatus.PAID, OnlineOrderStatus.ACCEPTED, OnlineOrderStatus.READY],
       async (tx, current) => {
-        if (current.stockCommitted) {
-          for (const line of current.lines) {
-            await this.inventory.recordInTx(tx, {
-              branchId: current.branchId,
-              variantId: line.variantId,
-              type: InventoryTxnType.RETURN,
-              quantityDelta: Number(line.quantity),
-              referenceId: current.id,
-            });
-          }
-        }
+        if (current.stockCommitted) await this.moveStock(tx, current, 1, InventoryTxnType.RETURN);
+        // Whatever the kitchen has not finished is no longer wanted.
+        if (current.tableId && current.saleId) await tx.kitchenTicket.deleteMany({ where: { saleId: current.saleId } });
         await voidOnlineSale(tx, current.saleId);
         await cancelJobsOnOrderCancel(tx, current.id, dto.reason.trim());
         return {

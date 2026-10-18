@@ -98,7 +98,7 @@ export function buildInvoiceEmail(stage: ReminderStage, invoice: EmailInvoice, s
         <table style="width:100%;border-collapse:collapse;font-size:14px;margin:16px 0">
           <tr><td style="padding:6px 0;color:#64748b">Invoice</td><td style="text-align:right"><b>${escapeHtml(invoice.invoiceNumber)}</b></td></tr>
           <tr><td style="padding:6px 0;color:#64748b">Period</td><td style="text-align:right">${escapeHtml(monthName(invoice.periodMonth))}</td></tr>
-          <tr><td style="padding:6px 0;color:#64748b">Completed online orders</td><td style="text-align:right">${invoice.orderCount}</td></tr>
+          <tr><td style="padding:6px 0;color:#64748b">Completed orders and room bookings</td><td style="text-align:right">${invoice.orderCount}</td></tr>
           <tr><td style="padding:6px 0;color:#64748b">Sales total</td><td style="text-align:right">${escapeHtml(money(invoice.salesTotal))}</td></tr>
           <tr><td style="padding:6px 0;color:#64748b">Commission</td><td style="text-align:right">${escapeHtml(money(invoice.commissionTotal))}</td></tr>
           <tr><td style="padding:6px 0;color:#64748b">Amount to pay (rounded up to a whole shilling)</td><td style="text-align:right"><b>${escapeHtml(money(invoice.amountDue))}</b></td></tr>
@@ -107,7 +107,7 @@ export function buildInvoiceEmail(stage: ReminderStage, invoice: EmailInvoice, s
         ${button}
         <p style="font-size:12px;color:#64748b">You can also pay from <b>Online Shop settings</b> in your Zaroda back office. Already paid? Thank you - you can ignore this email.</p>`,
   });
-  const text = `${lead}\n\nInvoice ${invoice.invoiceNumber} (${monthName(invoice.periodMonth)})\nOrders: ${invoice.orderCount}\nCommission: ${money(invoice.commissionTotal)}\nAmount to pay: ${money(invoice.amountDue)}\nDue: ${date(invoice.dueDate)}\n${payUrl ? `\nPay online: ${payUrl}\n` : ''}`;
+  const text = `${lead}\n\nInvoice ${invoice.invoiceNumber} (${monthName(invoice.periodMonth)})\nOrders and bookings: ${invoice.orderCount}\nCommission: ${money(invoice.commissionTotal)}\nAmount to pay: ${money(invoice.amountDue)}\nDue: ${date(invoice.dueDate)}\n${payUrl ? `\nPay online: ${payUrl}\n` : ''}`;
   return { subject, html, text };
 }
 

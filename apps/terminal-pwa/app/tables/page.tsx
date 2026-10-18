@@ -202,10 +202,10 @@ export default function TablesPage() {
     }
   }
 
-  async function markAvailable(table: RestaurantTable) {
+  async function markAvailable(table: RestaurantTable, status: RestaurantTable["status"] = "AVAILABLE") {
     if (!device || !session) return;
     try {
-      await apiPatch(`/restaurant/tables/${table.id}/status`, { status: "AVAILABLE" }, session.accessToken);
+      await apiPatch(`/restaurant/tables/${table.id}/status`, { status }, session.accessToken);
       await refresh(device, session);
     } catch (err) {
       setLoadError(
@@ -424,6 +424,11 @@ export default function TablesPage() {
             {table.status === "NEEDS_CLEANING" && (
               <button onClick={() => void markAvailable(table)} className="mt-1 rounded bg-slate-900/50 px-2 py-1 text-xs hover:bg-slate-900">
                 Mark clean
+              </button>
+            )}
+            {table.status === "OCCUPIED" && (
+              <button onClick={() => void markAvailable(table, "NEEDS_CLEANING")} className="mt-1 rounded bg-slate-900/50 px-2 py-1 text-xs hover:bg-slate-900">
+                Diners left
               </button>
             )}
             {pendingCourses.get(table.id)?.courses.map((course) => {

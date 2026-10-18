@@ -13,6 +13,7 @@ import {
   BuyerController,
   OnlineOrdersController,
   PublicShopsController,
+  TableOrdersController,
   TumaCallbackController,
 } from './online-orders.controller';
 import { OnlineOrdersService } from './online-orders.service';
@@ -38,11 +39,14 @@ import { ShopCatalogService } from './shop-catalog.service';
   ],
   controllers: [
     PublicShopsController,
+    TableOrdersController,
     TumaCallbackController,
     BuyerAuthController,
     BuyerController,
     OnlineOrdersController,
   ],
   providers: [BuyerJwtStrategy, BuyerAuthService, OnlineOrdersService, ShopCatalogService, ObjectStorageService],
+  // The hotel module reads live shops (their payment setup and location) through the same catalog service.
+  exports: [ShopCatalogService],
 })
 export class OnlineOrdersModule {}

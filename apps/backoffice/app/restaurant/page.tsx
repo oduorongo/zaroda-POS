@@ -6,6 +6,8 @@ import { apiGet, apiPatch, ApiError } from "../../lib/api";
 import { getSession, clearSession, isBackofficeRole, type Session } from "../../lib/auth";
 import { Nav } from "../../components/nav";
 import { PageHeader } from "../../components/page-header";
+import { SetupSection } from "./setup-section";
+import { QrSection } from "./qr-section";
 
 interface Branch {
   id: string;
@@ -65,6 +67,7 @@ export default function RestaurantPage() {
   const [tickets, setTickets] = useState<KitchenTicket[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [tab, setTab] = useState<"floor" | "setup" | "qr">("floor");
 
   useEffect(() => {
     const s = getSession();
@@ -120,9 +123,9 @@ export default function RestaurantPage() {
     }
   }
 
-  async function markAvailable(table: RestaurantTable) {
+  async function setStatus(table: RestaurantTable, status: TableStatus) {
     try {
-      await apiPatch(`/restaurant/tables/${table.id}/status`, { status: "AVAILABLE" });
+      await apiPatch(`/restaurant/tables/${table.id}/status`, { status });
       await loadFloor();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not update the table.");
@@ -133,10 +136,12 @@ export default function RestaurantPage() {
 
   return (
     <div className="min-h-screen bg-background text-foreground">
-      <Nav session={session} />
-      <PageHeader />
-      <main className="mx-auto max-w-5xl p-6">
-        <div className="mb-4 flex items-center justify-between">
+      <div className="print:hidden">
+        <Nav session={session} />
+        <PageHeader />
+      </div>
+      <main className="mx-auto max-w-5xl p-6 print:max-w-none print:p-0">
+        <div className="mb-4 flex items-center justify-between print:hidden">
           <h1 className="text-xl font-bold">Restaurant floor</h1>
           <select
             value={branchId}
@@ -151,10 +156,29 @@ export default function RestaurantPage() {
           </select>
         </div>
 
-        {error && <p className="mb-4 rounded-md bg-red-950 p-3 text-sm text-red-300">{error}</p>}
+        {error && <p className="mb-4 rounded-md bg-red-950 p-3 text-sm text-red-300 print:hidden">{error}</p>}
         {loading && <p className="text-secondary-500">Loading...</p>}
 
         {!loading && (
+          <div className="mb-4 flex flex-wrap gap-2 print:hidden">
+            {(
+              [
+                ["floor", "Floor & kitchen"],
+                ["setup", "Menu & kitchen setup"],
+                ["qr", "Table QR codes"],
+              ] as const
+            ).map(([key, label]) => (
+              <button key={key} onClick={() => setTab(key)} className={`rounded-md px-3 py-2 text-sm ${tab === key ? "bg-primary-600 text-white" : "border border-border bg-surface"}`}>
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {!loading && tab === "setup" && branchId && <SetupSection branchId={branchId} tables={tables} stations={stations} onChanged={() => void loadFloor()} />}
+        {!loading && tab === "qr" && <QrSection tables={tables} stationCount={stations.length} />}
+
+        {!loading && tab === "floor" && (
           <>
             <h2 className="mb-2 font-semibold">Tables</h2>
             <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -165,10 +189,18 @@ export default function RestaurantPage() {
                   <p className="mt-1 text-xs uppercase tracking-wide">{t.status.replace("_", " ")}</p>
                   {t.status === "NEEDS_CLEANING" && (
                     <button
-                      onClick={() => void markAvailable(t)}
+                      onClick={() => void setStatus(t, "AVAILABLE")}
                       className="mt-2 rounded bg-background/60 px-2 py-1 text-xs hover:bg-background"
                     >
                       Mark clean
+                    </button>
+                  )}
+                  {t.status === "OCCUPIED" && (
+                    <button
+                      onClick={() => void setStatus(t, "NEEDS_CLEANING")}
+                      className="mt-2 rounded bg-background/60 px-2 py-1 text-xs hover:bg-background"
+                    >
+                      Diners left
                     </button>
                   )}
                 </div>

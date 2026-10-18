@@ -16,8 +16,10 @@ export const onlineSaleClientId = (orderId: string) => `online-order-${orderId}`
  * it through the inventory ledger. Prices are what the shopper paid, so no tax is added on top.
  * Returns the sale id; safe to call again for the same order.
  */
-export async function recordOnlineSale(tx: TenantTx, order: OrderWithLines): Promise<string> {
-  const { organizationId, orgUserId } = getTenantStore();
+export async function recordOnlineSale(tx: TenantTx, order: OrderWithLines, actor?: { organizationId: string; orgUserId: string }): Promise<string> {
+  // A table order is accepted automatically from the payment callback, where nobody is signed in: the sale is then
+  // credited to the business owner instead of the member of staff who would normally press Accept.
+  const { organizationId, orgUserId } = actor ?? getTenantStore();
   const clientId = onlineSaleClientId(order.id);
 
   const existing = await tx.sale.findUnique({ where: { clientId }, select: { id: true } });
