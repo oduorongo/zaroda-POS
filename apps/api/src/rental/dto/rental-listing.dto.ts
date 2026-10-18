@@ -96,3 +96,16 @@ export class BlockListingDto {
   @MaxLength(300)
   reason!: string;
 }
+
+/** Create adverts for other vacant units from the details of an existing advert. */
+export class CopyListingDto {
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(50)
+  @IsUUID('all', { each: true })
+  unitIds!: string[];
+
+  /** true: each unit keeps its own rent and deposit; false: they all take this advert's figures. */
+  @IsBoolean()
+  useOwnRent!: boolean;
+}
