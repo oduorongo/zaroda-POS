@@ -143,14 +143,15 @@ describe('CommissionService.generateInvoices', () => {
   });
 
   describe('with hotel bookings', () => {
-    // A guest who checked out in October paid a KES 3,600 deposit online: KES 108 commission at 3%.
-    const booking = { id: 'b1', depositAmount: 3600, commissionAmount: 108, checkedOutAt: new Date('2026-10-12T10:00:00Z') };
+    // A guest who checked out in October stayed 3 nights at KES 4,000 = KES 12,000 (the deposit they paid online does not matter):
+    // KES 360 commission at 3%.
+    const booking = { id: 'b1', total: 12000, commissionAmount: 360, checkedOutAt: new Date('2026-10-12T10:00:00Z') };
 
     it('bills checked-out bookings in the same monthly invoice as the shop orders', async () => {
       const { service, tx } = setup({ existing: null, bookings: [booking] });
       await service.generateInvoices({ month: '2026-10' });
       const data = tx.commissionInvoice.create.mock.calls[0][0].data;
-      expect(data).toMatchObject({ periodMonth: '2026-10', orderCount: 3, salesTotal: 6600.5, commissionTotal: 198.02, amountDue: 199 });
+      expect(data).toMatchObject({ periodMonth: '2026-10', orderCount: 3, salesTotal: 15000.5, commissionTotal: 450.02, amountDue: 451 });
       expect(tx.roomBooking.updateMany).toHaveBeenCalledWith({ where: { id: { in: ['b1'] } }, data: { commissionInvoiceId: 'inv-2026-10' } });
       expect(tx.onlineOrder.updateMany).toHaveBeenCalledWith({ where: { id: { in: ['o1', 'o2'] } }, data: { commissionInvoiceId: 'inv-2026-10' } });
     });
@@ -158,7 +159,7 @@ describe('CommissionService.generateInvoices', () => {
     it('a hotel with only bookings in a month still gets an invoice for them', async () => {
       const { service, tx } = setup({ existing: null, bookings: [{ ...booking, checkedOutAt: new Date('2026-08-20T10:00:00Z') }] });
       await service.generateInvoices({ month: '2026-08' });
-      expect(tx.commissionInvoice.create.mock.calls[0][0].data).toMatchObject({ periodMonth: '2026-08', orderCount: 1, salesTotal: 3600, commissionTotal: 108, amountDue: 108 });
+      expect(tx.commissionInvoice.create.mock.calls[0][0].data).toMatchObject({ periodMonth: '2026-08', orderCount: 1, salesTotal: 12000, commissionTotal: 360, amountDue: 360 });
       expect(tx.onlineOrder.updateMany).not.toHaveBeenCalled();
     });
 

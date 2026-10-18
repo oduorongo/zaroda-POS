@@ -143,11 +143,11 @@ export class CommissionService {
           _count: true,
           _sum: { subtotal: true, commissionAmount: true },
         }),
-        // Hotel bookings whose guest has checked out count too: commission on the deposit paid online.
+        // Hotel bookings whose guest has checked out count too: commission on the room price for the whole stay.
         tx.roomBooking.aggregate({
           where: { status: RoomBookingStatus.CHECKED_OUT, commissionInvoiceId: null, paidAt: { not: null } },
           _count: true,
-          _sum: { depositAmount: true, commissionAmount: true },
+          _sum: { total: true, commissionAmount: true },
         }),
         tx.commissionInvoice.findMany({ orderBy: { periodMonth: 'desc' }, take: 24 }),
       ]);
@@ -157,7 +157,7 @@ export class CommissionService {
         // Completed orders and checked-out bookings not yet on an invoice - billed once their month closes.
         unbilled: {
           orderCount: unbilledOrders._count + unbilledBookings._count,
-          salesTotal: roundMoney(Number(unbilledOrders._sum.subtotal ?? 0) + Number(unbilledBookings._sum.depositAmount ?? 0)),
+          salesTotal: roundMoney(Number(unbilledOrders._sum.subtotal ?? 0) + Number(unbilledBookings._sum.total ?? 0)),
           commissionTotal: roundMoney(Number(unbilledOrders._sum.commissionAmount ?? 0) + Number(unbilledBookings._sum.commissionAmount ?? 0)),
         },
         invoices: views,
@@ -535,8 +535,8 @@ export class CommissionService {
           },
           select: { id: true, subtotal: true, commissionAmount: true, completedAt: true },
         });
-        // Hotel bookings count as well, once the guest has checked out: the commission is on the deposit that was paid
-        // online (that is the "sale" the hotel did through Zaroda). Billed once, like an order.
+        // Hotel bookings count as well, once the guest has checked out: the commission is on the room price for the whole
+        // stay (the "sale" the hotel made through Zaroda), never on the deposit the hotel chose. Billed once, like an order.
         const bookings = await tx.roomBooking.findMany({
           where: {
             status: RoomBookingStatus.CHECKED_OUT,
@@ -544,12 +544,12 @@ export class CommissionService {
             paidAt: { not: null },
             checkedOutAt: { not: null, lt: currentMonthStart },
           },
-          select: { id: true, depositAmount: true, commissionAmount: true, checkedOutAt: true },
+          select: { id: true, total: true, commissionAmount: true, checkedOutAt: true },
         });
         type Billable = { id: string; kind: 'order' | 'booking'; sales: number; commission: number; at: Date };
         const billable: Billable[] = [
           ...orders.map((o) => ({ id: o.id, kind: 'order' as const, sales: Number(o.subtotal), commission: Number(o.commissionAmount ?? 0), at: o.completedAt! })),
-          ...bookings.map((b) => ({ id: b.id, kind: 'booking' as const, sales: b.depositAmount, commission: Number(b.commissionAmount ?? 0), at: b.checkedOutAt! })),
+          ...bookings.map((b) => ({ id: b.id, kind: 'booking' as const, sales: Number(b.total), commission: Number(b.commissionAmount ?? 0), at: b.checkedOutAt! })),
         ];
         const byMonth = new Map<string, Billable[]>();
         for (const item of billable) {

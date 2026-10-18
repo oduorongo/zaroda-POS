@@ -1426,7 +1426,8 @@ model RoomBooking {
   /// What is paid online now; the balance (total - deposit) is paid at the hotel.
   depositAmount  Int
   commissionRate Decimal           @db.Decimal(5, 4)
-  /// Recorded when the guest checks out (rate x deposit paid online), then rolled into the hotel's monthly commission invoice.
+  /// Recorded when the guest checks out: rate x the room price for the whole stay (NOT the deposit, which the hotel chooses),
+  /// then rolled into the hotel's monthly commission invoice.
   commissionAmount Decimal?        @db.Decimal(12, 2)
   /// Set when this booking's commission is rolled into a monthly invoice - a booking can only ever be billed once.
   commissionInvoiceId String?

@@ -245,7 +245,7 @@ export class HotelRoomsService {
     return rows.map((b) => this.bookingView(b));
   }
 
-  private async transition(id: string, from: RoomBookingStatus[], data: Prisma.RoomBookingUncheckedUpdateManyInput | ((b: { depositAmount: number; commissionRate: Prisma.Decimal; paidAt: Date | null }) => Prisma.RoomBookingUncheckedUpdateManyInput)) {
+  private async transition(id: string, from: RoomBookingStatus[], data: Prisma.RoomBookingUncheckedUpdateManyInput | ((b: { total: Prisma.Decimal; commissionRate: Prisma.Decimal; paidAt: Date | null }) => Prisma.RoomBookingUncheckedUpdateManyInput)) {
     const updated = await this.tenantPrisma.run(async (tx) => {
       const booking = await tx.roomBooking.findUnique({ where: { id } });
       if (!booking) throw new NotFoundException('Booking not found');
@@ -261,12 +261,15 @@ export class HotelRoomsService {
     return this.transition(id, [RoomBookingStatus.CONFIRMED], { status: RoomBookingStatus.CHECKED_IN, checkedInAt: new Date() });
   }
 
-  /** The guest leaves. The commission on what was paid online is recorded now and billed on the hotel's next monthly commission invoice. */
+  /**
+   * The guest leaves. The commission is recorded now - the rate times the room price for the WHOLE stay, not the deposit,
+   * so a hotel cannot cut its commission by asking for a tiny deposit - and billed on the hotel's next monthly commission invoice.
+   */
   checkOut(id: string) {
     return this.transition(id, [RoomBookingStatus.CHECKED_IN], (b) => ({
       status: RoomBookingStatus.CHECKED_OUT,
       checkedOutAt: new Date(),
-      commissionAmount: b.paidAt ? roundMoney(b.depositAmount * Number(b.commissionRate)) : 0,
+      commissionAmount: b.paidAt ? roundMoney(Number(b.total) * Number(b.commissionRate)) : 0,
     }));
   }
 

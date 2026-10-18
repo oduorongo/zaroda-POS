@@ -149,7 +149,7 @@ const day = (offset) => new Date(Date.now() + 3 * 3600_000 + offset * 86_400_000
   const out = await api('POST', `/hotel/bookings/${g1.id}/check-out`, { token: owner });
   check('check-out', out.json.status === 'CHECKED_OUT', out);
   const commission = (await sql.query(`SELECT "commissionAmount" c FROM room_bookings WHERE id = $1`, [g1.id])).rows[0].c;
-  check('commission is recorded on the deposit paid online: 3% of KES 3,600 = KES 108', Math.abs(Number(commission) - 108) < 0.001, commission);
+  check('commission is recorded on the whole stay, not the deposit: 3% of KES 12,000 = KES 360', Math.abs(Number(commission) - 360) < 0.001, commission);
   const grid = await api('GET', `/hotel/availability?from=${A}&days=7`, { token: owner });
   const gridRow = grid.json.roomTypes?.find((r) => r.id === roomType.id);
   check('the availability grid shows free rooms per night (the checked-out room is free again; the unpaid booking still holds one)', grid.json.nights?.length === 7 && gridRow?.free?.length === 7 && gridRow.free[0] === 1, gridRow);
@@ -184,6 +184,18 @@ const day = (offset) => new Date(Date.now() + 3 * 3600_000 + offset * 86_400_000
   const removed = await api('DELETE', `/hotel/room-types/${roomType.id}`, { token: owner });
   check('a room type with bookings is archived, not erased (history kept)', removed.json.archived === true, removed);
 
+  section('10b. A hotel cannot lower its commission by asking for a tiny deposit');
+  const cheap = (await api('POST', '/hotel/room-types', { token: owner, body: { name: `Tiny-deposit-${tag}`, pricePerNight: 5000, maxGuests: 2, quantity: 1, depositPercent: 0, isListed: true } })).json;
+  const cheapBooking = await api('POST', `/public/hotels/${slug}/bookings`, { body: { roomTypeId: cheap.id, checkIn: day(60), checkOut: day(62), rooms: 1, guests: 1, name: 'Cheap Charles', phone: '0788111222' } });
+  check('a 0% deposit still asks for KES 1 on a KES 10,000 stay', cheapBooking.status === 201 && cheapBooking.json.total === 10000 && cheapBooking.json.depositAmount === 1, cheapBooking);
+  const cheapPush = (await mock('GET', '/_test/pushes')).json.filter((x) => x.phone === '254788111222').pop();
+  await mock('POST', `/_test/pay/${cheapPush.merchant_request_id}`);
+  await api('POST', `/hotel/bookings/${cheapBooking.json.id}/check-in`, { token: owner });
+  const cheapOut = await api('POST', `/hotel/bookings/${cheapBooking.json.id}/check-out`, { token: owner });
+  const cheapCommission = (await sql.query(`SELECT "commissionAmount" c FROM room_bookings WHERE id = $1`, [cheapBooking.json.id])).rows[0].c;
+  check('commission is still 3% of the whole KES 10,000 stay (KES 300), not 3% of the KES 1 deposit', cheapOut.json.status === 'CHECKED_OUT' && Math.abs(Number(cheapCommission) - 300) < 0.001, { cheapOut: cheapOut.json.status, cheapCommission });
+  await api('DELETE', `/hotel/room-types/${cheap.id}`, { token: owner });
+
   section('11. The hotel is billed commission on checked-out bookings');
   const adminLogin = await api('POST', '/platform-admin/auth/login', { body: { email: 'admin@test.local', password: 'test-admin-password' } });
   const admin = adminLogin.json.accessToken;
@@ -201,7 +213,7 @@ const day = (offset) => new Date(Date.now() + 3 * 3600_000 + offset * 86_400_000
   const after = await invoiceNow();
   const linked = (await sql.query(`SELECT "commissionInvoiceId" i FROM room_bookings WHERE id = $1`, [g1.id])).rows[0].i;
   check('the booking is attached to that month\'s invoice for the hotel', Boolean(after) && linked === after.id, { after, linked });
-  check('the invoice grew by exactly the booking: one more item and KES 108 more commission', Number(after.n) === Number(before?.n ?? 0) + 1 && Math.abs(Number(after.c) - (Number(before?.c ?? 0) + 108)) < 0.01, { before, after });
+  check('the invoice grew by exactly the booking: one more item and KES 360 more commission', Number(after.n) === Number(before?.n ?? 0) + 1 && Math.abs(Number(after.c) - (Number(before?.c ?? 0) + 360)) < 0.01, { before, after });
   const run2 = await api('POST', '/platform-admin/commission/generate', { token: admin, body: { month } });
   const again = await invoiceNow();
   check('running it again never bills the booking twice', (run2.status === 201 || run2.status === 200) && Number(again.n) === Number(after.n) && Number(again.c) === Number(after.c), { after, again });
