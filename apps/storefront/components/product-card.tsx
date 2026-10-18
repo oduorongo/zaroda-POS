@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { ImageOff, Minus, Plus } from "lucide-react";
+import { useRef, useState } from "react";
+import { ChevronLeft, ChevronRight, ImageOff, Minus, Plus } from "lucide-react";
 import { formatQty, kes } from "../lib/format";
 import type { ShopProduct } from "../lib/types";
 import { useStore } from "./store-provider";
@@ -13,6 +13,7 @@ export default function ProductCard({ shopSlug, product }: { shopSlug: string; p
   const { cartFor, setLineQuantity } = useStore();
   const [variantId, setVariantId] = useState(product.variants[0]?.id);
   const [imageIndex, setImageIndex] = useState(0);
+  const gallery = useRef<HTMLDivElement>(null);
 
   const variant = product.variants.find((v) => v.id === variantId) ?? product.variants[0];
   if (!variant) return null;
@@ -31,26 +32,63 @@ export default function ProductCard({ shopSlug, product }: { shopSlug: string; p
 
   return (
     <article className="flex flex-col overflow-hidden rounded-lg border border-border bg-surface">
-      <div className="relative aspect-square bg-secondary-500/10">
+      <div className="group relative aspect-square bg-secondary-500/10">
         {product.images.length > 0 ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={product.images[imageIndex]} alt={product.name} loading="lazy" className="h-full w-full object-cover" />
+          // Swipeable strip: each photo is one full-width snap point, so a finger swipe (or the arrows) moves one photo at a time.
+          <div
+            ref={gallery}
+            onScroll={(e) => {
+              const el = e.currentTarget;
+              setImageIndex(Math.round(el.scrollLeft / el.clientWidth));
+            }}
+            className="flex h-full w-full snap-x snap-mandatory overflow-x-auto scroll-smooth [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          >
+            {product.images.map((src, i) => (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                key={src}
+                src={src}
+                alt={`${product.name} - photo ${i + 1}`}
+                loading="lazy"
+                draggable={false}
+                className="h-full w-full shrink-0 snap-center object-cover"
+              />
+            ))}
+          </div>
         ) : (
           <div className="flex h-full items-center justify-center text-secondary-400">
             <ImageOff size={32} aria-hidden />
           </div>
         )}
         {product.images.length > 1 && (
-          <div className="absolute bottom-2 left-0 right-0 flex justify-center gap-1.5">
-            {product.images.map((_, i) => (
-              <button
-                key={i}
-                onClick={() => setImageIndex(i)}
-                aria-label={`Photo ${i + 1}`}
-                className={`h-2 w-2 rounded-full ${i === imageIndex ? "bg-white" : "bg-white/50"} shadow`}
-              />
-            ))}
-          </div>
+          <>
+            <button
+              type="button"
+              onClick={() => gallery.current?.scrollBy({ left: -gallery.current.clientWidth })}
+              disabled={imageIndex === 0}
+              aria-label="Previous photo"
+              className="absolute left-2 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full bg-black/45 text-white shadow disabled:hidden"
+            >
+              <ChevronLeft size={18} aria-hidden />
+            </button>
+            <button
+              type="button"
+              onClick={() => gallery.current?.scrollBy({ left: gallery.current.clientWidth })}
+              disabled={imageIndex >= product.images.length - 1}
+              aria-label="Next photo"
+              className="absolute right-2 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full bg-black/45 text-white shadow disabled:hidden"
+            >
+              <ChevronRight size={18} aria-hidden />
+            </button>
+            <span className="absolute right-2 top-2 rounded-full bg-black/55 px-2 py-0.5 text-xs font-medium text-white">
+              {imageIndex + 1}/{product.images.length}
+            </span>
+            <div className="pointer-events-none absolute bottom-2 left-0 right-0 flex justify-center gap-1.5">
+              {product.images.map((_, i) => (
+                <span key={i} className={`h-1.5 w-1.5 rounded-full shadow ${i === imageIndex ? "bg-white" : "bg-white/50"}`} />
+              ))}
+            </div>
+          </>
         )}
       </div>
 
