@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import { ShoppingCart, Trash2 } from "lucide-react";
 import { formatQty, kes } from "../lib/format";
 import { useStore } from "./store-provider";
@@ -21,6 +22,19 @@ export default function CartSummary({ shopSlug }: { shopSlug: string }) {
   const { amountDue } = cartTotals(lines);
   const count = lines.length;
   const checkoutHref = `/s/${shopSlug}/checkout`;
+
+  // The page's bottom ribbon is sticky, sits above this bar (z-40) and changes height as its text wraps, so a bar
+  // pinned to bottom-0 ends up hidden behind it on phones. Measure the ribbon and sit just above it instead.
+  const [ribbonHeight, setRibbonHeight] = useState(0);
+  useEffect(() => {
+    const footer = document.querySelector("footer");
+    if (!footer) return;
+    const update = () => setRibbonHeight(footer.getBoundingClientRect().height);
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(footer);
+    return () => observer.disconnect();
+  }, []);
 
   if (!ready) return <aside className="hidden lg:block" />;
 
@@ -73,7 +87,13 @@ export default function CartSummary({ shopSlug }: { shopSlug: string }) {
       </aside>
 
       {count > 0 && (
-        <div className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-surface p-3 lg:hidden">
+        <>
+          {/* Keeps the last products from sitting underneath the bar. */}
+          <div aria-hidden className="h-20 lg:hidden" />
+        <div
+          style={{ bottom: ribbonHeight }}
+          className="fixed inset-x-0 z-30 border-t border-border bg-surface p-3 shadow-[0_-4px_12px_rgba(15,23,42,0.12)] lg:hidden"
+        >
           <Link
             href={checkoutHref}
             className="flex items-center justify-between rounded-md bg-primary-600 px-4 py-3 font-semibold text-white"
@@ -84,6 +104,7 @@ export default function CartSummary({ shopSlug }: { shopSlug: string }) {
             <span>Checkout - {kes(amountDue)}</span>
           </Link>
         </div>
+        </>
       )}
     </>
   );
