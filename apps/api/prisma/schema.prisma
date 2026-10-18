@@ -68,6 +68,7 @@ model Organization {
   restaurantTables          RestaurantTable[]
   rentalProperties          RentalProperty[]
   rentalUnits               RentalUnit[]
+  rentalListings            RentalListing[]
   rentalTenants             RentalTenant[]
   rentalLeases              RentalLease[]
   rentalInvoices            RentalInvoice[]
@@ -2529,10 +2530,55 @@ model RentalUnit {
   maintenance   RentalMaintenanceRequest[]
   expenses      RentalExpense[]
   meterReadings RentalMeterReading[]
+  listing       RentalListing?
 
   @@unique([propertyId, label])
   @@index([organizationId])
   @@map("rental_units")
+}
+
+/// A public "House to let" advert for one vacant unit. Deliberately self-contained: it carries its own area, rent and
+/// contact details (prefilled from the unit, editable) so the public pages never read the unit/property tables and
+/// never expose a building's real address or its tenants. Shown only while isActive and confirmed in the last 30 days.
+model RentalListing {
+  id             String   @id @default(uuid())
+  organizationId String
+  unitId         String   @unique
+  title          String
+  unitType       String // BEDSITTER | SINGLE_ROOM | ONE_BEDROOM | TWO_BEDROOM | THREE_BEDROOM | SHOP | OFFICE | OTHER
+  area           String // estate / town shown to the public, e.g. "Kasarani, Nairobi"
+  monthlyRent    Decimal  @db.Decimal(12, 2)
+  depositAmount  Decimal  @default(0) @db.Decimal(12, 2)
+  description    String?
+  contactName    String?
+  contactPhone   String
+  isActive       Boolean  @default(true)
+  /// Last time the landlord said "still available" - the advert lapses 30 days after this.
+  confirmedAt    DateTime @default(now())
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  unit         RentalUnit           @relation(fields: [unitId], references: [id], onDelete: Cascade)
+  photos       RentalListingPhoto[]
+
+  @@index([organizationId])
+  @@index([isActive, confirmedAt])
+  @@map("rental_listings")
+}
+
+model RentalListingPhoto {
+  id         String   @id @default(uuid())
+  listingId  String
+  /// Object key in the Blob store: orgs/<organizationId>/listings/<listingId>/<uuid>.<ext>
+  storageKey String   @unique
+  sortOrder  Int      @default(0)
+  createdAt  DateTime @default(now())
+
+  listing RentalListing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+
+  @@index([listingId])
+  @@map("rental_listing_photos")
 }
 
 model RentalTenant {

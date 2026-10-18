@@ -1,0 +1,128 @@
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Headers,
+  HttpCode,
+  Param,
+  ParseFloatPipe,
+  ParseIntPipe,
+  ParseUUIDPipe,
+  PayloadTooLargeException,
+  Post,
+  Put,
+  Query,
+  Req,
+  UseInterceptors,
+  Patch,
+} from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
+import { Role } from '@prisma/client';
+import type { Request } from 'express';
+import { Public } from '../auth/public.decorator';
+import { Roles } from '../auth/roles.decorator';
+import { MAX_IMAGE_BYTES } from '../catalog/product-images.service';
+import { SetListingActiveDto, UpsertListingDto } from './dto/rental-listing.dto';
+import { PublicHousesService } from './public-houses.service';
+import { RentalListingsService } from './rental-listings.service';
+import { RentalReadOnlyInterceptor } from './rental-read-only.interceptor';
+
+const UPLOAD_THROTTLE = { default: { limit: 30, ttl: 60_000 } };
+const PUBLIC_THROTTLE = { default: { limit: 60, ttl: 60_000 } };
+
+/** Landlord side: manage the "Houses to let" adverts for vacant units. Owners and managers only. */
+@Controller('rental')
+@UseInterceptors(RentalReadOnlyInterceptor)
+export class RentalListingsController {
+  constructor(private readonly listings: RentalListingsService) {}
+
+  @Roles(Role.MANAGER, Role.OWNER)
+  @Get('listings')
+  list() {
+    return this.listings.list();
+  }
+
+  @Roles(Role.MANAGER, Role.OWNER)
+  @Put('units/:unitId/listing')
+  save(@Param('unitId', ParseUUIDPipe) unitId: string, @Body() dto: UpsertListingDto) {
+    return this.listings.upsertForUnit(unitId, dto);
+  }
+
+  @Roles(Role.MANAGER, Role.OWNER)
+  @Post('listings/:id/confirm')
+  confirm(@Param('id', ParseUUIDPipe) id: string) {
+    return this.listings.confirm(id);
+  }
+
+  @Roles(Role.MANAGER, Role.OWNER)
+  @Patch('listings/:id')
+  setActive(@Param('id', ParseUUIDPipe) id: string, @Body() dto: SetListingActiveDto) {
+    return this.listings.setActive(id, dto);
+  }
+
+  @Roles(Role.MANAGER, Role.OWNER)
+  @Delete('listings/:id')
+  @HttpCode(204)
+  async remove(@Param('id', ParseUUIDPipe) id: string) {
+    await this.listings.remove(id);
+  }
+
+  /** The photo itself is the request body (Content-Type: image/jpeg|png|webp), same as product photos. */
+  @Roles(Role.MANAGER, Role.OWNER)
+  @Throttle(UPLOAD_THROTTLE)
+  @Post('listings/:id/photos')
+  async addPhoto(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Headers('content-type') contentType: string | undefined,
+    @Req() req: Request,
+  ) {
+    const chunks: Buffer[] = [];
+    let total = 0;
+    for await (const chunk of req as AsyncIterable<Buffer>) {
+      total += chunk.length;
+      if (total > MAX_IMAGE_BYTES) throw new PayloadTooLargeException('Photos must be 5MB or smaller');
+      chunks.push(chunk);
+    }
+    return this.listings.addPhoto(id, (contentType ?? '').split(';')[0].trim().toLowerCase(), Buffer.concat(chunks));
+  }
+
+  @Roles(Role.MANAGER, Role.OWNER)
+  @Post('listings/:id/photos/:photoId/cover')
+  makeCover(@Param('id', ParseUUIDPipe) id: string, @Param('photoId', ParseUUIDPipe) photoId: string) {
+    return this.listings.makeCover(id, photoId);
+  }
+
+  @Roles(Role.MANAGER, Role.OWNER)
+  @Delete('listings/:id/photos/:photoId')
+  @HttpCode(204)
+  async removePhoto(@Param('id', ParseUUIDPipe) id: string, @Param('photoId', ParseUUIDPipe) photoId: string) {
+    await this.listings.removePhoto(id, photoId);
+  }
+}
+
+/** Unauthenticated: what house-hunters see on the marketplace. */
+@Controller('public/houses')
+export class PublicHousesController {
+  constructor(private readonly houses: PublicHousesService) {}
+
+  @Public()
+  @Throttle(PUBLIC_THROTTLE)
+  @Get()
+  list(
+    @Query('area') area?: string,
+    @Query('type') type?: string,
+    @Query('minRent', new ParseFloatPipe({ optional: true })) minRent?: number,
+    @Query('maxRent', new ParseFloatPipe({ optional: true })) maxRent?: number,
+    @Query('page', new ParseIntPipe({ optional: true })) page?: number,
+  ) {
+    return this.houses.list({ area, type, minRent, maxRent, page });
+  }
+
+  @Public()
+  @Throttle(PUBLIC_THROTTLE)
+  @Get(':id')
+  get(@Param('id', ParseUUIDPipe) id: string) {
+    return this.houses.get(id);
+  }
+}

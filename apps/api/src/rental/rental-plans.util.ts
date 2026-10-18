@@ -6,7 +6,7 @@ export type RentalPlanCode = 'bure' | 'starter' | 'collect';
 export type RentalBillingCycle = 'monthly' | 'annual';
 
 /** Things a plan can switch on. Bure has none of them. */
-export type RentalFeature = 'portal' | 'receipts' | 'statements' | 'reminders' | 'caretaker' | 'collect';
+export type RentalFeature = 'portal' | 'receipts' | 'statements' | 'reminders' | 'caretaker' | 'collect' | 'advertise';
 
 export interface RentalPlanDef {
   code: RentalPlanCode;
@@ -32,7 +32,7 @@ export const RENTAL_PLANS: Record<RentalPlanCode, RentalPlanDef> = {
     monthlyPrice: 1000,
     annualPrice: 10000, // 12 months for the price of 10
     feePercent: 0,
-    features: ['portal', 'receipts', 'statements', 'reminders', 'caretaker'],
+    features: ['portal', 'receipts', 'statements', 'reminders', 'caretaker', 'advertise'],
   },
   collect: {
     code: 'collect',
@@ -42,7 +42,7 @@ export const RENTAL_PLANS: Record<RentalPlanCode, RentalPlanDef> = {
     monthlyPrice: 0,
     annualPrice: null,
     feePercent: 1,
-    features: ['portal', 'receipts', 'statements', 'reminders', 'caretaker', 'collect'],
+    features: ['portal', 'receipts', 'statements', 'reminders', 'caretaker', 'collect', 'advertise'],
   },
 };
 
@@ -93,4 +93,5 @@ export const FEATURE_LABEL: Record<RentalFeature, string> = {
   reminders: 'Rent reminders',
   caretaker: 'A caretaker account',
   collect: 'Collecting rent by M-Pesa',
+  advertise: 'Advertising empty units on Houses to let',
 };

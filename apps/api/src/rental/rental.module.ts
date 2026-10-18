@@ -26,6 +26,10 @@ import { RentalSubscriptionController } from './rental-subscription.controller';
 import { RentalCaretakersService } from './rental-caretakers.service';
 import { RentalBillingService } from './rental-billing.service';
 import { RentalSchedulerService } from './rental-scheduler.service';
+import { ObjectStorageService } from '../common/storage/object-storage.service';
+import { RentalListingsService } from './rental-listings.service';
+import { PublicHousesService } from './public-houses.service';
+import { PublicHousesController, RentalListingsController } from './rental-listings.controller';
 
 /**
  * Rental / property management for landlords (industryType "RENTAL").
@@ -49,9 +53,12 @@ import { RentalSchedulerService } from './rental-scheduler.service';
   ],
   // Platform admin records and waives the landlords' ZARODA invoices.
   exports: [RentalPlatformPaymentsService],
-  controllers: [RentalPlatformCallbackController, RentalSubscriptionController, RentalController, RentalTenantAuthController, RentalTenantPortalController, RentalOpsController, RentalMpesaController, RentalCallbackController],
+  controllers: [RentalPlatformCallbackController, RentalSubscriptionController, RentalController, RentalListingsController, PublicHousesController, RentalTenantAuthController, RentalTenantPortalController, RentalOpsController, RentalMpesaController, RentalCallbackController],
   providers: [
     RentalService,
+    RentalListingsService,
+    PublicHousesService,
+    ObjectStorageService,
     RentalPlansService,
     RentalPlatformBillingService,
     RentalPlatformPaymentsService,
@@ -91,6 +98,8 @@ export class RentalModule implements OnModuleInit {
         { tableName: 'rental_tenant_otps', description: 'One-time email sign-in codes for tenants' },
         { tableName: 'rental_platform_invoices', description: 'What ZARODA bills the landlord for the rental plan (flat fee or 1% collection fee)' },
         { tableName: 'rental_caretaker_properties', description: 'Which properties each caretaker may work on' },
+        { tableName: 'rental_listings', description: 'Public "Houses to let" adverts for vacant units, with their own area, rent and contact details' },
+        { tableName: 'rental_listing_photos', description: 'Photos on a Houses to let advert' },
         { tableName: 'rental_payment_allocations', description: 'Which invoice each payment was applied to' },
       ],
     });

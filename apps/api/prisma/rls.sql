@@ -888,3 +888,39 @@ DROP POLICY IF EXISTS tenant_phone_access ON rental_tenants;
 CREATE POLICY tenant_phone_access ON rental_tenants
   FOR SELECT
   USING ("phoneNormalized" IS NOT NULL AND "phoneNormalized" = current_setting('app.current_tenant_phone', true));
+
+-- ── Houses to let (rental adverts) ─────────────────────────────────────────
+-- A landlord's advert for a vacant unit, plus its photos. Tenant-isolated like every rental table, with ONE
+-- deliberate, narrow public exception: the public "Houses to let" pages list adverts across all landlords, so a
+-- request opts in with set_config('app.public_listings', 'on', true) (only PublicHousesService does) and then sees
+-- only adverts that are switched on AND confirmed "still available" within the last 30 days. SELECT only -
+-- permissive policies OR together, so this never widens what can be written. The advert carries its own area,
+-- rent and contact details, so no unit, property or tenant row is ever readable through it.
+ALTER TABLE rental_listings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE rental_listings FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON rental_listings;
+CREATE POLICY tenant_isolation ON rental_listings
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+DROP POLICY IF EXISTS public_listings_read ON rental_listings;
+CREATE POLICY public_listings_read ON rental_listings
+  FOR SELECT
+  USING (current_setting('app.public_listings', true) = 'on'
+         AND "isActive" AND "confirmedAt" > now() - interval '30 days');
+
+ALTER TABLE rental_listing_photos ENABLE ROW LEVEL SECURITY;
+ALTER TABLE rental_listing_photos FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON rental_listing_photos;
+CREATE POLICY tenant_isolation ON rental_listing_photos
+  USING (EXISTS (SELECT 1 FROM rental_listings l WHERE l.id = rental_listing_photos."listingId"
+                 AND l."organizationId" = current_setting('app.current_tenant', true)))
+  WITH CHECK (EXISTS (SELECT 1 FROM rental_listings l WHERE l.id = rental_listing_photos."listingId"
+                 AND l."organizationId" = current_setting('app.current_tenant', true)));
+
+-- Photos of an advert the public may see (the subquery is itself subject to the policy above).
+DROP POLICY IF EXISTS public_listings_read ON rental_listing_photos;
+CREATE POLICY public_listings_read ON rental_listing_photos
+  FOR SELECT
+  USING (current_setting('app.public_listings', true) = 'on'
+         AND EXISTS (SELECT 1 FROM rental_listings l WHERE l.id = rental_listing_photos."listingId"));
