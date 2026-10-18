@@ -1964,6 +1964,9 @@ model OnlineStore {
   /// while set the hotel cannot list rooms or take new bookings.
   hotelBlockedReason           String?
   hotelBlockedAt               DateTime?
+  /// Set by ZARODA to switch off ordering from table QR codes for this business. Orders already placed are untouched.
+  tableOrderingBlockedReason   String?
+  tableOrderingBlockedAt       DateTime?
   // The business's own shop link, e.g. /s/mama-mboga. Globally unique
   // across tenants - enforced by this index, since RLS hides every other
   // tenant's row from an application-level pre-check.

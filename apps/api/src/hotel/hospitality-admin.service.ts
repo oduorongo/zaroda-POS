@@ -31,7 +31,7 @@ export class HospitalityAdminService {
   /** How to reach a business: the number on its shop and its owner's email, plus the hotel block state. */
   private async contact(tx: Tx) {
     const [store, owner] = await Promise.all([
-      tx.onlineStore.findFirst({ select: { contactPhone: true, hotelBlockedAt: true, hotelBlockedReason: true } }),
+      tx.onlineStore.findFirst({ select: { contactPhone: true, hotelBlockedAt: true, hotelBlockedReason: true, tableOrderingBlockedAt: true, tableOrderingBlockedReason: true } }),
       tx.orgUser.findFirst({ where: { role: Role.OWNER, isActive: true }, orderBy: { createdAt: 'asc' }, include: { user: { select: { email: true } } } }),
     ]);
     const phone = store?.contactPhone ? normalizeKenyanPhone(store.contactPhone) : null;
@@ -40,6 +40,7 @@ export class HospitalityAdminService {
       whatsapp: phone, // 2547XXXXXXXX, ready for wa.me
       ownerEmail: owner?.user.email ?? null,
       hotelBlockedReason: store?.hotelBlockedAt ? (store.hotelBlockedReason ?? 'Taken off the marketplace') : null,
+      tableOrderingBlockedReason: store?.tableOrderingBlockedAt ? (store.tableOrderingBlockedReason ?? 'Switched off') : null,
     };
   }
 
@@ -60,6 +61,27 @@ export class HospitalityAdminService {
       if (!store) throw new NotFoundException('This business has no online shop');
       if (!store.hotelBlockedAt) throw new ConflictException('This hotel is not off the marketplace');
       await tx.onlineStore.update({ where: { id: store.id }, data: { hotelBlockedAt: null, hotelBlockedReason: null } });
+      return { ok: true };
+    });
+  }
+
+  /** Switches off ordering from table QR codes for a business: the QR page says ordering is off and new orders are refused. Orders already placed carry on. */
+  async blockTableOrdering(organizationId: string, reason: string) {
+    return this.runAsTenant(organizationId, async (tx) => {
+      const store = await tx.onlineStore.findFirst();
+      if (!store) throw new NotFoundException('This business has no online shop');
+      if (store.tableOrderingBlockedAt) throw new ConflictException('Table ordering is already switched off for this business');
+      await tx.onlineStore.update({ where: { id: store.id }, data: { tableOrderingBlockedAt: new Date(), tableOrderingBlockedReason: reason.trim() } });
+      return { ok: true };
+    });
+  }
+
+  async unblockTableOrdering(organizationId: string) {
+    return this.runAsTenant(organizationId, async (tx) => {
+      const store = await tx.onlineStore.findFirst();
+      if (!store) throw new NotFoundException('This business has no online shop');
+      if (!store.tableOrderingBlockedAt) throw new ConflictException('Table ordering is not switched off for this business');
+      await tx.onlineStore.update({ where: { id: store.id }, data: { tableOrderingBlockedAt: null, tableOrderingBlockedReason: null } });
       return { ok: true };
     });
   }

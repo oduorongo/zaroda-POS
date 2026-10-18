@@ -29,7 +29,7 @@ import { RentalPlatformPaymentsService } from '../rental/rental-platform-payment
 import { RentalListingAdminService } from '../rental/rental-listing-admin.service';
 import { RoomBookingAutoCompleteService } from '../hotel/room-booking-autocomplete.service';
 import { HospitalityAdminService } from '../hotel/hospitality-admin.service';
-import { BlockHotelDto } from '../hotel/dto/hotel.dto';
+import { BlockHotelDto, BlockTableOrderingDto } from '../hotel/dto/hotel.dto';
 import { BlockListingDto } from '../rental/dto/rental-listing.dto';
 import { ListPlatformInvoicesQueryDto, RecordPlatformInvoicePaymentDto, WaivePlatformInvoiceDto } from '../rental/dto/rental-platform-invoice.dto';
 import { ListRidersQueryDto, SetRiderStatusDto } from '../riders/dto/rider.dto';
@@ -489,6 +489,25 @@ export class PlatformAdminController {
   async unblockHotel(@Req() req: PlatformAdminRequest, @Param('id', ParseUUIDPipe) id: string) {
     const result = await this.hospitality.unblockHotel(id);
     await this.auditLog.log({ platformAdminId: req.user!.platformAdminId, action: 'platform_admin.restored_hotel_to_marketplace', entityType: 'OnlineStore', organizationId: id });
+    return result;
+  }
+
+  // Switches a business's table QR ordering off (and on again).
+  @Public()
+  @UseGuards(PlatformAdminAuthGuard)
+  @Post('organizations/:id/table-ordering/block')
+  async blockTableOrdering(@Req() req: PlatformAdminRequest, @Param('id', ParseUUIDPipe) id: string, @Body() dto: BlockTableOrderingDto) {
+    const result = await this.hospitality.blockTableOrdering(id, dto.reason);
+    await this.auditLog.log({ platformAdminId: req.user!.platformAdminId, action: 'platform_admin.switched_off_table_ordering', entityType: 'OnlineStore', organizationId: id });
+    return result;
+  }
+
+  @Public()
+  @UseGuards(PlatformAdminAuthGuard)
+  @Post('organizations/:id/table-ordering/unblock')
+  async unblockTableOrdering(@Req() req: PlatformAdminRequest, @Param('id', ParseUUIDPipe) id: string) {
+    const result = await this.hospitality.unblockTableOrdering(id);
+    await this.auditLog.log({ platformAdminId: req.user!.platformAdminId, action: 'platform_admin.switched_on_table_ordering', entityType: 'OnlineStore', organizationId: id });
     return result;
   }
 

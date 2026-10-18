@@ -33,6 +33,12 @@ export class RestaurantDishesService {
     }));
   }
 
+  /** Whether ZARODA has switched off ordering from table QR codes for this business, and why. */
+  async orderingStatus() {
+    const store = await this.tenantPrisma.run((tx) => tx.onlineStore.findFirst({ select: { tableOrderingBlockedAt: true, tableOrderingBlockedReason: true } }));
+    return { blockedReason: store?.tableOrderingBlockedAt ? (store.tableOrderingBlockedReason ?? 'Switched off by Zaroda') : null };
+  }
+
   /** stationId null = back to "the branch's first station". */
   async setStation(variantId: string, stationId: string | null) {
     const { organizationId } = getTenantStore();

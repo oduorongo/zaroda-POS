@@ -371,11 +371,11 @@ export class OnlineOrdersService {
 
   /** What the QR page needs: the table's name, and whether this restaurant can take orders at it right now. */
   async getTable(slug: string, tableId: string) {
-    return this.catalog.runForShop(slug, async (tx) => {
+    return this.catalog.runForShop(slug, async (tx, shop) => {
       const table = await tx.restaurantTable.findUnique({ where: { id: tableId } });
       if (!table) throw new NotFoundException('Table not found');
       const stations = await stationsFor(tx, table.branchId);
-      return { id: table.id, label: table.label, acceptsOrders: stations.length > 0 };
+      return { id: table.id, label: table.label, acceptsOrders: stations.length > 0 && !shop.tableOrderingBlocked };
     });
   }
 
@@ -397,6 +397,8 @@ export class OnlineOrdersService {
     for (let attempt = 0; attempt < 3 && !created; attempt++) {
       try {
         created = await this.catalog.runForShop(dto.shopSlug, async (tx, shop) => {
+          // Switched off by ZARODA: refuse before any money is asked for.
+          if (shop.tableOrderingBlocked) throw new ServiceUnavailableException('This restaurant is not taking table orders right now');
           const table = await tx.restaurantTable.findUnique({ where: { id: dto.tableId } });
           if (!table) throw new NotFoundException('Table not found');
           // A paid order that cannot reach a kitchen screen is the worst outcome, so refuse before taking any money.

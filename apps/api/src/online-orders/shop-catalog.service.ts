@@ -23,6 +23,8 @@ export interface LiveShop {
   paymentGateway: string;
   /** ZARODA has taken this business's hotel rooms off the marketplace. */
   hotelBlocked: boolean;
+  /** ZARODA has switched off ordering from table QR codes for this business. */
+  tableOrderingBlocked: boolean;
 }
 
 /**
@@ -70,6 +72,7 @@ export class ShopCatalogService {
         commissionRate: store.commissionRate != null ? Number(store.commissionRate) : null,
         paymentGateway: store.paymentGateway,
         hotelBlocked: store.hotelBlockedAt !== null,
+        tableOrderingBlocked: store.tableOrderingBlockedAt !== null,
       });
     }, TX_OPTIONS);
   }

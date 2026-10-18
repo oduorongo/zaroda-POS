@@ -66,6 +66,7 @@ interface RestaurantRow {
   whatsapp: string | null;
   ownerEmail: string | null;
   hotelBlockedReason: string | null;
+  tableOrderingBlockedReason: string | null;
 }
 interface Attention {
   id: string;
@@ -133,7 +134,7 @@ export default function HospitalityPage() {
   const [orders, setOrders] = useState<OrderOverview | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [blocking, setBlocking] = useState<HotelRow | null>(null);
+  const [target, setTarget] = useState<{ kind: "hotel" | "ordering"; organizationId: string; name: string } | null>(null);
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
   const [modalError, setModalError] = useState<string | null>(null);
@@ -155,35 +156,43 @@ export default function HospitalityPage() {
   }, [session, tab, days]);
 
   async function reload() {
-    setHotels(await apiGet<HotelOverview>(`/platform-admin/hotel-overview?days=${days}`));
+    if (tab === "hotels") setHotels(await apiGet<HotelOverview>(`/platform-admin/hotel-overview?days=${days}`));
+    else setOrders(await apiGet<OrderOverview>(`/platform-admin/table-order-overview?days=${days}`));
   }
 
+  const WORDS = {
+    hotel: { path: "hotel", off: "Take off marketplace", offDone: "is now off the marketplace. Its existing bookings are untouched.", onDone: "can list rooms on the marketplace again - it switches its room types back on itself.", failOff: "Could not take the hotel off the marketplace.", failOn: "Could not restore the hotel." },
+    ordering: { path: "table-ordering", off: "Switch off table ordering", offDone: "table ordering is now switched off. Orders already placed carry on.", onDone: "table ordering is on again.", failOff: "Could not switch table ordering off.", failOn: "Could not switch table ordering back on." },
+  } as const;
+
   async function takeOff() {
-    if (!blocking) return;
+    if (!target) return;
+    const w = WORDS[target.kind];
     setBusy(true);
     setModalError(null);
     try {
-      await apiPost(`/platform-admin/organizations/${blocking.organizationId}/hotel/block`, { reason: reason.trim() });
-      setNotice(`${blocking.organizationName} is now off the marketplace. Its existing bookings are untouched.`);
-      setBlocking(null);
+      await apiPost(`/platform-admin/organizations/${target.organizationId}/${w.path}/block`, { reason: reason.trim() });
+      setNotice(`${target.name}: ${w.offDone}`);
+      setTarget(null);
       setReason("");
       await reload();
     } catch (err) {
-      setModalError(err instanceof ApiError ? err.message : "Could not take the hotel off the marketplace.");
+      setModalError(err instanceof ApiError ? err.message : w.failOff);
     } finally {
       setBusy(false);
     }
   }
 
-  async function restore(hotel: HotelRow) {
+  async function restore(kind: "hotel" | "ordering", organizationId: string, name: string) {
+    const w = WORDS[kind];
     setError(null);
     setNotice(null);
     try {
-      await apiPost(`/platform-admin/organizations/${hotel.organizationId}/hotel/unblock`, {});
-      setNotice(`${hotel.organizationName} can list rooms on the marketplace again - it switches its room types back on itself.`);
+      await apiPost(`/platform-admin/organizations/${organizationId}/${w.path}/unblock`, {});
+      setNotice(`${name}: ${w.onDone}`);
       await reload();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not restore the hotel.");
+      setError(err instanceof ApiError ? err.message : w.failOn);
     }
   }
 
@@ -283,11 +292,11 @@ export default function HospitalityPage() {
                         </td>
                         <td className="whitespace-nowrap p-3 text-right">
                           {h.hotelBlockedReason ? (
-                            <Button size="sm" variant="secondary" onClick={() => void restore(h)}>
+                            <Button size="sm" variant="secondary" onClick={() => void restore("hotel", h.organizationId, h.organizationName)}>
                               Restore
                             </Button>
                           ) : (
-                            <Button size="sm" variant="danger" onClick={() => { setBlocking(h); setReason(""); setModalError(null); }}>
+                            <Button size="sm" variant="danger" onClick={() => { setTarget({ kind: "hotel", organizationId: h.organizationId, name: h.organizationName }); setReason(""); setModalError(null); }}>
                               Take off marketplace
                             </Button>
                           )}
@@ -400,6 +409,7 @@ export default function HospitalityPage() {
                       <th className="p-3 text-right">Commission</th>
                       <th className="p-3">Notes</th>
                       <th className="p-3">Contact</th>
+                      <th className="p-3" />
                     </tr>
                   </thead>
                   <tbody>
@@ -415,9 +425,26 @@ export default function HospitalityPage() {
                         <td className="p-3 text-right font-mono">{kes(r.commissionRecorded)}</td>
                         <td className="p-3">
                           {r.stuck > 0 && <Badge variant="error">{r.stuck} stuck</Badge>} {r.flagged > 0 && <Badge variant="warning">{r.flagged} payment mismatch</Badge>}
+                          {r.tableOrderingBlockedReason && (
+                            <>
+                              <Badge variant="neutral">Ordering off</Badge>
+                              <span className="mt-1 block max-w-[14rem] text-xs text-secondary-500">{r.tableOrderingBlockedReason}</span>
+                            </>
+                          )}
                         </td>
                         <td className="p-3">
                           <ContactLinks phone={r.contactPhone} whatsapp={r.whatsapp} email={r.ownerEmail} />
+                        </td>
+                        <td className="whitespace-nowrap p-3 text-right">
+                          {r.tableOrderingBlockedReason ? (
+                            <Button size="sm" variant="secondary" onClick={() => void restore("ordering", r.organizationId, r.organizationName)}>
+                              Switch on
+                            </Button>
+                          ) : (
+                            <Button size="sm" variant="danger" onClick={() => { setTarget({ kind: "ordering", organizationId: r.organizationId, name: r.organizationName }); setReason(""); setModalError(null); }}>
+                              Switch off ordering
+                            </Button>
+                          )}
                         </td>
                       </tr>
                     ))}
@@ -427,25 +454,31 @@ export default function HospitalityPage() {
             )}
           </div>
         )}
-        <Modal open={!!blocking} onClose={() => setBlocking(null)} title={blocking ? `Take off the marketplace - ${blocking.organizationName}` : ""}>
-          {blocking && (
+        <Modal open={!!target} onClose={() => setTarget(null)} title={target ? `${WORDS[target.kind].off} - ${target.name}` : ""}>
+          {target && (
             <div className="space-y-3">
-              <p className="text-sm">
-                The hotel disappears from the Hotels page straight away and cannot take new bookings, and it cannot list rooms again until you restore it. Bookings it already has are not touched - those guests have paid deposits, so contact the hotel about them.
-              </p>
+              {target.kind === "hotel" ? (
+                <p className="text-sm">
+                  The hotel disappears from the Hotels page straight away and cannot take new bookings, and it cannot list rooms again until you restore it. Bookings it already has are not touched - those guests have paid deposits, so contact the hotel about them.
+                </p>
+              ) : (
+                <p className="text-sm">
+                  The table QR codes stop taking orders straight away: diners who scan them are told ordering is off. Orders already paid for carry on to the kitchen as normal, and the restaurant is shown your reason. Switch it back on whenever the problem is sorted.
+                </p>
+              )}
               <div>
-                <label className="mb-1.5 block text-sm text-secondary-500">Reason (the hotel sees this)</label>
-                <Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. Repeated complaints about cancelled bookings" />
+                <label className="mb-1.5 block text-sm text-secondary-500">Reason (the business sees this)</label>
+                <Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder={target.kind === "hotel" ? "e.g. Repeated complaints about cancelled bookings" : "e.g. Orders are not reaching the kitchen"} />
               </div>
               {modalError && <p className="text-sm text-error-600">{modalError}</p>}
             </div>
           )}
           <ModalFooter>
-            <Button variant="secondary" onClick={() => setBlocking(null)}>
+            <Button variant="secondary" onClick={() => setTarget(null)}>
               Cancel
             </Button>
             <Button variant="danger" onClick={() => void takeOff()} disabled={busy || reason.trim().length < 3}>
-              {busy ? "Working..." : "Take off marketplace"}
+              {busy ? "Working..." : target ? WORDS[target.kind].off : ""}
             </Button>
           </ModalFooter>
         </Modal>

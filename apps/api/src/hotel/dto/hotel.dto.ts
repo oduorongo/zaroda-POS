@@ -135,3 +135,12 @@ export class BlockHotelDto {
   @MaxLength(300)
   reason!: string;
 }
+
+/** Why ZARODA is switching off table ordering for a business - shown to the restaurant. */
+export class BlockTableOrderingDto {
+  @Transform(trim)
+  @IsString()
+  @MinLength(3)
+  @MaxLength(300)
+  reason!: string;
+}
