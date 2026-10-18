@@ -8,25 +8,25 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Headers,
+  PayloadTooLargeException,
+  Req,
 } from '@nestjs/common';
+import type { Request } from 'express';
 import { Throttle } from '@nestjs/throttler';
 import { Role } from '@prisma/client';
 import { Roles } from '../auth/roles.decorator';
 import { ProductsService } from './products.service';
 import { ProductVariantsService } from './product-variants.service';
-import { ProductImagesService } from './product-images.service';
+import { MAX_IMAGE_BYTES, ProductImagesService } from './product-images.service';
 import { CreateProductDto, UpdateProductDto } from './dto/product.dto';
 import {
   CreateProductVariantDto,
   UpdateProductVariantDto,
 } from './dto/product-variant.dto';
-import {
-  ConfirmProductImageDto,
-  RequestProductImageUploadDto,
-} from './dto/product-image.dto';
 
-// Each upload URL is a signed grant to write to the bucket - generous for
-// a manager adding photos, tight enough to stop a script filling storage.
+// Each upload writes a file to storage - generous for a manager adding photos,
+// tight enough to stop a script filling it.
 const UPLOAD_THROTTLE = { default: { limit: 30, ttl: 60_000 } };
 
 @Controller('products')
@@ -123,23 +123,27 @@ export class ProductsController {
     return this.images.list(productId);
   }
 
+  /**
+   * The photo itself is the request body (Content-Type: image/jpeg|png|webp),
+   * not JSON or multipart - Express leaves image/* bodies unparsed, so it is
+   * read straight off the stream, stopping early if it exceeds the 5MB cap.
+   */
   @Roles(Role.MANAGER, Role.OWNER)
   @Throttle(UPLOAD_THROTTLE)
-  @Post(':productId/images/upload-url')
-  requestImageUpload(
-    @Param('productId', ParseUUIDPipe) productId: string,
-    @Body() dto: RequestProductImageUploadDto,
-  ) {
-    return this.images.requestUpload(productId, dto);
-  }
-
-  @Roles(Role.MANAGER, Role.OWNER)
   @Post(':productId/images')
-  confirmImage(
+  async uploadImage(
     @Param('productId', ParseUUIDPipe) productId: string,
-    @Body() dto: ConfirmProductImageDto,
+    @Headers('content-type') contentType: string | undefined,
+    @Req() req: Request,
   ) {
-    return this.images.confirm(productId, dto);
+    const chunks: Buffer[] = [];
+    let total = 0;
+    for await (const chunk of req as AsyncIterable<Buffer>) {
+      total += chunk.length;
+      if (total > MAX_IMAGE_BYTES) throw new PayloadTooLargeException('Photos must be 5MB or smaller');
+      chunks.push(chunk);
+    }
+    return this.images.upload(productId, (contentType ?? '').split(';')[0].trim().toLowerCase(), Buffer.concat(chunks));
   }
 
   @Roles(Role.MANAGER, Role.OWNER)

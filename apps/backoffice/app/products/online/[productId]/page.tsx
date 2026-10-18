@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { apiDelete, apiGet, apiPatch, apiPost, ApiError } from "../../../../lib/api";
+import { apiDelete, apiGet, apiPatch, apiPost, apiUploadFile, ApiError } from "../../../../lib/api";
 import { getSession, clearSession, isBackofficeRole, type Session } from "../../../../lib/auth";
 import { Nav } from "../../../../components/nav";
 import { PageHeader } from "../../../../components/page-header";
@@ -131,14 +131,7 @@ export default function ProductOnlineListingPage() {
     setUploading(true);
     try {
       for (const file of chosen) {
-        const { uploadUrl, key } = await apiPost<{ uploadUrl: string; key: string }>(
-          `/products/${params.productId}/images/upload-url`,
-          { contentType: file.type, sizeBytes: file.size },
-        );
-        // Straight to the storage bucket, not through the API.
-        const put = await fetch(uploadUrl, { method: "PUT", headers: { "Content-Type": file.type }, body: file });
-        if (!put.ok) throw new Error(`Upload of ${file.name} failed (${put.status}).`);
-        const image = await apiPost<ProductImage>(`/products/${params.productId}/images`, { key });
+        const image = await apiUploadFile<ProductImage>(`/products/${params.productId}/images`, file);
         setImages((current) => [...current, image]);
       }
     } catch (err) {
