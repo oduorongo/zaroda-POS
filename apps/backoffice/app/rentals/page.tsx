@@ -8,6 +8,7 @@ import { Nav } from "../../components/nav";
 import { RentSection } from "./rent-section";
 import { PlanSection } from "./plan-section";
 import { CaretakersSection } from "./caretakers-section";
+import { ListingsSection } from "./listings-section";
 import { ExpensesSection, MaintenanceSection, MetersSection, ReportsSection } from "./ops-sections";
 import { PageHeader } from "../../components/page-header";
 
@@ -53,9 +54,12 @@ interface Lease {
 
 // A caretaker records rent and logs repairs and meter readings; everything else is the landlord's.
 const CARETAKER_TABS: Tab[] = ["rent", "maintenance", "meters"];
-const OWNER_TABS: Tab[] = ["properties", "tenants", "leases", "rent", "expenses", "maintenance", "meters", "reports", "caretakers", "plan"];
+const OWNER_TABS: Tab[] = ["properties", "tenants", "leases", "rent", "expenses", "maintenance", "meters", "reports", "houses", "caretakers", "plan"];
 
-type Tab = "properties" | "tenants" | "leases" | "rent" | "expenses" | "maintenance" | "meters" | "reports" | "caretakers" | "plan";
+type Tab = "properties" | "tenants" | "leases" | "rent" | "expenses" | "maintenance" | "meters" | "reports" | "houses" | "caretakers" | "plan";
+
+// Tabs whose name is not just the key with a capital letter.
+const TAB_LABEL: Partial<Record<Tab, string>> = { houses: "Houses to let" };
 
 const input = "w-full rounded-md border border-border bg-surface p-2 text-sm";
 const button = "rounded-md bg-primary-600 px-3 py-2 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-50";
@@ -344,7 +348,7 @@ How much of the deposit are you handing back (KES)? Enter 0 for none.`,
               onClick={() => setTab(t)}
               className={`rounded-md px-3 py-2 text-sm capitalize ${tab === t ? "bg-primary-600 text-white" : "border border-border bg-surface"}`}
             >
-              {t}
+              {TAB_LABEL[t] ?? t}
             </button>
           ))}
         </div>
@@ -574,6 +578,7 @@ How much of the deposit are you handing back (KES)? Enter 0 for none.`,
         {tab === "maintenance" && <MaintenanceSection properties={properties} units={units} />}
         {tab === "meters" && <MetersSection units={units} />}
         {tab === "reports" && <ReportsSection />}
+        {tab === "houses" && <ListingsSection units={units} onChanged={() => void load()} />}
         {tab === "caretakers" && <CaretakersSection properties={properties} />}
         {tab === "plan" && <PlanSection onChanged={() => void load()} />}
       </main>

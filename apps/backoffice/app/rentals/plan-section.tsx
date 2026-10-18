@@ -38,7 +38,7 @@ const day = (iso: string) => new Date(iso).toLocaleDateString("en-KE", { day: "n
 
 const DESCRIPTION: Record<PlanCode, string[]> = {
   bure: ["Tenant records and monthly rent invoices", "Record payments by hand", "Arrears list"],
-  starter: ["Everything in Bure", "Tenant portal and printable receipts", "Rent reminders and monthly statements", "1 caretaker account"],
+  starter: ["Everything in Bure", "Tenant portal and printable receipts", "Rent reminders and monthly statements", "Advertise empty units on Houses to let", "1 caretaker account"],
   collect: ["Everything in Starter", "Tenants pay by M-Pesa and rent is matched automatically", "Through your own Paybill, Till or Tuma account", "Up to 5 caretaker accounts, each limited to the properties you choose"],
 };
 
