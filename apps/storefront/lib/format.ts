@@ -14,3 +14,24 @@ export function displayPhone(phone: string) {
 export function locationLabel(subCounty: string | null, county: string | null) {
   return [subCounty, county].filter(Boolean).join(", ");
 }
+
+export const HOUSE_TYPES: [string, string][] = [
+  ["BEDSITTER", "Bedsitter"],
+  ["SINGLE_ROOM", "Single room"],
+  ["ONE_BEDROOM", "1 bedroom"],
+  ["TWO_BEDROOM", "2 bedroom"],
+  ["THREE_BEDROOM", "3 bedroom"],
+  ["SHOP", "Shop"],
+  ["OFFICE", "Office"],
+  ["OTHER", "Other"],
+];
+
+export const houseTypeLabel = (type: string) => HOUSE_TYPES.find(([value]) => value === type)?.[1] ?? type;
+
+/** 0712 345 678 / +254712345678 -> 254712345678 (the form tel: and wa.me links need). */
+export function intlPhone(phone: string) {
+  const digits = phone.replace(/[^0-9]/g, "");
+  if (digits.startsWith("254")) return digits;
+  if (digits.startsWith("0")) return `254${digits.slice(1)}`;
+  return `254${digits}`;
+}
