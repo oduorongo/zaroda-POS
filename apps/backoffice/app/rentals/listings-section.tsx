@@ -649,7 +649,7 @@ function CopyPanel({
     onError("");
     try {
       const result = await apiPost<{ createdIds: string[]; created: number; skipped: { unitId: string; reason: string }[] }>(`/rental/listings/${listing.id}/copy`, {
-        unitIds: [...picked],
+        unitIds: Array.from(picked),
         useOwnRent,
       });
       await onCopied(result);
