@@ -1,4 +1,4 @@
-import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
+import { BadGatewayException, Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { del, put } from '@vercel/blob';
 
@@ -43,13 +43,21 @@ export class ObjectStorageService {
   }
 
   async upload(key: string, body: Buffer, contentType: string): Promise<void> {
-    await put(key, body, {
-      access: 'public',
-      contentType,
-      token: this.token,
-      addRandomSuffix: false,
-      allowOverwrite: false,
-    });
+    try {
+      await put(key, body, {
+        access: 'public',
+        contentType,
+        token: this.token,
+        addRandomSuffix: false,
+        allowOverwrite: false,
+      });
+    } catch (e) {
+      // Without this the manager only sees a bare "Internal server error". The usual causes are a wrong or
+      // revoked token, or a Private store (shop photos need a Public one) - say so.
+      const reason = e instanceof Error ? e.message : String(e);
+      this.logger.error({ err: e }, 'Blob upload failed');
+      throw new BadGatewayException(`Photo storage rejected the upload: ${reason}`);
+    }
   }
 
   /**
