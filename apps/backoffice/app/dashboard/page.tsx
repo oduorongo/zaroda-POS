@@ -164,8 +164,12 @@ export default function DashboardPage() {
       <Nav session={session} />
 
       <main className="mx-auto max-w-6xl px-4 py-8 sm:px-6">
-        <h1 className="text-2xl font-bold text-foreground">Welcome back{session.email ? `, ${session.email.split("@")[0]}` : ""}</h1>
-        <p className="mt-1 text-sm text-secondary-400">Everything for your shop, in one place.</p>
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-[#1d3f75] via-[#16305c] to-[#0a1730] px-6 py-7 text-white shadow-[0_10px_30px_-10px_rgb(10_23_48/0.6)] sm:px-8 sm:py-9">
+          <div aria-hidden className="pointer-events-none absolute -right-16 -top-20 h-64 w-64 rounded-full bg-white/10 blur-2xl" />
+          <div aria-hidden className="pointer-events-none absolute -bottom-24 right-24 h-48 w-48 rounded-full bg-sky-400/10 blur-2xl" />
+          <h1 className="relative text-2xl font-bold sm:text-3xl">Welcome back{session.email ? `, ${session.email.split("@")[0]}` : ""}</h1>
+          <p className="relative mt-1.5 text-sm text-white/70">Everything for your shop, in one place.</p>
+        </div>
 
         <div className="mt-8 grid grid-cols-2 gap-4 sm:gap-5 md:grid-cols-3 lg:grid-cols-4">
           {tiles.map((tile) => {
@@ -174,9 +178,9 @@ export default function DashboardPage() {
               <Link
                 key={tile.href}
                 href={tile.href}
-                className="group flex flex-col rounded-xl border border-border bg-surface p-5 transition-colors hover:border-secondary-500"
+                className="group flex flex-col rounded-xl border border-border bg-surface p-5 shadow-[var(--card-shadow)] transition-all duration-200 hover:-translate-y-0.5 hover:border-primary-500/40 hover:shadow-[0_12px_28px_-10px_rgb(15_23_42/0.28)]"
               >
-                <div className={`flex h-11 w-11 items-center justify-center rounded-lg ${tile.tone} text-white`}>
+                <div className={`flex h-11 w-11 items-center justify-center rounded-lg ${tile.tone} text-white shadow-md ring-1 ring-white/20 transition-transform duration-200 group-hover:scale-105`}>
                   <Icon size={22} strokeWidth={2} />
                 </div>
                 <h2 className="mt-4 font-semibold text-foreground">{tile.label}</h2>

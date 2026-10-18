@@ -144,6 +144,11 @@ export default function BookingsPage() {
             </div>
           ))}
         </div>
+        <p className="mb-4 text-sm">
+          <a href="/settings/online-shop/poster" className="font-semibold text-primary-600 hover:underline">
+            Print a poster with a QR code so customers can book from their phone
+          </a>
+        </p>
       </main>
     </div>
   );
