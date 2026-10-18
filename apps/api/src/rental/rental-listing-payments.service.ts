@@ -9,7 +9,7 @@ import { getTenantStore } from '../common/tenant/tenant-context';
 import { normalizeKenyanPhone } from '../online-orders/online-orders.util';
 import { TumaClient } from '../online-store/tuma.client';
 import { evaluateCallback, parseCallback } from '../online-store/tuma.util';
-import { LISTING_FEE_KES, extendPaidUntil } from './rental-listing-fee.util';
+import { LISTING_FEE_KES, MAX_ADVERTS_PER_PAYMENT, extendPaidUntil } from './rental-listing-fee.util';
 
 type Tx = Prisma.TransactionClient;
 const TX_OPTIONS = { timeout: 30_000, maxWait: 15_000 };
@@ -61,33 +61,46 @@ export class RentalListingPaymentsService {
 
   // ── The landlord pays ───────────────────────────────────────────────────
 
-  /** Sends an M-Pesa prompt for KES 100. The money lands in ZARODA's Tuma account. */
-  async pay(listingId: string, phoneInput: string) {
+  /**
+   * Sends ONE M-Pesa prompt for KES 100 per advert, however many adverts are being paid for (a landlord with several
+   * empty units pays once). The money lands in ZARODA's Tuma account.
+   */
+  async pay(listingIds: string[], phoneInput: string) {
     const { organizationId } = getTenantStore();
+    const ids = [...new Set(listingIds)];
+    if (ids.length === 0) throw new BadRequestException('Choose at least one advert to pay for');
+    if (ids.length > MAX_ADVERTS_PER_PAYMENT) throw new BadRequestException(`You can pay for up to ${MAX_ADVERTS_PER_PAYMENT} adverts at a time`);
     const phone = normalizeKenyanPhone(phoneInput);
     if (!phone) throw new BadRequestException('Enter a valid M-Pesa number, e.g. 0712 345 678');
     if (!this.canPayOnline()) throw new ServiceUnavailableException('Online payments are not available right now. Please try again later.');
     const credentials = this.tuma.platformCredentials();
+    const amount = LISTING_FEE_KES * ids.length;
 
     const payment = await this.tenantPrisma.run(async (tx) => {
-      const listing = await tx.rentalListing.findUnique({ where: { id: listingId } });
-      if (!listing) throw new NotFoundException('Advert not found');
-      const unit = await tx.rentalUnit.findUnique({ where: { id: listing.unitId } });
-      if (unit?.status !== 'VACANT') throw new ConflictException('Only an empty unit can be advertised.');
-      const recent = await tx.rentalListingPayment.findFirst({ where: { listingId, status: 'PENDING' }, orderBy: { createdAt: 'desc' } });
-      if (recent && Date.now() - recent.createdAt.getTime() < PAY_RETRY_COOLDOWN_MS) {
+      const listings = await tx.rentalListing.findMany({ where: { id: { in: ids } } });
+      if (listings.length !== ids.length) throw new NotFoundException('One of the adverts was not found');
+      const blocked = listings.find((l) => l.blockedAt);
+      if (blocked) throw new ConflictException(`"${blocked.title}" has been taken down by Zaroda and cannot be paid for`);
+      const paused = listings.find((l) => !l.isActive);
+      if (paused) throw new ConflictException(`"${paused.title}" is paused - resume it first`);
+      const units = await tx.rentalUnit.findMany({ where: { id: { in: listings.map((l) => l.unitId) } } });
+      const taken = units.find((u) => u.status !== 'VACANT');
+      if (taken) throw new ConflictException('Only an empty unit can be advertised.');
+
+      const pending = await tx.rentalListingPayment.findMany({ where: { status: 'PENDING', listingIds: { hasSome: ids } }, orderBy: { createdAt: 'desc' } });
+      if (pending[0] && Date.now() - pending[0].createdAt.getTime() < PAY_RETRY_COOLDOWN_MS) {
         throw new BadRequestException('Check your phone for the M-Pesa prompt - you can try again in a minute');
       }
-      // Any older unanswered prompt is finished with; the new one replaces it.
-      await tx.rentalListingPayment.updateMany({ where: { listingId, status: 'PENDING' }, data: { status: 'FAILED', errorMessage: 'Replaced by a newer prompt' } });
-      return tx.rentalListingPayment.create({ data: { organizationId, listingId, amount: LISTING_FEE_KES, phone } });
+      // Any older unanswered prompt for these adverts is finished with; the new one replaces it.
+      await tx.rentalListingPayment.updateMany({ where: { id: { in: pending.map((p) => p.id) } }, data: { status: 'FAILED', errorMessage: 'Replaced by a newer prompt' } });
+      return tx.rentalListingPayment.create({ data: { organizationId, listingId: ids[0], listingIds: ids, amount, phone } });
     });
 
     try {
       const result = await this.tuma.stkPush(credentials, {
-        amount: LISTING_FEE_KES,
+        amount,
         phone,
-        description: 'ZARODA house advert',
+        description: ids.length === 1 ? 'ZARODA house advert' : `ZARODA house adverts (${ids.length})`,
         callbackUrl: this.callbackUrl(organizationId, payment.id),
       });
       await this.tenantPrisma.run((tx) =>
@@ -95,17 +108,17 @@ export class RentalListingPaymentsService {
       );
     } catch (e) {
       const message = e instanceof Error ? e.message : 'Could not start the payment';
-      this.logger.warn({ err: e, listingId }, 'Advert payment STK push failed');
+      this.logger.warn({ err: e, listingIds: ids }, 'Advert payment STK push failed');
       await this.tenantPrisma.run((tx) => tx.rentalListingPayment.update({ where: { id: payment.id }, data: { status: 'FAILED', errorMessage: message } }));
       throw new BadRequestException(`We could not send the M-Pesa prompt: ${message}`);
     }
-    return { paymentId: payment.id, status: 'PENDING' as const, amount: LISTING_FEE_KES };
+    return { paymentId: payment.id, status: 'PENDING' as const, amount, adverts: ids.length };
   }
 
   /** "Check now" - the backup when Tuma's callback has not arrived. A paid Tuma status check, so rate limited. */
   async check(listingId: string) {
     const { organizationId } = getTenantStore();
-    const payment = await this.tenantPrisma.run((tx) => tx.rentalListingPayment.findFirst({ where: { listingId, status: 'PENDING' }, orderBy: { createdAt: 'desc' } }));
+    const payment = await this.tenantPrisma.run((tx) => tx.rentalListingPayment.findFirst({ where: { listingIds: { has: listingId }, status: 'PENDING' }, orderBy: { createdAt: 'desc' } }));
     if (!payment || !payment.tumaMerchantRequestId) return { result: 'nothing-pending' as const };
 
     const state = this.checks.get(payment.id) ?? { last: 0, count: 0 };
@@ -182,8 +195,9 @@ export class RentalListingPaymentsService {
   }
 
   /**
-   * Marks the payment PAID and pushes the advert's "paid until" 30 days on, switching it on. Conditional on the payment
-   * still being PENDING, so a callback and a "check now" arriving together extend the advert only once.
+   * Marks the payment PAID and pushes every advert it covers 30 days on, switching them on. Conditional on the payment
+   * still being PENDING, so a callback and a "check now" arriving together extend the adverts only once. An advert that
+   * was taken down or removed while the prompt was open is left alone.
    */
   private async settle(organizationId: string, paymentId: string, reference: string): Promise<'paid' | 'skipped'> {
     return this.runAsTenant(organizationId, async (tx) => {
@@ -193,13 +207,17 @@ export class RentalListingPaymentsService {
       });
       if (claimed.count !== 1) return 'skipped' as const;
       const payment = await tx.rentalListingPayment.findUniqueOrThrow({ where: { id: paymentId } });
-      const listing = await tx.rentalListing.findUnique({ where: { id: payment.listingId } });
-      if (!listing) return 'paid' as const; // the advert was removed after the prompt - nothing to extend
+      const covered = payment.listingIds.length > 0 ? payment.listingIds : [payment.listingId];
       const now = new Date();
-      await tx.rentalListing.update({
-        where: { id: listing.id },
-        data: { paidUntil: extendPaidUntil(listing.paidUntil, now), isActive: true, confirmedAt: now },
-      });
+      for (const id of covered) {
+        const listing = await tx.rentalListing.findUnique({ where: { id } });
+        if (!listing) continue;
+        if (listing.blockedAt) {
+          this.logger.warn({ paymentId, listingId: id }, 'Advert was taken down while its payment was in progress - not extended');
+          continue;
+        }
+        await tx.rentalListing.update({ where: { id }, data: { paidUntil: extendPaidUntil(listing.paidUntil, now), isActive: true, confirmedAt: now } });
+      }
       return 'paid' as const;
     });
   }

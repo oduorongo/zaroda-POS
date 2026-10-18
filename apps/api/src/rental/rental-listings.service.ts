@@ -33,6 +33,8 @@ export class RentalListingsService {
     contactPhone: string;
     isActive: boolean;
     paidUntil: Date | null;
+    blockedAt?: Date | null;
+    blockedReason?: string | null;
     unit?: { label: string; property: { name: string } };
     photos: { id: string; storageKey: string; sortOrder: number }[];
   }) {
@@ -52,6 +54,7 @@ export class RentalListingsService {
       isActive: l.isActive,
       state: listingState(l) as ListingState,
       paidUntil: l.paidUntil,
+      blockedReason: l.blockedAt ? (l.blockedReason ?? 'Taken down by Zaroda') : null,
       feeKes: LISTING_FEE_KES,
       days: LISTING_DAYS,
       photos: [...l.photos]
@@ -103,6 +106,7 @@ export class RentalListingsService {
     const saved = await this.tenantPrisma.run(async (tx) => {
       const listing = await this.requireListing(tx, id);
       if (dto.isActive) {
+        if (listing.blockedAt) throw new ConflictException(`Zaroda has taken this advert down: ${listing.blockedReason ?? 'please contact Zaroda'}`);
         const unit = await tx.rentalUnit.findUnique({ where: { id: listing.unitId } });
         if (unit?.status !== 'VACANT') throw new ConflictException('Only an empty unit can be advertised.');
       }

@@ -26,6 +26,8 @@ import { ResetUserPasswordDto } from './dto/reset-user-password.dto';
 import { CommissionService } from '../online-store/commission.service';
 import { RidersService } from '../riders/riders.service';
 import { RentalPlatformPaymentsService } from '../rental/rental-platform-payments.service';
+import { RentalListingAdminService } from '../rental/rental-listing-admin.service';
+import { BlockListingDto } from '../rental/dto/rental-listing.dto';
 import { ListPlatformInvoicesQueryDto, RecordPlatformInvoicePaymentDto, WaivePlatformInvoiceDto } from '../rental/dto/rental-platform-invoice.dto';
 import { ListRidersQueryDto, SetRiderStatusDto } from '../riders/dto/rider.dto';
 import {
@@ -57,6 +59,7 @@ export class PlatformAdminController {
     private readonly commission: CommissionService,
     private readonly riders: RidersService,
     private readonly rentalBilling: RentalPlatformPaymentsService,
+    private readonly listingAdmin: RentalListingAdminService,
   ) {}
 
   @Public()
@@ -444,6 +447,54 @@ export class PlatformAdminController {
       action: 'platform_admin.waived_rental_invoice',
       entityType: 'RentalPlatformInvoice',
       entityId: invoiceId,
+      organizationId: id,
+    });
+    return result;
+  }
+
+  // ── Houses to let adverts (what landlords advertise, and what they paid for it) ──
+
+  @Public()
+  @UseGuards(PlatformAdminAuthGuard)
+  @Get('rental-listings')
+  listRentalListings() {
+    return this.listingAdmin.list();
+  }
+
+  @Public()
+  @UseGuards(PlatformAdminAuthGuard)
+  @Post('organizations/:id/rental-listings/:listingId/block')
+  async blockRentalListing(
+    @Req() req: PlatformAdminRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('listingId', ParseUUIDPipe) listingId: string,
+    @Body() dto: BlockListingDto,
+  ) {
+    const result = await this.listingAdmin.block(id, listingId, dto.reason);
+    await this.auditLog.log({
+      platformAdminId: req.user!.platformAdminId,
+      action: 'platform_admin.took_down_rental_listing',
+      entityType: 'RentalListing',
+      entityId: listingId,
+      organizationId: id,
+    });
+    return result;
+  }
+
+  @Public()
+  @UseGuards(PlatformAdminAuthGuard)
+  @Post('organizations/:id/rental-listings/:listingId/unblock')
+  async unblockRentalListing(
+    @Req() req: PlatformAdminRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('listingId', ParseUUIDPipe) listingId: string,
+  ) {
+    const result = await this.listingAdmin.unblock(id, listingId);
+    await this.auditLog.log({
+      platformAdminId: req.user!.platformAdminId,
+      action: 'platform_admin.restored_rental_listing',
+      entityType: 'RentalListing',
+      entityId: listingId,
       organizationId: id,
     });
     return result;

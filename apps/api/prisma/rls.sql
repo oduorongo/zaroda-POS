@@ -907,7 +907,7 @@ DROP POLICY IF EXISTS public_listings_read ON rental_listings;
 CREATE POLICY public_listings_read ON rental_listings
   FOR SELECT
   USING (current_setting('app.public_listings', true) = 'on'
-         AND "isActive" AND "paidUntil" > now());
+         AND "isActive" AND "blockedAt" IS NULL AND "paidUntil" > now());
 
 ALTER TABLE rental_listing_photos ENABLE ROW LEVEL SECURITY;
 ALTER TABLE rental_listing_photos FORCE ROW LEVEL SECURITY;
