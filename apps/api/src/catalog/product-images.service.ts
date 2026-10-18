@@ -3,7 +3,6 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { TenantScopedPrismaService, TenantTx } from '../common/prisma/tenant-scoped-prisma.service';
 import { getTenantStore } from '../common/tenant/tenant-context';
 import { ObjectStorageService } from '../common/storage/object-storage.service';
-import { ConfirmProductImageDto, RequestProductImageUploadDto } from './dto/product-image.dto';
 
 export const MAX_IMAGES_PER_PRODUCT = 5;
 export const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
@@ -18,12 +17,20 @@ export function productImagePrefix(organizationId: string, productId: string): s
   return `orgs/${organizationId}/products/${productId}/`;
 }
 
+/** True if the bytes really are the image type claimed - a renamed .exe or HTML file is refused. */
+function looksLike(contentType: string, b: Buffer): boolean {
+  if (contentType === 'image/jpeg') return b.length > 3 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff;
+  if (contentType === 'image/png') return b.length > 8 && b.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
+  if (contentType === 'image/webp') return b.length > 12 && b.toString('ascii', 0, 4) === 'RIFF' && b.toString('ascii', 8, 12) === 'WEBP';
+  return false;
+}
+
 /**
- * Two-step upload: requestUpload hands the browser a presigned URL to PUT
- * the file straight to the bucket, then confirm checks the file actually
- * landed (right place, type and size) before recording it. Nothing is
- * written to the database until confirm, so an abandoned upload leaves at
- * most an unreferenced file, never a broken image row.
+ * The browser sends the photo to the API, which checks it (type claimed,
+ * real file contents, size, photo count) and only then stores it and records
+ * it. Photos are capped at 5MB so passing them through the API is cheap, and
+ * it means nothing unchecked ever reaches the store. If recording fails after
+ * the store accepted the file, the file is removed again.
  */
 @Injectable()
 export class ProductImagesService {
@@ -51,11 +58,13 @@ export class ProductImagesService {
     return images.map((image) => this.toView(image));
   }
 
-  async requestUpload(productId: string, dto: RequestProductImageUploadDto) {
+  async upload(productId: string, contentType: string, body: Buffer) {
     const { organizationId } = getTenantStore();
-    const extension = IMAGE_CONTENT_TYPES[dto.contentType];
+    const extension = IMAGE_CONTENT_TYPES[contentType];
     if (!extension) throw new BadRequestException('Photos must be JPEG, PNG or WebP');
-    if (dto.sizeBytes > MAX_IMAGE_BYTES) throw new BadRequestException('Photos must be 5MB or smaller');
+    if (body.length === 0) throw new BadRequestException('The photo is empty');
+    if (body.length > MAX_IMAGE_BYTES) throw new BadRequestException('Photos must be 5MB or smaller');
+    if (!looksLike(contentType, body)) throw new BadRequestException('That file is not a valid JPEG, PNG or WebP photo');
 
     await this.tenantPrisma.run(async (tx) => {
       await this.requireProduct(tx, productId);
@@ -66,44 +75,23 @@ export class ProductImagesService {
     });
 
     const key = `${productImagePrefix(organizationId, productId)}${randomUUID()}.${extension}`;
-    const uploadUrl = await this.storage.createUploadUrl(key, dto.contentType, dto.sizeBytes);
-    return { uploadUrl, key };
-  }
+    await this.storage.upload(key, body, contentType);
 
-  async confirm(productId: string, dto: ConfirmProductImageDto) {
-    const { organizationId } = getTenantStore();
-    const prefix = productImagePrefix(organizationId, productId);
-    const fileName = dto.key.slice(prefix.length);
-    if (!dto.key.startsWith(prefix) || !/^[0-9a-f-]{36}\.(jpg|png|webp)$/.test(fileName)) {
-      throw new BadRequestException('Invalid upload key');
-    }
-
-    // Checked against what's actually in the bucket, not what the browser
-    // claims - the presigned URL already pins type and size, this is the
-    // second line of defence.
-    const object = await this.storage.head(dto.key);
-    if (!object) throw new BadRequestException('Upload not found - try uploading the photo again');
-    if (object.sizeBytes > MAX_IMAGE_BYTES || !object.contentType || !IMAGE_CONTENT_TYPES[object.contentType]) {
-      await this.storage.deleteMany([dto.key]);
-      throw new BadRequestException('Photos must be JPEG, PNG or WebP, 5MB or smaller');
-    }
-
-    const image = await this.tenantPrisma.run(async (tx) => {
-      await this.requireProduct(tx, productId);
-      const existing = await tx.productImage.findMany({ where: { productId }, select: { sortOrder: true } });
-      if (existing.length >= MAX_IMAGES_PER_PRODUCT) {
-        throw new BadRequestException(`A product can have at most ${MAX_IMAGES_PER_PRODUCT} photos`);
-      }
-      const nextOrder = existing.reduce((max, i) => Math.max(max, i.sortOrder + 1), 0);
-      return tx.productImage.upsert({
-        // Idempotent: confirming the same upload twice (a retried request)
-        // returns the existing row instead of erroring on the unique key.
-        where: { storageKey: dto.key },
-        create: { productId, storageKey: dto.key, sortOrder: nextOrder },
-        update: {},
+    try {
+      const image = await this.tenantPrisma.run(async (tx) => {
+        await this.requireProduct(tx, productId);
+        const existing = await tx.productImage.findMany({ where: { productId }, select: { sortOrder: true } });
+        if (existing.length >= MAX_IMAGES_PER_PRODUCT) {
+          throw new BadRequestException(`A product can have at most ${MAX_IMAGES_PER_PRODUCT} photos`);
+        }
+        const nextOrder = existing.reduce((max, i) => Math.max(max, i.sortOrder + 1), 0);
+        return tx.productImage.create({ data: { productId, storageKey: key, sortOrder: nextOrder } });
       });
-    });
-    return this.toView(image);
+      return this.toView(image);
+    } catch (e) {
+      await this.storage.deleteMany([key]);
+      throw e;
+    }
   }
 
   /** Moves one photo to the front (the cover shown in the shop), keeping the others in their current order. */
