@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { apiDelete, apiGet, apiPatch, apiPost, apiUploadFile, ApiError } from "../../../../lib/api";
+import { shrinkPhoto } from "../../../../lib/resize-image";
 import { getSession, clearSession, isBackofficeRole, type Session } from "../../../../lib/auth";
 import { Nav } from "../../../../components/nav";
 import { PageHeader } from "../../../../components/page-header";
@@ -31,9 +32,11 @@ interface ProductImage {
 }
 
 // Mirrors ProductImagesService's limits so the obvious mistakes are caught
-// before uploading; the server still enforces them.
+// before uploading; the server still enforces them. Photos are shrunk in the browser first
+// (see lib/resize-image.ts), so a large original is fine - only the shrunk file must fit MAX_BYTES.
 const MAX_IMAGES = 5;
 const MAX_BYTES = 5 * 1024 * 1024;
+const MAX_ORIGINAL_BYTES = 30 * 1024 * 1024;
 const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp"];
 
 /**
@@ -46,6 +49,7 @@ export default function ProductOnlineListingPage() {
   const params = useParams<{ productId: string }>();
   const router = useRouter();
   const fileInput = useRef<HTMLInputElement>(null);
+  const cameraInput = useRef<HTMLInputElement>(null);
   const [session, setSessionState] = useState<Session | null>(null);
   const [product, setProduct] = useState<Product | null>(null);
   const [images, setImages] = useState<ProductImage[]>([]);
@@ -123,14 +127,16 @@ export default function ProductOnlineListingPage() {
         setPhotoError(`${file.name}: photos must be JPEG, PNG or WebP.`);
         return;
       }
-      if (file.size > MAX_BYTES) {
-        setPhotoError(`${file.name}: photos must be 5MB or smaller.`);
+      if (file.size > MAX_ORIGINAL_BYTES) {
+        setPhotoError(`${file.name}: that photo is too large.`);
         return;
       }
     }
     setUploading(true);
     try {
-      for (const file of chosen) {
+      for (const original of chosen) {
+        const file = await shrinkPhoto(original);
+        if (file.size > MAX_BYTES) throw new Error(`${original.name}: photos must be 5MB or smaller.`);
         const image = await apiUploadFile<ProductImage>(`/products/${params.productId}/images`, file);
         setImages((current) => [...current, image]);
       }
@@ -139,6 +145,7 @@ export default function ProductOnlineListingPage() {
     } finally {
       setUploading(false);
       if (fileInput.current) fileInput.current.value = "";
+      if (cameraInput.current) cameraInput.current.value = "";
     }
   }
 
@@ -273,9 +280,23 @@ export default function ProductOnlineListingPage() {
                       className="hidden"
                       onChange={(e) => void uploadPhotos(e.target.files)}
                     />
-                    <Button variant="outline" onClick={() => fileInput.current?.click()} disabled={uploading}>
-                      {uploading ? "Uploading..." : "Add photos"}
-                    </Button>
+                    {/* capture opens the phone's camera directly; on a computer it behaves like a normal file picker. */}
+                    <input
+                      ref={cameraInput}
+                      type="file"
+                      accept="image/*"
+                      capture="environment"
+                      className="hidden"
+                      onChange={(e) => void uploadPhotos(e.target.files)}
+                    />
+                    <div className="flex flex-wrap gap-2">
+                      <Button variant="outline" onClick={() => cameraInput.current?.click()} disabled={uploading}>
+                        {uploading ? "Preparing..." : "Take photo"}
+                      </Button>
+                      <Button variant="outline" onClick={() => fileInput.current?.click()} disabled={uploading}>
+                        {uploading ? "Uploading..." : "Add photos"}
+                      </Button>
+                    </div>
                   </>
                 )}
               </CardContent>
