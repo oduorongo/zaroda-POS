@@ -65,3 +65,11 @@ export class SetListingActiveDto {
   @IsBoolean()
   isActive!: boolean;
 }
+
+export class PayListingDto {
+  /** The M-Pesa number that gets the prompt. */
+  @Transform(trim)
+  @IsString()
+  @MaxLength(20)
+  phone!: string;
+}

@@ -19,6 +19,8 @@ interface Photo {
   sortOrder: number;
 }
 
+type State = "UNPAID" | "LIVE" | "EXPIRED" | "PAUSED";
+
 interface Listing {
   id: string;
   unitId: string;
@@ -33,8 +35,10 @@ interface Listing {
   contactName: string | null;
   contactPhone: string;
   isActive: boolean;
-  state: "LIVE" | "PAUSED" | "EXPIRED";
-  expiresAt: string;
+  state: State;
+  paidUntil: string | null;
+  feeKes: number;
+  days: number;
   photos: Photo[];
 }
 
@@ -51,17 +55,35 @@ const UNIT_TYPES: [string, string][] = [
 
 const MAX_PHOTOS = 8;
 const MAX_ORIGINAL_BYTES = 30 * 1024 * 1024;
+const POLL_EVERY_MS = 5_000;
+const POLL_FOR_MS = 120_000;
 const input = "w-full rounded-md border border-border bg-surface p-2 text-sm";
 const button = "rounded-md bg-primary-600 px-3 py-2 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-50";
 const ghost = "rounded-md border border-border bg-surface px-3 py-2 text-sm hover:bg-secondary-500/10 disabled:opacity-50";
 const money = (v: number | string) => Number(v).toLocaleString("en-KE", { maximumFractionDigits: 0 });
-const daysLeft = (iso: string) => Math.max(0, Math.ceil((new Date(iso).getTime() - Date.now()) / 86_400_000));
+const daysLeft = (iso: string | null) => (iso ? Math.max(0, Math.ceil((new Date(iso).getTime() - Date.now()) / 86_400_000)) : 0);
+const paidTime = (l: Listing) => (l.paidUntil ? new Date(l.paidUntil).getTime() : 0);
 
-const STATE_STYLE: Record<Listing["state"], string> = {
+const STATE_STYLE: Record<State, string> = {
   LIVE: "bg-green-600/15 text-green-600",
   PAUSED: "bg-secondary-500/15 text-secondary-500",
   EXPIRED: "bg-amber-500/15 text-amber-600",
+  UNPAID: "bg-amber-500/15 text-amber-600",
 };
+const STATE_LABEL: Record<State, string> = { LIVE: "Live", PAUSED: "Paused", EXPIRED: "Expired", UNPAID: "Not paid" };
+
+function statusLine(l: Listing): string {
+  switch (l.state) {
+    case "LIVE":
+      return `${daysLeft(l.paidUntil)} days left`;
+    case "UNPAID":
+      return `Not public yet - pay KES ${l.feeKes} to publish`;
+    case "EXPIRED":
+      return `Lapsed - pay KES ${l.feeKes} for ${l.days} more days`;
+    case "PAUSED":
+      return "Paused - not shown to the public";
+  }
+}
 
 interface Draft {
   title: string;
@@ -99,7 +121,8 @@ const draftFor = (unit: UnitOption, listing?: Listing): Draft =>
 
 /**
  * Advertise empty units on the marketplace's "Houses to let" page. Contact-only: house-hunters call or WhatsApp the
- * number given here. The public never sees the building's real address, only the estate/town typed below.
+ * number given here. Each advert costs KES 100 for 30 days, paid by M-Pesa; the public never sees the building's real
+ * address, only the estate/town typed below.
  */
 export function ListingsSection({ units, onChanged }: { units: UnitOption[]; onChanged: () => void }) {
   const [listings, setListings] = useState<Listing[] | null>(null);
@@ -108,18 +131,28 @@ export function ListingsSection({ units, onChanged }: { units: UnitOption[]; onC
   const [editing, setEditing] = useState<{ unit: UnitOption; listing?: Listing } | null>(null);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const [payingId, setPayingId] = useState<string | null>(null);
 
   const fail = (err: unknown, fallback: string) => setError(err instanceof ApiError ? err.message : fallback);
 
-  async function load() {
+  async function load(): Promise<Listing[] | null> {
     try {
-      setListings(await apiGet<Listing[]>("/rental/listings"));
+      const rows = await apiGet<Listing[]>("/rental/listings");
+      setListings(rows);
+      // Keep the open editor in step (state, paid time, photos) after a payment or a change.
+      setEditing((cur) => {
+        const fresh = cur?.listing ? rows.find((l) => l.id === cur.listing?.id) : undefined;
+        return cur && fresh ? { ...cur, listing: fresh } : cur;
+      });
+      return rows;
     } catch (err) {
       fail(err, "Could not load your adverts.");
+      return null;
     }
   }
   useEffect(() => {
     void load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const byUnit = new Map((listings ?? []).map((l) => [l.unitId, l]));
@@ -167,21 +200,35 @@ export function ListingsSection({ units, onChanged }: { units: UnitOption[]; onC
           contactName: draft.contactName || undefined,
           contactPhone: draft.contactPhone,
         });
-        // Stay on the advert so photos can be added straight away.
+        // Stay on the advert so photos can be added and the fee paid straight away.
         setEditing({ unit, listing: saved });
       },
-      "Saved. Add photos below - adverts with photos get far more calls.",
+      editing.listing ? "Saved." : "Saved. Add photos below, then pay to publish - adverts with photos get far more calls.",
     );
   }
 
   if (listings === null) return <p className="text-sm text-secondary-500">{error ?? "Loading..."}</p>;
 
+  const payBox = (listing: Listing) => (
+    <PayBox
+      listing={listing}
+      refresh={async () => (await load())?.find((l) => l.id === listing.id) ?? null}
+      onDone={(message) => {
+        setPayingId(null);
+        setNotice(message);
+        onChanged();
+      }}
+      onCancel={() => setPayingId(null)}
+      onError={(message) => setError(message)}
+    />
+  );
+
   return (
     <div className="space-y-4">
       <div className="rounded-lg border border-border bg-surface p-3 text-sm text-secondary-600">
         Advertise your empty units on the Zaroda Marketplace under <strong>Houses to let</strong>. House-hunters see your photos, rent and
-        estate, then call or WhatsApp the number you give. Your exact address is never shown. An advert stays up for 30 days; tap{" "}
-        <strong>Still available</strong> to keep it going, and it switches off by itself when you give the unit to a tenant.
+        estate, then call or WhatsApp the number you give. Your exact address is never shown. <strong>Each advert costs KES 100 for 30 days</strong>,
+        paid by M-Pesa. Pay again before it ends to add another 30 days. It switches off by itself when you give the unit to a tenant.
       </div>
 
       {error && <p className="rounded-md bg-red-950 p-3 text-sm text-red-300">{error}</p>}
@@ -197,6 +244,17 @@ export function ListingsSection({ units, onChanged }: { units: UnitOption[]; onC
               Back to list
             </button>
           </div>
+
+          {editing.listing && (
+            <div className="space-y-2 rounded-md border border-border p-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATE_STYLE[editing.listing.state]}`}>{STATE_LABEL[editing.listing.state]}</span>
+                <span className="text-sm text-secondary-500">{statusLine(editing.listing)}</span>
+              </div>
+              {editing.listing.state !== "PAUSED" && payBox(editing.listing)}
+            </div>
+          )}
+
           <form onSubmit={save} className="grid gap-3 sm:grid-cols-2">
             <label className="text-sm sm:col-span-2">
               Headline
@@ -238,8 +296,9 @@ export function ListingsSection({ units, onChanged }: { units: UnitOption[]; onC
             </label>
             <div className="sm:col-span-2">
               <button className={button} disabled={busy !== null}>
-                {editing.listing ? "Save changes" : "Publish advert"}
+                {editing.listing ? "Save changes" : "Save advert"}
               </button>
+              {!editing.listing && <p className="mt-1 text-xs text-secondary-500">You pay KES 100 after saving, once you have added photos.</p>}
             </div>
           </form>
 
@@ -271,7 +330,7 @@ export function ListingsSection({ units, onChanged }: { units: UnitOption[]; onC
                       </p>
                       <p className="text-xs text-secondary-500">KES {money(unit.monthlyRent)} a month</p>
                     </div>
-                    {listing && <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATE_STYLE[listing.state]}`}>{listing.state === "LIVE" ? "Live" : listing.state === "PAUSED" ? "Paused" : "Expired"}</span>}
+                    {listing && <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATE_STYLE[listing.state]}`}>{STATE_LABEL[listing.state]}</span>}
                   </div>
                   {listing ? (
                     <>
@@ -284,20 +343,14 @@ export function ListingsSection({ units, onChanged }: { units: UnitOption[]; onC
                         )}
                         <div className="min-w-0 text-sm">
                           <p className="truncate font-medium">{listing.title}</p>
-                          <p className="text-xs text-secondary-500">
-                            {listing.state === "LIVE" ? `${daysLeft(listing.expiresAt)} days left` : listing.state === "EXPIRED" ? "Lapsed - tap Still available" : "Not shown to the public"}
-                          </p>
+                          <p className="text-xs text-secondary-500">{statusLine(listing)}</p>
                         </div>
                       </div>
+                      {payingId === listing.id && payBox(listing)}
                       <div className="flex flex-wrap gap-2">
-                        {listing.state === "LIVE" && (
-                          <button className={ghost} disabled={busy !== null} onClick={() => void run(`c-${listing.id}`, () => apiPost(`/rental/listings/${listing.id}/confirm`, {}), "Great - it stays up for another 30 days.")}>
-                            Still available
-                          </button>
-                        )}
-                        {listing.state === "EXPIRED" && (
-                          <button className={button} disabled={busy !== null} onClick={() => void run(`r-${listing.id}`, () => apiPatch(`/rental/listings/${listing.id}`, { isActive: true }), "Back up for 30 days.")}>
-                            Still available
+                        {listing.state !== "PAUSED" && payingId !== listing.id && (
+                          <button className={listing.state === "LIVE" ? ghost : button} disabled={busy !== null} onClick={() => setPayingId(listing.id)}>
+                            {listing.state === "LIVE" ? `Add ${listing.days} days (KES ${listing.feeKes})` : `Pay KES ${listing.feeKes} to ${listing.state === "UNPAID" ? "publish" : "renew"}`}
                           </button>
                         )}
                         {listing.state === "PAUSED" && (
@@ -333,11 +386,150 @@ export function ListingsSection({ units, onChanged }: { units: UnitOption[]; onC
           </div>
           {orphaned.length > 0 && (
             <p className="text-xs text-secondary-500">
-              {orphaned.length} older {orphaned.length === 1 ? "advert is" : "adverts are"} paused because {orphaned.length === 1 ? "its unit is" : "their units are"} now let. They return here if the unit falls vacant.
+              {orphaned.length} older {orphaned.length === 1 ? "advert is" : "adverts are"} paused because {orphaned.length === 1 ? "its unit is" : "their units are"} now let. They return here if the unit falls vacant again.
             </p>
           )}
         </>
       )}
+    </div>
+  );
+}
+
+const PHONE_KEY = "zaroda:advert-pay-phone";
+const readPhone = () => {
+  try {
+    return localStorage.getItem(PHONE_KEY) ?? "";
+  } catch {
+    return "";
+  }
+};
+
+/**
+ * Pays KES 100 for 30 days by M-Pesa. Sends the prompt, then watches the advert (free reads) until the payment lands;
+ * "I've paid - check now" is the rate-limited backup if the confirmation is slow.
+ */
+function PayBox({
+  listing,
+  refresh,
+  onDone,
+  onCancel,
+  onError,
+}: {
+  listing: Listing;
+  refresh: () => Promise<Listing | null>;
+  onDone: (message: string) => void;
+  onCancel: () => void;
+  onError: (message: string) => void;
+}) {
+  const [phone, setPhone] = useState("");
+  const [stage, setStage] = useState<"idle" | "sending" | "waiting" | "slow">("idle");
+  const [hint, setHint] = useState<string | null>(null);
+  const before = useRef(paidTime(listing));
+  const timer = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => setPhone(readPhone()), []);
+  useEffect(() => () => stopPolling(), []);
+
+  function stopPolling() {
+    if (timer.current) clearInterval(timer.current);
+    timer.current = null;
+  }
+
+  async function landed(): Promise<boolean> {
+    const fresh = await refresh();
+    if (fresh && paidTime(fresh) > before.current) {
+      stopPolling();
+      onDone(`Payment received. Your advert is live for ${daysLeft(fresh.paidUntil)} days.`);
+      return true;
+    }
+    return false;
+  }
+
+  function startPolling() {
+    stopPolling();
+    const startedAt = Date.now();
+    timer.current = setInterval(() => {
+      void (async () => {
+        if (await landed()) return;
+        if (Date.now() - startedAt > POLL_FOR_MS) {
+          stopPolling();
+          setStage("slow");
+        }
+      })();
+    }, POLL_EVERY_MS);
+  }
+
+  async function pay() {
+    setStage("sending");
+    setHint(null);
+    onError("");
+    before.current = paidTime(listing);
+    try {
+      await apiPost(`/rental/listings/${listing.id}/pay`, { phone });
+      try {
+        localStorage.setItem(PHONE_KEY, phone);
+      } catch {
+        /* remembering the number is only a convenience */
+      }
+      setStage("waiting");
+      startPolling();
+    } catch (err) {
+      setStage("idle");
+      onError(err instanceof ApiError ? err.message : "Could not start the payment.");
+    }
+  }
+
+  async function checkNow() {
+    setHint(null);
+    try {
+      const result = await apiPost<{ result: string }>(`/rental/listings/${listing.id}/pay/check`, {});
+      if (await landed()) return;
+      setHint(result.result === "unavailable" ? "We could not check just now. Try again in a few minutes." : "Not received yet. If you have entered your PIN, wait a moment and check again.");
+    } catch (err) {
+      setHint(err instanceof ApiError ? err.message : "Could not check the payment.");
+    }
+  }
+
+  if (stage === "waiting" || stage === "slow") {
+    return (
+      <div className="space-y-2 rounded-md bg-primary-600/10 p-3 text-sm">
+        <p className="font-medium">Check your phone and enter your M-Pesa PIN to pay KES {listing.feeKes}.</p>
+        <p className="text-xs text-secondary-500">{stage === "waiting" ? "Waiting for the payment..." : "Still nothing yet."} This screen updates by itself.</p>
+        {hint && <p className="text-xs text-amber-600">{hint}</p>}
+        <div className="flex flex-wrap gap-2">
+          {stage === "slow" && (
+            <button className={button} onClick={() => void checkNow()}>
+              I&apos;ve paid - check now
+            </button>
+          )}
+          <button
+            className={ghost}
+            onClick={() => {
+              stopPolling();
+              setStage("idle");
+            }}
+          >
+            {stage === "slow" ? "Send the prompt again" : "Cancel"}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2 rounded-md bg-secondary-500/10 p-3">
+      <label className="block text-sm">
+        M-Pesa number to pay KES {listing.feeKes} ({listing.days} days)
+        <input className={input} inputMode="tel" placeholder="0712 345 678" value={phone} onChange={(e) => setPhone(e.target.value)} />
+      </label>
+      <div className="flex flex-wrap gap-2">
+        <button className={button} disabled={stage === "sending" || phone.trim().length < 9} onClick={() => void pay()}>
+          {stage === "sending" ? "Sending..." : `Pay KES ${listing.feeKes} with M-Pesa`}
+        </button>
+        <button className={ghost} onClick={onCancel}>
+          Close
+        </button>
+      </div>
     </div>
   );
 }

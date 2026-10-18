@@ -21,7 +21,8 @@ import type { Request } from 'express';
 import { Public } from '../auth/public.decorator';
 import { Roles } from '../auth/roles.decorator';
 import { MAX_IMAGE_BYTES } from '../catalog/product-images.service';
-import { SetListingActiveDto, UpsertListingDto } from './dto/rental-listing.dto';
+import { PayListingDto, SetListingActiveDto, UpsertListingDto } from './dto/rental-listing.dto';
+import { RentalListingPaymentsService } from './rental-listing-payments.service';
 import { PublicHousesService } from './public-houses.service';
 import { RentalListingsService } from './rental-listings.service';
 import { RentalReadOnlyInterceptor } from './rental-read-only.interceptor';
@@ -40,7 +41,10 @@ const optionalNumber = (value?: string): number | undefined => {
 @Controller('rental')
 @UseInterceptors(RentalReadOnlyInterceptor)
 export class RentalListingsController {
-  constructor(private readonly listings: RentalListingsService) {}
+  constructor(
+    private readonly listings: RentalListingsService,
+    private readonly payments: RentalListingPaymentsService,
+  ) {}
 
   @Roles(Role.MANAGER, Role.OWNER)
   @Get('listings')
@@ -54,10 +58,19 @@ export class RentalListingsController {
     return this.listings.upsertForUnit(unitId, dto);
   }
 
+  /** Sends an M-Pesa prompt for KES 100: 30 days of the advert, added on top of any time already left. */
   @Roles(Role.MANAGER, Role.OWNER)
-  @Post('listings/:id/confirm')
-  confirm(@Param('id', ParseUUIDPipe) id: string) {
-    return this.listings.confirm(id);
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @Post('listings/:id/pay')
+  pay(@Param('id', ParseUUIDPipe) id: string, @Body() dto: PayListingDto) {
+    return this.payments.pay(id, dto.phone);
+  }
+
+  /** Backup for a callback that never arrived: a rate-limited, paid Tuma status check. */
+  @Roles(Role.MANAGER, Role.OWNER)
+  @Post('listings/:id/pay/check')
+  checkPayment(@Param('id', ParseUUIDPipe) id: string) {
+    return this.payments.check(id);
   }
 
   @Roles(Role.MANAGER, Role.OWNER)
@@ -129,5 +142,29 @@ export class PublicHousesController {
   @Get(':id')
   get(@Param('id', ParseUUIDPipe) id: string) {
     return this.houses.get(id);
+  }
+}
+
+/**
+ * Tuma's payment webhook for an advert payment. Authenticated by the HMAC in the URL, and even then only trusted once
+ * the body is complete and consistent - see RentalListingPaymentsService.handleTumaCallback.
+ */
+@Controller('public/rental-listing-payments')
+export class RentalListingCallbackController {
+  constructor(private readonly payments: RentalListingPaymentsService) {}
+
+  @Public()
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
+  @Post(':organizationId/:paymentId/tuma-callback/:token')
+  @HttpCode(200)
+  callback(
+    @Param('organizationId', ParseUUIDPipe) organizationId: string,
+    @Param('paymentId', ParseUUIDPipe) paymentId: string,
+    @Param('token') token: string,
+    // Tuma's real payload has fields we do not model, so this stays untyped
+    // (a class would be rejected by the global forbidNonWhitelisted pipe).
+    @Body() body: Record<string, unknown>,
+  ) {
+    return this.payments.handleTumaCallback(organizationId, paymentId, token, body);
   }
 }

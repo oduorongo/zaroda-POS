@@ -69,6 +69,7 @@ model Organization {
   rentalProperties          RentalProperty[]
   rentalUnits               RentalUnit[]
   rentalListings            RentalListing[]
+  rentalListingPayments     RentalListingPayment[]
   rentalTenants             RentalTenant[]
   rentalLeases              RentalLease[]
   rentalInvoices            RentalInvoice[]
@@ -2553,18 +2554,43 @@ model RentalListing {
   contactName    String?
   contactPhone   String
   isActive       Boolean  @default(true)
-  /// Last time the landlord said "still available" - the advert lapses 30 days after this.
+  /// When the advert was last paid for / refreshed - used to order the public list, newest first.
   confirmedAt    DateTime @default(now())
+  /// The advert is public until this moment. Each KES 100 payment pushes it 30 days on; null = never paid yet.
+  paidUntil      DateTime?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
   organization Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   unit         RentalUnit           @relation(fields: [unitId], references: [id], onDelete: Cascade)
   photos       RentalListingPhoto[]
+  payments     RentalListingPayment[]
 
   @@index([organizationId])
-  @@index([isActive, confirmedAt])
+  @@index([isActive, paidUntil])
   @@map("rental_listings")
+}
+
+/// A landlord's M-Pesa payment (to ZARODA's own Tuma account) for 30 days of one advert.
+model RentalListingPayment {
+  id                    String    @id @default(uuid())
+  organizationId        String
+  listingId             String
+  amount                Int
+  phone                 String
+  status                String    @default("PENDING") // PENDING | PAID | FAILED
+  tumaMerchantRequestId String?
+  paymentReference      String? // M-Pesa receipt
+  errorMessage          String?
+  createdAt             DateTime  @default(now())
+  paidAt                DateTime?
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  listing      RentalListing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([listingId])
+  @@map("rental_listing_payments")
 }
 
 model RentalListingPhoto {

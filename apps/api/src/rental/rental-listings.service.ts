@@ -4,20 +4,11 @@ import { TenantScopedPrismaService, TenantTx } from '../common/prisma/tenant-sco
 import { getTenantStore } from '../common/tenant/tenant-context';
 import { ObjectStorageService } from '../common/storage/object-storage.service';
 import { IMAGE_CONTENT_TYPES, MAX_IMAGE_BYTES, looksLikeImage } from '../catalog/product-images.service';
-import { assertFeature } from './rental-plans.service';
+import { LISTING_DAYS, LISTING_FEE_KES, ListingState, listingState } from './rental-listing-fee.util';
 import { SetListingActiveDto, UpsertListingDto } from './dto/rental-listing.dto';
 
 export const MAX_LISTING_PHOTOS = 8;
-/** An advert stays public this long after the landlord last confirmed it is still available (see rls.sql). */
-export const LISTING_LIFETIME_DAYS = 30;
-
 export const listingPhotoPrefix = (organizationId: string, listingId: string) => `orgs/${organizationId}/listings/${listingId}/`;
-
-export type ListingState = 'LIVE' | 'PAUSED' | 'EXPIRED';
-export function listingState(l: { isActive: boolean; confirmedAt: Date }, now = new Date()): ListingState {
-  if (!l.isActive) return 'PAUSED';
-  return l.confirmedAt.getTime() + LISTING_LIFETIME_DAYS * 86_400_000 > now.getTime() ? 'LIVE' : 'EXPIRED';
-}
 
 const INCLUDE = { photos: true, unit: { select: { label: true, property: { select: { name: true } } } } } as const;
 
@@ -41,7 +32,7 @@ export class RentalListingsService {
     contactName: string | null;
     contactPhone: string;
     isActive: boolean;
-    confirmedAt: Date;
+    paidUntil: Date | null;
     unit?: { label: string; property: { name: string } };
     photos: { id: string; storageKey: string; sortOrder: number }[];
   }) {
@@ -59,9 +50,10 @@ export class RentalListingsService {
       contactName: l.contactName,
       contactPhone: l.contactPhone,
       isActive: l.isActive,
-      state: listingState(l),
-      confirmedAt: l.confirmedAt,
-      expiresAt: new Date(l.confirmedAt.getTime() + LISTING_LIFETIME_DAYS * 86_400_000),
+      state: listingState(l) as ListingState,
+      paidUntil: l.paidUntil,
+      feeKes: LISTING_FEE_KES,
+      days: LISTING_DAYS,
       photos: [...l.photos]
         .sort((a, b) => a.sortOrder - b.sortOrder)
         .map((p) => ({ id: p.id, url: this.storage.publicUrl(p.storageKey), sortOrder: p.sortOrder })),
@@ -79,11 +71,10 @@ export class RentalListingsService {
     return listing;
   }
 
-  /** Creates the unit's advert, or replaces its details; either way it goes live and the 30 days restart. */
+  /** Creates the unit's advert, or edits its details. Editing never changes whether it is on or how long it is paid for. */
   async upsertForUnit(unitId: string, dto: UpsertListingDto) {
     const { organizationId } = getTenantStore();
     const saved = await this.tenantPrisma.run(async (tx) => {
-      await assertFeature(tx, organizationId, 'advertise');
       const unit = await tx.rentalUnit.findUnique({ where: { id: unitId } });
       if (!unit) throw new NotFoundException('Unit not found');
       if (unit.status !== 'VACANT') throw new ConflictException('Only an empty unit can be advertised.');
@@ -96,12 +87,11 @@ export class RentalListingsService {
         description: dto.description || null,
         contactName: dto.contactName || null,
         contactPhone: dto.contactPhone,
-        isActive: true,
-        confirmedAt: new Date(),
       };
       return tx.rentalListing.upsert({
         where: { unitId },
-        create: { organizationId, unitId, ...data },
+        // A new advert starts switched on but unpaid (not public); paying is what makes it live.
+        create: { organizationId, unitId, ...data, isActive: true },
         update: data,
         include: INCLUDE,
       });
@@ -109,30 +99,16 @@ export class RentalListingsService {
     return this.view(saved);
   }
 
-  /** "Still available": restarts the 30 days. */
-  async confirm(id: string) {
-    const { organizationId } = getTenantStore();
-    const saved = await this.tenantPrisma.run(async (tx) => {
-      await assertFeature(tx, organizationId, 'advertise');
-      const listing = await this.requireListing(tx, id);
-      if (!listing.isActive) throw new ConflictException('This advert is paused. Resume it instead.');
-      return tx.rentalListing.update({ where: { id }, data: { confirmedAt: new Date() }, include: INCLUDE });
-    });
-    return this.view(saved);
-  }
-
   async setActive(id: string, dto: SetListingActiveDto) {
-    const { organizationId } = getTenantStore();
     const saved = await this.tenantPrisma.run(async (tx) => {
       const listing = await this.requireListing(tx, id);
       if (dto.isActive) {
-        await assertFeature(tx, organizationId, 'advertise');
         const unit = await tx.rentalUnit.findUnique({ where: { id: listing.unitId } });
         if (unit?.status !== 'VACANT') throw new ConflictException('Only an empty unit can be advertised.');
       }
       return tx.rentalListing.update({
         where: { id },
-        data: { isActive: dto.isActive, ...(dto.isActive ? { confirmedAt: new Date() } : {}) },
+        data: { isActive: dto.isActive },
         include: INCLUDE,
       });
     });
