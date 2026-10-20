@@ -257,7 +257,7 @@ export default function PurchaseOrdersPage() {
 
             <label className="block text-xs text-secondary-500">Add product</label>
             <input
-              placeholder="Search by product name or SKU"
+              placeholder="Search by product name or code"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="mt-1 w-full rounded-md border border-border bg-background p-2 text-sm"

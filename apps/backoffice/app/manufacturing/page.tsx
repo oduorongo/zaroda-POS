@@ -72,7 +72,7 @@ function VariantPicker({
       ) : (
         <>
           <input
-            placeholder="Search by product name or SKU - must have a recipe (BOM) set"
+            placeholder="Search by product name or code - must have a recipe (BOM) set"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="mt-1 w-full rounded-md border border-border bg-background p-2 text-sm"
