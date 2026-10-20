@@ -104,7 +104,9 @@ export class RiderAuthService {
     const phone = normalizeKenyanPhone(rawPhone);
     if (!phone) throw wrong;
     const rider = await this.prisma.rider.findUnique({ where: { phone } });
-    if (!rider || !rider.pinHash) throw wrong;
+    // No rider account on this number: a shopper with the same phone number and PIN is the same person.
+    if (!rider) return this.loginViaShopper(phone, pin, wrong);
+    if (!rider.pinHash) throw wrong;
 
     if (rider.pinLockedUntil && rider.pinLockedUntil > new Date()) {
       const minutes = Math.max(1, Math.ceil((rider.pinLockedUntil.getTime() - Date.now()) / 60_000));
@@ -126,6 +128,36 @@ export class RiderAuthService {
       data: { pinFailCount: 0, pinLockedUntil: null, lastLoginAt: new Date() },
     });
     return this.session(signedIn);
+  }
+
+  /**
+   * One person, one login: a shopper signs in here with the phone number and PIN they use as a shopper, and a rider
+   * account is opened for that number the first time (waiting for Zaroda's approval like any new rider). Only when NO
+   * rider account exists for the number, and never attaching to an existing one.
+   */
+  private async loginViaShopper(phone: string, pin: string, wrong: Error) {
+    const buyer = await this.prisma.buyer.findUnique({ where: { phone } });
+    if (!buyer || !buyer.pinHash) throw wrong;
+    if (buyer.pinLockedUntil && buyer.pinLockedUntil > new Date()) {
+      const minutes = Math.max(1, Math.ceil((buyer.pinLockedUntil.getTime() - Date.now()) / 60_000));
+      throw new HttpException(`Too many wrong PINs. Try again in ${minutes} minute${minutes === 1 ? '' : 's'}, or ask for a PIN reset.`, HttpStatus.TOO_MANY_REQUESTS);
+    }
+    if (!verifyPin(pin, buyer.pinHash, this.secret)) {
+      const failures = buyer.pinFailCount + 1;
+      const lock = failures >= MAX_PIN_FAILURES;
+      await this.prisma.buyer.update({
+        where: { id: buyer.id },
+        data: { pinFailCount: lock ? 0 : failures, pinLockedUntil: lock ? new Date(Date.now() + PIN_LOCK_MS) : undefined },
+      });
+      throw wrong;
+    }
+    await this.prisma.buyer.update({ where: { id: buyer.id }, data: { pinFailCount: 0, pinLockedUntil: null } });
+    try {
+      const rider = await this.prisma.rider.create({ data: { phone, fullName: buyer.name, pinHash: buyer.pinHash, lastLoginAt: new Date() } });
+      return this.session(rider);
+    } catch {
+      throw wrong; // a rider account appeared for this number a moment ago: do not attach to it
+    }
   }
 
   /**
@@ -161,10 +193,13 @@ export class RiderAuthService {
     await this.consumeCode(phone, code, invalid);
     const rider = await this.prisma.rider.findUnique({ where: { phone } });
     if (!rider) throw invalid;
+    const pinHash = hashPin(pin, this.secret);
     const updated = await this.prisma.rider.update({
       where: { id: rider.id },
-      data: { pinHash: hashPin(pin, this.secret), pinFailCount: 0, pinLockedUntil: null, lastLoginAt: new Date() },
+      data: { pinHash, pinFailCount: 0, pinLockedUntil: null, lastLoginAt: new Date() },
     });
+    // The code reached this number, so the same person's shopper login (if any) gets the new PIN too.
+    await this.prisma.buyer.updateMany({ where: { phone }, data: { pinHash, pinFailCount: 0, pinLockedUntil: null } });
     return this.session(updated);
   }
 

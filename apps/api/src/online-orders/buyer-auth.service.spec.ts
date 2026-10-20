@@ -6,8 +6,14 @@ import { sha256 } from './online-orders.util';
 const SECRET = 'test-buyer-secret';
 const hashFor = (identifier: string, code: string) => sha256(`${identifier}:${code}:${SECRET}`);
 
-function setup(opts: { sms?: boolean; emailSent?: boolean; smsSent?: boolean; recentCodes?: number; otp?: Record<string, unknown> | null } = {}) {
+function setup(opts: { sms?: boolean; emailSent?: boolean; smsSent?: boolean; recentCodes?: number; otp?: Record<string, unknown> | null; rider?: Record<string, unknown> | null } = {}) {
   const prisma = {
+    rider: {
+      findUnique: jest.fn().mockResolvedValue(opts.rider ?? null),
+      create: jest.fn(),
+      update: jest.fn().mockResolvedValue({}),
+      updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+    },
     buyerOtp: {
       count: jest.fn().mockResolvedValue(opts.recentCodes ?? 0),
       create: jest.fn().mockResolvedValue({}),
@@ -255,5 +261,45 @@ describe('BuyerAuthService phone + PIN', () => {
     const taken = setup();
     taken.prisma.buyer.findUnique.mockResolvedValueOnce({ id: 'buyer-1', email: 'a@b.co', phone: null, pinHash: null }).mockResolvedValueOnce({ id: 'someone-else' });
     await expect(taken.service.setPin('buyer-1', '4821', '0712345678')).rejects.toThrow(/already used/);
+  });
+});
+
+describe('BuyerAuthService one login with the rider account', () => {
+  const rider = (pin: string, extra: Record<string, unknown> = {}) => ({
+    id: 'rider-1', phone: '254712345678', fullName: 'Juma', pinFailCount: 0, pinLockedUntil: null, pinHash: hashPin(pin, SECRET), ...extra,
+  });
+
+  it('lets a rider in with their rider PIN, opening a shopper account for the number', async () => {
+    const rid = rider('4821');
+    const { service, prisma } = setup({ rider: rid });
+    prisma.buyer.findUnique.mockResolvedValue(null);
+    const result = await service.loginWithPin('0712345678', '4821');
+    const data = prisma.buyer.create.mock.calls[0][0].data;
+    expect(data.phone).toBe('254712345678');
+    expect(data.name).toBe('Juma');
+    expect(data.pinHash).toBe(rid.pinHash);
+    expect(result.accessToken).toBe('signed-token');
+  });
+
+  it('refuses a wrong rider PIN and counts it against the rider account', async () => {
+    const { service, prisma } = setup({ rider: rider('4821') });
+    prisma.buyer.findUnique.mockResolvedValue(null);
+    await expect(service.loginWithPin('0712345678', '0000')).rejects.toThrow('Wrong phone number or PIN');
+    expect(prisma.rider.update.mock.calls[0][0].data.pinFailCount).toBe(1);
+    expect(prisma.buyer.create).not.toHaveBeenCalled();
+  });
+
+  it('never takes over a shopper account that already exists for the number, even one with no PIN', async () => {
+    const { service, prisma } = setup({ rider: rider('4821') });
+    prisma.buyer.findUnique.mockResolvedValue({ id: 'buyer-9', phone: '254712345678', pinHash: null });
+    await expect(service.loginWithPin('0712345678', '4821')).rejects.toThrow('Wrong phone number or PIN');
+    expect(prisma.buyer.create).not.toHaveBeenCalled();
+  });
+
+  it('gives a new PIN to the rider account too when a code proved the number', async () => {
+    const { service, prisma } = setup({ otp: futureOtp('254712345678', '123456', { expiresAt: new Date(Date.now() + 60_000) }) });
+    prisma.buyer.findUnique.mockResolvedValue({ id: 'buyer-1', phone: '254712345678', email: null, name: null, pinHash: 'x' });
+    await service.resetPin('0712345678', '123456', '9087');
+    expect(prisma.rider.updateMany.mock.calls[0][0].where).toEqual({ phone: '254712345678' });
   });
 });
