@@ -241,12 +241,30 @@ export default function RentalsPage() {
     const answer = window.prompt(`Email address for ${tenant.name} (they sign in to their rent account with a code sent here):`, tenant.email ?? "");
     if (answer === null) return;
     const email = answer.trim();
-    if (!/^S+@S+.S+$/.test(email)) {
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       setError("That does not look like an email address.");
       return;
     }
     setNotice(null);
     void submit(() => apiPatch(`/rental/tenants/${tenant.id}`, { email }), () => {});
+  };
+
+  // A tenant can also sign in with a code texted to the number on their record, so a landlord can correct it here too.
+  // An empty answer takes the number off the record.
+  const editPhone = (tenant: Tenant) => {
+    const answer = window.prompt(
+      `Phone number for ${tenant.name} (they can sign in to their rent account with a code texted here; leave empty to remove it):`,
+      tenant.phone ?? "",
+    );
+    if (answer === null) return;
+    setNotice(null);
+    void submit(
+      async () => {
+        await apiPatch(`/rental/tenants/${tenant.id}`, { phone: answer.trim() });
+        setNotice(answer.trim() ? `${tenant.name}'s phone number is now ${answer.trim()}.` : `${tenant.name}'s phone number was removed.`);
+      },
+      () => {},
+    );
   };
 
   const inviteTenant = (tenant: Tenant) => {
@@ -486,6 +504,9 @@ How much of the deposit are you handing back (KES)? Enter 0 for none.`,
                         )}
                         <button onClick={() => editEmail(t)} disabled={busy} className="ml-1 rounded border border-border px-2 py-1 text-xs hover:bg-background">
                           {t.email ? "Change email" : "Add email"}
+                        </button>
+                        <button onClick={() => editPhone(t)} disabled={busy} className="ml-1 rounded border border-border px-2 py-1 text-xs hover:bg-background">
+                          {t.phone ? "Change phone" : "Add phone"}
                         </button>
                       </td>
                     </tr>

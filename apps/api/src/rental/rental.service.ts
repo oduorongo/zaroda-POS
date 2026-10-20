@@ -272,9 +272,22 @@ export class RentalService {
       if (!(await tx.rentalTenant.findUnique({ where: { id } }))) {
         throw new NotFoundException('Tenant not found');
       }
+      // The phone is what a tenant who signs in by text message is found by, so it must be a real Kenyan mobile number
+      // (or empty, to take it off the record) - a typo here would quietly lock the tenant out of their rent account.
+      let phoneData: { phone?: string | null; phoneNormalized?: string | null } = {};
+      if (dto.phone !== undefined) {
+        const typed = dto.phone.trim();
+        if (typed === '') {
+          phoneData = { phone: null, phoneNormalized: null };
+        } else {
+          const phoneNormalized = normalizeKenyanPhone(typed);
+          if (!phoneNormalized) throw new BadRequestException('Enter a valid Kenyan mobile number, e.g. 0712 345 678');
+          phoneData = { phone: typed, phoneNormalized };
+        }
+      }
       return tx.rentalTenant.update({
         where: { id },
-        data: { ...dto, email: dto.email?.trim().toLowerCase(), phoneNormalized: dto.phone === undefined ? undefined : normalizeKenyanPhone(dto.phone) },
+        data: { ...dto, email: dto.email?.trim().toLowerCase(), ...phoneData },
       });
     });
   }
