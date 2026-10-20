@@ -36,6 +36,7 @@ import { ShopCatalogService } from './shop-catalog.service';
 import { CancelOnlineOrderDto, CreateOnlineOrderDto, CreateTableOrderDto } from './dto/online-order.dto';
 import { generateCallbackToken, generateOrderNumber, normalizeKenyanPhone, roundMoney, sha256 } from './online-orders.util';
 import { checkDeliveryCounty, servedCounties } from './delivery-area';
+import { totalWithFee } from './convenience-fee';
 
 const TX_OPTIONS = { timeout: 15_000, maxWait: 15_000 };
 // How long an unpaid order holds stock. An M-Pesa prompt itself times out
@@ -68,6 +69,7 @@ export function toOrderView(order: OrderWithLines) {
     buyerPhone: order.buyerPhone,
     subtotal: Number(order.subtotal),
     amountDue: order.amountDue,
+    convenienceFee: order.convenienceFee,
     tipAmount: order.tipAmount,
     commissionRate: Number(order.commissionRate),
     commissionAmount: order.commissionAmount != null ? Number(order.commissionAmount) : null,
@@ -251,6 +253,9 @@ export class OnlineOrdersService {
             });
             const subtotal = roundMoney(lines.reduce((sum, l) => sum + l.lineTotal, 0));
             if (subtotal < 1) throw new BadRequestException('Order total must be at least KES 1');
+            // The shopper pays a convenience fee on top of the items; the shop collects it and sends it to Zaroda daily. In
+            // exchange the shop pays no commission on this order (commissionRate 0), which is the point of the fee.
+            const { fee: convenienceFee, amountDue } = totalWithFee(subtotal, shop.commissionRate ?? DEFAULT_COMMISSION_RATE);
 
             return tx.onlineOrder.create({
               data: {
@@ -267,8 +272,9 @@ export class OnlineOrdersService {
                 shopName: shop.displayName,
                 shopSlug: shop.slug,
                 subtotal,
-                amountDue: Math.ceil(subtotal),
-                commissionRate: shop.commissionRate ?? DEFAULT_COMMISSION_RATE,
+                amountDue,
+                convenienceFee,
+                commissionRate: 0,
                 paymentPhone,
                 paymentDeadline: new Date(Date.now() + PAYMENT_WINDOW_MS),
                 lines: { create: lines },

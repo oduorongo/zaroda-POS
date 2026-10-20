@@ -2188,6 +2188,9 @@ model OnlineOrder {
   // M-Pesa only moves whole shillings - the subtotal rounded up. Shown to
   // the buyer before paying.
   amountDue           Int
+  /// The convenience fee the shopper paid on top of the items (whole shillings; part of amountDue). The shop collects it and
+  /// sends it to Zaroda at the end of the day - see CommissionInvoice kind DAILY_FEE. 0 on older orders and on table orders.
+  convenienceFee      Int      @default(0)
   /// A tip the diner added (table orders). Already part of amountDue; kept apart because it is the staff's, so it earns no
   /// commission and is not part of the sale.
   tipAmount           Int               @default(0)
@@ -2283,6 +2286,8 @@ model CommissionInvoice {
   id                        String                  @id @default(uuid())
   organizationId            String
   invoiceNumber             String                  @unique
+  /// MONTHLY = the old monthly commission; DAILY_FEE = the day's shopper convenience fees the shop collected and owes Zaroda.
+  kind                      String                  @default("MONTHLY")
   // "2026-10" - one invoice per business per month.
   periodMonth               String
   periodStart               DateTime

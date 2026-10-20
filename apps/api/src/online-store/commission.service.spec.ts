@@ -108,7 +108,7 @@ function setup(opts: { existing?: Record<string, unknown> | null; invoice?: Reco
     ),
   };
   /* eslint-disable @typescript-eslint/no-explicit-any */
-  const service = new CommissionService(prisma as any, tenantPrisma as any, tuma as any, email as any, config as any);
+  const service = new CommissionService(prisma as any, tenantPrisma as any, tuma as any, email as any, { sendSms: jest.fn().mockResolvedValue({ sent: false }) } as any, config as any);
   /* eslint-enable @typescript-eslint/no-explicit-any */
   return { service, tx, tuma, email };
 }
@@ -462,7 +462,8 @@ describe('hasOverdueCommission', () => {
     const now = new Date('2026-12-01T00:00:00Z');
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     expect(await hasOverdueCommission({ commissionInvoice: { count } } as any, now)).toBe(true);
-    const cutoff = count.mock.calls[0][0].where.dueDate.lt as Date;
+    // The monthly invoices are the first branch of the check (the shopper-fee invoices have their own, shorter one).
+    const cutoff = count.mock.calls[0][0].where.OR[0].dueDate.lt as Date;
     expect(now.getTime() - cutoff.getTime()).toBe(PAUSE_GRACE_DAYS * day);
     expect(count.mock.calls[0][0].where.status).toBe('ISSUED');
   });

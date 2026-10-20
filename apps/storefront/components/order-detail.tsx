@@ -250,7 +250,19 @@ export default function OrderDetail({ orderId }: { orderId: string }) {
             </li>
           ))}
         </ul>
-        <div className="flex justify-between border-t border-border pt-3 font-bold">
+        {order.convenienceFee > 0 && (
+          <div className="space-y-1 border-t border-border pt-3 text-sm text-secondary-600">
+            <div className="flex justify-between">
+              <span>Items</span>
+              <span className="font-mono">{kes(order.amountDue - order.convenienceFee)}</span>
+            </div>
+            <div className="flex justify-between">
+              <span>Convenience fee</span>
+              <span className="font-mono">{kes(order.convenienceFee)}</span>
+            </div>
+          </div>
+        )}
+        <div className={`flex justify-between pt-3 font-bold ${order.convenienceFee > 0 ? "" : "border-t border-border"}`}>
           <span>Total</span>
           <span>{kes(order.amountDue)}</span>
         </div>

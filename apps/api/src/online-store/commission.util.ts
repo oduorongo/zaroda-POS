@@ -46,13 +46,14 @@ export function invoiceDueDate(issuedAt: Date): Date {
 }
 
 /** When the shop gets hidden if this invoice is still unpaid. */
-export function pauseDate(dueDate: Date): Date {
-  return new Date(dueDate.getTime() + PAUSE_GRACE_DAYS * DAY_MS);
+export function pauseDate(dueDate: Date, kind?: string): Date {
+  return new Date(dueDate.getTime() + pauseGraceDays(kind) * DAY_MS);
 }
 
 interface InvoiceLike {
   status: 'ISSUED' | 'PAID' | 'WAIVED';
   dueDate: Date;
+  kind?: string;
 }
 
 /** Past its due date and still unpaid (a warning), not yet necessarily a pause. */
@@ -62,7 +63,7 @@ export function isPastDue(invoice: InvoiceLike, now: Date = new Date()): boolean
 
 /** Unpaid past due date + grace: the point the shop stops taking new orders. */
 export function isPauseOverdue(invoice: InvoiceLike, now: Date = new Date()): boolean {
-  return invoice.status === 'ISSUED' && pauseDate(invoice.dueDate) < now;
+  return invoice.status === 'ISSUED' && pauseDate(invoice.dueDate, invoice.kind) < now;
 }
 
 /** "ZC-202610-7K3Q" - month plus a short unambiguous code, so numbers can be read over the phone. */
@@ -81,4 +82,45 @@ export function randomInvoiceCode(length = 4): string {
   let code = '';
   for (let i = 0; i < length; i++) code += CODE_ALPHABET[randomInt(CODE_ALPHABET.length)];
   return code;
+}
+
+// ── Daily convenience-fee invoices ───────────────────────────────────────
+//
+// Shoppers pay a convenience fee at checkout; the shop collects it and sends the day's total to Zaroda. Each such
+// payment is a CommissionInvoice of kind DAILY_FEE: due the moment it is issued (end of the day), and the shop is hidden
+// from buyers after FEE_PAUSE_GRACE_DAYS unpaid days - much quicker than the monthly commission invoices (kind MONTHLY).
+
+export type InvoiceKind = 'MONTHLY' | 'DAILY_FEE';
+export const FEE_KIND: InvoiceKind = 'DAILY_FEE';
+/** Days after a fee invoice is due before the shop is hidden. */
+export const FEE_PAUSE_GRACE_DAYS = 3;
+/** The Nairobi hour (24h) from which the day's fees are rolled into an invoice. */
+export const FEE_DAY_CLOSE_HOUR = 20;
+
+/** Grace after the due date before the shop is hidden, for each kind of invoice. */
+export function pauseGraceDays(kind: string | undefined): number {
+  return kind === 'DAILY_FEE' ? FEE_PAUSE_GRACE_DAYS : PAUSE_GRACE_DAYS;
+}
+
+/** "2026-10-21" for the Nairobi calendar day a moment falls in. */
+export function dayOf(date: Date): string {
+  const local = new Date(date.getTime() + NAIROBI_OFFSET_MS);
+  return `${local.getUTCFullYear()}-${String(local.getUTCMonth() + 1).padStart(2, '0')}-${String(local.getUTCDate()).padStart(2, '0')}`;
+}
+
+/** [start, end) of a Nairobi calendar day, as UTC instants. */
+export function dayBounds(day: string): { start: Date; end: Date } {
+  const [year, mon, d] = day.split('-').map(Number);
+  const start = new Date(Date.UTC(year, mon - 1, d) - NAIROBI_OFFSET_MS);
+  return { start, end: new Date(start.getTime() + DAY_MS) };
+}
+
+/** The Nairobi hour (0-23) a moment falls in. */
+export function nairobiHour(date: Date): number {
+  return new Date(date.getTime() + NAIROBI_OFFSET_MS).getUTCHours();
+}
+
+/** "ZF-20261021-7K3Q": the day plus a short unambiguous code, so numbers can be read over the phone. */
+export function feeInvoiceNumber(day: string, code: string): string {
+  return `ZF-${day.replace(/-/g, '')}-${code}`;
 }

@@ -89,16 +89,16 @@ export default function PricingClient() {
           Sell your till stock online, take M-Pesa payments and offer delivery by riders. Switch it on for your business whenever you are ready.
         </p>
         <p className="mt-4 text-3xl font-bold text-foreground">
-          3%
-          <span className="text-sm font-normal text-secondary-500"> of the product total on each completed online order</span>
+          No commission
+          <span className="text-sm font-normal text-secondary-500"> - shoppers pay a 3% convenience fee on top of their order</span>
         </p>
         <ul className="mt-4 grid gap-2 text-sm text-secondary-600 sm:grid-cols-2">
-          <li>✓ Pay when you sell online</li>
+          <li>✓ Nothing is taken from your sales: the 3% convenience fee is paid by your shopper, on top of the price</li>
           <li>✓ Delivery fees are not charged commission, and Zaroda takes no cut of them</li>
           <li>✓ Shoppers pay you directly, through Tuma or your own M-Pesa Paybill or Till, not through us</li>
           <li>✓ Online orders appear as normal sales in your reports</li>
           <li>✓ Your own riders, or Zaroda&apos;s approved rider pool</li>
-          <li>✓ Billed monthly with a clear invoice, payable by M-Pesa</li>
+          <li>✓ You collect the fee with the payment and send the day&apos;s total to Zaroda by M-Pesa, with reminders</li>
         </ul>
         <p className="mt-4 text-sm text-secondary-500">
           If a monthly invoice stays unpaid, your online shop is paused until it is settled. Your till keeps working as normal.

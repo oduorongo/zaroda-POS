@@ -41,6 +41,8 @@ export interface Shop {
   pickupEnabled: boolean;
   deliveryEnabled: boolean;
   deliveryCounties: string[] | null;
+  /** Added to the cart at checkout (e.g. 0.03 = 3%, rounded to the nearest shilling); the shop collects it and passes it to Zaroda. */
+  convenienceFeeRate: number;
   location: { branchName: string; county: string | null; subCounty: string | null } | null;
   products: ShopProduct[];
 }
@@ -70,6 +72,8 @@ export interface Order {
   buyerNote: string | null;
   subtotal: number;
   amountDue: number;
+  /** The convenience fee inside amountDue (whole shillings). */
+  convenienceFee: number;
   /** A tip included in amountDue (table orders). */
   tipAmount?: number;
   paymentPhone: string;

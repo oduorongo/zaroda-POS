@@ -126,3 +126,61 @@ export function buildReceiptEmail(invoice: EmailInvoice, shopName: string, mpesa
   });
   return { subject, html, text: lead };
 }
+
+// ── Daily shopper-fee notices ────────────────────────────────────────────
+
+export interface FeeEmailInvoice {
+  invoiceNumber: string;
+  amountDue: number;
+  orderCount: number;
+}
+
+const FEE_LEAD: Record<ReminderStage, (inv: FeeEmailInvoice) => { subject: string; lead: string; urgent: boolean }> = {
+  1: (inv) => ({
+    subject: `Send KES ${inv.amountDue.toLocaleString('en-KE')} to Zaroda - today's shopper fees`,
+    lead: `Your shoppers paid KES ${inv.amountDue.toLocaleString('en-KE')} in convenience fees on ${inv.orderCount} ${inv.orderCount === 1 ? 'order' : 'orders'}. You collected it with their payments; please send it to Zaroda now by M-Pesa.`,
+    urgent: false,
+  }),
+  2: (inv) => ({
+    subject: `Reminder: send KES ${inv.amountDue.toLocaleString('en-KE')} in shopper fees to Zaroda`,
+    lead: `Yesterday's shopper fees (KES ${inv.amountDue.toLocaleString('en-KE')}) have not reached Zaroda yet. Please send them today.`,
+    urgent: false,
+  }),
+  3: (inv) => ({
+    subject: `Last reminder: send KES ${inv.amountDue.toLocaleString('en-KE')} to Zaroda or your shop will be hidden`,
+    lead: `Shopper fees of KES ${inv.amountDue.toLocaleString('en-KE')} are still unsent. If they are not sent by tomorrow your online shop will be hidden from buyers.`,
+    urgent: true,
+  }),
+  4: (inv) => ({
+    subject: `Your online shop is hidden - KES ${inv.amountDue.toLocaleString('en-KE')} in shopper fees unsent`,
+    lead: `Because KES ${inv.amountDue.toLocaleString('en-KE')} in shopper fees is still unsent, buyers can no longer see your shop or place new orders. Orders already placed are not affected. It reappears the moment the fees are sent.`,
+    urgent: true,
+  }),
+};
+
+export function buildFeeNoticeEmail(stage: ReminderStage, invoice: FeeEmailInvoice, shopName: string, payUrl: string | null): BuiltEmail {
+  const { subject, lead, urgent } = FEE_LEAD[stage](invoice);
+  const accent = urgent ? '#b91c1c' : BRAND.NAVY;
+  const button = payUrl ? `<p style="text-align:center;margin:24px 0">${brandButton(`Send KES ${invoice.amountDue.toLocaleString('en-KE')} with M-Pesa`, payUrl, urgent ? accent : undefined)}</p>` : '';
+  const html = brandedEmail({
+    title: 'Shopper fees to send to Zaroda',
+    maxWidth: 560,
+    accent: urgent ? accent : undefined,
+    bodyHtml: `
+        <p>Hello ${escapeHtml(shopName)},</p>
+        <p>${escapeHtml(lead)}</p>
+        <p style="font-size:14px;color:#64748b">Reference ${escapeHtml(invoice.invoiceNumber)}. This is money your shoppers paid as a convenience fee - it is not a charge to you, and you pay no commission on these orders.</p>
+        ${button}
+        <p style="font-size:12px;color:#64748b">You can also send it from <b>Online Shop settings</b> in your Zaroda back office. Already sent? Thank you - you can ignore this email.</p>`,
+  });
+  return { subject, html, text: `${lead}\n\nReference ${invoice.invoiceNumber}${payUrl ? `\nSend it here: ${payUrl}` : ''}` };
+}
+
+/** The same notice as a text message (kept short). */
+export function feeNoticeSms(stage: ReminderStage, amountDue: number): string {
+  const kes = `KES ${amountDue.toLocaleString('en-KE')}`;
+  if (stage === 1) return `Zaroda: your shoppers paid ${kes} in fees today. Please send it to Zaroda: open Online shop settings in your back office and tap Send.`;
+  if (stage === 2) return `Zaroda reminder: ${kes} in shopper fees has not been sent. Please send it today (Online shop settings).`;
+  if (stage === 3) return `Zaroda: last reminder. Send ${kes} in shopper fees by tomorrow or your online shop will be hidden.`;
+  return `Zaroda: your online shop is hidden until the ${kes} in shopper fees is sent. Open Online shop settings to send it.`;
+}

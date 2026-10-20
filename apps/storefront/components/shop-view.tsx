@@ -103,7 +103,7 @@ export default function ShopView({ shop, canReserve = false }: { shop: Shop; can
           )}
         </section>
 
-        <CartSummary shopSlug={shop.slug} />
+        <CartSummary shopSlug={shop.slug} feeRate={shop.convenienceFeeRate} />
       </div>
     </div>
   );

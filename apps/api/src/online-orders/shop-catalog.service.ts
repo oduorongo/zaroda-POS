@@ -7,6 +7,7 @@ import { hasOverdueCommission } from '../online-store/commission.service';
 import { paymentsReady } from '../online-store/payment-gateway';
 import { availablePortions, loadRecipeMap, stockNeeds } from './dish-stock.util';
 import { normalizeCounty, servedCounties } from './delivery-area';
+import { DEFAULT_COMMISSION_RATE } from '../online-store/online-store.constants';
 
 const TX_OPTIONS = { timeout: 15_000, maxWait: 15_000 };
 const MAX_DIRECTORY_SHOPS = 60;
@@ -262,6 +263,8 @@ export class ShopCatalogService {
         pickupEnabled: shop.pickupEnabled,
         deliveryEnabled: shop.deliveryEnabled,
         deliveryCounties: servedCounties(shop.deliveryCounties, branch?.county),
+        // Added to the cart at checkout (rounded to the nearest shilling); the shop collects it and sends it to Zaroda.
+        convenienceFeeRate: shop.commissionRate ?? DEFAULT_COMMISSION_RATE,
         location: branch ? { branchName: branch.name, county: normalizeCounty(branch.county) ?? branch.county, subCounty: branch.subCounty } : null,
         products: products.map((p) => ({
           id: p.id,

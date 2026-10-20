@@ -33,6 +33,7 @@ interface OnlineOrder {
   buyerPhone: string;
   subtotal: number;
   amountDue: number;
+  convenienceFee?: number;
   tipAmount?: number;
   tableLabel?: string | null;
   commissionAmount: number | null;
@@ -225,6 +226,7 @@ Enter the M-Pesa confirmation code, e.g. SJK1ABC2DE:`);
                   </div>
                   <div className="text-right">
                     <p className="font-mono font-semibold">KES {order.amountDue.toLocaleString()}</p>
+                    {order.convenienceFee ? <p className="text-xs text-secondary-500">includes KES {order.convenienceFee.toLocaleString()} convenience fee to send to Zaroda</p> : null}
                     {order.tipAmount ? <p className="text-xs text-secondary-500">includes KES {order.tipAmount.toLocaleString()} tip for the staff</p> : null}
                     {order.mpesaReceiptNumber && <p className="text-xs text-secondary-500">M-Pesa {order.mpesaReceiptNumber}</p>}
                   </div>

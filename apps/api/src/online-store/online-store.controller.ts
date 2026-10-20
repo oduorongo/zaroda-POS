@@ -41,6 +41,14 @@ export class OnlineStoreController {
     return this.commission.payOnline(id, dto.phone);
   }
 
+  // Turns the shopper fees the shop has collected into an invoice to send to Zaroda now (also done automatically at the end of the day).
+  @Throttle(PAY_THROTTLE)
+  @Post('commission/fees/settle')
+  @HttpCode(200)
+  settleFees() {
+    return this.commission.settleFeesNow();
+  }
+
   // The page polls this while it waits for the PIN.
   @Post('commission/invoices/:id/check')
   @HttpCode(200)
