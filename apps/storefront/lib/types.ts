@@ -12,6 +12,8 @@ export interface ShopSummary {
   coverImage: string | null;
   pickupEnabled: boolean;
   deliveryEnabled: boolean;
+  /** Counties it delivers to; null when the shop has not said where it is yet (then delivery is not limited). */
+  deliveryCounties: string[] | null;
 }
 
 export interface ShopVariant {
@@ -38,6 +40,7 @@ export interface Shop {
   contactPhone: string | null;
   pickupEnabled: boolean;
   deliveryEnabled: boolean;
+  deliveryCounties: string[] | null;
   location: { branchName: string; county: string | null; subCounty: string | null } | null;
   products: ShopProduct[];
 }

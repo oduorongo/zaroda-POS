@@ -524,7 +524,7 @@ async function mailedSince(mark) {
   let dSeq = 0;
   const placeDelivery = async (address) => {
     for (let i = 0; i < 4; i++) {
-      const r = await api('POST', '/buyer/orders', { token: buyerA, body: { shopSlug: 'demo-shop', lines: [{ variantId, quantity: 1 }], fulfilmentType: 'DELIVERY', deliveryAddress: address, paymentPhone: '0722000333' } });
+      const r = await api('POST', '/buyer/orders', { token: buyerA, body: { shopSlug: 'demo-shop', lines: [{ variantId, quantity: 1 }], fulfilmentType: 'DELIVERY', deliveryAddress: address, deliveryCounty: 'Nairobi', paymentPhone: '0722000333' } });
       if (r.status !== 429) return r;
       await sleep(31000); // the checkout rate limit - wait it out
     }

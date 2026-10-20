@@ -3,7 +3,9 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { KENYA_COUNTIES } from "@zaroda/ui";
 import { ApiError, createOrder } from "../lib/api";
+import { useMyCounty } from "../lib/my-county";
 import { displayPhone, formatQty, kes } from "../lib/format";
 import type { Shop } from "../lib/types";
 import AuthForm from "./auth-form";
@@ -20,6 +22,9 @@ export default function CheckoutView({ shop }: { shop: Shop }) {
   const [fulfilment, setFulfilment] = useState<Fulfilment>(defaultFulfilment);
   const [name, setName] = useState("");
   const [address, setAddress] = useState("");
+  const [myCounty, setMyCounty] = useMyCounty();
+  const [county, setCounty] = useState("");
+  const [pickupOk, setPickupOk] = useState(false);
   const [note, setNote] = useState("");
   const [paymentPhone, setPaymentPhone] = useState("");
   const [busy, setBusy] = useState(false);
@@ -61,12 +66,31 @@ export default function CheckoutView({ shop }: { shop: Shop }) {
   }, [shop, cartFor]);
 
   const { amountDue } = cartTotals(lines);
+  // Food and goods cannot travel across the country: a shop that has said where it delivers only offers those counties.
+  const served = shop.deliveryCounties;
+  const deliveryCounties: readonly string[] = served ?? KENYA_COUNTIES;
+  const myCountyServed = !myCounty || served === null || served.includes(myCounty);
+  useEffect(() => {
+    setCounty((current) => (current && deliveryCounties.includes(current) ? current : myCounty && deliveryCounties.includes(myCounty) ? myCounty : deliveryCounties.length === 1 ? deliveryCounties[0] : ""));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [myCounty, served]);
+  // Collecting from a shop in another county than the one they are in: make sure it is on purpose.
+  const shopCounty = shop.location?.county ?? null;
+  const farPickup = fulfilment === "PICKUP" && Boolean(myCounty) && Boolean(shopCounty) && myCounty !== shopCounty;
   const canDeliver = shop.deliveryEnabled;
   const canPickup = shop.pickupEnabled;
 
   async function placeOrder(e: React.FormEvent) {
     e.preventDefault();
     if (!token || lines.length === 0) return;
+    if (fulfilment === "DELIVERY" && !county) {
+      setError("Choose the county we are delivering to.");
+      return;
+    }
+    if (farPickup && !pickupOk) {
+      setError(`Please confirm you will collect your order from ${shopCounty}.`);
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -75,6 +99,7 @@ export default function CheckoutView({ shop }: { shop: Shop }) {
         lines: lines.map((l) => ({ variantId: l.variantId, quantity: l.quantity })),
         fulfilmentType: fulfilment,
         deliveryAddress: fulfilment === "DELIVERY" ? address.trim() : undefined,
+        deliveryCounty: fulfilment === "DELIVERY" ? county : undefined,
         note: note.trim() || undefined,
         buyerName: name.trim() || undefined,
         paymentPhone: paymentPhone.trim() || undefined,
@@ -140,13 +165,44 @@ export default function CheckoutView({ shop }: { shop: Shop }) {
                 <span>
                   <span className="block font-medium">Delivery</span>
                   <span className="block text-xs text-secondary-500">The shop delivers to you. Agree any delivery fee with the shop directly; it isn&apos;t part of this payment.</span>
+                  {served && <span className="mt-0.5 block text-xs font-medium text-secondary-600">Delivers in {served.join(", ")} only.</span>}
+                  {!myCountyServed && <span className="mt-0.5 block text-xs font-medium text-warning-700">This shop cannot deliver to {myCounty}. Choose pickup, or order from a shop in {myCounty}.</span>}
                 </span>
               </label>
             )}
           </fieldset>
 
+          {fulfilment === "PICKUP" && farPickup && (
+            <label className="flex cursor-pointer items-start gap-2 rounded-md border border-warning-600/40 bg-warning-50 p-3 text-sm text-warning-900">
+              <input type="checkbox" checked={pickupOk} onChange={(e) => setPickupOk(e.target.checked)} className="mt-1" />
+              <span>
+                This shop is in <strong>{shopCounty}</strong> but you said you are in {myCounty}. I will collect my order from the shop myself.
+              </span>
+            </label>
+          )}
+
           {fulfilment === "DELIVERY" && (
             <div>
+              <label htmlFor="delivery-county" className="block text-sm font-medium">
+                Which county are we delivering to?
+              </label>
+              <select
+                id="delivery-county"
+                required
+                value={county}
+                onChange={(e) => {
+                  setCounty(e.target.value);
+                  setMyCounty(e.target.value);
+                }}
+                className="mt-1 mb-4 w-full rounded-md border border-border bg-surface p-3 text-base"
+              >
+                <option value="">Choose a county</option>
+                {deliveryCounties.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </select>
               <label htmlFor="address" className="block text-sm font-medium">
                 Delivery address
               </label>
@@ -223,7 +279,7 @@ export default function CheckoutView({ shop }: { shop: Shop }) {
           {error && <p className="text-sm text-error-600">{error}</p>}
           <button
             type="submit"
-            disabled={busy || lines.length === 0 || (fulfilment === "DELIVERY" && address.trim().length < 5)}
+            disabled={busy || lines.length === 0 || (fulfilment === "DELIVERY" && (address.trim().length < 5 || !county)) || (farPickup && !pickupOk)}
             className="w-full rounded-md bg-primary-600 px-4 py-3 font-semibold text-white hover:bg-primary-700 disabled:opacity-50"
           >
             {busy ? "Placing order..." : `Place order and pay ${kes(amountDue)}`}

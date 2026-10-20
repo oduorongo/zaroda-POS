@@ -35,6 +35,7 @@ import { kitchenProgress, sendTableOrderToKitchen, stationsFor } from './dine-in
 import { ShopCatalogService } from './shop-catalog.service';
 import { CancelOnlineOrderDto, CreateOnlineOrderDto, CreateTableOrderDto } from './dto/online-order.dto';
 import { generateCallbackToken, generateOrderNumber, normalizeKenyanPhone, roundMoney, sha256 } from './online-orders.util';
+import { checkDeliveryCounty, servedCounties } from './delivery-area';
 
 const TX_OPTIONS = { timeout: 15_000, maxWait: 15_000 };
 // How long an unpaid order holds stock. An M-Pesa prompt itself times out
@@ -61,6 +62,7 @@ export function toOrderView(order: OrderWithLines) {
     tableId: order.tableId,
     tableLabel: order.tableLabel,
     deliveryAddress: order.deliveryAddress,
+    deliveryCounty: order.deliveryCounty,
     buyerNote: order.buyerNote,
     buyerName: order.buyerName,
     buyerPhone: order.buyerPhone,
@@ -206,9 +208,15 @@ export class OnlineOrdersService {
             if (dto.fulfilmentType === FulfilmentType.PICKUP && !shop.pickupEnabled) {
               throw new BadRequestException('This shop does not offer pickup');
             }
+            let deliveryCounty: string | null = null;
             if (dto.fulfilmentType === FulfilmentType.DELIVERY) {
               if (!shop.deliveryEnabled) throw new BadRequestException('This shop does not deliver');
               if (!dto.deliveryAddress?.trim()) throw new BadRequestException('Enter a delivery address');
+              // Food and goods cannot travel across the country: only a county the shop serves can be delivered to.
+              const branch = await tx.branch.findUnique({ where: { id: shop.fulfilmentBranchId }, select: { county: true } });
+              const area = checkDeliveryCounty(servedCounties(shop.deliveryCounties, branch?.county), dto.deliveryCounty, shop.displayName);
+              if (!area.ok) throw new BadRequestException(area.message);
+              deliveryCounty = area.county;
             }
 
             // Serializes checkouts per branch so two buyers can't both take
@@ -252,6 +260,7 @@ export class OnlineOrdersService {
                 orderNumber: generateOrderNumber(),
                 fulfilmentType: dto.fulfilmentType,
                 deliveryAddress: dto.fulfilmentType === FulfilmentType.DELIVERY ? dto.deliveryAddress!.trim() : null,
+                deliveryCounty,
                 buyerNote: dto.note?.trim() || null,
                 buyerName: dto.buyerName?.trim() || buyer.name,
                 buyerPhone: paymentPhone,

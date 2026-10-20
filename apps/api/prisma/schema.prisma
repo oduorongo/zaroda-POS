@@ -2030,6 +2030,8 @@ model OnlineStore {
   fulfilmentBranchId           String?
   pickupEnabled                Boolean  @default(true)
   deliveryEnabled              Boolean  @default(false)
+  /// Counties this shop delivers to. Empty = just the county of its fulfilment branch. Pickup, hotel and rental bookings are never limited by distance.
+  deliveryCounties             String[] @default([])
   tumaEmail                    String?
   tumaApiKeyEncrypted          String?
   // How buyers' payments reach the business: 'TUMA' (above) or 'DARAJA' - the
@@ -2167,6 +2169,8 @@ model OnlineOrder {
   status              OnlineOrderStatus @default(PENDING_PAYMENT)
   fulfilmentType      FulfilmentType
   deliveryAddress     String?
+  // The county the order is delivered to (a delivery order is only accepted for a county the shop serves).
+  deliveryCounty      String?
   // Table orders (DINE_IN): which table, with its label as it was when ordered.
   tableId             String?
   tableLabel          String?

@@ -14,6 +14,16 @@ import { ConnectMpesaDto, ConnectTumaDto, UpdateOnlineStoreDto } from './dto/upd
 import { DarajaClient } from './daraja.client';
 import { darajaConnected, gatewayOf, paymentsReady, tumaConnected } from './payment-gateway';
 import { TumaClient } from './tuma.client';
+import { normalizeCounties } from '../online-orders/delivery-area';
+
+/** Typed counties made proper, or a plain 400 naming the one that is not a county. */
+function countiesOrThrow(texts: string[]): string[] {
+  try {
+    return normalizeCounties(texts);
+  } catch (e) {
+    throw new BadRequestException(e instanceof Error ? e.message : 'Choose counties from the list');
+  }
+}
 
 /** What a tenant sees - never the encrypted API key itself, just whether one is connected. */
 export function toTenantView(store: OnlineStore | null) {
@@ -28,6 +38,7 @@ export function toTenantView(store: OnlineStore | null) {
     fulfilmentBranchId: store?.fulfilmentBranchId ?? null,
     pickupEnabled: store?.pickupEnabled ?? true,
     deliveryEnabled: store?.deliveryEnabled ?? false,
+    deliveryCounties: store?.deliveryCounties ?? [],
     tumaEmail: store?.tumaEmail ?? null,
     tumaConnected: Boolean(store?.tumaApiKeyEncrypted),
     // How buyers pay this business: Tuma, or its own M-Pesa (Safaricom Daraja) into its own Paybill/Till.
@@ -118,6 +129,7 @@ export class OnlineStoreService {
           fulfilmentBranchId: dto.fulfilmentBranchId,
           pickupEnabled: dto.pickupEnabled,
           deliveryEnabled: dto.deliveryEnabled,
+          deliveryCounties: dto.deliveryCounties === undefined ? undefined : countiesOrThrow(dto.deliveryCounties),
           isPublished: dto.isPublished,
         };
 

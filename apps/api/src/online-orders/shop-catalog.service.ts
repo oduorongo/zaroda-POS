@@ -6,6 +6,7 @@ import { ObjectStorageService } from '../common/storage/object-storage.service';
 import { hasOverdueCommission } from '../online-store/commission.service';
 import { paymentsReady } from '../online-store/payment-gateway';
 import { availablePortions, loadRecipeMap, stockNeeds } from './dish-stock.util';
+import { normalizeCounty, servedCounties } from './delivery-area';
 
 const TX_OPTIONS = { timeout: 15_000, maxWait: 15_000 };
 const MAX_DIRECTORY_SHOPS = 60;
@@ -19,6 +20,8 @@ export interface LiveShop {
   fulfilmentBranchId: string;
   pickupEnabled: boolean;
   deliveryEnabled: boolean;
+  /** Counties the shop listed for delivery (empty = its branch's own county). */
+  deliveryCounties: string[];
   commissionRate: number | null;
   paymentGateway: string;
   /** ZARODA has taken this business's hotel rooms off the marketplace. */
@@ -71,6 +74,7 @@ export class ShopCatalogService {
         fulfilmentBranchId: store.fulfilmentBranchId,
         pickupEnabled: store.pickupEnabled,
         deliveryEnabled: store.deliveryEnabled,
+        deliveryCounties: store.deliveryCounties,
         commissionRate: store.commissionRate != null ? Number(store.commissionRate) : null,
         paymentGateway: store.paymentGateway,
         hotelBlocked: store.hotelBlockedAt !== null,
@@ -180,8 +184,9 @@ export class ShopCatalogService {
           slug: store.slug!,
           name: store.displayName!,
           description: store.description,
-          county: branch?.county ?? null,
+          county: normalizeCounty(branch?.county) ?? branch?.county ?? null,
           subCounty: branch?.subCounty ?? null,
+          deliveryCounties: servedCounties(store.deliveryCounties, branch?.county),
           productCount: products.length,
           coverImage: cover ? this.storage.publicUrl(cover.storageKey) : null,
           pickupEnabled: store.pickupEnabled,
@@ -256,7 +261,8 @@ export class ShopCatalogService {
         contactPhone: shop.contactPhone,
         pickupEnabled: shop.pickupEnabled,
         deliveryEnabled: shop.deliveryEnabled,
-        location: branch ? { branchName: branch.name, county: branch.county, subCounty: branch.subCounty } : null,
+        deliveryCounties: servedCounties(shop.deliveryCounties, branch?.county),
+        location: branch ? { branchName: branch.name, county: normalizeCounty(branch.county) ?? branch.county, subCounty: branch.subCounty } : null,
         products: products.map((p) => ({
           id: p.id,
           name: p.name,

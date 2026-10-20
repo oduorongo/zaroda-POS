@@ -1,10 +1,16 @@
+"use client";
+
 import Link from "next/link";
 import { MapPin, Store, Truck } from "lucide-react";
 import { locationLabel } from "../lib/format";
+import { useMyCounty } from "../lib/my-county";
 import type { ShopSummary } from "../lib/types";
 
 export default function ShopCard({ shop }: { shop: ShopSummary }) {
   const location = locationLabel(shop.subCounty, shop.county);
+  const [myCounty] = useMyCounty();
+  // Whether this shop can deliver to the county the shopper said they are in (unknown = no answer to give).
+  const reaches = !shop.deliveryEnabled || !myCounty || shop.deliveryCounties === null ? null : shop.deliveryCounties.includes(myCounty);
   return (
     <Link
       href={`/s/${shop.slug}`}
@@ -30,9 +36,15 @@ export default function ShopCard({ shop }: { shop: ShopSummary }) {
             </span>
           )}
           <span>{shop.productCount} {shop.productCount === 1 ? "product" : "products"}</span>
-          {shop.deliveryEnabled && (
-            <span className="flex items-center gap-1">
-              <Truck size={12} aria-hidden /> Delivers
+          {shop.deliveryEnabled && reaches !== false && (
+            <span className={`flex items-center gap-1 ${reaches ? "font-medium text-success-600" : ""}`}>
+              <Truck size={12} aria-hidden /> {reaches ? `Delivers to ${myCounty}` : "Delivers"}
+            </span>
+          )}
+          {shop.deliveryEnabled && reaches === false && (
+            <span className="flex items-center gap-1 text-warning-700">
+              <Truck size={12} aria-hidden /> No delivery to {myCounty}
+              {shop.pickupEnabled ? " - pickup only" : ""}
             </span>
           )}
         </div>

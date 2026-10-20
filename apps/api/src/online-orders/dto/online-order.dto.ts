@@ -149,6 +149,12 @@ export class CreateOnlineOrderDto {
   @MaxLength(500)
   deliveryAddress?: string;
 
+  // The county the order is delivered to - required for delivery, and must be one the shop serves.
+  @IsString()
+  @IsOptional()
+  @MaxLength(40)
+  deliveryCounty?: string;
+
   @IsString()
   @IsOptional()
   @MaxLength(500)
