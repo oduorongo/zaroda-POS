@@ -7,6 +7,7 @@ import { apiGet, apiPost, ApiError } from "../../lib/api";
 import { getSession, clearSession, isBackofficeRole, type Session } from "../../lib/auth";
 import { Nav } from "../../components/nav";
 import { PageHeader } from "../../components/page-header";
+import { variantLabel, variantTitleOf } from "../../lib/variant-label";
 
 type LayawayStatus = "OPEN" | "COMPLETED" | "CANCELLED";
 
@@ -20,6 +21,7 @@ interface Customer {
 interface Variant {
   id: string;
   sku: string;
+  name?: string | null;
   price: string;
 }
 
@@ -141,7 +143,7 @@ export default function LayawaysPage() {
         next[idx] = { ...next[idx], quantity: next[idx].quantity + 1 };
         return next;
       }
-      return [...prev, { variantId: variant.id, sku: variant.sku, productName: product.name, quantity: 1 }];
+      return [...prev, { variantId: variant.id, sku: variant.sku, productName: variantTitleOf(product.name, variant), quantity: 1 }];
     });
   }
 
@@ -260,7 +262,7 @@ export default function LayawaysPage() {
                     onClick={() => addLine(p, v)}
                     className="rounded-md bg-background p-2 text-left text-xs hover:bg-surface"
                   >
-                    {p.name} ({v.sku}) - KES {Number(v.price).toFixed(2)}
+                    {variantLabel(p.name, v)} - KES {Number(v.price).toFixed(2)}
                   </button>
                 )),
               )}

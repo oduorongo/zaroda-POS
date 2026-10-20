@@ -13,6 +13,7 @@ import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Label, Loading
 interface Variant {
   id: string;
   sku: string;
+  name?: string | null;
   price: string;
   quantityMode: "COUNT" | "WEIGHT";
 }
@@ -221,7 +222,7 @@ export default function ProductOnlineListingPage() {
                     <ul className="mt-1 space-y-0.5">
                       {product.variants.map((v) => (
                         <li key={v.id} className="flex justify-between">
-                          <span>{v.sku}</span>
+                          <span>{v.name?.trim() || v.sku}</span>
                           <span className="font-mono">
                             KES {Number(v.price).toFixed(2)}
                             {v.quantityMode === "WEIGHT" && <span className="text-secondary-500"> /unit</span>}

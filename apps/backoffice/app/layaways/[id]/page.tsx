@@ -6,6 +6,7 @@ import { apiGet, apiPatch, apiPost, ApiError } from "../../../lib/api";
 import { getSession, clearSession, isBackofficeRole, type Session } from "../../../lib/auth";
 import { Nav } from "../../../components/nav";
 import { PageHeader } from "../../../components/page-header";
+import { variantLabel, variantTitleOf } from "../../../lib/variant-label";
 
 type LayawayStatus = "OPEN" | "COMPLETED" | "CANCELLED";
 
@@ -15,7 +16,7 @@ interface LineItem {
   quantity: number;
   unitPrice: string;
   taxAmount: string;
-  variant: { sku: string; product: { name: string } };
+  variant: { sku: string; name?: string | null; product: { name: string } };
 }
 
 interface Payment {
@@ -151,7 +152,7 @@ export default function LayawayDetailPage() {
                   {layaway.lineItems.map((li) => (
                     <tr key={li.id} className="border-b border-border last:border-b-0">
                       <td className="p-3">
-                        {li.variant.product.name} ({li.variant.sku})
+                        {variantLabel(li.variant.product.name, li.variant)}
                       </td>
                       <td className="p-3 text-right">{li.quantity}</td>
                       <td className="p-3 text-right font-mono">KES {Number(li.unitPrice).toFixed(2)}</td>

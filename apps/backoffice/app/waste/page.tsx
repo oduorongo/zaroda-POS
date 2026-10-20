@@ -7,6 +7,7 @@ import { apiGet, apiPost, ApiError } from "../../lib/api";
 import { getSession, clearSession, isBackofficeRole, type Session } from "../../lib/auth";
 import { Nav } from "../../components/nav";
 import { PageHeader } from "../../components/page-header";
+import { variantLabel, variantTitleOf } from "../../lib/variant-label";
 
 type QuantityMode = "COUNT" | "WEIGHT";
 type WasteReason = "EXPIRED" | "DAMAGED" | "SPOILED" | "OVERPRODUCTION" | "OTHER";
@@ -16,6 +17,7 @@ const REASONS: WasteReason[] = ["EXPIRED", "DAMAGED", "SPOILED", "OVERPRODUCTION
 interface Variant {
   id: string;
   sku: string;
+  name?: string | null;
   quantityMode: QuantityMode;
   product: { name: string };
 }
@@ -40,7 +42,7 @@ interface Batch {
 interface RecipeIngredient {
   id: string;
   quantity: string;
-  ingredientVariant: { sku: string; product: { name: string } };
+  ingredientVariant: { sku: string; name?: string | null; product: { name: string } };
 }
 
 interface WasteLog {
@@ -52,7 +54,7 @@ interface WasteLog {
   createdAt: string;
   variant: Variant;
   batch: { batchNumber: string } | null;
-  ingredients: { quantity: string; ingredientVariant: { sku: string; product: { name: string } } }[];
+  ingredients: { quantity: string; ingredientVariant: { sku: string; name?: string | null; product: { name: string } } }[];
 }
 
 export default function WastePage() {
@@ -129,7 +131,7 @@ export default function WastePage() {
     const term = search.trim().toLowerCase();
     if (!term) return [];
     return flat
-      .filter((v) => v.product.name.toLowerCase().includes(term) || v.sku.toLowerCase().includes(term))
+      .filter((v) => v.product.name.toLowerCase().includes(term) || v.sku.toLowerCase().includes(term) || (v.name ?? "").toLowerCase().includes(term))
       .slice(0, 20);
   }, [products, search]);
 
@@ -244,7 +246,7 @@ export default function WastePage() {
           {variant ? (
             <div className="mt-1 flex items-center justify-between rounded-md bg-background p-2 text-sm">
               <span>
-                {variant.product.name} <span className="text-secondary-500">({variant.sku})</span>
+                {variantTitleOf(variant.product.name, variant)} <span className="text-secondary-500">({variant.sku})</span>
               </span>
               <button onClick={clearVariant} className="text-xs text-red-400">
                 Change
@@ -269,7 +271,7 @@ export default function WastePage() {
                         onClick={() => void pickVariant(v)}
                         className="block w-full px-2 py-1.5 text-left text-sm hover:bg-surface"
                       >
-                        {v.product.name} <span className="text-secondary-500">({v.sku})</span>
+                        {variantTitleOf(v.product.name, v)} <span className="text-secondary-500">({v.sku})</span>
                       </button>
                     ))
                   )}
@@ -365,7 +367,7 @@ export default function WastePage() {
               {history.map((w) => (
                 <div key={w.id} className="rounded-md bg-background p-2 text-sm">
                   <p>
-                    {w.variant.product.name} ({w.variant.sku}) &times; {w.quantity} -{" "}
+                    {variantLabel(w.variant.product.name, w.variant)} &times; {w.quantity} -{" "}
                     <span className="text-amber-400">{w.reason}</span>
                     {w.totalCost !== null && (
                       <span className="ml-2 font-mono text-secondary-500">KES {Number(w.totalCost).toFixed(2)}</span>
@@ -378,7 +380,7 @@ export default function WastePage() {
                   </p>
                   {w.ingredients.length > 0 && (
                     <p className="mt-1 text-xs text-secondary-500">
-                      Ingredients: {w.ingredients.map((i) => `${i.quantity} ${i.ingredientVariant.sku}`).join(", ")}
+                      Ingredients: {w.ingredients.map((i) => `${i.quantity} ${i.ingredientVariant.name?.trim() || i.ingredientVariant.sku}`).join(", ")}
                     </p>
                   )}
                 </div>

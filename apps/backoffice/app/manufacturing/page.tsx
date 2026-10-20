@@ -6,10 +6,12 @@ import { apiGet, apiPatch, apiPost, ApiError } from "../../lib/api";
 import { getSession, clearSession, isBackofficeRole, type Session } from "../../lib/auth";
 import { Nav } from "../../components/nav";
 import { PageHeader } from "../../components/page-header";
+import { variantLabel, variantTitleOf } from "../../lib/variant-label";
 
 interface Variant {
   id: string;
   sku: string;
+  name?: string | null;
   quantityMode: "COUNT" | "WEIGHT";
   product: { name: string };
 }
@@ -53,7 +55,7 @@ function VariantPicker({
     const term = search.trim().toLowerCase();
     if (!term) return [];
     return flat
-      .filter((v) => v.product.name.toLowerCase().includes(term) || v.sku.toLowerCase().includes(term))
+      .filter((v) => v.product.name.toLowerCase().includes(term) || v.sku.toLowerCase().includes(term) || (v.name ?? "").toLowerCase().includes(term))
       .slice(0, 20);
   }, [products, search]);
 
@@ -63,7 +65,7 @@ function VariantPicker({
       {selected ? (
         <div className="mt-1 flex items-center justify-between rounded-md bg-background p-2 text-sm">
           <span>
-            {selected.product.name} <span className="text-secondary-500">({selected.sku})</span>
+            {variantTitleOf(selected.product.name, selected)} <span className="text-secondary-500">({selected.sku})</span>
           </span>
           <button onClick={() => onSelect(null)} className="text-xs text-red-400">
             Change
@@ -91,7 +93,7 @@ function VariantPicker({
                     }}
                     className="block w-full px-2 py-1.5 text-left text-sm hover:bg-surface"
                   >
-                    {v.product.name} <span className="text-secondary-500">({v.sku})</span>
+                    {variantTitleOf(v.product.name, v)} <span className="text-secondary-500">({v.sku})</span>
                   </button>
                 ))
               )}
@@ -309,7 +311,7 @@ export default function ManufacturingPage() {
                 <div key={o.id} className="rounded-md bg-background p-3 text-sm">
                   <div className="flex items-center justify-between">
                     <p>
-                      {o.variant.product.name} <span className="text-secondary-500">({o.variant.sku})</span> - planned{" "}
+                      {variantTitleOf(o.variant.product.name, o.variant)} <span className="text-secondary-500">({o.variant.sku})</span> - planned{" "}
                       {o.plannedQuantity}
                       {o.actualQuantity !== null ? `, actual ${o.actualQuantity}` : ""}
                     </p>
