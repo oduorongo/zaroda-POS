@@ -141,7 +141,7 @@ export default function CheckoutView({ shop }: { shop: Shop }) {
         <Link href={`/s/${shop.slug}`} className="text-sm text-primary-600 hover:underline">
           Back to {shop.name}
         </Link>
-        <h1 className="mt-1 text-2xl font-bold">Checkout</h1>
+        <h1 className="mt-1 text-2xl font-bold">Review and pay</h1>
       </div>
 
       <form onSubmit={placeOrder} className="grid gap-6 md:grid-cols-[1fr_340px]">

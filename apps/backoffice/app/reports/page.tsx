@@ -196,7 +196,7 @@ export default function ReportsPage() {
 
         {!loading && tab === "sales-by-product" && (
           <ReportTable
-            columns={["Product", "SKU", "Qty sold", "Revenue (KES)", "Margin (KES)"]}
+            columns={["Product", "Code", "Qty sold", "Revenue (KES)", "Margin (KES)"]}
             rows={byProduct.map((r) => [
               r.productName,
               r.sku,
@@ -232,7 +232,7 @@ export default function ReportsPage() {
         )}
         {!loading && tab === "waste-by-product" && (
           <ReportTable
-            columns={["Product", "SKU", "Qty wasted", "Cost (KES)", "Top reason"]}
+            columns={["Product", "Code", "Qty wasted", "Cost (KES)", "Top reason"]}
             rows={byWaste.map((r) => {
               const topReason = (Object.entries(r.byReason) as [string, number][])
                 .sort((a, b) => b[1] - a[1])

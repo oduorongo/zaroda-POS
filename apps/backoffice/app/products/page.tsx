@@ -273,7 +273,7 @@ export default function ProductsPage() {
               {variantForProductId === product.id && (
                 <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-border pt-3">
                   <input
-                    placeholder="SKU"
+                    placeholder="Product code (e.g. SODA-500)"
                     value={variantSku}
                     onChange={(e) => setVariantSku(e.target.value)}
                     className="rounded-md border border-border bg-background p-2 text-sm"

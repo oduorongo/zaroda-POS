@@ -262,7 +262,7 @@ export default function InventoryPage() {
                   <p className="text-secondary-500">No inventory records for this branch.</p>
                 ) : (
                   <Table
-                    columns={["Product", "SKU", "Qty", "Threshold"]}
+                    columns={["Product", "Code", "Qty", "Threshold"]}
                     rows={items.map((i) => [
                       i.variant.product.name,
                       i.variant.sku,
@@ -280,7 +280,7 @@ export default function InventoryPage() {
                 <p className="text-secondary-500">No open low-stock alerts.</p>
               ) : (
                 <Table
-                  columns={["Product", "SKU", "Status", "Since"]}
+                  columns={["Product", "Code", "Status", "Since"]}
                   rows={alerts.map((a) => [a.variant.product.name, a.variant.sku, a.status, new Date(a.createdAt).toLocaleString()])}
                 />
               )

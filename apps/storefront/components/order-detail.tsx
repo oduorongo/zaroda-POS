@@ -244,7 +244,9 @@ export default function OrderDetail({ orderId }: { orderId: string }) {
           {order.lines.map((l) => (
             <li key={l.id} className="flex justify-between gap-3 py-2">
               <span>
-                {formatQty(l.quantity)} x {l.productName} <span className="text-secondary-500">({l.variantSku})</span>
+                {formatQty(l.quantity)} x {l.productName}
+                {/* The product code is only worth showing when two lines have the same name (e.g. two sizes of one product). */}
+                {order.lines.filter((other) => other.productName === l.productName).length > 1 && <span className="text-secondary-500"> ({l.variantSku})</span>}
               </span>
               <span className="font-mono">{kes(l.lineTotal)}</span>
             </li>

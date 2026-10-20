@@ -261,7 +261,7 @@ export default function ReceiveStockPage() {
 
           <label className="block text-xs text-secondary-500">Product</label>
           <input
-            placeholder="Search by product name or SKU"
+            placeholder="Search by product name or code"
             value={selectedVariant ? `${selectedVariant.product.name} (${selectedVariant.sku})` : search}
             onChange={(e) => {
               setSearch(e.target.value);

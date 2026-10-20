@@ -14,7 +14,7 @@ export function cartTotals(lines: { price: number; quantity: number }[]) {
 
 /**
  * Desktop: a sticky side panel listing the cart. Mobile: a bottom bar with
- * the count and total that goes straight to checkout.
+ * the count and total that goes straight to payment.
  */
 export default function CartSummary({ shopSlug }: { shopSlug: string }) {
   const { cartFor, setLineQuantity, ready } = useStore();
@@ -79,7 +79,7 @@ export default function CartSummary({ shopSlug }: { shopSlug: string }) {
                 href={checkoutHref}
                 className="mt-4 block rounded-md bg-primary-600 px-4 py-3 text-center font-semibold text-white hover:bg-primary-700"
               >
-                Checkout
+                Pay now
               </Link>
             </>
           )}
@@ -101,7 +101,7 @@ export default function CartSummary({ shopSlug }: { shopSlug: string }) {
             <span>
               {count} {count === 1 ? "item" : "items"} in cart
             </span>
-            <span>Checkout - {kes(amountDue)}</span>
+            <span>Pay now - {kes(amountDue)}</span>
           </Link>
         </div>
         </>

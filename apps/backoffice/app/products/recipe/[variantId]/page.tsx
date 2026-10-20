@@ -195,7 +195,7 @@ export default function RecipeEditorPage() {
               <div className="mt-4 border-t border-border pt-4">
                 <label className="block text-xs text-secondary-500">Add ingredient</label>
                 <input
-                  placeholder="Search by product name or SKU"
+                  placeholder="Search by product name or code"
                   value={pickedIngredient ? `${pickedIngredient.product.name} (${pickedIngredient.sku})` : search}
                   onChange={(e) => {
                     setSearch(e.target.value);

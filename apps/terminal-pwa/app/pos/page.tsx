@@ -692,7 +692,7 @@ export default function PosPage() {
           <div className="mb-3 flex gap-2">
             <input
               className="flex-1 rounded-md border border-secondary-700 bg-secondary-800 p-2.5 text-secondary-100 placeholder:text-secondary-500"
-              placeholder="Search product, SKU, or scan barcode... · Tafuta bidhaa"
+              placeholder="Search product, code, or scan barcode... · Tafuta bidhaa"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
