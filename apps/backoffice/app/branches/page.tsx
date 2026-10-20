@@ -6,6 +6,7 @@ import { apiGet, apiPost, ApiError } from "../../lib/api";
 import { getSession, clearSession, isBackofficeRole, type Session } from "../../lib/auth";
 import { Nav } from "../../components/nav";
 import { PageHeader } from "../../components/page-header";
+import { KENYA_COUNTIES } from "@zaroda/ui";
 
 const TERMINAL_URL = process.env.NEXT_PUBLIC_TERMINAL_URL ?? "http://localhost:3002";
 
@@ -122,12 +123,19 @@ export default function BranchesPage() {
               onChange={(e) => setNewBranchName(e.target.value)}
               className="flex-1 rounded-md border border-border bg-background p-2 text-sm"
             />
-            <input
-              placeholder="County (optional)"
+            <select
+              aria-label="County"
               value={newBranchCounty}
               onChange={(e) => setNewBranchCounty(e.target.value)}
               className="rounded-md border border-border bg-background p-2 text-sm"
-            />
+            >
+              <option value="">County (needed for delivery)</option>
+              {KENYA_COUNTIES.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </select>
             <button
               onClick={() => void createBranch()}
               disabled={branchBusy || !newBranchName.trim()}

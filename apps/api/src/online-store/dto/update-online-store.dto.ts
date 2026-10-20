@@ -1,4 +1,6 @@
 import {
+  ArrayMaxSize,
+  IsArray,
   IsBoolean,
   IsEmail,
   IsIn,
@@ -52,6 +54,14 @@ export class UpdateOnlineStoreDto {
   @IsBoolean()
   @IsOptional()
   deliveryEnabled?: boolean;
+
+  // Counties the shop delivers to (checked against the 47 counties in the service). Empty = its own branch's county.
+  @IsArray()
+  @ArrayMaxSize(47)
+  @IsString({ each: true })
+  @MaxLength(40, { each: true })
+  @IsOptional()
+  deliveryCounties?: string[];
 }
 
 /** Connecting TUMA is its own request so credentials are verified with TUMA before anything is saved. */

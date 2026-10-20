@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { ActivityAlerts, type AlertItem } from "@zaroda/ui";
 import { ApiError, deliverJob, listMyJobs, listOpenJobs, pickUpJob, quoteJob, withdrawQuote } from "../lib/api";
 import { displayPhone, kes } from "../lib/format";
 import type { MyJob, OpenJob } from "../lib/types";
@@ -43,8 +44,22 @@ export default function RiderJobs({ token, onUnauthorized }: { token: string; on
   const earnedAll = sum(finished);
   const earnedToday = sum(finished.filter((j) => j.deliveredAt && new Date(j.deliveredAt) >= startOfToday));
 
+  // Pop up and ring when a new job opens, or when a customer chooses this rider.
+  const fetchAlerts = async (): Promise<AlertItem[]> => {
+    const [o, m] = await Promise.all([listOpenJobs(token), listMyJobs(token)]);
+    return [
+      ...m
+        .filter((j) => j.status === "ASSIGNED")
+        .map((j) => ({ key: `chosen:${j.id}`, title: `You got the delivery for ${j.shopName}`, body: `Collect from ${j.pickupArea} and deliver to ${j.dropoffSummary}.` })),
+      ...o
+        .filter((j) => !j.myQuote)
+        .map((j) => ({ key: `job:${j.id}`, title: `New delivery job: ${j.shopName}`, body: `${j.pickupArea} to ${j.dropoffSummary}. Send your price before ${time(j.quoteDeadline)}.` })),
+    ];
+  };
+
   return (
     <div className="space-y-6">
+      <ActivityAlerts storageKey="zaroda-rider-alerts" fetchItems={fetchAlerts} />
       {error && <p className="text-sm text-error-600">{error}</p>}
 
       <section className="space-y-3">

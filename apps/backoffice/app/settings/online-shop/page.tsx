@@ -6,7 +6,7 @@ import { apiDelete, apiGet, apiPatch, apiPost, ApiError } from "../../../lib/api
 import { getSession, clearSession, isBackofficeRole, type Session } from "../../../lib/auth";
 import { Nav } from "../../../components/nav";
 import { PageHeader } from "../../../components/page-header";
-import { Badge, Button, Card, CardContent, CardHeader, CardTitle, EmptyState, Input, Label, LoadingState } from "@zaroda/ui";
+import { Badge, Button, Card, CardContent, CardHeader, CardTitle, EmptyState, Input, KENYA_COUNTIES, Label, LoadingState } from "@zaroda/ui";
 
 interface OnlineStore {
   addonActive: boolean;
@@ -19,6 +19,7 @@ interface OnlineStore {
   fulfilmentBranchId: string | null;
   pickupEnabled: boolean;
   deliveryEnabled: boolean;
+  deliveryCounties: string[];
   tumaEmail: string | null;
   tumaConnected: boolean;
   paymentGateway: "TUMA" | "DARAJA";
@@ -66,6 +67,7 @@ const kes = (n: number) => `KES ${n.toLocaleString("en-KE", { minimumFractionDig
 interface Branch {
   id: string;
   name: string;
+  county?: string | null;
 }
 
 const STOREFRONT_URL = (process.env.NEXT_PUBLIC_STOREFRONT_URL ?? "https://shop.zarodashop.com").replace(/\/+$/, "");
@@ -91,6 +93,7 @@ export default function OnlineShopSettingsPage() {
   const [fulfilmentBranchId, setFulfilmentBranchId] = useState("");
   const [pickupEnabled, setPickupEnabled] = useState(true);
   const [deliveryEnabled, setDeliveryEnabled] = useState(false);
+  const [deliveryCounties, setDeliveryCounties] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
@@ -145,6 +148,7 @@ export default function OnlineShopSettingsPage() {
     setFulfilmentBranchId(result.fulfilmentBranchId ?? "");
     setPickupEnabled(result.pickupEnabled);
     setDeliveryEnabled(result.deliveryEnabled);
+    setDeliveryCounties(result.deliveryCounties ?? []);
     setTumaEmail(result.tumaEmail ?? "");
     setPayTab(result.paymentGateway ?? "TUMA");
     setMpesaAccountType(result.mpesaAccountType ?? "PAYBILL");
@@ -187,6 +191,7 @@ export default function OnlineShopSettingsPage() {
         fulfilmentBranchId: fulfilmentBranchId || undefined,
         pickupEnabled,
         deliveryEnabled,
+        deliveryCounties,
       });
       applyStore(result);
       setSaved(true);
@@ -581,6 +586,30 @@ export default function OnlineShopSettingsPage() {
                     Offer delivery (a rider brings the order)
                   </label>
                 </div>
+                {deliveryEnabled && (
+                  <div className="space-y-2 rounded-md border border-border p-3">
+                    <p className="text-sm font-medium">Which counties do you deliver to?</p>
+                    <p className="text-xs text-secondary-500">
+                      Food and goods cannot travel across the country, so shoppers can only order delivery from you for the counties you tick here.
+                      {deliveryCounties.length === 0
+                        ? ` If you tick none, you deliver only in your branch's own county${branches.find((b) => b.id === fulfilmentBranchId)?.county ? ` (${branches.find((b) => b.id === fulfilmentBranchId)?.county})` : " - set a county on your branch (Branches page) so this works"}.`
+                        : " Pickup, hotel rooms and rentals are never limited."}
+                    </p>
+                    <div className="grid max-h-56 grid-cols-2 gap-x-3 gap-y-1 overflow-y-auto sm:grid-cols-3">
+                      {KENYA_COUNTIES.map((c) => (
+                        <label key={c} className="flex items-center gap-2 text-sm">
+                          <input
+                            type="checkbox"
+                            className="h-4 w-4"
+                            checked={deliveryCounties.includes(c)}
+                            onChange={(e) => setDeliveryCounties((current) => (e.target.checked ? [...current, c] : current.filter((x) => x !== c)))}
+                          />
+                          {c}
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                )}
                 {saveError && <p className="text-sm text-error-600">{saveError}</p>}
                 {saved && <p className="text-sm text-success-600">Saved.</p>}
                 <Button onClick={() => void saveDetails()} disabled={saving}>

@@ -206,6 +206,7 @@ export interface CreateOrderInput {
   lines: { variantId: string; quantity: number }[];
   fulfilmentType: "PICKUP" | "DELIVERY";
   deliveryAddress?: string;
+  deliveryCounty?: string;
   note?: string;
   buyerName?: string;
   paymentPhone?: string;

@@ -1,3 +1,4 @@
+import CountyBar from "../components/county-bar";
 import ShopCard from "../components/shop-card";
 import { listShops } from "../lib/api";
 import type { ShopSummary } from "../lib/types";
@@ -36,6 +37,8 @@ export default async function HomePage({ searchParams }: { searchParams: { q?: s
           </button>
         </form>
       </section>
+
+      <CountyBar />
 
       <section aria-labelledby="shops-heading">
         <h2 id="shops-heading" className="mb-4 text-xl font-semibold">
