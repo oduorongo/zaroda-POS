@@ -1,5 +1,7 @@
 "use client";
 
+
+import { PasswordInput } from "@zaroda/ui";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ApiError, listOrders, setBuyerPin } from "../lib/api";
@@ -111,8 +113,8 @@ function AddPin({ token, phone, onDone }: { token: string; phone: string | null;
       {!phone && (
         <input type="tel" inputMode="tel" required placeholder="Your phone number, e.g. 0712 345 678" value={number} onChange={(e) => setNumber(e.target.value)} className="w-full rounded-md border border-border bg-surface p-3" />
       )}
-      <input
-        type="password"
+      <PasswordInput
+        
         inputMode="numeric"
         pattern="[0-9]*"
         autoComplete="new-password"

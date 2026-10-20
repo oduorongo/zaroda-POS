@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Badge } from "@zaroda/ui";
+import { Badge, PasswordInput } from "@zaroda/ui";
 import { ApiError } from "../../lib/api";
 import { TeamShell } from "../../components/team-shell";
 import { teamChangePassword, teamGet, type TeamMe, type TeamOverview } from "../../lib/team-api";
@@ -125,8 +125,8 @@ function HomeBody({ me, reload }: { me: TeamMe; reload: () => Promise<void> }) {
 
       <form onSubmit={changePassword} className="space-y-3 rounded-lg border border-border bg-surface p-4">
         <h2 className="font-semibold">Change your password</h2>
-        <input
-          type="password"
+        <PasswordInput
+          
           required
           autoComplete="current-password"
           placeholder="Current password"
@@ -134,8 +134,8 @@ function HomeBody({ me, reload }: { me: TeamMe; reload: () => Promise<void> }) {
           value={current}
           onChange={(e) => setCurrent(e.target.value)}
         />
-        <input
-          type="password"
+        <PasswordInput
+          
           required
           minLength={8}
           autoComplete="new-password"

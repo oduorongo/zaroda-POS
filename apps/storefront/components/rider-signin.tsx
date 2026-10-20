@@ -1,5 +1,7 @@
 "use client";
 
+
+import { PasswordInput } from "@zaroda/ui";
 import { useState } from "react";
 import { ApiError, requestRiderCode, requestRiderPinReset, resetRiderPin, riderPinLogin, riderSignup, verifyRiderCode } from "../lib/api";
 import type { Rider } from "../lib/types";
@@ -144,9 +146,9 @@ export default function RiderSignIn({ onSignedIn }: { onSignedIn: (token: string
             <label htmlFor="rs-pin" className="block text-sm font-medium">
               {mode === "login" ? "Your PIN" : mode === "signup" ? "Choose a PIN (4 to 6 numbers)" : "New PIN (4 to 6 numbers)"}
             </label>
-            <input
+            <PasswordInput
               id="rs-pin"
-              type="password"
+              
               inputMode="numeric"
               pattern="[0-9]*"
               autoComplete={mode === "login" ? "current-password" : "new-password"}

@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { db } from "../../lib/db";
 import { apiPost, apiGet, ApiError } from "../../lib/api";
-import { ThemeToggle } from "@zaroda/ui";
+import { ThemeToggle, PasswordInput } from "@zaroda/ui";
 
 interface LoginResponse {
   accessToken: string;
@@ -192,8 +192,8 @@ export default function SetupPage() {
             </div>
             <div>
               <label className="block text-sm font-medium text-secondary-600">Password</label>
-              <input
-                type="password"
+              <PasswordInput
+                
                 className="mt-1 w-full rounded-md border border-secondary-500 bg-background p-2.5"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}

@@ -1,6 +1,6 @@
 "use client";
 
-import { FloatingThemeToggle } from "@zaroda/ui";
+import { FloatingThemeToggle, PasswordInput } from "@zaroda/ui";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { ApiError } from "../../lib/api";
@@ -174,8 +174,8 @@ export default function RegisterPage() {
         </div>
         <div>
           <label className="block text-sm font-medium text-secondary-600">Password (min 8 characters)</label>
-          <input
-            type="password"
+          <PasswordInput
+            
             className="mt-1 w-full rounded-md border border-secondary-500 bg-background p-2.5"
             value={ownerPassword}
             onChange={(e) => setOwnerPassword(e.target.value)}

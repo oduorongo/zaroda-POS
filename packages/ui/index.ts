@@ -6,6 +6,7 @@ export * from "./components/Badge";
 export * from "./components/Table";
 export * from "./components/Modal";
 export * from "./components/Input";
+export * from "./components/PasswordInput";
 export * from "./components/PinPad";
 export * from "./components/EmptyState";
 export * from "./components/ThemeToggle";

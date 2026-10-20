@@ -1,6 +1,6 @@
 "use client";
 
-import { FloatingThemeToggle } from "@zaroda/ui";
+import { FloatingThemeToggle, PasswordInput } from "@zaroda/ui";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { ApiError } from "../../../lib/api";
@@ -52,8 +52,8 @@ export default function TeamLoginPage() {
         </div>
         <div>
           <label className="mb-1.5 block text-sm font-medium text-secondary-600">Password</label>
-          <input
-            type="password"
+          <PasswordInput
+            
             required
             autoComplete="current-password"
             className="w-full rounded-lg border border-border bg-background p-3 text-sm"
