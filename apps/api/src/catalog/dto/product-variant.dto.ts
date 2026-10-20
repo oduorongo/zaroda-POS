@@ -16,6 +16,12 @@ export class CreateProductVariantDto {
   @MaxLength(100)
   sku!: string;
 
+  // What people call this option, e.g. "Large loaf 800g". Optional; send an empty string to remove it.
+  @IsString()
+  @IsOptional()
+  @MaxLength(60)
+  name?: string;
+
   @IsString()
   @IsOptional()
   @MaxLength(100)

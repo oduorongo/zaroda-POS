@@ -19,6 +19,8 @@ export interface ShopSummary {
 export interface ShopVariant {
   id: string;
   sku: string;
+  /** What this option is called ("Large loaf 800g"), when the shop has named it. */
+  name?: string | null;
   price: number;
   quantityMode: "COUNT" | "WEIGHT";
   available: number;

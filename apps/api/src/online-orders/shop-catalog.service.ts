@@ -275,6 +275,7 @@ export class ShopCatalogService {
           variants: p.variants.map((v) => ({
             id: v.id,
             sku: v.sku,
+            name: v.name,
             price: Number(v.price),
             quantityMode: v.quantityMode,
             available: available.get(v.id) ?? 0,

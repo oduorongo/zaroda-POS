@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { apiGet, apiPost, ApiError } from "../../lib/api";
+import { apiGet, apiPatch, apiPost, ApiError } from "../../lib/api";
 import { getSession, clearSession, isBackofficeRole, type Session } from "../../lib/auth";
 import { Nav } from "../../components/nav";
 import { PageHeader } from "../../components/page-header";
@@ -26,8 +26,10 @@ interface Variant {
   id: string;
   productId: string;
   sku: string;
+  name: string | null;
   barcode: string | null;
   price: string;
+  cost: string | null;
   quantityMode: QuantityMode;
 }
 
@@ -65,6 +67,14 @@ export default function ProductsPage() {
   const [variantForProductId, setVariantForProductId] = useState<string | null>(null);
   const [variantSku, setVariantSku] = useState("");
   const [variantPrice, setVariantPrice] = useState("");
+  const [variantName, setVariantName] = useState("");
+  const [variantCost, setVariantCost] = useState("");
+  const [editingVariantId, setEditingVariantId] = useState<string | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editPrice, setEditPrice] = useState("");
+  const [editCost, setEditCost] = useState("");
+  const [editBusy, setEditBusy] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
   const [variantMode, setVariantMode] = useState<QuantityMode>("COUNT");
   const [variantBusy, setVariantBusy] = useState(false);
   const [variantError, setVariantError] = useState<string | null>(null);
@@ -140,18 +150,50 @@ export default function ProductsPage() {
     try {
       await apiPost(`/products/${productId}/variants`, {
         sku: variantSku.trim(),
+        name: variantName.trim() || undefined,
         price,
+        cost: variantCost.trim() === "" ? undefined : Number(variantCost),
         quantityMode: variantMode,
       });
       setVariantForProductId(null);
       setVariantSku("");
       setVariantPrice("");
+      setVariantName("");
+      setVariantCost("");
       setVariantMode("COUNT");
       await load();
     } catch (err) {
       setVariantError(err instanceof ApiError ? err.message : "Could not create variant.");
     } finally {
       setVariantBusy(false);
+    }
+  }
+
+  function startEdit(v: Variant) {
+    setEditingVariantId(v.id);
+    setEditName(v.name ?? "");
+    setEditPrice(String(Number(v.price)));
+    setEditCost(v.cost === null ? "" : String(Number(v.cost)));
+    setEditError(null);
+  }
+
+  async function saveEdit(productId: string, variantId: string) {
+    const price = Number(editPrice);
+    const cost = editCost.trim() === "" ? undefined : Number(editCost);
+    if (!Number.isFinite(price) || price < 0 || (cost !== undefined && (!Number.isFinite(cost) || cost < 0))) {
+      setEditError("Price and cost must be amounts in shillings.");
+      return;
+    }
+    setEditBusy(true);
+    setEditError(null);
+    try {
+      await apiPatch(`/products/${productId}/variants/${variantId}`, { name: editName.trim(), price, ...(cost !== undefined ? { cost } : {}) });
+      setEditingVariantId(null);
+      await load();
+    } catch (err) {
+      setEditError(err instanceof ApiError ? err.message : "Could not save that.");
+    } finally {
+      setEditBusy(false);
     }
   }
 
@@ -248,7 +290,14 @@ export default function ProductsPage() {
                     {product.variants.map((v) => (
                       <tr key={v.id} className="border-t border-border">
                         <td className="py-1.5">
-                          {v.sku}
+                          {v.name ? (
+                            <>
+                              {v.name} <span className="text-xs text-secondary-500">({v.sku})</span>
+                            </>
+                          ) : (
+                            v.sku
+                          )}
+                          {v.cost === null && <span className="ml-2 text-xs text-warning-700" title="Without a cost, this product's profit cannot be worked out">no cost yet</span>}
                           {v.quantityMode === "WEIGHT" && (
                             <span className="ml-2 rounded bg-amber-950 px-1.5 py-0.5 text-xs text-amber-400">
                               sold by weight
@@ -258,8 +307,12 @@ export default function ProductsPage() {
                         <td className="py-1.5 text-right font-mono">
                           KES {Number(v.price).toFixed(2)}
                           {v.quantityMode === "WEIGHT" && <span className="text-secondary-500"> /unit</span>}
+                          {v.cost !== null && <span className="block text-xs text-secondary-500">cost {Number(v.cost).toFixed(2)}</span>}
                         </td>
                         <td className="py-1.5 pl-3 text-right">
+                          <button onClick={() => (editingVariantId === v.id ? setEditingVariantId(null) : startEdit(v))} className="mr-3 text-xs text-primary-400 hover:underline">
+                            Edit
+                          </button>
                           <Link href={`/products/recipe/${v.id}`} className="text-xs text-primary-400 hover:underline">
                             Recipe
                           </Link>
@@ -270,8 +323,51 @@ export default function ProductsPage() {
                 </table>
               )}
 
+              {product.variants.map((v) =>
+                editingVariantId === v.id ? (
+                  <div key={`edit-${v.id}`} className="mt-3 space-y-2 rounded-md border border-border p-3">
+                    <p className="text-xs text-secondary-500">Changing {v.name ?? v.sku} ({v.sku})</p>
+                    <div className="flex flex-wrap items-end gap-2">
+                      <label className="text-xs text-secondary-500">
+                        Option name
+                        <input
+                          placeholder="e.g. Large loaf 800g"
+                          value={editName}
+                          maxLength={60}
+                          onChange={(e) => setEditName(e.target.value)}
+                          className="mt-1 block w-52 rounded-md border border-border bg-background p-2 text-sm text-foreground"
+                        />
+                      </label>
+                      <label className="text-xs text-secondary-500">
+                        Selling price (KES)
+                        <input type="number" min={0} step="0.01" value={editPrice} onChange={(e) => setEditPrice(e.target.value)} className="mt-1 block w-28 rounded-md border border-border bg-background p-2 text-sm text-foreground" />
+                      </label>
+                      <label className="text-xs text-secondary-500">
+                        Cost to you (KES)
+                        <input type="number" min={0} step="0.01" placeholder="what it costs you" value={editCost} onChange={(e) => setEditCost(e.target.value)} className="mt-1 block w-32 rounded-md border border-border bg-background p-2 text-sm text-foreground" />
+                      </label>
+                      <button onClick={() => void saveEdit(product.id, v.id)} disabled={editBusy} className="rounded-md bg-primary-600 px-3 py-2 text-sm font-semibold text-white hover:bg-primary-500 disabled:opacity-40">
+                        {editBusy ? "Saving..." : "Save"}
+                      </button>
+                      <button onClick={() => setEditingVariantId(null)} className="rounded-md border border-border px-3 py-2 text-sm hover:bg-surface">
+                        Cancel
+                      </button>
+                    </div>
+                    <p className="text-xs text-secondary-500">The cost is used for your profit. It also updates by itself when you enter the price paid while receiving stock.</p>
+                    {editError && <p className="text-sm text-red-400">{editError}</p>}
+                  </div>
+                ) : null,
+              )}
+
               {variantForProductId === product.id && (
                 <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-border pt-3">
+                  <input
+                    placeholder="Option name (e.g. Large loaf 800g)"
+                    value={variantName}
+                    maxLength={60}
+                    onChange={(e) => setVariantName(e.target.value)}
+                    className="w-56 rounded-md border border-border bg-background p-2 text-sm"
+                  />
                   <input
                     placeholder="Product code (e.g. SODA-500)"
                     value={variantSku}
@@ -283,6 +379,16 @@ export default function ProductsPage() {
                     placeholder="Price"
                     value={variantPrice}
                     onChange={(e) => setVariantPrice(e.target.value)}
+                    className="w-28 rounded-md border border-border bg-background p-2 text-sm"
+                  />
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    placeholder="Cost to you"
+                    title="What one unit costs you. Used for your profit; it updates itself when you enter the price paid on a delivery."
+                    value={variantCost}
+                    onChange={(e) => setVariantCost(e.target.value)}
                     className="w-28 rounded-md border border-border bg-background p-2 text-sm"
                   />
                   <select

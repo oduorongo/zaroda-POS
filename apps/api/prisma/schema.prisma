@@ -479,6 +479,9 @@ model ProductVariant {
   // this variant rather than treating cost as zero (a zero cost would
   // silently overstate margin).
   cost         Decimal?     @db.Decimal(12, 2)
+  // What this size/option is called to people ("Large loaf 800g"). Optional: without it the product code is all there is to tell
+  // options apart. Shown with the product name in the shop, on the till and in orders.
+  name         String?
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
 

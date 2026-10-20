@@ -37,6 +37,7 @@ import { CancelOnlineOrderDto, CreateOnlineOrderDto, CreateTableOrderDto } from 
 import { generateCallbackToken, generateOrderNumber, normalizeKenyanPhone, roundMoney, sha256 } from './online-orders.util';
 import { checkDeliveryCounty, servedCounties } from './delivery-area';
 import { totalWithFee } from './convenience-fee';
+import { variantTitle } from '../catalog/variant-title';
 
 const TX_OPTIONS = { timeout: 15_000, maxWait: 15_000 };
 // How long an unpaid order holds stock. An M-Pesa prompt itself times out
@@ -238,12 +239,12 @@ export class OnlineOrdersService {
               const quantity = wanted.get(v.id)!;
               assertQuantityMatchesMode(v.quantityMode, quantity, `Quantity for ${v.product.name}`);
               if ((available.get(v.id) ?? 0) < quantity) {
-                throw new ConflictException(`Only ${available.get(v.id) ?? 0} of ${v.product.name} (${v.sku}) left`);
+                throw new ConflictException(`Only ${available.get(v.id) ?? 0} of ${variantTitle(v.product.name, v.name)} left`);
               }
               const unitPrice = Number(v.price);
               return {
                 variantId: v.id,
-                productName: v.product.name,
+                productName: variantTitle(v.product.name, v.name),
                 variantSku: v.sku,
                 quantity,
                 unitPrice,
@@ -450,7 +451,7 @@ export class OnlineOrdersService {
               throw new ConflictException(left > 0 ? `Only ${left} of ${v.product.name} left` : `Sorry, ${v.product.name} is finished`);
             }
             const unitPrice = Number(v.price);
-            return { variantId: v.id, productName: v.product.name, variantSku: v.sku, quantity, unitPrice, lineTotal: roundMoney(unitPrice * quantity), note: notes.get(v.id) ?? null };
+            return { variantId: v.id, productName: variantTitle(v.product.name, v.name), variantSku: v.sku, quantity, unitPrice, lineTotal: roundMoney(unitPrice * quantity), note: notes.get(v.id) ?? null };
           });
           const subtotal = roundMoney(lines.reduce((sum, l) => sum + l.lineTotal, 0));
           if (subtotal < 1) throw new BadRequestException('Order total must be at least KES 1');
