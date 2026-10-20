@@ -204,7 +204,9 @@ export class BuyerAuthService {
     const phone = normalizeKenyanPhone(rawPhone);
     if (!phone) throw wrong;
     const buyer = await this.prisma.buyer.findUnique({ where: { phone } });
-    if (!buyer || !buyer.pinHash) throw wrong;
+    // No shopper account on this number: a rider with the same phone number and PIN is the same person, so let them in.
+    if (!buyer) return this.loginViaRider(phone, pin, wrong);
+    if (!buyer.pinHash) throw wrong;
 
     if (buyer.pinLockedUntil && buyer.pinLockedUntil > new Date()) {
       const minutes = Math.max(1, Math.ceil((buyer.pinLockedUntil.getTime() - Date.now()) / 60_000));
@@ -221,6 +223,37 @@ export class BuyerAuthService {
     }
     const signedIn = await this.prisma.buyer.update({ where: { id: buyer.id }, data: { pinFailCount: 0, pinLockedUntil: null } });
     return this.session(signedIn);
+  }
+
+  /**
+   * One person, one login: a rider signs in here with the phone number and PIN they use as a rider, and a shopper
+   * account is opened for that number the first time. Only when NO shopper account exists for the number - an existing
+   * one (even one with no PIN) is never taken over this way, because a number is not proved to be theirs until a code
+   * reaches it. The rider's own wrong-PIN counter and lock apply here too.
+   */
+  private async loginViaRider(phone: string, pin: string, wrong: Error) {
+    const rider = await this.prisma.rider.findUnique({ where: { phone } });
+    if (!rider || !rider.pinHash) throw wrong;
+    if (rider.pinLockedUntil && rider.pinLockedUntil > new Date()) {
+      const minutes = Math.max(1, Math.ceil((rider.pinLockedUntil.getTime() - Date.now()) / 60_000));
+      throw new HttpException(`Too many wrong PINs. Try again in ${minutes} minute${minutes === 1 ? '' : 's'}, or reset your PIN.`, HttpStatus.TOO_MANY_REQUESTS);
+    }
+    if (!verifyPin(pin, rider.pinHash, this.pepper)) {
+      const failures = rider.pinFailCount + 1;
+      const lock = failures >= MAX_PIN_FAILURES;
+      await this.prisma.rider.update({
+        where: { id: rider.id },
+        data: { pinFailCount: lock ? 0 : failures, pinLockedUntil: lock ? new Date(Date.now() + PIN_LOCK_MS) : undefined },
+      });
+      throw wrong;
+    }
+    await this.prisma.rider.update({ where: { id: rider.id }, data: { pinFailCount: 0, pinLockedUntil: null } });
+    try {
+      const buyer = await this.prisma.buyer.create({ data: { phone, name: rider.fullName, pinHash: rider.pinHash } });
+      return this.session(buyer);
+    } catch {
+      throw wrong; // an account appeared for this number a moment ago: do not attach to it
+    }
   }
 
   /**
@@ -275,10 +308,10 @@ export class BuyerAuthService {
 
     const buyer = await this.prisma.buyer.findUnique({ where: { phone } });
     if (!buyer) throw invalid;
-    const updated = await this.prisma.buyer.update({
-      where: { id: buyer.id },
-      data: { pinHash: hashPin(pin, this.pepper), pinFailCount: 0, pinLockedUntil: null },
-    });
+    const pinHash = hashPin(pin, this.pepper);
+    const updated = await this.prisma.buyer.update({ where: { id: buyer.id }, data: { pinHash, pinFailCount: 0, pinLockedUntil: null } });
+    // The code reached this number, so the same person's rider login (if any) gets the new PIN too.
+    await this.prisma.rider.updateMany({ where: { phone }, data: { pinHash, pinFailCount: 0, pinLockedUntil: null } });
     return this.session(updated);
   }
 
