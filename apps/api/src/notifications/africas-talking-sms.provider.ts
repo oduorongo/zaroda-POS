@@ -73,7 +73,8 @@ export class AfricasTalkingSmsProvider implements NotificationProvider {
       };
       const recipient = body.SMSMessageData?.Recipients?.[0];
       if (!recipient || recipient.status !== 'Success') {
-        this.logger.error(
+        // A warning, not an error: a network we cannot text yet (Safaricom without a sender ID) lands here every time.
+        this.logger.warn(
           `Africa's Talking rejected the message: ${JSON.stringify(body)}`,
         );
         return { sent: false };

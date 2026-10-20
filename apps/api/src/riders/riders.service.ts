@@ -1,10 +1,12 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { Prisma, Rider, RiderStatus } from '@prisma/client';
+import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../common/prisma/prisma.service';
 import { TenantScopedPrismaService } from '../common/prisma/tenant-scoped-prisma.service';
 import { getTenantStore } from '../common/tenant/tenant-context';
 import { normalizeKenyanPhone } from '../online-orders/online-orders.util';
 import { CreateShopRiderDto, UpdateRiderProfileDto } from './dto/rider.dto';
+import { generatePin, hashPin } from './rider-pin.util';
 
 /** Everything a rider needs filled in before they can be approved or take a job. */
 export const isProfileComplete = (r: Pick<Rider, 'fullName' | 'phone' | 'vehicleType'>) => Boolean(r.fullName && r.phone && r.vehicleType);
@@ -14,6 +16,7 @@ export function toRiderView(r: Rider) {
   return {
     id: r.id,
     email: r.email,
+    hasPin: Boolean(r.pinHash),
     fullName: r.fullName,
     phone: r.phone,
     vehicleType: r.vehicleType,
@@ -40,7 +43,12 @@ export class RidersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly tenantPrisma: TenantScopedPrismaService,
+    private readonly config: ConfigService,
   ) {}
+
+  private pinHashFor(pin: string): string {
+    return hashPin(pin, this.config.getOrThrow<string>('BUYER_JWT_SECRET'));
+  }
 
   private phoneOrThrow(raw: string): string {
     const phone = normalizeKenyanPhone(raw);
@@ -64,6 +72,15 @@ export class RidersService {
     const rider = await this.prisma.rider.findUnique({ where: { id: riderId } });
     if (!rider) throw new UnauthorizedException();
     return toRiderView(rider);
+  }
+
+  /** A signed-in rider choosing their own PIN (needs a phone number on the profile - that is what they sign in with). */
+  async setOwnPin(riderId: string, pin: string) {
+    const rider = await this.prisma.rider.findUnique({ where: { id: riderId } });
+    if (!rider) throw new UnauthorizedException();
+    if (!rider.phone) throw new BadRequestException('Add your phone number first - you sign in with it and your PIN');
+    const updated = await this.prisma.rider.update({ where: { id: riderId }, data: { pinHash: this.pinHashFor(pin), pinFailCount: 0, pinLockedUntil: null } });
+    return toRiderView(updated);
   }
 
   async updateMe(riderId: string, dto: UpdateRiderProfileDto) {
@@ -104,9 +121,11 @@ export class RidersService {
   async createForShop(dto: CreateShopRiderDto) {
     const organizationId = await this.requireShopAddon();
     try {
+      const pin = generatePin();
       const rider = await this.prisma.rider.create({
         data: {
-          email: dto.email.trim().toLowerCase(),
+          email: dto.email?.trim().toLowerCase() || null,
+          pinHash: this.pinHashFor(pin),
           fullName: dto.fullName.trim(),
           phone: this.phoneOrThrow(dto.phone),
           vehicleType: dto.vehicleType,
@@ -118,7 +137,8 @@ export class RidersService {
           approvedAt: new Date(),
         },
       });
-      return toRiderView(rider);
+      // The PIN is shown to the business once, to pass on to the rider - only its hash is stored.
+      return { ...toRiderView(rider), temporaryPin: pin };
     } catch (e) {
       return this.conflict(e);
     }
@@ -131,9 +151,11 @@ export class RidersService {
    */
   async createForAgent(dto: CreateShopRiderDto, attribution: { salesTeamId: string; salesAgentId: string }) {
     try {
+      const pin = generatePin();
       const rider = await this.prisma.rider.create({
         data: {
-          email: dto.email.trim().toLowerCase(),
+          email: dto.email?.trim().toLowerCase() || null,
+          pinHash: this.pinHashFor(pin),
           fullName: dto.fullName.trim(),
           phone: this.phoneOrThrow(dto.phone),
           vehicleType: dto.vehicleType,
@@ -143,7 +165,7 @@ export class RidersService {
           ...attribution,
         },
       });
-      return toRiderView(rider);
+      return { ...toRiderView(rider), temporaryPin: pin };
     } catch (e) {
       return this.conflict(e);
     }
@@ -174,6 +196,25 @@ export class RidersService {
     } catch (e) {
       return this.conflict(e);
     }
+  }
+
+  /** A new PIN for one of this business's riders (forgotten PIN, or a number we cannot text). Shown once. */
+  async resetPinForShop(id: string) {
+    const rider = await this.ownRider(id);
+    return this.resetPin(rider);
+  }
+
+  async resetPinForAdmin(id: string) {
+    const rider = await this.prisma.rider.findUnique({ where: { id } });
+    if (!rider) throw new NotFoundException('Rider not found');
+    return this.resetPin(rider);
+  }
+
+  private async resetPin(rider: Rider) {
+    if (!rider.phone) throw new BadRequestException('This rider has no phone number yet - add one first');
+    const pin = generatePin();
+    const updated = await this.prisma.rider.update({ where: { id: rider.id }, data: { pinHash: this.pinHashFor(pin), pinFailCount: 0, pinLockedUntil: null } });
+    return { ...toRiderView(updated), temporaryPin: pin };
   }
 
   async setStatusForShop(id: string, status: 'APPROVED' | 'SUSPENDED') {

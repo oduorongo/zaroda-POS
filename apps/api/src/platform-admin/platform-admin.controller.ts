@@ -299,6 +299,16 @@ export class PlatformAdminController {
     return this.riders.listForAdmin(query.status);
   }
 
+  // A new PIN for a rider who forgot theirs and cannot be texted. Shown once.
+  @Public()
+  @UseGuards(PlatformAdminAuthGuard)
+  @Post('riders/:id/reset-pin')
+  async resetRiderPin(@Req() req: PlatformAdminRequest, @Param('id', ParseUUIDPipe) id: string) {
+    const result = await this.riders.resetPinForAdmin(id);
+    await this.auditLog.log({ platformAdminId: req.user!.platformAdminId, action: 'platform_admin.reset_rider_pin', entityType: 'Rider', entityId: id });
+    return result;
+  }
+
   // Approve (needs a finished profile) or suspend a rider.
   @Public()
   @UseGuards(PlatformAdminAuthGuard)

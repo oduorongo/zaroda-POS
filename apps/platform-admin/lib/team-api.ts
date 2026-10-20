@@ -69,7 +69,7 @@ export interface TeamShop {
 export interface TeamRider {
   id: string;
   fullName: string | null;
-  email: string;
+  email: string | null;
   phone: string | null;
   vehicleType: "BODA" | "TUK_TUK" | "VEHICLE" | null;
   area: string | null;

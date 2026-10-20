@@ -14,7 +14,7 @@ type RiderStatus = "PENDING" | "APPROVED" | "SUSPENDED";
 
 interface Rider {
   id: string;
-  email: string;
+  email: string | null;
   fullName: string | null;
   phone: string | null;
   vehicleType: VehicleType | null;
@@ -46,6 +46,7 @@ export default function ShopRidersPage() {
   const [adding, setAdding] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [pinNotice, setPinNotice] = useState<{ name: string; phone: string; pin: string } | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -78,8 +79,8 @@ export default function ShopRidersPage() {
     setAdding(true);
     setFormError(null);
     try {
-      const created = await apiPost<Rider>("/riders", {
-        email: form.email.trim(),
+      const created = await apiPost<Rider & { temporaryPin: string }>("/riders", {
+        email: form.email.trim() || undefined,
         fullName: form.fullName.trim(),
         phone: form.phone.trim(),
         vehicleType: form.vehicleType,
@@ -87,6 +88,7 @@ export default function ShopRidersPage() {
         area: form.area.trim() || undefined,
       });
       setRiders((current) => [created, ...current]);
+      setPinNotice({ name: created.fullName ?? "the rider", phone: form.phone.trim(), pin: created.temporaryPin });
       setForm(EMPTY_FORM);
     } catch (err) {
       setFormError(err instanceof ApiError ? err.message : "Could not add the rider.");
@@ -95,8 +97,22 @@ export default function ShopRidersPage() {
     }
   }
 
+  async function resetPin(rider: Rider) {
+    if (!confirm(`Give ${rider.fullName ?? "this rider"} a new PIN? Their old PIN stops working.`)) return;
+    setBusyId(rider.id);
+    setError(null);
+    try {
+      const updated = await apiPost<Rider & { temporaryPin: string }>(`/riders/${rider.id}/reset-pin`, {});
+      setPinNotice({ name: updated.fullName ?? "the rider", phone: rider.phone ? `0${rider.phone.replace(/^254/, "")}` : "", pin: updated.temporaryPin });
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not reset the PIN.");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   async function setStatus(rider: Rider, status: "APPROVED" | "SUSPENDED") {
-    if (status === "SUSPENDED" && !confirm(`Suspend ${rider.fullName ?? rider.email}? They won't be able to take your deliveries until you reactivate them.`)) return;
+    if (status === "SUSPENDED" && !confirm(`Suspend ${rider.fullName ?? rider.phone ?? "this rider"}? They won't be able to take your deliveries until you reactivate them.`)) return;
     setBusyId(rider.id);
     setError(null);
     try {
@@ -131,8 +147,23 @@ export default function ShopRidersPage() {
           </div>
         </div>
         <p className="text-sm text-secondary-500">
-          Riders you add here work for your shop. They sign in on the shop site (the &quot;Deliver with Zaroda&quot; link at the bottom) with the email you enter. Riders from the wider Zaroda pool will be available for your deliveries too, once deliveries start.
+          Riders you add here work for your shop. When you add one you get a PIN to give them; they sign in on the shop site (the &quot;Deliver with Zaroda&quot; link at the bottom) with their phone number and that PIN. An email is optional. Riders from the wider Zaroda pool will be available for your deliveries too, once deliveries start.
         </p>
+
+
+        {pinNotice && (
+          <div className="rounded-lg border border-amber-500/50 bg-amber-500/10 p-4 text-sm">
+            <p className="font-semibold">
+              PIN for {pinNotice.name}: <span className="font-mono text-lg tracking-widest">{pinNotice.pin}</span>
+            </p>
+            <p className="mt-1 text-secondary-500">
+              Tell the rider now - it is shown only once. They sign in with their phone number{pinNotice.phone ? ` (${pinNotice.phone})` : ""} and this PIN, and can change the PIN after signing in.
+            </p>
+            <button type="button" onClick={() => setPinNotice(null)} className="mt-2 text-xs underline">
+              I have noted it
+            </button>
+          </div>
+        )}
 
         {!canManage && <p className="rounded-md bg-warning-50 p-3 text-sm text-warning-700">Only a manager or the owner can manage riders.</p>}
 
@@ -149,8 +180,8 @@ export default function ShopRidersPage() {
                 <input required type="tel" placeholder="0712 345 678" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} className={input} />
               </label>
               <label className="text-sm">
-                Email (they sign in with this)
-                <input required type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className={input} />
+                Email (optional)
+                <input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className={input} />
               </label>
               <label className="text-sm">
                 Vehicle
@@ -188,7 +219,7 @@ export default function ShopRidersPage() {
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <div className="flex items-center gap-2">
-                    <span className="font-semibold">{r.fullName ?? r.email}</span>
+                    <span className="font-semibold">{r.fullName ?? r.phone}</span>
                     <Badge variant={STATUS_BADGE[r.status].variant}>{STATUS_BADGE[r.status].label}</Badge>
                   </div>
                   <p className="text-sm text-secondary-500">
@@ -197,12 +228,15 @@ export default function ShopRidersPage() {
                     {r.phone ? ` · 0${r.phone.replace(/^254/, "")}` : ""}
                   </p>
                   <p className="text-sm text-secondary-500">
-                    {r.email}
+                    {r.email ?? "No email"}
                     {r.area ? ` · ${r.area}` : ""}
                   </p>
                 </div>
                 {canManage && (
-                  <div>
+                  <div className="flex flex-wrap gap-2">
+                    <Button variant="secondary" disabled={busyId === r.id || !r.phone} onClick={() => void resetPin(r)}>
+                      Reset PIN
+                    </Button>
                     {r.status === "SUSPENDED" ? (
                       <Button variant="secondary" disabled={busyId === r.id} onClick={() => void setStatus(r, "APPROVED")}>
                         Reactivate

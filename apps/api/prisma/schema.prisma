@@ -2342,7 +2342,8 @@ enum RiderStatus {
 // as a platform admin (see rls.sql's "riders" comment).
 model Rider {
   id             String       @id @default(uuid())
-  email          String       @unique
+  // Optional: many riders have no email at all and sign in with their phone number and a PIN.
+  email          String?      @unique
   fullName       String?
   phone          String?      @unique
   vehicleType    VehicleType?
@@ -2353,6 +2354,10 @@ model Rider {
   organizationId String?
   approvedAt     DateTime?
   lastLoginAt    DateTime?
+  // Phone + PIN sign-in (works on every network; texts only reach some). Only a salted hash is kept.
+  pinHash        String?
+  pinFailCount   Int          @default(0)
+  pinLockedUntil DateTime?
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 
