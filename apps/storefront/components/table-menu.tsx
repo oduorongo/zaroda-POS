@@ -9,6 +9,7 @@ import type { Shop, TableInfo } from "../lib/types";
 import { cartTotals } from "./cart-summary";
 import ProductCard from "./product-card";
 import { useStore } from "./store-provider";
+import { variantTitle } from "../lib/format";
 
 const ORDERS_KEY = "zaroda_table_orders";
 const PHONE_KEY = "zaroda_table_phone";
@@ -87,7 +88,7 @@ export default function TableMenu({ shop, table }: { shop: Shop; table: TableInf
         gone.push(line.productName);
         continue;
       }
-      ok.push({ variantId: line.variantId, productName: found.product.name, price: found.v.price, quantity: Math.min(line.quantity, found.v.available) });
+      ok.push({ variantId: line.variantId, productName: variantTitle(found.product.name, found.v.name), price: found.v.price, quantity: Math.min(line.quantity, found.v.available) });
     }
     return { lines: ok, dropped: gone };
   }, [shop, cartFor, cartKey]);

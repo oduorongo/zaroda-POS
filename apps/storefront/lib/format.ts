@@ -35,3 +35,10 @@ export function intlPhone(phone: string) {
   if (digits.startsWith("0")) return `254${digits.slice(1)}`;
   return `254${digits}`;
 }
+
+/** "Bread - Large loaf 800g", or just the product name when the option has no name of its own. */
+export function variantTitle(productName: string, variantName: string | null | undefined) {
+  const option = variantName?.trim();
+  if (!option) return productName;
+  return option.toLowerCase().startsWith(productName.toLowerCase()) ? option : `${productName} - ${option}`;
+}

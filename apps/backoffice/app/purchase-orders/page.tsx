@@ -7,12 +7,14 @@ import { apiGet, apiPost, ApiError } from "../../lib/api";
 import { getSession, clearSession, isBackofficeRole, type Session } from "../../lib/auth";
 import { Nav } from "../../components/nav";
 import { PageHeader } from "../../components/page-header";
+import { variantLabel } from "../../lib/variant-label";
 
 type Status = "DRAFT" | "ORDERED" | "PARTIALLY_RECEIVED" | "RECEIVED" | "CANCELLED";
 
 interface Variant {
   id: string;
   sku: string;
+  name?: string | null;
   quantityMode: "COUNT" | "WEIGHT";
   product: { name: string };
 }
@@ -137,7 +139,7 @@ export default function PurchaseOrdersPage() {
     const term = search.trim().toLowerCase();
     if (!term) return [];
     return flat
-      .filter((v) => v.product.name.toLowerCase().includes(term) || v.sku.toLowerCase().includes(term))
+      .filter((v) => v.product.name.toLowerCase().includes(term) || v.sku.toLowerCase().includes(term) || (v.name ?? "").toLowerCase().includes(term))
       .slice(0, 20);
   }, [products, search]);
 
@@ -146,7 +148,7 @@ export default function PurchaseOrdersPage() {
       if (prev.some((l) => l.variantId === v.id)) return prev;
       return [
         ...prev,
-        { variantId: v.id, label: `${v.product.name} (${v.sku})`, quantityOrdered: 1, quantityMode: v.quantityMode },
+        { variantId: v.id, label: variantLabel(v.product.name, v), quantityOrdered: 1, quantityMode: v.quantityMode },
       ];
     });
     setSearch("");
@@ -273,7 +275,7 @@ export default function PurchaseOrdersPage() {
                       onClick={() => addLine(v)}
                       className="block w-full px-2 py-1.5 text-left text-sm hover:bg-surface"
                     >
-                      {v.product.name} <span className="text-secondary-500">({v.sku})</span>
+                      {v.name ? variantLabel(v.product.name, v) : v.product.name} <span className="text-secondary-500">({v.sku})</span>
                     </button>
                   ))
                 )}

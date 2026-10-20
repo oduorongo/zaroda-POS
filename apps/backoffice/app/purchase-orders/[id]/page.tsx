@@ -6,6 +6,7 @@ import { apiGet, apiPatch, apiPost, ApiError } from "../../../lib/api";
 import { getSession, clearSession, isBackofficeRole, type Session } from "../../../lib/auth";
 import { Nav } from "../../../components/nav";
 import { PageHeader } from "../../../components/page-header";
+import { variantLabel } from "../../../lib/variant-label";
 
 type Status = "DRAFT" | "ORDERED" | "PARTIALLY_RECEIVED" | "RECEIVED" | "CANCELLED";
 
@@ -14,7 +15,7 @@ interface LineItem {
   quantityOrdered: number;
   quantityReceived: number;
   unitCost: string | null;
-  variant: { sku: string; quantityMode: "COUNT" | "WEIGHT"; product: { name: string } };
+  variant: { sku: string; name?: string | null; quantityMode: "COUNT" | "WEIGHT"; product: { name: string } };
 }
 
 interface PurchaseOrder {
@@ -179,7 +180,7 @@ export default function PurchaseOrderDetailPage() {
                     return (
                       <tr key={l.id} className="border-t border-border align-top">
                         <td className="p-3">
-                          {l.variant.product.name} <span className="text-secondary-500">({l.variant.sku})</span>
+                          {l.variant.name ? variantLabel(l.variant.product.name, l.variant) : l.variant.product.name} <span className="text-secondary-500">({l.variant.sku})</span>
                         </td>
                         <td className="p-3 text-right font-mono">{l.quantityOrdered}</td>
                         <td className="p-3 text-right font-mono">{l.quantityReceived}</td>

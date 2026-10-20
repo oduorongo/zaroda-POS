@@ -8,6 +8,9 @@ import {
   UpdateProductVariantDto,
 } from './dto/product-variant.dto';
 
+/** A typed option name tidied up; blank means none. */
+const cleanName = (name: string | undefined) => name?.trim() || null;
+
 @Injectable()
 export class ProductVariantsService {
   constructor(private readonly tenantPrisma: TenantScopedPrismaService) {}
@@ -26,7 +29,7 @@ export class ProductVariantsService {
   create(productId: string, dto: CreateProductVariantDto) {
     return this.tenantPrisma.run(async (tx) => {
       await this.assertProductExists(productId, tx);
-      return tx.productVariant.create({ data: { ...dto, productId } });
+      return tx.productVariant.create({ data: { ...dto, name: cleanName(dto.name), productId } });
     });
   }
 
@@ -55,7 +58,7 @@ export class ProductVariantsService {
   ) {
     await this.findOne(productId, variantId);
     return this.tenantPrisma.run((tx) =>
-      tx.productVariant.update({ where: { id: variantId }, data: dto }),
+      tx.productVariant.update({ where: { id: variantId }, data: { ...dto, name: dto.name === undefined ? undefined : cleanName(dto.name) } }),
     );
   }
 

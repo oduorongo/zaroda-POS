@@ -25,6 +25,7 @@ interface VariantResponse {
   id: string;
   productId: string;
   sku: string;
+  name?: string | null;
   barcode: string | null;
   price: string;
   quantityMode: "COUNT" | "WEIGHT";
@@ -134,7 +135,8 @@ export default function SetupPage() {
         product.variants.map((variant) => ({
           id: variant.id,
           productId: product.id,
-          productName: product.name,
+          // The option name ("Large loaf 800g") goes with the product name, so the till tile, search, cart and receipt all show it.
+          productName: variant.name?.trim() ? (variant.name.trim().toLowerCase().startsWith(product.name.toLowerCase()) ? variant.name.trim() : `${product.name} - ${variant.name.trim()}`) : product.name,
           sku: variant.sku,
           barcode: variant.barcode,
           price: Number(variant.price),

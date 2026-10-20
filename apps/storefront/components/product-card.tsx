@@ -5,6 +5,7 @@ import { ChevronLeft, ChevronRight, ImageOff, Minus, Plus } from "lucide-react";
 import { formatQty, kes } from "../lib/format";
 import type { ShopProduct } from "../lib/types";
 import { useStore } from "./store-provider";
+import { variantTitle } from "../lib/format";
 
 // Items sold by weight/volume move in half-units; counted items by one.
 const stepFor = (mode: "COUNT" | "WEIGHT") => (mode === "WEIGHT" ? 0.5 : 1);
@@ -26,7 +27,7 @@ export default function ProductCard({ shopSlug, product }: { shopSlug: string; p
   const set = (quantity: number) =>
     setLineQuantity(
       shopSlug,
-      { variantId: variant.id, productName: product.name, sku: variant.sku, price: variant.price, quantityMode: variant.quantityMode },
+      { variantId: variant.id, productName: variantTitle(product.name, variant.name), sku: variant.sku, price: variant.price, quantityMode: variant.quantityMode },
       Math.max(0, Math.round(quantity * 1000) / 1000),
     );
 
@@ -108,7 +109,7 @@ export default function ProductCard({ shopSlug, product }: { shopSlug: string; p
           >
             {product.variants.map((v) => (
               <option key={v.id} value={v.id}>
-                {v.sku} - {kes(v.price)}
+                {v.name?.trim() || v.sku} - {kes(v.price)}
               </option>
             ))}
           </select>

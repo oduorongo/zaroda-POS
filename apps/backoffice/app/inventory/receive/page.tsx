@@ -7,10 +7,12 @@ import { apiGet, apiPost, ApiError } from "../../../lib/api";
 import { getSession, clearSession, isBackofficeRole, type Session } from "../../../lib/auth";
 import { Nav } from "../../../components/nav";
 import { PageHeader } from "../../../components/page-header";
+import { variantLabel } from "../../../lib/variant-label";
 
 interface Variant {
   id: string;
   sku: string;
+  name?: string | null;
   quantityMode: "COUNT" | "WEIGHT";
   cost?: string | number | null;
   product: { name: string };
@@ -120,7 +122,7 @@ export default function ReceiveStockPage() {
     const term = search.trim().toLowerCase();
     if (!term) return flat.slice(0, 25);
     return flat
-      .filter((v) => v.product.name.toLowerCase().includes(term) || v.sku.toLowerCase().includes(term))
+      .filter((v) => v.product.name.toLowerCase().includes(term) || v.sku.toLowerCase().includes(term) || (v.name ?? "").toLowerCase().includes(term))
       .slice(0, 25);
   }, [products, search]);
 
@@ -159,7 +161,7 @@ export default function ReceiveStockPage() {
       {
         key: `${Date.now()}-${Math.random()}`,
         variantId: selectedVariantId,
-        label: selectedVariant ? `${selectedVariant.product.name} (${selectedVariant.sku})` : selectedVariantId,
+        label: selectedVariant ? variantLabel(selectedVariant.product.name, selectedVariant) : selectedVariantId,
         quantity: qty,
         batchNumber: trackBatch ? batchNumber.trim() : undefined,
         expiryDate: trackBatch && expiryDate ? expiryDate : undefined,
@@ -275,7 +277,7 @@ export default function ReceiveStockPage() {
           <label className="block text-xs text-secondary-500">Product</label>
           <input
             placeholder="Search by product name or code"
-            value={selectedVariant ? `${selectedVariant.product.name} (${selectedVariant.sku})` : search}
+            value={selectedVariant ? variantLabel(selectedVariant.product.name, selectedVariant) : search}
             onChange={(e) => {
               setSearch(e.target.value);
               setSelectedVariantId("");
@@ -296,7 +298,7 @@ export default function ReceiveStockPage() {
                     }}
                     className="block w-full px-2 py-1.5 text-left text-sm hover:bg-surface"
                   >
-                    {v.product.name} <span className="text-secondary-500">({v.sku})</span>
+                    {v.name ? variantLabel(v.product.name, v) : v.product.name} <span className="text-secondary-500">({v.sku})</span>
                   </button>
                 ))
               )}
@@ -421,7 +423,7 @@ export default function ReceiveStockPage() {
             <div className="space-y-1">
               {recent.map((t) => (
                 <p key={t.id} className="text-sm text-secondary-500">
-                  {t.variant.product.name} ({t.variant.sku}){" "}
+                  {variantLabel(t.variant.product.name, t.variant)}{" "}
                   <span className="font-mono text-emerald-400">+{t.quantityDelta}</span> ·{" "}
                   {new Date(t.createdAt).toLocaleString()}
                 </p>

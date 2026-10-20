@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { KENYA_COUNTIES } from "@zaroda/ui";
 import { ApiError, createOrder } from "../lib/api";
 import { useMyCounty } from "../lib/my-county";
-import { displayPhone, formatQty, kes } from "../lib/format";
+import { displayPhone, formatQty, kes, variantTitle } from "../lib/format";
 import type { Shop } from "../lib/types";
 import AuthForm from "./auth-form";
 import { cartTotals, percentLabel } from "./cart-summary";
@@ -54,7 +54,7 @@ export default function CheckoutView({ shop }: { shop: Shop }) {
       }
       ok.push({
         variantId: line.variantId,
-        productName: found.product.name,
+        productName: variantTitle(found.product.name, found.v.name),
         sku: found.v.sku,
         price: found.v.price,
         quantity: Math.min(line.quantity, found.v.available),
