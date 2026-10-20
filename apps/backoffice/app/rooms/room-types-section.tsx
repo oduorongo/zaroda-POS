@@ -178,7 +178,7 @@ export function RoomTypesSection() {
                 </button>
               )}
             </div>
-            <p className="text-xs text-secondary-500 sm:col-span-2">Guests only see this once your online shop is live (Settings → Online Shop). The deposit is paid straight into your own M-Pesa account; you collect the rest at the hotel. Zaroda's commission is charged on the full room price for the stay, whatever deposit you set.</p>
+            <p className="text-xs text-secondary-500 sm:col-span-2">Guests only see this once your online shop is live (Settings → Online Shop). The deposit is paid straight into your own M-Pesa account; you collect the rest at the hotel. Zaroda&apos;s commission is charged on the full room price for the stay, whatever deposit you set.</p>
           </form>
           {current && <PhotoManager room={current} onChanged={() => void load()} onError={(m) => setError(m)} />}
         </div>
