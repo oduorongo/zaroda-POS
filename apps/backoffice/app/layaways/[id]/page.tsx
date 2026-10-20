@@ -6,7 +6,7 @@ import { apiGet, apiPatch, apiPost, ApiError } from "../../../lib/api";
 import { getSession, clearSession, isBackofficeRole, type Session } from "../../../lib/auth";
 import { Nav } from "../../../components/nav";
 import { PageHeader } from "../../../components/page-header";
-import { variantLabel, variantTitleOf } from "../../../lib/variant-label";
+import { variantLabel } from "../../../lib/variant-label";
 
 type LayawayStatus = "OPEN" | "COMPLETED" | "CANCELLED";
 
