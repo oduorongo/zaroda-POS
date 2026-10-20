@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { ApiError, listOrders } from "../lib/api";
+import { ApiError, listOrders, setBuyerPin } from "../lib/api";
 import { kes } from "../lib/format";
 import type { Order } from "../lib/types";
 import AuthForm from "./auth-form";
@@ -10,7 +10,7 @@ import OrderStatusBadge from "./order-status";
 import { useStore } from "./store-provider";
 
 export default function OrdersView() {
-  const { ready, buyer, token, signOut } = useStore();
+  const { ready, buyer, token, signOut, setBuyer } = useStore();
   const [orders, setOrders] = useState<Order[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -48,6 +48,7 @@ export default function OrdersView() {
           Order something else
         </Link>
       </div>
+      {token && buyer && !buyer.hasPin && <AddPin token={token} phone={buyer.phone} onDone={setBuyer} />}
       {error && <p className="text-sm text-error-600">{error}</p>}
       {!orders && !error && <p className="text-secondary-500">Loading your orders...</p>}
       {orders && orders.length === 0 && (
@@ -80,5 +81,52 @@ export default function OrdersView() {
         ))}
       </ul>
     </div>
+  );
+}
+
+/** Offered to shoppers who signed in with an email or text code: add a phone number and PIN so next time is quicker. */
+function AddPin({ token, phone, onDone }: { token: string; phone: string | null; onDone: (buyer: Awaited<ReturnType<typeof setBuyerPin>>) => void }) {
+  const [number, setNumber] = useState("");
+  const [pin, setPin] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function save(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      onDone(await setBuyerPin(token, pin, phone ? undefined : number.trim()));
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not save your PIN.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <form onSubmit={save} className="space-y-3 rounded-lg border border-border bg-surface p-4">
+      <p className="font-semibold">Sign in faster next time</p>
+      <p className="text-sm text-secondary-500">Choose a PIN and next time you can sign in with just your phone number{phone ? ` (${phone.replace(/^254/, "0")})` : ""} and PIN - no email or code needed.</p>
+      {!phone && (
+        <input type="tel" inputMode="tel" required placeholder="Your phone number, e.g. 0712 345 678" value={number} onChange={(e) => setNumber(e.target.value)} className="w-full rounded-md border border-border bg-surface p-3" />
+      )}
+      <input
+        type="password"
+        inputMode="numeric"
+        pattern="[0-9]*"
+        autoComplete="new-password"
+        maxLength={6}
+        required
+        placeholder="PIN: 4 to 6 numbers"
+        value={pin}
+        onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 6))}
+        className="w-full rounded-md border border-border bg-surface p-3 text-center text-xl tracking-[0.4em]"
+      />
+      {error && <p className="text-sm text-error-600">{error}</p>}
+      <button type="submit" disabled={busy || pin.length < 4 || (!phone && number.trim().length < 9)} className="w-full rounded-md bg-primary-600 px-4 py-3 font-semibold text-white hover:bg-primary-700 disabled:opacity-50">
+        {busy ? "Saving..." : "Save my PIN"}
+      </button>
+    </form>
   );
 }

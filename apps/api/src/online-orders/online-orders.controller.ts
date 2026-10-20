@@ -29,6 +29,11 @@ import {
   RetryPaymentDto,
   UpdateBuyerDto,
   VerifyBuyerCodeDto,
+  BuyerPinSignupDto,
+  BuyerPinLoginDto,
+  BuyerPhoneDto,
+  BuyerPinResetDto,
+  SetBuyerPinDto,
 } from './dto/online-order.dto';
 
 // Same tight shape as staff login (auth.controller.ts) - these are public
@@ -108,6 +113,37 @@ export class BuyerAuthController {
 
   @Public()
   @Throttle(AUTH_THROTTLE)
+  @Post('signup')
+  signup(@Body() dto: BuyerPinSignupDto) {
+    return this.auth.signupWithPin(dto);
+  }
+
+  @Public()
+  @Throttle(AUTH_THROTTLE)
+  @Post('login')
+  @HttpCode(200)
+  login(@Body() dto: BuyerPinLoginDto) {
+    return this.auth.loginWithPin(dto.phone, dto.pin);
+  }
+
+  @Public()
+  @Throttle(AUTH_THROTTLE)
+  @Post('pin-reset/request')
+  @HttpCode(200)
+  requestPinReset(@Body() dto: BuyerPhoneDto) {
+    return this.auth.requestPinReset(dto.phone);
+  }
+
+  @Public()
+  @Throttle(AUTH_THROTTLE)
+  @Post('pin-reset/verify')
+  @HttpCode(200)
+  resetPin(@Body() dto: BuyerPinResetDto) {
+    return this.auth.resetPin(dto.phone, dto.code, dto.pin);
+  }
+
+  @Public()
+  @Throttle(AUTH_THROTTLE)
   @Post('verify')
   @HttpCode(200)
   verify(@Body() dto: VerifyBuyerCodeDto) {
@@ -129,6 +165,11 @@ export class BuyerController {
   @Get('me')
   getMe(@CurrentBuyerId() buyerId: string) {
     return this.auth.getMe(buyerId);
+  }
+
+  @Patch('me/pin')
+  setPin(@CurrentBuyerId() buyerId: string, @Body() dto: SetBuyerPinDto) {
+    return this.auth.setPin(buyerId, dto.pin, dto.phone);
   }
 
   @Patch('me')

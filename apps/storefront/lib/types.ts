@@ -89,6 +89,8 @@ export interface Buyer {
   /** Set when they signed in by SMS, or once they have given an M-Pesa number at checkout. */
   phone: string | null;
   name: string | null;
+  /** True once they have a PIN to sign in with their phone number. */
+  hasPin?: boolean;
 }
 
 export type VehicleType = "BODA" | "TUK_TUK" | "VEHICLE";

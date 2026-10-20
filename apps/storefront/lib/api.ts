@@ -173,13 +173,28 @@ export const cancelReservation = (id: string, token: string) =>
 export type LoginIdentity = { email: string } | { phone: string };
 
 /** What the sign-in screen may offer - email always, SMS only once it is set up on the server. */
-export const getAuthMethods = () => request<{ email: boolean; sms: boolean }>("/buyer-auth/methods");
+export const getAuthMethods = () => request<{ email: boolean; sms: boolean; pin?: boolean }>("/buyer-auth/methods");
 
 export const requestCode = (who: LoginIdentity) =>
   request<{ sent: boolean; channel: "EMAIL" | "SMS"; identifier: string }>("/buyer-auth/request-code", { method: "POST", body: JSON.stringify(who) });
 
 export const verifyCode = (who: LoginIdentity, code: string) =>
   request<{ accessToken: string; buyer: Buyer }>("/buyer-auth/verify", { method: "POST", body: JSON.stringify({ ...who, code }) });
+
+export const buyerSignup = (phone: string, pin: string, name?: string) =>
+  request<{ accessToken: string; buyer: Buyer }>("/buyer-auth/signup", { method: "POST", body: JSON.stringify({ phone, pin, ...(name?.trim() ? { name: name.trim() } : {}) }) });
+
+export const buyerPinLogin = (phone: string, pin: string) =>
+  request<{ accessToken: string; buyer: Buyer }>("/buyer-auth/login", { method: "POST", body: JSON.stringify({ phone, pin }) });
+
+export const requestBuyerPinReset = (phone: string) =>
+  request<{ sent: boolean; message: string }>("/buyer-auth/pin-reset/request", { method: "POST", body: JSON.stringify({ phone }) });
+
+export const resetBuyerPin = (phone: string, code: string, pin: string) =>
+  request<{ accessToken: string; buyer: Buyer }>("/buyer-auth/pin-reset/verify", { method: "POST", body: JSON.stringify({ phone, code, pin }) });
+
+export const setBuyerPin = (token: string, pin: string, phone?: string) =>
+  request<Buyer>("/buyer/me/pin", { method: "PATCH", token, body: JSON.stringify({ pin, ...(phone ? { phone } : {}) }) });
 
 export const getMe = (token: string) => request<Buyer>("/buyer/me", { token });
 
