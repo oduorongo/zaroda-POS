@@ -38,6 +38,7 @@ import { RestaurantModule } from './restaurant/restaurant.module';
 import { RentalModule } from './rental/rental.module';
 import { HotelModule } from './hotel/hotel.module';
 import { ReservationsModule } from './reservations/reservations.module';
+import { AlertsModule } from './alerts/alerts.module';
 import { PharmacyModule } from './pharmacy/pharmacy.module';
 import { SalonModule } from './salon/salon.module';
 import { ManufacturingModule } from './manufacturing/manufacturing.module';
@@ -140,6 +141,7 @@ import { DeliveryModule } from './delivery/delivery.module';
     RentalModule,
     HotelModule,
     ReservationsModule,
+    AlertsModule,
     PharmacyModule,
     SalonModule,
     ManufacturingModule,

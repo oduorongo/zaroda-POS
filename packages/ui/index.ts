@@ -13,3 +13,5 @@ export * from "./components/ThemeToggle";
 export * from "./components/PoweredByFooter";
 export * from "./components/Ribbons";
 export * from "./lib/counties";
+export * from "./components/ActivityAlerts";
+export { ring as ringAlert, unlockAudio } from "./lib/alert-sound";
