@@ -22,6 +22,8 @@ import {
   Receipt,
   Store,
   ShoppingBag,
+  Banknote,
+  TrendingUp,
   UtensilsCrossed,
   BedDouble,
   Pill,
@@ -63,6 +65,20 @@ const TILES: Tile[] = [
 // Mirrors components/nav.tsx exactly - owner/manager only, though the real
 // authorization boundary is the API's @Roles() guard, not this UI check.
 const MANAGER_TILES: Tile[] = [
+  {
+    href: "/profit",
+    label: "Profit & loss",
+    description: "What you really made: sales less costs and expenses, by day, week or month.",
+    icon: TrendingUp,
+    tone: "bg-green-600",
+  },
+  {
+    href: "/expenses",
+    label: "Expenses",
+    description: "Record rent, power, transport and other money you spend.",
+    icon: Banknote,
+    tone: "bg-rose-600",
+  },
   {
     href: "/settings/tax",
     label: "Tax Settings",

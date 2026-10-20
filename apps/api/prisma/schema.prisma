@@ -94,6 +94,7 @@ model Organization {
   purchaseOrders            PurchaseOrder[]
   repackagings              Repackaging[]
   wasteLogs                 WasteLog[]
+  expenses                  Expense[]
   productionOrders          ProductionOrder[]
   serviceJobs               ServiceJob[]
   payrollProfiles           PayrollProfile[]
@@ -148,6 +149,7 @@ model Branch {
   purchaseOrders        PurchaseOrder[]
   repackagings          Repackaging[]
   wasteLogs             WasteLog[]
+  expenses              Expense[]
   productionOrders      ProductionOrder[]
   serviceJobs           ServiceJob[]
   rosterShifts          RosterShift[]
@@ -1096,6 +1098,33 @@ model Discount {
 
   @@index([saleId])
   @@map("discounts")
+}
+
+// Money the business spent that is not stock: rent, power, wages, transport, airtime... Recorded by hand (owner/manager) and
+// subtracted from the gross profit in the profit report. Buying stock is NOT an expense here - it reaches the report as the
+// cost of what was sold - so recording both would count it twice.
+model Expense {
+  id             String   @id @default(uuid())
+  organizationId String
+  // Which branch it was for; null = the whole business (it is then left out of a single branch's profit).
+  branchId       String?
+  // The day the money was spent (a calendar date, Nairobi time) - not when it was typed in.
+  spentOn        DateTime @db.Date
+  // One of EXPENSE_CATEGORIES (apps/api/src/expenses/expense-categories.ts); a string so categories can grow without a migration.
+  category       String
+  description    String?
+  amount         Decimal  @db.Decimal(12, 2)
+  // CASH | MPESA | BANK | CARD, informational.
+  paidWith       String?
+  recordedById   String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  branch       Branch?      @relation(fields: [branchId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, spentOn])
+  @@map("expenses")
 }
 
 model Refund {
