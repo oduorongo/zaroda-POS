@@ -223,6 +223,20 @@ export const requestRiderCode = (email: string) =>
 export const verifyRiderCode = (email: string, code: string) =>
   request<{ accessToken: string; rider: Rider }>("/rider-auth/verify", { method: "POST", body: JSON.stringify({ email, code }) });
 
+export const riderSignup = (fullName: string, phone: string, pin: string) =>
+  request<{ accessToken: string; rider: Rider }>("/rider-auth/signup", { method: "POST", body: JSON.stringify({ fullName, phone, pin }) });
+
+export const riderPinLogin = (phone: string, pin: string) =>
+  request<{ accessToken: string; rider: Rider }>("/rider-auth/login", { method: "POST", body: JSON.stringify({ phone, pin }) });
+
+export const requestRiderPinReset = (phone: string) =>
+  request<{ sent: boolean; message: string }>("/rider-auth/pin-reset/request", { method: "POST", body: JSON.stringify({ phone }) });
+
+export const resetRiderPin = (phone: string, code: string, pin: string) =>
+  request<{ accessToken: string; rider: Rider }>("/rider-auth/pin-reset/verify", { method: "POST", body: JSON.stringify({ phone, code, pin }) });
+
+export const setRiderPin = (token: string, pin: string) => request<Rider>("/rider/me/pin", { method: "PATCH", token, body: JSON.stringify({ pin }) });
+
 export const getRiderMe = (token: string) => request<Rider>("/rider/me", { token });
 
 export interface RiderProfileInput {

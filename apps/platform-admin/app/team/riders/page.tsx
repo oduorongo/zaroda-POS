@@ -31,7 +31,7 @@ function RidersBody({ me }: { me: TeamMe }) {
   const [area, setArea] = useState("");
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
-  const [done, setDone] = useState<string | null>(null);
+  const [done, setDone] = useState<{ name: string; phone: string; pin: string } | null>(null);
 
   async function load() {
     try {
@@ -50,15 +50,15 @@ function RidersBody({ me }: { me: TeamMe }) {
     setBusy(true);
     setFormError(null);
     try {
-      await teamPost("/riders", {
+      const created = await teamPost<{ temporaryPin: string }>("/riders", {
         fullName: fullName.trim(),
-        email: email.trim(),
+        ...(email.trim() ? { email: email.trim() } : {}),
         phone: phone.trim(),
         vehicleType,
         ...(plateNumber.trim() ? { plateNumber: plateNumber.trim() } : {}),
         ...(area.trim() ? { area: area.trim() } : {}),
       });
-      setDone(fullName.trim());
+      setDone({ name: fullName.trim(), phone: phone.trim(), pin: created.temporaryPin });
       setShowForm(false);
       setFullName("");
       setEmail("");
@@ -84,8 +84,11 @@ function RidersBody({ me }: { me: TeamMe }) {
 
       {done && (
         <div className="rounded-lg border border-success-600/40 bg-success-50 p-4 text-sm">
-          <p className="font-semibold">{done} is signed up.</p>
-          <p className="mt-1">Zaroda will approve them. They then sign in at shop.zarodashop.com/rider with their email - a code is sent to it.</p>
+          <p className="font-semibold">{done.name} is signed up.</p>
+          <p className="mt-1">
+            Their PIN is <span className="font-mono text-lg font-bold tracking-widest">{done.pin}</span> - tell them now, it is shown only once.
+          </p>
+          <p className="mt-1">Zaroda will approve them. They then sign in at shop.zarodashop.com/rider with their phone number ({done.phone}) and this PIN. They can change the PIN after signing in.</p>
           <Button size="sm" variant="secondary" className="mt-2" onClick={() => setDone(null)}>
             OK
           </Button>
@@ -100,8 +103,8 @@ function RidersBody({ me }: { me: TeamMe }) {
               <input required className={inputClass} value={fullName} onChange={(e) => setFullName(e.target.value)} />
             </label>
             <label className="text-sm">
-              Email (they sign in with it)
-              <input required type="email" className={inputClass} value={email} onChange={(e) => setEmail(e.target.value)} />
+              Email (optional)
+              <input type="email" className={inputClass} value={email} onChange={(e) => setEmail(e.target.value)} />
             </label>
             <label className="text-sm">
               Phone
@@ -128,7 +131,7 @@ function RidersBody({ me }: { me: TeamMe }) {
           </div>
           <p className="text-xs text-secondary-500">The rider joins the shared pool and is credited to you. Zaroda approves riders before they can take deliveries.</p>
           {formError && <p className="text-sm text-error-600">{formError}</p>}
-          <Button type="submit" disabled={busy || !fullName.trim() || !email.trim() || !phone.trim()}>
+          <Button type="submit" disabled={busy || !fullName.trim() || !phone.trim()}>
             {busy ? "Signing up..." : "Sign up this rider"}
           </Button>
         </form>
@@ -142,7 +145,7 @@ function RidersBody({ me }: { me: TeamMe }) {
         {riders?.map((r) => (
           <li key={r.id} className="rounded-lg border border-border bg-surface p-4">
             <div className="flex flex-wrap items-center gap-2">
-              <span className="font-semibold">{r.fullName ?? r.email}</span>
+              <span className="font-semibold">{r.fullName ?? r.phone}</span>
               <Badge variant={STATUS[r.status].variant}>{STATUS[r.status].label}</Badge>
             </div>
             <p className="text-sm text-secondary-500">

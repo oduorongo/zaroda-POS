@@ -97,7 +97,8 @@ export type RiderStatus = "PENDING" | "APPROVED" | "SUSPENDED";
 /** A delivery rider's own account. SHOP = added by a business, POOL = signed up on their own. */
 export interface Rider {
   id: string;
-  email: string;
+  email: string | null;
+  hasPin: boolean;
   fullName: string | null;
   phone: string | null;
   vehicleType: VehicleType | null;

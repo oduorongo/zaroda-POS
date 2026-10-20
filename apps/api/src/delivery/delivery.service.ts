@@ -98,7 +98,7 @@ export class DeliveryService {
    * open to everyone - its own riders first and then the pool, up to a cap so a big pool is not flooded.
    */
   private async jobRecipients(tx: TenantTx, organizationId: string, audience: DeliveryAudience, targetRiderId?: string): Promise<RiderContact[]> {
-    const select = { email: true, fullName: true };
+    const select = { email: true, phone: true, fullName: true };
     if (audience === DeliveryAudience.ONE_RIDER) {
       return targetRiderId ? tx.rider.findMany({ where: { id: targetRiderId, status: RiderStatus.APPROVED }, select }) : [];
     }
@@ -263,7 +263,7 @@ export class DeliveryService {
     // The chosen rider hears about it straight away, by email, as well as on their rider page.
     if (job.rider && job.agreedFee !== null) {
       void this.notifier.riderChosen(
-        { email: job.rider.email, fullName: job.rider.fullName },
+        { email: job.rider.email, phone: job.rider.phone, fullName: job.rider.fullName },
         { shopName: job.shopName, pickupArea: job.pickupArea, dropoffSummary: job.dropoffSummary, fee: job.agreedFee },
       );
     }

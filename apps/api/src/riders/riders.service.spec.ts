@@ -30,7 +30,7 @@ function setup(opts: { addon?: boolean } = {}) {
   const tx = { onlineStore: { findUnique: jest.fn().mockResolvedValue({ addonActive: opts.addon ?? true }) } };
   const tenantPrisma = { run: jest.fn((fn: (t: typeof tx) => unknown) => fn(tx)) };
   /* eslint-disable @typescript-eslint/no-explicit-any */
-  const service = new RidersService(prisma as any, tenantPrisma as any);
+  const service = new RidersService(prisma as any, tenantPrisma as any, { getOrThrow: () => 'test-secret' } as any);
   /* eslint-enable @typescript-eslint/no-explicit-any */
   return { service, prisma };
 }

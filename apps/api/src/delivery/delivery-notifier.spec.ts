@@ -1,16 +1,17 @@
 import { buildJobOpenEmail, buildNewQuoteEmail, buildPickedUpEmail, buildRiderChosenEmail } from './delivery-email';
 import { DeliveryNotifier, MAX_JOB_EMAILS } from './delivery-notifier';
 
-function setup(opts: { buyerEmail?: string | null; sent?: boolean; sendThrows?: boolean; base?: string } = {}) {
+function setup(opts: { buyerEmail?: string | null; sent?: boolean; sendThrows?: boolean; base?: string; smsSent?: boolean } = {}) {
   const prisma = { buyer: { findUnique: jest.fn().mockResolvedValue(opts.buyerEmail === undefined ? { email: 'amina@example.com' } : { email: opts.buyerEmail }) } };
   const email = {
     sendEmail: opts.sendThrows ? jest.fn().mockRejectedValue(new Error('boom')) : jest.fn().mockResolvedValue({ sent: opts.sent ?? true }),
   };
+  const sms = { sendSms: jest.fn().mockResolvedValue({ sent: opts.smsSent ?? false }) };
   const config = { get: jest.fn((k: string) => (k === 'STOREFRONT_BASE_URL' ? opts.base : undefined)) };
   /* eslint-disable @typescript-eslint/no-explicit-any */
-  const notifier = new DeliveryNotifier(prisma as any, email as any, config as any);
+  const notifier = new DeliveryNotifier(prisma as any, email as any, sms as any, config as any);
   /* eslint-enable @typescript-eslint/no-explicit-any */
-  return { notifier, prisma, email };
+  return { notifier, prisma, email, sms };
 }
 
 const job = { shopName: 'Demo <Shop>', pickupArea: 'Main Branch, Kisumu', dropoffSummary: 'Milimani, Kisumu', itemCount: 2, quoteDeadline: new Date('2026-10-12T12:30:00Z') };
@@ -96,5 +97,42 @@ describe('delivery emails', () => {
   it('tell the shopper to hold back the code until the goods have arrived', () => {
     expect(all[3].html).toMatch(/only AFTER/);
     expect(all[2].html).toMatch(/4-digit code/);
+  });
+});
+
+describe('DeliveryNotifier texts', () => {
+  it('texts a rider with a phone and does not also email them', async () => {
+    const { notifier, email, sms } = setup({ smsSent: true });
+    await notifier.riderChosen({ email: 'juma@example.com', phone: '254712345678', fullName: 'Juma' }, { shopName: 'S', pickupArea: 'A', dropoffSummary: 'B', fee: 150 });
+    expect(sms.sendSms.mock.calls[0][0].to).toBe('+254712345678');
+    expect(sms.sendSms.mock.calls[0][0].message).toContain('https://shop.zarodashop.com/rider');
+    expect(email.sendEmail).not.toHaveBeenCalled();
+  });
+
+  it('falls back to email when the text cannot be delivered (e.g. a Safaricom number)', async () => {
+    const { notifier, email, sms } = setup({ smsSent: false });
+    await notifier.riderChosen({ email: 'juma@example.com', phone: '254712345678', fullName: 'Juma' }, { shopName: 'S', pickupArea: 'A', dropoffSummary: 'B', fee: 150 });
+    expect(sms.sendSms).toHaveBeenCalledTimes(1);
+    expect(email.sendEmail).toHaveBeenCalledTimes(1);
+  });
+
+  it('quietly does nothing for a rider with no email whose text cannot be delivered', async () => {
+    const { notifier, email } = setup({ smsSent: false });
+    await expect(notifier.jobOpen([{ email: null, phone: '254712345678', fullName: 'Juma' }], job)).resolves.toBeUndefined();
+    expect(email.sendEmail).not.toHaveBeenCalled();
+  });
+
+  it('texts a shopper who signed in by phone', async () => {
+    const { notifier, prisma, sms } = setup({ smsSent: true });
+    prisma.buyer.findUnique.mockResolvedValue({ email: null, phone: '254722000111' });
+    await notifier.pickedUp('buyer-1', { orderId: 'o', orderNumber: 'ZR-1', shopName: 'S', agreedFee: 100 });
+    expect(sms.sendSms.mock.calls[0][0].to).toBe('+254722000111');
+    expect(sms.sendSms.mock.calls[0][0].message).toContain('KES 100');
+  });
+
+  it('keeps every text within one SMS even with long names', async () => {
+    const { notifier, sms } = setup({ smsSent: true });
+    await notifier.jobOpen([{ email: null, phone: '254712345678', fullName: null }], { ...job, shopName: 'A very long shop name that goes on and on', dropoffSummary: 'A very long drop off place name' });
+    expect(sms.sendSms.mock.calls[0][0].message.length).toBeLessThanOrEqual(190);
   });
 });

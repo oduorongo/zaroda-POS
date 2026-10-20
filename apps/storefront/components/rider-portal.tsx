@@ -1,9 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { ApiError, getRiderMe, requestRiderCode, updateRiderMe, verifyRiderCode } from "../lib/api";
+import { ApiError, getRiderMe, setRiderPin, updateRiderMe } from "../lib/api";
 import type { Rider, VehicleType } from "../lib/types";
 import RiderJobs from "./rider-jobs";
+import RiderSignIn from "./rider-signin";
 
 const TOKEN_KEY = "zaroda_rider_token";
 
@@ -30,7 +31,7 @@ const writeToken = (token: string | null) => {
   }
 };
 
-/** Deliver with Zaroda: sign in by emailed code, fill in your details, wait for approval. */
+/** Deliver with Zaroda: sign in by phone number and PIN, fill in your details, wait for approval. */
 export default function RiderPortal() {
   const [ready, setReady] = useState(false);
   const [token, setToken] = useState<string | null>(null);
@@ -63,7 +64,7 @@ export default function RiderPortal() {
 
   if (!token || !rider) {
     return (
-      <SignIn
+      <RiderSignIn
         onSignedIn={(accessToken, me) => {
           writeToken(accessToken);
           setToken(accessToken);
@@ -74,123 +75,6 @@ export default function RiderPortal() {
   }
 
   return <Profile token={token} rider={rider} onChange={setRider} onSignOut={signOut} />;
-}
-
-function SignIn({ onSignedIn }: { onSignedIn: (token: string, rider: Rider) => void }) {
-  const [step, setStep] = useState<"email" | "code">("email");
-  const [email, setEmail] = useState("");
-  const [code, setCode] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  async function send(e: React.FormEvent) {
-    e.preventDefault();
-    setBusy(true);
-    setError(null);
-    try {
-      await requestRiderCode(email.trim());
-      setStep("code");
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not send the code.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function verify(e: React.FormEvent) {
-    e.preventDefault();
-    setBusy(true);
-    setError(null);
-    try {
-      const result = await verifyRiderCode(email.trim(), code.trim());
-      onSignedIn(result.accessToken, result.rider);
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not verify the code.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <div className="mx-auto max-w-md space-y-5">
-      <div>
-        <h1 className="text-2xl font-bold">Deliver with Zaroda</h1>
-        <p className="mt-1 text-secondary-500">
-          Riders with a boda boda, tuk tuk or vehicle can deliver orders for local shops. Sign in with your email to register or to see your account.
-        </p>
-      </div>
-      <div className="rounded-lg border border-border bg-surface p-6">
-        {step === "email" ? (
-          <form onSubmit={send} className="space-y-4">
-            <div>
-              <label htmlFor="rider-email" className="block text-sm font-medium">
-                Your email address
-              </label>
-              <input
-                id="rider-email"
-                type="email"
-                inputMode="email"
-                autoComplete="email"
-                required
-                placeholder="you@example.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="mt-1 w-full rounded-md border border-border bg-surface p-3 text-base"
-              />
-              <p className="mt-1 text-xs text-secondary-500">We&apos;ll email you a 6-digit code. No password needed.</p>
-            </div>
-            {error && <p className="text-sm text-error-600">{error}</p>}
-            <button
-              type="submit"
-              disabled={busy || !email.trim()}
-              className="w-full rounded-md bg-primary-600 px-4 py-3 font-semibold text-white hover:bg-primary-700 disabled:opacity-50"
-            >
-              {busy ? "Sending..." : "Send code"}
-            </button>
-          </form>
-        ) : (
-          <form onSubmit={verify} className="space-y-4">
-            <div>
-              <label htmlFor="rider-code" className="block text-sm font-medium">
-                Enter the 6-digit code we emailed to {email.trim()}
-              </label>
-              <input
-                id="rider-code"
-                inputMode="numeric"
-                autoComplete="one-time-code"
-                maxLength={6}
-                required
-                autoFocus
-                value={code}
-                onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
-                className="mt-1 w-full rounded-md border border-border bg-surface p-3 text-center text-2xl tracking-[0.5em]"
-              />
-              <p className="mt-1 text-xs text-secondary-500">Can&apos;t see it? Check your spam or promotions folder.</p>
-            </div>
-            {error && <p className="text-sm text-error-600">{error}</p>}
-            <button
-              type="submit"
-              disabled={busy || code.length !== 6}
-              className="w-full rounded-md bg-primary-600 px-4 py-3 font-semibold text-white hover:bg-primary-700 disabled:opacity-50"
-            >
-              {busy ? "Checking..." : "Verify and continue"}
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setStep("email");
-                setCode("");
-                setError(null);
-              }}
-              className="w-full text-sm text-primary-600 hover:underline"
-            >
-              Use a different email address
-            </button>
-          </form>
-        )}
-      </div>
-    </div>
-  );
 }
 
 function StatusBanner({ rider }: { rider: Rider }) {
@@ -264,7 +148,7 @@ function Profile({ token, rider, onChange, onSignOut }: { token: string; rider: 
       <div className="flex items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold">Your rider account</h1>
-          <p className="text-sm text-secondary-500">{rider.email}</p>
+          <p className="text-sm text-secondary-500">{rider.phone ? rider.phone.replace(/^254/, "0") : rider.email}</p>
         </div>
         <button onClick={onSignOut} className="text-sm text-secondary-500 hover:text-foreground">
           Sign out
@@ -324,6 +208,55 @@ function Profile({ token, rider, onChange, onSignOut }: { token: string; rider: 
           {busy ? "Saving..." : "Save my details"}
         </button>
       </form>
+
+      <PinBox token={token} rider={rider} onChange={onChange} onSignOut={onSignOut} />
     </div>
+  );
+}
+
+function PinBox({ token, rider, onChange, onSignOut }: { token: string; rider: Rider; onChange: (r: Rider) => void; onSignOut: () => void }) {
+  const [pin, setPin] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function save(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    setMessage(null);
+    try {
+      onChange(await setRiderPin(token, pin));
+      setPin("");
+      setMessage("Your PIN is saved. Sign in with your phone number and this PIN next time.");
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 401) onSignOut();
+      else setError(err instanceof ApiError ? err.message : "Could not save your PIN.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <form onSubmit={save} className="space-y-3 rounded-lg border border-border bg-surface p-6">
+      <h2 className="font-semibold">{rider.hasPin ? "Change my PIN" : "Set a PIN to sign in with your phone"}</h2>
+      {!rider.phone && <p className="text-sm text-secondary-500">Save your phone number above first - you sign in with it and your PIN.</p>}
+      <input
+        type="password"
+        inputMode="numeric"
+        pattern="[0-9]*"
+        autoComplete="new-password"
+        maxLength={6}
+        placeholder="4 to 6 numbers"
+        value={pin}
+        onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 6))}
+        className="w-full rounded-md border border-border bg-surface p-3 text-center text-xl tracking-[0.4em]"
+      />
+      {error && <p className="text-sm text-error-600">{error}</p>}
+      {message && <p className="text-sm text-success-600">{message}</p>}
+      <button type="submit" disabled={busy || pin.length < 4 || !rider.phone} className="w-full rounded-md border border-border px-4 py-3 font-semibold hover:bg-secondary-500/10 disabled:opacity-50">
+        {busy ? "Saving..." : "Save PIN"}
+      </button>
+    </form>
   );
 }
