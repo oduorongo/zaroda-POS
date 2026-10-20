@@ -13,11 +13,20 @@ import { parseEncryptionKey } from '../common/crypto/secret-box';
 import { PrismaService } from '../common/prisma/prisma.service';
 import { TenantScopedPrismaService, TenantTx } from '../common/prisma/tenant-scoped-prisma.service';
 import { getTenantStore } from '../common/tenant/tenant-context';
+import { AfricasTalkingSmsProvider } from '../notifications/africas-talking-sms.provider';
 import { ResendEmailProvider } from '../notifications/resend-email.provider';
 import { normalizeKenyanPhone } from '../online-orders/online-orders.util';
-import { buildInvoiceEmail, buildReceiptEmail, nextReminderStage } from './commission-email';
+import { buildFeeNoticeEmail, buildInvoiceEmail, buildReceiptEmail, feeNoticeSms, nextReminderStage } from './commission-email';
+import { feeOrderWhere } from './fee-orders';
 import {
+  FEE_DAY_CLOSE_HOUR,
+  FEE_KIND,
+  FEE_PAUSE_GRACE_DAYS,
   PAUSE_GRACE_DAYS,
+  dayBounds,
+  dayOf,
+  feeInvoiceNumber,
+  nairobiHour,
   invoiceDueDate,
   invoiceNumber,
   isMonthClosed,
@@ -52,9 +61,16 @@ const RECONCILE_WINDOW_MS = DAY_MS;
  * placed carry on; only NEW checkouts are blocked.
  */
 export async function hasOverdueCommission(tx: TenantTx, now: Date = new Date()): Promise<boolean> {
-  const cutoff = new Date(now.getTime() - PAUSE_GRACE_DAYS * DAY_MS);
+  const monthlyCutoff = new Date(now.getTime() - PAUSE_GRACE_DAYS * DAY_MS);
+  const feeCutoff = new Date(now.getTime() - FEE_PAUSE_GRACE_DAYS * DAY_MS);
   const count = await tx.commissionInvoice.count({
-    where: { status: CommissionInvoiceStatus.ISSUED, dueDate: { lt: cutoff } },
+    where: {
+      status: CommissionInvoiceStatus.ISSUED,
+      OR: [
+        { kind: { not: FEE_KIND }, dueDate: { lt: monthlyCutoff } },
+        { kind: FEE_KIND, dueDate: { lt: feeCutoff } },
+      ],
+    },
   });
   return count > 0;
 }
@@ -63,6 +79,7 @@ export function toInvoiceView(invoice: CommissionInvoice, now: Date = new Date()
   return {
     id: invoice.id,
     invoiceNumber: invoice.invoiceNumber,
+    kind: invoice.kind,
     periodMonth: invoice.periodMonth,
     orderCount: invoice.orderCount,
     salesTotal: Number(invoice.salesTotal),
@@ -72,7 +89,7 @@ export function toInvoiceView(invoice: CommissionInvoice, now: Date = new Date()
     issuedAt: invoice.issuedAt,
     dueDate: invoice.dueDate,
     // The date the shop is hidden if this stays unpaid.
-    pauseDate: pauseDate(invoice.dueDate),
+    pauseDate: pauseDate(invoice.dueDate, invoice.kind),
     pastDue: isPastDue(invoice, now),
     causesPause: isPauseOverdue(invoice, now),
     paidAt: invoice.paidAt,
@@ -101,6 +118,7 @@ export class CommissionService {
     private readonly tenantPrisma: TenantScopedPrismaService,
     private readonly tuma: TumaClient,
     private readonly email: ResendEmailProvider,
+    private readonly sms: AfricasTalkingSmsProvider,
     private readonly config: ConfigService,
   ) {}
 
@@ -136,10 +154,10 @@ export class CommissionService {
     const { organizationId } = getTenantStore();
     const now = new Date();
     return this.tenantPrisma.run(async (tx) => {
-      const [store, unbilledOrders, unbilledBookings, invoices] = await Promise.all([
+      const [store, unbilledOrders, unbilledBookings, invoices, unsentFees] = await Promise.all([
         tx.onlineStore.findUnique({ where: { organizationId }, select: { commissionRate: true, contactPhone: true } }),
         tx.onlineOrder.aggregate({
-          where: { status: OnlineOrderStatus.COMPLETED, commissionInvoiceId: null },
+          where: { status: OnlineOrderStatus.COMPLETED, commissionInvoiceId: null, convenienceFee: 0 },
           _count: true,
           _sum: { subtotal: true, commissionAmount: true },
         }),
@@ -149,7 +167,9 @@ export class CommissionService {
           _count: true,
           _sum: { total: true, commissionAmount: true },
         }),
-        tx.commissionInvoice.findMany({ orderBy: { periodMonth: 'desc' }, take: 24 }),
+        tx.commissionInvoice.findMany({ orderBy: { issuedAt: 'desc' }, take: 40 }),
+        // Shopper convenience fees this shop has collected and not yet sent to Zaroda.
+        tx.onlineOrder.aggregate({ where: feeOrderWhere(), _count: true, _sum: { convenienceFee: true } }),
       ]);
       const views = invoices.map((i) => toInvoiceView(i, now));
       return {
@@ -161,6 +181,13 @@ export class CommissionService {
           commissionTotal: roundMoney(Number(unbilledOrders._sum.commissionAmount ?? 0) + Number(unbilledBookings._sum.commissionAmount ?? 0)),
         },
         invoices: views,
+        // The shopper fee: collected by the shop with each payment, sent to Zaroda daily (settleFeesNow, or automatically at the
+        // end of the day). Shown so the shop always knows what it is holding.
+        fees: {
+          rate: store?.commissionRate != null ? Number(store.commissionRate) : DEFAULT_COMMISSION_RATE,
+          unsentCount: unsentFees._count,
+          unsentTotal: unsentFees._sum.convenienceFee ?? 0,
+        },
         outstandingTotal: roundMoney(
           views.filter((v) => v.status === CommissionInvoiceStatus.ISSUED).reduce((sum, v) => sum + v.amountDue, 0),
         ),
@@ -419,12 +446,14 @@ export class CommissionService {
    */
   async runAutomation(opts: { sendEmails?: boolean; reconcile?: boolean } = {}) {
     const generated = await this.generateInvoices();
+    const feeInvoices = await this.issueDailyFeeInvoices();
     // Re-checking pending payments is a paid call (KES 1 each), so the hourly
     // scheduler skips it (the free callback is the normal route); only a
     // person pressing "Run billing now" asks for it.
     const reconciled = opts.reconcile === false ? 0 : await this.reconcilePendingPayments();
     const notices = opts.sendEmails === false ? { sent: 0, skipped: 0 } : await this.sendDueNotices();
-    return { invoicesCreated: generated.created, paymentsConfirmed: reconciled, emailsSent: notices.sent, emailsSkipped: notices.skipped };
+    const feeNotices = opts.sendEmails === false ? 0 : await this.sendFeeNotices();
+    return { invoicesCreated: generated.created + feeInvoices, feeNoticesSent: feeNotices, paymentsConfirmed: reconciled, emailsSent: notices.sent, emailsSkipped: notices.skipped };
   }
 
   /** Invoices with an M-Pesa prompt out in the last day whose callback never arrived. */
@@ -461,7 +490,7 @@ export class CommissionService {
     for (const org of organizations) {
       const due = await this.runAsTenant(org.id, async (tx) => {
         const open = await tx.commissionInvoice.findMany({
-          where: { status: CommissionInvoiceStatus.ISSUED, reminderStage: { lt: 4 } },
+          where: { status: CommissionInvoiceStatus.ISSUED, kind: { not: FEE_KIND }, reminderStage: { lt: 4 } },
         });
         return open.flatMap((invoice) => {
           const stage = nextReminderStage(invoice, now);
@@ -500,6 +529,125 @@ export class CommissionService {
     return { sent, skipped };
   }
 
+  // ── Shopper convenience fees: the shop collects them, then sends them to Zaroda ─────────────
+
+  /**
+   * Rolls every fee the shop has collected and not yet sent into ONE invoice (kind DAILY_FEE), due at once. Null when there
+   * is nothing to send. Serialised per business, so two taps (or a tap and the nightly run) can never bill the same order twice.
+   */
+  private async settleFeesInTx(tx: TenantTx, organizationId: string, now: Date, before?: Date): Promise<CommissionInvoice | null> {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${'fee-settle:' + organizationId}))`;
+    const orders = await tx.onlineOrder.findMany({ where: feeOrderWhere(before), select: { id: true, subtotal: true, convenienceFee: true } });
+    const total = orders.reduce((sum, o) => sum + o.convenienceFee, 0);
+    if (orders.length === 0 || total < 1) return null;
+
+    const day = dayOf(now);
+    const earlierToday = await tx.commissionInvoice.count({ where: { kind: FEE_KIND, periodMonth: { startsWith: `${day}#` } } });
+    const { start, end } = dayBounds(day);
+    let invoice: CommissionInvoice | undefined;
+    for (let attempt = 0; attempt < 3 && !invoice; attempt++) {
+      try {
+        invoice = await tx.commissionInvoice.create({
+          data: {
+            organizationId,
+            kind: FEE_KIND,
+            invoiceNumber: feeInvoiceNumber(day, randomInvoiceCode()),
+            periodMonth: `${day}#${earlierToday + 1}`,
+            periodStart: start,
+            periodEnd: end,
+            orderCount: orders.length,
+            salesTotal: roundMoney(orders.reduce((sum, o) => sum + Number(o.subtotal), 0)),
+            commissionTotal: total,
+            amountDue: total,
+            issuedAt: now,
+            dueDate: now,
+          },
+        });
+      } catch (e) {
+        const collision = e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002' && JSON.stringify(e.meta?.target ?? '').includes('invoiceNumber');
+        if (!collision) throw e;
+      }
+    }
+    if (!invoice) throw new ConflictException('Could not allocate an invoice number - try again');
+    await tx.onlineOrder.updateMany({ where: { id: { in: orders.map((o) => o.id) } }, data: { commissionInvoiceId: invoice.id } });
+    return invoice;
+  }
+
+  /** "Send my fees now": the shop asks for the invoice early (it is also made automatically at the end of the day). */
+  async settleFeesNow() {
+    const { organizationId } = getTenantStore();
+    const invoice = await this.tenantPrisma.run((tx) => this.settleFeesInTx(tx, organizationId, new Date()));
+    if (!invoice) throw new BadRequestException('There are no shopper fees waiting to be sent right now');
+    return toInvoiceView(invoice);
+  }
+
+  /**
+   * End of the day (from 8pm, Nairobi): turn each shop's collected fees into an invoice. Before 8pm only earlier days are
+   * caught up, so a shop that was missed (server asleep) is not left holding old fees. Returns how many invoices were made.
+   */
+  private async issueDailyFeeInvoices(now: Date = new Date()): Promise<number> {
+    const before = nairobiHour(now) >= FEE_DAY_CLOSE_HOUR ? undefined : dayBounds(dayOf(now)).start;
+    const organizations = await this.prisma.organization.findMany({ select: { id: true } });
+    let made = 0;
+    for (const org of organizations) {
+      try {
+        const invoice = await this.runAsTenant(org.id, (tx) => this.settleFeesInTx(tx, org.id, now, before));
+        if (invoice) made++;
+      } catch (e) {
+        this.logger.error({ err: e, organizationId: org.id }, 'Could not close the day\'s fees for a business');
+      }
+    }
+    return made;
+  }
+
+  /**
+   * Tells each shop to send an unpaid fee invoice: when it is issued, then once a day, on SMS (where the network accepts our
+   * texts) and email. Stage = notices sent so far; the 4th says the shop is now hidden. Only 6am-10pm Nairobi time.
+   */
+  private async sendFeeNotices(now: Date = new Date()): Promise<number> {
+    const hour = nairobiHour(now);
+    if (hour < 6 || hour >= 22) return 0;
+    const organizations = await this.prisma.organization.findMany({ select: { id: true } });
+    let sent = 0;
+    for (const org of organizations) {
+      const open = await this.runAsTenant(org.id, async (tx) => {
+        const found = await tx.commissionInvoice.findMany({ where: { status: CommissionInvoiceStatus.ISSUED, kind: FEE_KIND, reminderStage: { lt: 4 } } });
+        const invoices = found.filter((invoice) => invoice.kind === FEE_KIND);
+        const store = await tx.onlineStore.findUnique({ where: { organizationId: org.id }, select: { contactPhone: true } });
+        return { invoices, phone: store?.contactPhone ?? null };
+      });
+      const due = open.invoices.flatMap((invoice) => {
+        const wanted = Math.min(4, Math.floor((now.getTime() - invoice.issuedAt.getTime()) / DAY_MS) + 1);
+        return wanted > invoice.reminderStage ? [{ invoice, stage: wanted as 1 | 2 | 3 | 4 }] : [];
+      });
+      if (due.length === 0) continue;
+
+      const { emails, shopName } = await this.recipientsFor(org.id);
+      const phone = open.phone ? normalizeKenyanPhone(open.phone) : null;
+      for (const { invoice, stage } of due) {
+        let delivered = false;
+        if (phone) {
+          const result = await this.sms.sendSms({ to: `+${phone}`, message: feeNoticeSms(stage, invoice.amountDue) }).catch(() => ({ sent: false }));
+          delivered = result.sent;
+        }
+        if (this.email.isConfigured()) {
+          const built = buildFeeNoticeEmail(stage, { invoiceNumber: invoice.invoiceNumber, amountDue: invoice.amountDue, orderCount: invoice.orderCount }, shopName, this.payUrl());
+          for (const to of emails) {
+            const result = await this.email.sendEmail({ to, ...built });
+            delivered = delivered || result.sent;
+          }
+        }
+        // In the app the shop is already reminded (pop-up and ring); a notice nobody could receive is tried again next run.
+        if (!delivered) continue;
+        sent++;
+        await this.runAsTenant(org.id, (tx) =>
+          tx.commissionInvoice.update({ where: { id: invoice.id }, data: { reminderStage: Math.max(invoice.reminderStage, stage), emailedAt: invoice.emailedAt ?? new Date() } }),
+        );
+      }
+    }
+    return sent;
+  }
+
   // ── Invoice generation ────────────────────────────────────────────────
 
   /**
@@ -531,6 +679,7 @@ export class CommissionService {
           where: {
             status: OnlineOrderStatus.COMPLETED,
             commissionInvoiceId: null,
+            convenienceFee: 0,
             completedAt: { not: null, lt: currentMonthStart },
           },
           select: { id: true, subtotal: true, commissionAmount: true, completedAt: true },

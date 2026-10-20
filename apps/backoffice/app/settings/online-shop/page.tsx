@@ -34,6 +34,7 @@ interface OnlineStore {
 interface CommissionInvoice {
   id: string;
   invoiceNumber: string;
+  kind: "MONTHLY" | "DAILY_FEE";
   periodMonth: string;
   orderCount: number;
   salesTotal: number;
@@ -54,6 +55,8 @@ interface CommissionInvoice {
 
 interface Commission {
   commissionRate: number;
+  /** Shopper convenience fees this shop has collected and not yet sent to Zaroda. */
+  fees: { rate: number; unsentCount: number; unsentTotal: number };
   unbilled: { orderCount: number; salesTotal: number; commissionTotal: number };
   invoices: CommissionInvoice[];
   outstandingTotal: number;
@@ -76,7 +79,7 @@ const STOREFRONT_URL = (process.env.NEXT_PUBLIC_STOREFRONT_URL ?? "https://shop.
  * Online Shop add-on settings. The add-on itself is switched on by Zaroda
  * (platform admin) - until then this page only explains how to get it.
  * Buyers pay the business directly via the business's own TUMA account;
- * Zaroda bills its commission monthly instead of taking it from payments.
+ * Shoppers pay a convenience fee on top of each order; the shop collects it and sends it to Zaroda daily.
  */
 export default function OnlineShopSettingsPage() {
   const router = useRouter();
@@ -296,6 +299,26 @@ export default function OnlineShopSettingsPage() {
     setCommission((current) => (current ? { ...current, invoices: current.invoices.map((i) => (i.id === updated.id ? updated : i)) } : current));
   }
 
+  // "Send fees now": turn what the shop is holding into a payment request and open the M-Pesa box for it straight away.
+  const [feeBusy, setFeeBusy] = useState(false);
+  const [feeError, setFeeError] = useState<string | null>(null);
+  async function sendFeesNow() {
+    setFeeBusy(true);
+    setFeeError(null);
+    try {
+      const invoice = await apiPost<CommissionInvoice>("/online-store/me/commission/fees/settle", {});
+      const latest = await apiGet<Commission>("/online-store/me/commission");
+      setCommission(latest);
+      setPayingId(invoice.id);
+      setPayError(null);
+      setPayPhone(latest.contactPhone ?? "");
+    } catch (err) {
+      setFeeError(err instanceof ApiError ? err.message : "Could not prepare the payment.");
+    } finally {
+      setFeeBusy(false);
+    }
+  }
+
   async function reloadCommission() {
     try {
       setCommission(await apiGet<Commission>("/online-store/me/commission"));
@@ -415,12 +438,11 @@ export default function OnlineShopSettingsPage() {
                 )}
                 {commission?.paused && (
                   <p className="rounded-md bg-error-50 p-3 text-sm text-error-700">
-                    Buyers can&apos;t see or order from your shop because a commission invoice is overdue. Pay it to Zaroda and ask them to record it, and your shop reappears straight away. Orders already placed are not affected.
+                    Buyers can&apos;t see or order from your shop because shopper fees (or a commission invoice) are overdue. Send the money to Zaroda below and your shop reappears straight away. Orders already placed are not affected.
                   </p>
                 )}
                 <p className="text-xs text-secondary-500">
-                  Zaroda commission: {Number((store.commissionRate * 100).toFixed(2))}% of each completed online
-                  order&apos;s product total (delivery excluded), invoiced monthly. See below.
+                  Shoppers pay a {Number((store.commissionRate * 100).toFixed(2))}% convenience fee on top of each online order. You collect it with the payment and send it to Zaroda at the end of each day - you pay no commission on these orders. See below.
                 </p>
                 {publishError && <p className="text-sm text-error-600">{publishError}</p>}
                 {store.isPublished ? (
@@ -438,16 +460,34 @@ export default function OnlineShopSettingsPage() {
             {commission && (
               <Card>
                 <CardHeader>
-                  <CardTitle>Commission</CardTitle>
+                  <CardTitle>Fees to send to Zaroda</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
+                  <div className="rounded-md border border-border bg-background p-3">
+                    <p className="text-xs text-secondary-500">Shopper fees you are holding</p>
+                    <p className="text-2xl font-bold">{kes(commission.fees.unsentTotal)}</p>
+                    <p className="text-xs text-secondary-500">
+                      {commission.fees.unsentCount === 0
+                        ? "Nothing to send right now."
+                        : `from ${commission.fees.unsentCount} paid ${commission.fees.unsentCount === 1 ? "order" : "orders"}. Your shoppers paid this on top of their orders - it is not your money.`}
+                    </p>
+                    {commission.fees.unsentTotal >= 1 && commission.canPayOnline && (
+                      <Button size="sm" className="mt-2" onClick={() => void sendFeesNow()} disabled={feeBusy}>
+                        {feeBusy ? "Preparing..." : `Send ${kes(commission.fees.unsentTotal)} to Zaroda now`}
+                      </Button>
+                    )}
+                    {feeError && <p className="mt-1 text-xs text-error-600">{feeError}</p>}
+                    <p className="mt-2 text-xs text-secondary-500">
+                      At 8pm each day it becomes a payment request, and we remind you by pop-up, text and email. Send it by M-Pesa. If fees stay unsent for 3 days, your shop is hidden from buyers until you send them.
+                    </p>
+                  </div>
                   <div className="grid grid-cols-2 gap-3 text-sm">
                     <div>
-                      <p className="text-xs text-secondary-500">You owe Zaroda now</p>
+                      <p className="text-xs text-secondary-500">To send / pay Zaroda now</p>
                       <p className={`text-xl font-bold ${commission.outstandingTotal > 0 ? "text-warning-700" : ""}`}>{kes(commission.outstandingTotal)}</p>
                     </div>
                     <div>
-                      <p className="text-xs text-secondary-500">Building up this month</p>
+                      <p className="text-xs text-secondary-500">Commission building up (hotel rooms and table orders)</p>
                       <p className="text-xl font-bold">{kes(commission.unbilled.commissionTotal)}</p>
                       <p className="text-xs text-secondary-500">
                         from {commission.unbilled.orderCount} completed {commission.unbilled.orderCount === 1 ? "order or booking" : "orders and bookings"}
@@ -455,7 +495,7 @@ export default function OnlineShopSettingsPage() {
                     </div>
                   </div>
                   <p className="text-xs text-secondary-500">
-                    Completed orders are added up when each month ends. We email you the invoice automatically, due 14 days later, and you can pay it here with M-Pesa. If an invoice stays unpaid a further 7 days, your shop is hidden from buyers until it&apos;s settled.
+                    Online pickup and delivery orders carry no commission. Hotel room bookings and table orders still do: added up when each month ends and invoiced by email, due 14 days later (hidden after a further 7 days unpaid).
                   </p>
                   {commission.invoices.length === 0 ? (
                     <p className="text-sm text-secondary-500">No invoices yet.</p>
@@ -466,8 +506,10 @@ export default function OnlineShopSettingsPage() {
                           <div className="flex flex-wrap items-center justify-between gap-2">
                             <div>
                               <span className="font-mono text-xs">{inv.invoiceNumber}</span>
-                              <span className="ml-2 text-secondary-500">{inv.periodMonth} · {inv.orderCount} orders and bookings</span>
-                              {inv.status === "ISSUED" && <span className="block text-xs text-secondary-500">Due {new Date(inv.dueDate).toLocaleDateString("en-KE")}</span>}
+                              <span className="ml-2 text-secondary-500">
+                                {inv.kind === "DAILY_FEE" ? `Shopper fees · ${new Date(inv.dueDate).toLocaleDateString("en-KE", { day: "numeric", month: "short" })} · ${inv.orderCount} orders` : `${inv.periodMonth} · ${inv.orderCount} orders and bookings`}
+                              </span>
+                              {inv.status === "ISSUED" && <span className="block text-xs text-secondary-500">{inv.kind === "DAILY_FEE" ? `Send now - shop hidden on ${new Date(inv.pauseDate).toLocaleDateString("en-KE")} if unsent` : `Due ${new Date(inv.dueDate).toLocaleDateString("en-KE")}`}</span>}
                               {inv.status === "PAID" && inv.paymentReference && (
                                 <span className="block text-xs text-secondary-500">Paid {inv.paidAt ? new Date(inv.paidAt).toLocaleDateString("en-KE") : ""} · {inv.paymentMethod} {inv.paymentReference}</span>
                               )}

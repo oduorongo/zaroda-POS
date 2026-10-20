@@ -9,7 +9,7 @@ import { useMyCounty } from "../lib/my-county";
 import { displayPhone, formatQty, kes } from "../lib/format";
 import type { Shop } from "../lib/types";
 import AuthForm from "./auth-form";
-import { cartTotals } from "./cart-summary";
+import { cartTotals, percentLabel } from "./cart-summary";
 import { useStore } from "./store-provider";
 
 type Fulfilment = "PICKUP" | "DELIVERY";
@@ -65,7 +65,7 @@ export default function CheckoutView({ shop }: { shop: Shop }) {
     // cartFor changes identity whenever the cart does, which is what we want.
   }, [shop, cartFor]);
 
-  const { amountDue } = cartTotals(lines);
+  const { amountDue, items: itemsTotal, fee } = cartTotals(lines, shop.convenienceFeeRate);
   // Food and goods cannot travel across the country: a shop that has said where it delivers only offers those counties.
   const served = shop.deliveryCounties;
   const deliveryCounties: readonly string[] = served ?? KENYA_COUNTIES;
@@ -271,11 +271,25 @@ export default function CheckoutView({ shop }: { shop: Shop }) {
           {unavailable.length > 0 && (
             <p className="rounded-md bg-warning-50 p-2 text-xs text-warning-700">No longer available and left out: {unavailable.join(", ")}.</p>
           )}
-          <div className="flex justify-between border-t border-border pt-3 text-lg font-bold">
+          {fee > 0 && (
+            <div className="space-y-1 border-t border-border pt-3 text-sm text-secondary-600">
+              <div className="flex justify-between">
+                <span>Items</span>
+                <span className="font-mono">{kes(itemsTotal)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Convenience fee ({percentLabel(shop.convenienceFeeRate)})</span>
+                <span className="font-mono">{kes(fee)}</span>
+              </div>
+            </div>
+          )}
+          <div className={`flex justify-between pt-3 text-lg font-bold ${fee > 0 ? "" : "border-t border-border"}`}>
             <span>To pay</span>
             <span>{kes(amountDue)}</span>
           </div>
-          <p className="text-xs text-secondary-500">Totals are rounded up to the next whole shilling, as M-Pesa only takes whole amounts.</p>
+          <p className="text-xs text-secondary-500">
+            Totals are in whole shillings, as M-Pesa only takes whole amounts.{fee > 0 ? " The convenience fee helps keep Zaroda running; the shop passes it on to us." : ""}
+          </p>
           {error && <p className="text-sm text-error-600">{error}</p>}
           <button
             type="submit"

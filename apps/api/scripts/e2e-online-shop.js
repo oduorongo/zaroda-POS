@@ -9,6 +9,10 @@
 // test platform admin. See the online-shop test notes for the one-time setup.
 //
 //   node scripts/e2e-online-shop.js
+//
+// NOTE: its checks of a 3% commission on pickup/delivery orders (and the monthly invoice built from it) describe the OLD
+// model. Since the shopper convenience fee, those orders carry no commission - see scripts/e2e-shopper-fee.js for the
+// fee, the daily invoice and the pause. The rest of this script still describes how the shop works.
 const fs = require('fs');
 const os = require('os');
 const path = require('path');

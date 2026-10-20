@@ -6,20 +6,27 @@ import { ShoppingCart, Trash2 } from "lucide-react";
 import { formatQty, kes } from "../lib/format";
 import { useStore } from "./store-provider";
 
-/** Cart total in shillings, rounded the way the order will be charged (whole shillings, rounded up). */
-export function cartTotals(lines: { price: number; quantity: number }[]) {
+/**
+ * Cart total in shillings, worked out the way the order will be charged: the items rounded up to a whole shilling, plus the
+ * shop's convenience fee (a percentage of the items, rounded to the nearest shilling) when it has one. Table orders pass no rate.
+ */
+export function cartTotals(lines: { price: number; quantity: number }[], feeRate = 0) {
   const subtotal = Math.round(lines.reduce((sum, l) => sum + l.price * l.quantity, 0) * 100) / 100;
-  return { subtotal, amountDue: Math.ceil(subtotal) };
+  const fee = subtotal > 0 && feeRate > 0 ? Math.round(subtotal * feeRate) : 0;
+  return { subtotal, items: Math.ceil(subtotal), fee, amountDue: Math.ceil(subtotal) + fee };
 }
+
+/** "3%" - the rate as people say it. */
+export const percentLabel = (rate: number) => `${Math.round(rate * 1000) / 10}%`;
 
 /**
  * Desktop: a sticky side panel listing the cart. Mobile: a bottom bar with
  * the count and total that goes straight to checkout.
  */
-export default function CartSummary({ shopSlug }: { shopSlug: string }) {
+export default function CartSummary({ shopSlug, feeRate = 0 }: { shopSlug: string; feeRate?: number }) {
   const { cartFor, setLineQuantity, ready } = useStore();
   const lines = cartFor(shopSlug);
-  const { amountDue } = cartTotals(lines);
+  const { amountDue, items: itemsTotal, fee } = cartTotals(lines, feeRate);
   const count = lines.length;
   const checkoutHref = `/s/${shopSlug}/checkout`;
 
@@ -71,7 +78,19 @@ export default function CartSummary({ shopSlug }: { shopSlug: string }) {
                   </li>
                 ))}
               </ul>
-              <div className="mt-4 flex justify-between border-t border-border pt-3 font-semibold">
+              {fee > 0 && (
+                <div className="mt-4 space-y-1 border-t border-border pt-3 text-sm text-secondary-600">
+                  <div className="flex justify-between">
+                    <span>Items</span>
+                    <span>{kes(itemsTotal)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Convenience fee ({percentLabel(feeRate)})</span>
+                    <span>{kes(fee)}</span>
+                  </div>
+                </div>
+              )}
+              <div className={`flex justify-between pt-3 font-semibold ${fee > 0 ? "" : "mt-4 border-t border-border"}`}>
                 <span>Total</span>
                 <span>{kes(amountDue)}</span>
               </div>

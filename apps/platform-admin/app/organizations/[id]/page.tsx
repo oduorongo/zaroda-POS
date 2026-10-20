@@ -219,7 +219,7 @@ export default function OrganizationDetailPage() {
     const trimmed = commissionInput.trim();
     const percent = Number(trimmed);
     if (trimmed && (!Number.isFinite(percent) || percent < 0 || percent > 50)) {
-      setOnlineStoreError("Commission must be a percentage between 0 and 50.");
+      setOnlineStoreError("The fee must be a percentage between 0 and 50.");
       return;
     }
     setSavingOnlineStore(true);
@@ -423,7 +423,7 @@ export default function OrganizationDetailPage() {
                     <p>{org.onlineStore.tumaConnected ? "Connected" : "Not connected"}</p>
                   </div>
                   <div>
-                    <p className="text-xs text-secondary-500">Commission</p>
+                    <p className="text-xs text-secondary-500">Shopper fee on online orders (and commission on table orders and hotel bookings)</p>
                     <p>
                       {Number((org.onlineStore.effectiveCommissionRate * 100).toFixed(2))}%
                       {org.onlineStore.commissionRate === null && <span className="text-secondary-500"> (default)</span>}
@@ -432,7 +432,7 @@ export default function OrganizationDetailPage() {
                 </div>
                 <div className="mt-4 flex flex-wrap items-end gap-2">
                   <div>
-                    <label className="block text-xs text-secondary-500">Custom commission % (blank = default)</label>
+                    <label className="block text-xs text-secondary-500">Custom shopper fee % (blank = default 3%, 0 = no fee)</label>
                     <input
                       value={commissionInput}
                       onChange={(e) => setCommissionInput(e.target.value)}
