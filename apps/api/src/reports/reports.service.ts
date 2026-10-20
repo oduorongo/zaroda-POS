@@ -5,6 +5,7 @@ import {
   TenantTx,
 } from '../common/prisma/tenant-scoped-prisma.service';
 import { ReportFiltersDto } from './dto/report-filters.dto';
+import { variantTitle } from '../catalog/variant-title';
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
@@ -76,7 +77,7 @@ export class ReportsService {
         const existing = byVariant.get(key) ?? {
           variantId: line.variantId,
           sku: line.variant.sku,
-          productName: line.variant.product.name,
+          productName: variantTitle(line.variant.product.name, line.variant.name),
           quantitySold: 0,
           revenue: 0,
           cost: lineCostKnown ? 0 : null,
@@ -257,7 +258,7 @@ export class ReportsService {
       const existing = byVariant.get(log.variantId) ?? {
         variantId: log.variantId,
         sku: log.variant.sku,
-        productName: log.variant.product.name,
+        productName: variantTitle(log.variant.product.name, log.variant.name),
         quantityWasted: 0,
         totalCost: 0,
         entryCount: 0,

@@ -7,10 +7,12 @@ import { apiGet, apiPost, ApiError } from "../../lib/api";
 import { getSession, clearSession, isBackofficeRole, type Session } from "../../lib/auth";
 import { Nav } from "../../components/nav";
 import { PageHeader } from "../../components/page-header";
+import { variantLabel, variantTitleOf } from "../../lib/variant-label";
 
 interface Variant {
   id: string;
   sku: string;
+  name?: string | null;
   product: { name: string };
 }
 
@@ -264,7 +266,7 @@ export default function InventoryPage() {
                   <Table
                     columns={["Product", "Code", "Qty", "Threshold"]}
                     rows={items.map((i) => [
-                      i.variant.product.name,
+                      variantTitleOf(i.variant.product.name, i.variant),
                       i.variant.sku,
                       String(i.quantity),
                       String(i.lowStockThreshold),
@@ -281,7 +283,7 @@ export default function InventoryPage() {
               ) : (
                 <Table
                   columns={["Product", "Code", "Status", "Since"]}
-                  rows={alerts.map((a) => [a.variant.product.name, a.variant.sku, a.status, new Date(a.createdAt).toLocaleString()])}
+                  rows={alerts.map((a) => [variantTitleOf(a.variant.product.name, a.variant), a.variant.sku, a.status, new Date(a.createdAt).toLocaleString()])}
                 />
               )
             )}
@@ -294,7 +296,7 @@ export default function InventoryPage() {
                   {conflicts.map((c) => (
                     <div key={c.variantId} className="rounded-lg border border-red-900 p-3">
                       <p className="font-semibold">
-                        {c.variant.product.name} ({c.variant.sku}) - quantity {c.quantity}
+                        {variantLabel(c.variant.product.name, c.variant)} - quantity {c.quantity}
                       </p>
                       <p className="mt-1 text-xs text-secondary-500">Recent ledger entries:</p>
                       {c.recentTransactions.map((t) => (

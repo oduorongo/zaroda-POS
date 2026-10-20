@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { TenantScopedPrismaService } from '../common/prisma/tenant-scoped-prisma.service';
 import { getTenantStore } from '../common/tenant/tenant-context';
+import { variantTitle } from '../catalog/variant-title';
 
 /**
  * Which kitchen station prepares each dish, for orders that come from a table QR code (nobody at the till is there to
@@ -24,7 +25,7 @@ export class RestaurantDishesService {
     );
     return variants.map((v) => ({
       variantId: v.id,
-      name: v.product.name,
+      name: variantTitle(v.product.name, v.name),
       sku: v.sku,
       price: Number(v.price),
       onlineVisible: v.product.onlineVisible,

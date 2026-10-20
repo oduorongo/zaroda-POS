@@ -6,12 +6,14 @@ import { apiGet, apiPut, ApiError } from "../../../../lib/api";
 import { getSession, clearSession, isBackofficeRole, type Session } from "../../../../lib/auth";
 import { Nav } from "../../../../components/nav";
 import { PageHeader } from "../../../../components/page-header";
+import { variantLabel, variantTitleOf } from "../../../../lib/variant-label";
 
 type QuantityMode = "COUNT" | "WEIGHT";
 
 interface Variant {
   id: string;
   sku: string;
+  name?: string | null;
   quantityMode: QuantityMode;
   product: { name: string };
 }
@@ -83,7 +85,7 @@ export default function RecipeEditorPage() {
       setLines(
         recipeResult.map((r) => ({
           ingredientVariantId: r.ingredientVariant.id,
-          label: `${r.ingredientVariant.product.name} (${r.ingredientVariant.sku})`,
+          label: variantLabel(r.ingredientVariant.product.name, r.ingredientVariant),
           quantityMode: r.ingredientVariant.quantityMode,
           quantity: r.quantity,
         })),
@@ -102,7 +104,7 @@ export default function RecipeEditorPage() {
     return flat
       .filter((v) => v.id !== params.variantId)
       .filter((v) => !lines.some((l) => l.ingredientVariantId === v.id))
-      .filter((v) => v.product.name.toLowerCase().includes(term) || v.sku.toLowerCase().includes(term))
+      .filter((v) => v.product.name.toLowerCase().includes(term) || v.sku.toLowerCase().includes(term) || (v.name ?? "").toLowerCase().includes(term))
       .slice(0, 20);
   }, [products, search, lines, params.variantId]);
 
@@ -114,7 +116,7 @@ export default function RecipeEditorPage() {
       ...prev,
       {
         ingredientVariantId: pickedIngredient.id,
-        label: `${pickedIngredient.product.name} (${pickedIngredient.sku})`,
+        label: variantLabel(pickedIngredient.product.name, pickedIngredient),
         quantityMode: pickedIngredient.quantityMode,
         quantity: pickedQuantity,
       },
@@ -162,7 +164,7 @@ export default function RecipeEditorPage() {
         {!loading && dish && (
           <>
             <h1 className="text-xl font-bold">
-              {dish.product.name} <span className="text-secondary-500">({dish.sku})</span>
+              {variantTitleOf(dish.product.name, dish)} <span className="text-secondary-500">({dish.sku})</span>
             </h1>
             <p className="mt-1 text-sm text-secondary-500">
               {lines.length === 0
@@ -196,7 +198,7 @@ export default function RecipeEditorPage() {
                 <label className="block text-xs text-secondary-500">Add ingredient</label>
                 <input
                   placeholder="Search by product name or code"
-                  value={pickedIngredient ? `${pickedIngredient.product.name} (${pickedIngredient.sku})` : search}
+                  value={pickedIngredient ? variantLabel(pickedIngredient.product.name, pickedIngredient) : search}
                   onChange={(e) => {
                     setSearch(e.target.value);
                     setPickedIngredient(null);
@@ -217,7 +219,7 @@ export default function RecipeEditorPage() {
                           }}
                           className="block w-full px-2 py-1.5 text-left text-sm hover:bg-surface"
                         >
-                          {v.product.name} <span className="text-secondary-500">({v.sku})</span>
+                          {variantTitleOf(v.product.name, v)} <span className="text-secondary-500">({v.sku})</span>
                         </button>
                       ))
                     )}
@@ -228,7 +230,7 @@ export default function RecipeEditorPage() {
                     type="number"
                     min={pickedIngredient?.quantityMode === "WEIGHT" ? 0.001 : 1}
                     step={pickedIngredient?.quantityMode === "WEIGHT" ? "0.001" : "1"}
-                    placeholder={`Quantity per 1 ${dish.sku} sold`}
+                    placeholder={`Quantity per 1 ${dish.name?.trim() || dish.sku} sold`}
                     value={pickedQuantity}
                     onChange={(e) => setPickedQuantity(e.target.value)}
                     className="flex-1 rounded-md border border-border bg-background p-2 text-sm"

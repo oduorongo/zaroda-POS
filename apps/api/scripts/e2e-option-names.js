@@ -99,6 +99,15 @@ const tokenFor = (id) => {
   const again = (await api('GET', `/buyer/orders/${order.json.id}`, { token: buyer })).json;
   check('renaming an option later does not rewrite old orders', again.lines.some((l) => l.productName.endsWith('Large loaf 800g')), again.lines.map((l) => l.productName));
 
+  section('4. Other screens read the same name');
+  const dishes = await api('GET', '/restaurant/dishes', { token: owner });
+  const dish = Array.isArray(dishes.json) ? dishes.json.find((d) => d.sku === `BR-S-${tag}`) : null;
+  check('the dish list (restaurant menu setup) shows the product and option name', dish?.name === `Test Bread ${tag} - Small loaf 400g`, dishes.status === 200 ? dish : dishes);
+  const waste = await api('POST', '/waste', { token: owner, body: { branchId, variantId: small.json.id, quantity: 1, reason: 'DAMAGED' } });
+  const wasteReport = await api('GET', '/reports/waste-by-product', { token: owner });
+  const wasteRow = Array.isArray(wasteReport.json) ? wasteReport.json.find((r) => r.sku === `BR-S-${tag}`) : null;
+  check('the waste report names the option too', waste.status === 201 && wasteRow?.productName === `Test Bread ${tag} - Small loaf 400g`, [waste.status, wasteRow]);
+
   await sql.end();
   console.log(`\n${passed} checks passed${failures.length ? `, ${failures.length} FAILED:\n - ${failures.join('\n - ')}` : ' - all good'}`);
   process.exit(failures.length ? 1 : 0);

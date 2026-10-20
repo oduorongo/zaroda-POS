@@ -6,10 +6,12 @@ import { apiGet, apiPost, ApiError } from "../../lib/api";
 import { getSession, clearSession, isBackofficeRole, type Session } from "../../lib/auth";
 import { Nav } from "../../components/nav";
 import { PageHeader } from "../../components/page-header";
+import { variantLabel, variantTitleOf } from "../../lib/variant-label";
 
 interface Variant {
   id: string;
   sku: string;
+  name?: string | null;
   quantityMode: "COUNT" | "WEIGHT";
   product: { name: string };
 }
@@ -56,7 +58,7 @@ function VariantPicker({
     if (!term) return [];
     return flat
       .filter((v) => v.id !== exclude)
-      .filter((v) => v.product.name.toLowerCase().includes(term) || v.sku.toLowerCase().includes(term))
+      .filter((v) => v.product.name.toLowerCase().includes(term) || v.sku.toLowerCase().includes(term) || (v.name ?? "").toLowerCase().includes(term))
       .slice(0, 20);
   }, [products, search, exclude]);
 
@@ -66,7 +68,7 @@ function VariantPicker({
       {selected ? (
         <div className="mt-1 flex items-center justify-between rounded-md bg-background p-2 text-sm">
           <span>
-            {selected.product.name} <span className="text-secondary-500">({selected.sku})</span>
+            {variantTitleOf(selected.product.name, selected)} <span className="text-secondary-500">({selected.sku})</span>
           </span>
           <button
             onClick={() => onSelect({ id: "", sku: "", quantityMode: "COUNT", product: { name: "" } })}
@@ -97,7 +99,7 @@ function VariantPicker({
                     }}
                     className="block w-full px-2 py-1.5 text-left text-sm hover:bg-surface"
                   >
-                    {v.product.name} <span className="text-secondary-500">({v.sku})</span>
+                    {variantTitleOf(v.product.name, v)} <span className="text-secondary-500">({v.sku})</span>
                   </button>
                 ))
               )}
@@ -192,11 +194,11 @@ export default function RepackagingPage() {
       return;
     }
     if (fromVariant.quantityMode === "COUNT" && !Number.isInteger(from)) {
-      setFormError(`${fromVariant.sku} is sold by count - the bulk quantity must be a whole number.`);
+      setFormError(`${fromVariant.name?.trim() || fromVariant.sku} is sold by count - the bulk quantity must be a whole number.`);
       return;
     }
     if (toVariant.quantityMode === "COUNT" && !Number.isInteger(to)) {
-      setFormError(`${toVariant.sku} is sold by count - the resale quantity must be a whole number.`);
+      setFormError(`${toVariant.name?.trim() || toVariant.sku} is sold by count - the resale quantity must be a whole number.`);
       return;
     }
     setBusy(true);
@@ -335,8 +337,8 @@ export default function RepackagingPage() {
               {history.map((r) => (
                 <div key={r.id} className="rounded-md bg-background p-2 text-sm">
                   <p>
-                    -{r.fromQuantity} {r.fromVariant.product.name} ({r.fromVariant.sku}) &rarr; +{r.toQuantity}{" "}
-                    {r.toVariant.product.name} ({r.toVariant.sku})
+                    -{r.fromQuantity} {variantLabel(r.fromVariant.product.name, r.fromVariant)} &rarr; +{r.toQuantity}{" "}
+                    {variantLabel(r.toVariant.product.name, r.toVariant)}
                   </p>
                   <p className="text-xs text-secondary-500">
                     {new Date(r.createdAt).toLocaleString()}
