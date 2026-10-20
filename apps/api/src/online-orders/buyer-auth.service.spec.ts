@@ -292,8 +292,25 @@ describe('BuyerAuthService one login with the rider account', () => {
   it('never takes over a shopper account that already exists for the number, even one with no PIN', async () => {
     const { service, prisma } = setup({ rider: rider('4821') });
     prisma.buyer.findUnique.mockResolvedValue({ id: 'buyer-9', phone: '254712345678', pinHash: null });
-    await expect(service.loginWithPin('0712345678', '4821')).rejects.toThrow('Wrong phone number or PIN');
+    await expect(service.loginWithPin('0712345678', '4821')).rejects.toThrow(/rider account/);
     expect(prisma.buyer.create).not.toHaveBeenCalled();
+  });
+
+  it('explains, instead of saying "wrong PIN", when the rider PIN is typed but a shopper account already owns the number', async () => {
+    const noPin = setup({ rider: rider('4821') });
+    noPin.prisma.buyer.findUnique.mockResolvedValue({ id: 'buyer-9', phone: '254712345678', pinHash: null, pinFailCount: 0, pinLockedUntil: null });
+    await expect(noPin.service.loginWithPin('0712345678', '4821')).rejects.toThrow(/no PIN yet.*Forgot your PIN/s);
+
+    const withPin = setup({ rider: rider('4821') });
+    withPin.prisma.buyer.findUnique.mockResolvedValue({ id: 'buyer-9', phone: '254712345678', pinHash: hashPin('9999', SECRET), pinFailCount: 0, pinLockedUntil: null });
+    await expect(withPin.service.loginWithPin('0712345678', '4821')).rejects.toThrow(/separate shopper account with its own PIN/);
+    expect(withPin.prisma.buyer.update.mock.calls[0][0].data.pinFailCount).toBe(1); // still counts as a wrong try
+  });
+
+  it('still just says "wrong PIN" when it matches neither account', async () => {
+    const { service, prisma } = setup({ rider: rider('4821') });
+    prisma.buyer.findUnique.mockResolvedValue({ id: 'buyer-9', phone: '254712345678', pinHash: hashPin('9999', SECRET), pinFailCount: 0, pinLockedUntil: null });
+    await expect(service.loginWithPin('0712345678', '0000')).rejects.toThrow('Wrong phone number or PIN');
   });
 
   it('gives a new PIN to the rider account too when a code proved the number', async () => {
