@@ -154,6 +154,11 @@ export default function OrderDetail({ orderId }: { orderId: string }) {
             Check your phone <strong>{displayPhone(order.paymentPhone)}</strong> for an M-Pesa prompt for <strong>{kes(order.amountDue)}</strong> and enter your PIN. This page updates by itself once the payment goes through.
           </p>
           {order.lastPaymentError && <p className="text-sm text-error-700">{order.lastPaymentError}</p>}
+          {order.lastPaymentError && /blacklist|blocked/i.test(order.lastPaymentError) && (
+            <p className="rounded-md bg-warning-50 p-2 text-sm text-warning-900">
+              M-Pesa has paused prompts to this number. <strong>Type a different M-Pesa number below</strong> (a friend&apos;s or another line of yours) and tap &quot;Send the prompt again&quot;, or try again later. Tapping the button again on this number will not help.
+            </p>
+          )}
           <p className="text-xs text-secondary-600">
             Your items are held until {new Date(order.paymentDeadline).toLocaleTimeString("en-KE", { hour: "2-digit", minute: "2-digit" })}.
           </p>
