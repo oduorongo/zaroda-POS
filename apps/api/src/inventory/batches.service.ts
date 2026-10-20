@@ -46,6 +46,7 @@ export class BatchesService {
         quantityDelta: dto.quantityReceived,
         batchId: batch.id,
         referenceId: batch.id,
+        unitCost: dto.unitCost,
       });
 
       return batch;

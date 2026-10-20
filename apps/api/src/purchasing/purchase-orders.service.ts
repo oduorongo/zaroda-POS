@@ -171,6 +171,9 @@ export class PurchaseOrdersService {
           );
         }
 
+        // The price paid: what the delivery was actually charged, else the price agreed on the order.
+        const paid = receipt.unitCost ?? (line.unitCost === null ? undefined : Number(line.unitCost));
+
         if (receipt.batchNumber) {
           const batch = await tx.batch.create({
             data: {
@@ -189,6 +192,7 @@ export class PurchaseOrdersService {
             quantityDelta: receipt.quantity,
             batchId: batch.id,
             referenceId: order.id,
+            unitCost: paid,
           });
         } else {
           await this.inventoryTransactions.recordInTx(tx, {
@@ -197,6 +201,7 @@ export class PurchaseOrdersService {
             type: InventoryTxnType.ADJUSTMENT,
             quantityDelta: receipt.quantity,
             referenceId: order.id,
+            unitCost: paid,
           });
         }
 

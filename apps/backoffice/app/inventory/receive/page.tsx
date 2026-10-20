@@ -12,6 +12,7 @@ interface Variant {
   id: string;
   sku: string;
   quantityMode: "COUNT" | "WEIGHT";
+  cost?: string | number | null;
   product: { name: string };
 }
 
@@ -41,6 +42,8 @@ interface ReceiveLine {
   quantity: number;
   batchNumber?: string;
   expiryDate?: string;
+  /** What was paid per unit (optional). */
+  unitCost?: number;
 }
 
 export default function ReceiveStockPage() {
@@ -56,6 +59,7 @@ export default function ReceiveStockPage() {
   const [search, setSearch] = useState("");
   const [selectedVariantId, setSelectedVariantId] = useState("");
   const [quantity, setQuantity] = useState("");
+  const [unitCost, setUnitCost] = useState("");
   const [trackBatch, setTrackBatch] = useState(false);
   const [batchNumber, setBatchNumber] = useState("");
   const [expiryDate, setExpiryDate] = useState("");
@@ -145,6 +149,11 @@ export default function ReceiveStockPage() {
       setLineError("Batch number is required when tracking a batch.");
       return;
     }
+    const paid = unitCost.trim() === "" ? undefined : Number(unitCost);
+    if (paid !== undefined && (!Number.isFinite(paid) || paid < 0 || Math.round(paid * 100) !== paid * 100)) {
+      setLineError("The price paid must be an amount in shillings, like 80 or 80.50.");
+      return;
+    }
     setLines((prev) => [
       ...prev,
       {
@@ -154,11 +163,13 @@ export default function ReceiveStockPage() {
         quantity: qty,
         batchNumber: trackBatch ? batchNumber.trim() : undefined,
         expiryDate: trackBatch && expiryDate ? expiryDate : undefined,
+        unitCost: paid,
       },
     ]);
     setSearch("");
     setSelectedVariantId("");
     setQuantity("");
+    setUnitCost("");
     setTrackBatch(false);
     setBatchNumber("");
     setExpiryDate("");
@@ -186,6 +197,7 @@ export default function ReceiveStockPage() {
             batchNumber: line.batchNumber,
             expiryDate: line.expiryDate || undefined,
             quantityReceived: line.quantity,
+            unitCost: line.unitCost,
           });
         } else {
           await apiPost("/inventory/transactions", {
@@ -194,6 +206,7 @@ export default function ReceiveStockPage() {
             type: "ADJUSTMENT",
             quantityDelta: line.quantity,
             referenceId: deliveryRef.trim() || undefined,
+            unitCost: line.unitCost,
           });
         }
         remaining.shift();
@@ -305,6 +318,21 @@ export default function ReceiveStockPage() {
                 className="mt-1 w-28 rounded-md border border-border bg-background p-2 text-sm"
               />
             </div>
+            <div>
+              <label className="block text-xs text-secondary-500">
+                Price paid per {selectedVariant?.quantityMode === "WEIGHT" ? "kg / litre" : "item"} (KES, optional)
+              </label>
+              <input
+                type="number"
+                min={0}
+                step="0.01"
+                inputMode="decimal"
+                placeholder={selectedVariant?.cost != null ? `now ${Number(selectedVariant.cost)}` : "e.g. 80"}
+                value={unitCost}
+                onChange={(e) => setUnitCost(e.target.value)}
+                className="mt-1 w-32 rounded-md border border-border bg-background p-2 text-sm"
+              />
+            </div>
             <label className="mb-2 flex items-center gap-2 text-sm text-secondary-500">
               <input type="checkbox" checked={trackBatch} onChange={(e) => setTrackBatch(e.target.checked)} />
               Track batch / expiry
@@ -337,6 +365,9 @@ export default function ReceiveStockPage() {
               + Add to delivery
             </button>
           </div>
+          <p className="mt-2 text-xs text-secondary-500">
+            Enter what you paid and the product&apos;s cost updates by itself - blended with the stock you already hold - so your profit report always uses a real, current cost. Leave it empty to keep the cost as it is.
+          </p>
           {lineError && <p className="mt-2 text-sm text-red-400">{lineError}</p>}
         </div>
 
@@ -353,6 +384,7 @@ export default function ReceiveStockPage() {
                   <div>
                     <span className="font-medium">{l.label}</span>{" "}
                     <span className="font-mono text-secondary-500">+{l.quantity}</span>
+                    {l.unitCost !== undefined && <span className="ml-2 text-xs text-secondary-500">at KES {l.unitCost.toLocaleString()} each</span>}
                     {l.batchNumber && (
                       <span className="ml-2 text-xs text-secondary-500">
                         batch {l.batchNumber}
