@@ -4,13 +4,14 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { LowStockAlertStatus, Prisma } from '@prisma/client';
+import { InventoryTxnType, LowStockAlertStatus, Prisma } from '@prisma/client';
 import {
   TenantScopedPrismaService,
   TenantTx,
 } from '../common/prisma/tenant-scoped-prisma.service';
 import { getTenantStore } from '../common/tenant/tenant-context';
 import { assertQuantityMatchesMode } from '../common/inventory/quantity-mode.util';
+import { averageCost } from '../common/inventory/average-cost.util';
 import { CreateInventoryTransactionDto } from './dto/create-inventory-transaction.dto';
 
 @Injectable()
@@ -84,6 +85,22 @@ export class InventoryTransactionsService {
       });
     }
 
+    // A delivery received with a price: blend it into the product's cost BEFORE the stock goes up (the weights are what was
+    // in stock until now). Only a receipt can carry a price - anything else is a mistake worth saying so about.
+    if (dto.unitCost !== undefined) {
+      if (dto.type !== InventoryTxnType.ADJUSTMENT || dto.quantityDelta <= 0) {
+        throw new BadRequestException('A price paid only applies when stock is received');
+      }
+      const held = await tx.inventoryItem.aggregate({ where: { variantId: dto.variantId }, _sum: { quantity: true } });
+      const cost = averageCost({
+        onHand: Number(held._sum.quantity ?? 0),
+        oldCost: variant.cost === null ? null : Number(variant.cost),
+        receivedQty: dto.quantityDelta,
+        unitCost: dto.unitCost,
+      });
+      await tx.productVariant.update({ where: { id: dto.variantId }, data: { cost } });
+    }
+
     const transaction = await tx.inventoryTransaction.create({
       data: {
         branchId: dto.branchId,
@@ -92,6 +109,7 @@ export class InventoryTransactionsService {
         type: dto.type,
         quantityDelta: dto.quantityDelta,
         referenceId: dto.referenceId,
+        unitCost: dto.unitCost,
       },
     });
 

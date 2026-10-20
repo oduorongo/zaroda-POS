@@ -33,6 +33,8 @@ interface ReceiptDraft {
   batchNumber: string;
   expiryDate: string;
   trackBatch: boolean;
+  /** What was actually paid per unit; empty = the price on the order. */
+  unitCost: string;
 }
 
 const STATUS_COLOR: Record<Status, string> = {
@@ -61,7 +63,7 @@ export default function PurchaseOrderDetailPage() {
       setDrafts((prev) => {
         const next: Record<string, ReceiptDraft> = {};
         for (const l of result.lineItems) {
-          next[l.id] = prev[l.id] ?? { quantity: "", batchNumber: "", expiryDate: "", trackBatch: false };
+          next[l.id] = prev[l.id] ?? { quantity: "", batchNumber: "", expiryDate: "", trackBatch: false, unitCost: "" };
         }
         return next;
       });
@@ -102,6 +104,7 @@ export default function PurchaseOrderDetailPage() {
           quantity: qty,
           batchNumber: d.trackBatch && d.batchNumber.trim() ? d.batchNumber.trim() : undefined,
           expiryDate: d.trackBatch && d.expiryDate ? d.expiryDate : undefined,
+          unitCost: d.unitCost.trim() === "" ? undefined : Number(d.unitCost),
         };
       })
       .filter((l): l is NonNullable<typeof l> => l !== null);
@@ -196,6 +199,17 @@ export default function PurchaseOrderDetailPage() {
                                     value={draft.quantity}
                                     onChange={(e) => updateDraft(l.id, { quantity: e.target.value })}
                                     className="w-24 rounded-md border border-border bg-background p-1.5 text-sm"
+                                  />
+                                  <input
+                                    type="number"
+                                    min={0}
+                                    step="0.01"
+                                    inputMode="decimal"
+                                    placeholder={l.unitCost != null ? `paid (order: ${Number(l.unitCost)})` : "price paid"}
+                                    title="What you actually paid per unit. Leave empty to use the price on the order. The product's cost updates from this."
+                                    value={draft.unitCost}
+                                    onChange={(e) => updateDraft(l.id, { unitCost: e.target.value })}
+                                    className="w-36 rounded-md border border-border bg-background p-1.5 text-sm"
                                   />
                                   <label className="flex items-center gap-1 text-xs text-secondary-500">
                                     <input

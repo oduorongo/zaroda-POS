@@ -8,7 +8,9 @@ import {
   IsPositive,
   IsString,
   IsUUID,
+  Max,
   MaxLength,
+  Min,
   ValidateNested,
 } from 'class-validator';
 
@@ -30,6 +32,13 @@ export class ReceivePurchaseOrderLineDto {
   @IsDateString()
   @IsOptional()
   expiryDate?: string;
+
+  // What was actually paid per unit on this delivery. Left out, the price on the order is used.
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  @Max(100_000_000)
+  @IsOptional()
+  unitCost?: number;
 }
 
 export class ReceivePurchaseOrderDto {

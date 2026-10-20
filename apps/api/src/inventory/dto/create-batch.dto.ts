@@ -5,7 +5,9 @@ import {
   IsPositive,
   IsString,
   IsUUID,
+  Max,
   MaxLength,
+  Min,
 } from 'class-validator';
 
 export class CreateBatchDto {
@@ -30,4 +32,11 @@ export class CreateBatchDto {
   @IsNumber({ maxDecimalPlaces: 3 })
   @IsPositive()
   quantityReceived!: number;
+
+  // What was paid per unit (optional): updates the product's cost as a weighted average, like a plain delivery.
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  @Max(100_000_000)
+  @IsOptional()
+  unitCost?: number;
 }
