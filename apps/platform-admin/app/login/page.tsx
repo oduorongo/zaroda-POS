@@ -1,6 +1,6 @@
 "use client";
 
-import { FloatingThemeToggle } from "@zaroda/ui";
+import { FloatingThemeToggle, PasswordInput } from "@zaroda/ui";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { login, ApiError } from "../../lib/api";
@@ -60,8 +60,8 @@ export default function LoginPage() {
         </div>
         <div>
           <label className="block text-sm font-medium text-secondary-600">Password</label>
-          <input
-            type="password"
+          <PasswordInput
+            
             className="mt-1 w-full rounded-md border border-border bg-background p-2.5"
             value={password}
             onChange={(e) => setPassword(e.target.value)}

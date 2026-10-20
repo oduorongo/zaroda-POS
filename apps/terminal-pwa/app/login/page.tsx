@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { db, getDeviceConfig, type CachedOrgUser } from "../../lib/db";
 import { apiPost, ApiError, OfflineError } from "../../lib/api";
-import { Button, ThemeToggle } from "@zaroda/ui";
+import { Button, EyeIcon, ThemeToggle } from "@zaroda/ui";
 
 interface PinLoginResponse {
   accessToken: string;
@@ -16,6 +16,7 @@ export default function LoginPage() {
   const [cashiers, setCashiers] = useState<CachedOrgUser[]>([]);
   const [selected, setSelected] = useState<CachedOrgUser | null>(null);
   const [pin, setPin] = useState("");
+  const [showPin, setShowPin] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [terminalId, setTerminalId] = useState<string | null>(null);
@@ -132,13 +133,30 @@ export default function LoginPage() {
       <h1 className="text-xl font-bold">Enter your PIN</h1>
       <p className="text-secondary-500">Tap your PIN to start your shift.</p>
 
-      <div className="mt-6 flex gap-3" aria-hidden="true">
-        {Array.from({ length: Math.max(pin.length, 4) }).map((_, i) => (
-          <span
-            key={i}
-            className={`h-4 w-4 rounded-full border-2 border-primary-400 ${i < pin.length ? "bg-primary-400" : "bg-transparent"}`}
-          />
-        ))}
+      <div className="mt-6 flex items-center gap-3">
+        {showPin ? (
+          <span className="min-h-[1.75rem] min-w-[6rem] text-center font-mono text-2xl tracking-[0.35em]" aria-live="polite">
+            {pin || " "}
+          </span>
+        ) : (
+          <span className="flex gap-3" aria-hidden="true">
+            {Array.from({ length: Math.max(pin.length, 4) }).map((_, i) => (
+              <span
+                key={i}
+                className={`h-4 w-4 rounded-full border-2 border-primary-400 ${i < pin.length ? "bg-primary-400" : "bg-transparent"}`}
+              />
+            ))}
+          </span>
+        )}
+        <button
+          type="button"
+          onClick={() => setShowPin((v) => !v)}
+          aria-label={showPin ? "Hide PIN" : "Show PIN"}
+          aria-pressed={showPin}
+          className="flex h-10 w-10 items-center justify-center rounded-md text-secondary-500 hover:text-foreground"
+        >
+          <EyeIcon open={showPin} />
+        </button>
       </div>
 
       {error && (

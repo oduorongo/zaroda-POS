@@ -1,5 +1,7 @@
 "use client";
 
+
+import { PasswordInput } from "@zaroda/ui";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { apiGet, apiPatch, apiPost, ApiError } from "../../lib/api";
@@ -209,8 +211,8 @@ export default function StaffPage() {
                 onChange={(e) => setNewFullName(e.target.value)}
                 className="rounded-md border border-border bg-background p-2 text-sm"
               />
-              <input
-                type="password"
+              <PasswordInput
+                
                 placeholder="Password, min 8 chars (new account only)"
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
@@ -321,8 +323,8 @@ export default function StaffPage() {
 
                 {pinForId === u.id && (
                   <div className="mt-3 flex items-center gap-2 border-t border-border pt-3">
-                    <input
-                      type="password"
+                    <PasswordInput
+                      
                       placeholder="New PIN (4-8 digits)"
                       value={pinValue}
                       onChange={(e) => setPinValue(e.target.value)}

@@ -1,5 +1,7 @@
 "use client";
 
+
+import { PasswordInput } from "@zaroda/ui";
 import { useCallback, useEffect, useState } from "react";
 import { ApiError, getRiderMe, setRiderPin, updateRiderMe } from "../lib/api";
 import type { Rider, VehicleType } from "../lib/types";
@@ -241,8 +243,8 @@ function PinBox({ token, rider, onChange, onSignOut }: { token: string; rider: R
     <form onSubmit={save} className="space-y-3 rounded-lg border border-border bg-surface p-6">
       <h2 className="font-semibold">{rider.hasPin ? "Change my PIN" : "Set a PIN to sign in with your phone"}</h2>
       {!rider.phone && <p className="text-sm text-secondary-500">Save your phone number above first - you sign in with it and your PIN.</p>}
-      <input
-        type="password"
+      <PasswordInput
+        
         inputMode="numeric"
         pattern="[0-9]*"
         autoComplete="new-password"

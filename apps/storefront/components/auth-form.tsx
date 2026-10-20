@@ -1,5 +1,7 @@
 "use client";
 
+
+import { PasswordInput } from "@zaroda/ui";
 import { useEffect, useState } from "react";
 import { ApiError, buyerPinLogin, buyerSignup, getAuthMethods, requestBuyerPinReset, requestCode, resetBuyerPin, verifyCode, type LoginIdentity } from "../lib/api";
 import { useStore } from "./store-provider";
@@ -249,9 +251,9 @@ export default function AuthForm({ onDone }: { onDone?: () => void }) {
           <label htmlFor="pa-pin" className="block text-sm font-medium">
             {mode === "login" ? "Your PIN" : mode === "signup" ? "Choose a PIN (4 to 6 numbers)" : "New PIN (4 to 6 numbers)"}
           </label>
-          <input
+          <PasswordInput
             id="pa-pin"
-            type="password"
+            
             inputMode="numeric"
             pattern="[0-9]*"
             autoComplete={mode === "login" ? "current-password" : "new-password"}

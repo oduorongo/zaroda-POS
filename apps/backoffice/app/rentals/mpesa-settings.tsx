@@ -1,5 +1,7 @@
 "use client";
 
+
+import { PasswordInput } from "@zaroda/ui";
 import { useEffect, useState } from "react";
 import { apiDelete, apiGet, apiPost, ApiError } from "../../lib/api";
 
@@ -118,7 +120,7 @@ export function MpesaSettingsPanel({ onChange }: { onChange?: (s: MpesaSettings)
           {tab === "TUMA" && (
             <form onSubmit={connectTuma} className="grid gap-2 sm:grid-cols-3">
               <input className={input} type="email" required placeholder="Your Tuma account email" value={tuma.email} onChange={(e) => setTuma({ ...tuma, email: e.target.value })} />
-              <input className={input} type="password" required minLength={8} placeholder="Tuma API key" autoComplete="off" value={tuma.apiKey} onChange={(e) => setTuma({ ...tuma, apiKey: e.target.value })} />
+              <PasswordInput className={input} required minLength={8} placeholder="Tuma API key" autoComplete="off" value={tuma.apiKey} onChange={(e) => setTuma({ ...tuma, apiKey: e.target.value })} />
               <button className={button} disabled={busy}>{settings?.tumaConnected ? "Replace Tuma details" : "Connect Tuma"}</button>
               {settings?.tumaConnected && (
                 <div className="flex flex-wrap items-center gap-2 sm:col-span-3">
@@ -146,9 +148,9 @@ export function MpesaSettingsPanel({ onChange }: { onChange?: (s: MpesaSettings)
                   <option value="sandbox">Safaricom test (sandbox)</option>
                 </select>
               )}
-              <input className={input} type="password" required placeholder="Daraja consumer key" autoComplete="off" value={daraja.consumerKey} onChange={(e) => setDaraja({ ...daraja, consumerKey: e.target.value })} />
-              <input className={input} type="password" required placeholder="Daraja consumer secret" autoComplete="off" value={daraja.consumerSecret} onChange={(e) => setDaraja({ ...daraja, consumerSecret: e.target.value })} />
-              <input className={input} type="password" required placeholder="Lipa na M-Pesa passkey" autoComplete="off" value={daraja.passkey} onChange={(e) => setDaraja({ ...daraja, passkey: e.target.value })} />
+              <PasswordInput className={input} required placeholder="Daraja consumer key" autoComplete="off" value={daraja.consumerKey} onChange={(e) => setDaraja({ ...daraja, consumerKey: e.target.value })} />
+              <PasswordInput className={input} required placeholder="Daraja consumer secret" autoComplete="off" value={daraja.consumerSecret} onChange={(e) => setDaraja({ ...daraja, consumerSecret: e.target.value })} />
+              <PasswordInput className={input} required placeholder="Lipa na M-Pesa passkey" autoComplete="off" value={daraja.passkey} onChange={(e) => setDaraja({ ...daraja, passkey: e.target.value })} />
               <button className={button} disabled={busy}>{settings?.mpesaConnected ? "Replace M-Pesa details" : "Connect my Paybill / Till"}</button>
               {settings?.mpesaConnected && (
                 <div className="flex flex-wrap items-center gap-2 sm:col-span-2">

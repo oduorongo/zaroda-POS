@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Badge, Button, EmptyState, LoadingState } from "@zaroda/ui";
+import { Badge, Button, EmptyState, LoadingState, PasswordInput } from "@zaroda/ui";
 import { ApiError } from "../../../lib/api";
 import { TeamShell } from "../../../components/team-shell";
 import { teamGet, teamPost, type TeamMe, type TeamShop } from "../../../lib/team-api";
@@ -139,7 +139,7 @@ function ShopsBody({ me }: { me: TeamMe }) {
             </label>
             <label className="text-sm">
               Password for the owner (leave empty to make one)
-              <input type="password" minLength={8} autoComplete="new-password" className={inputClass} value={ownerPassword} onChange={(e) => setOwnerPassword(e.target.value)} />
+              <PasswordInput minLength={8} autoComplete="new-password" className={inputClass} value={ownerPassword} onChange={(e) => setOwnerPassword(e.target.value)} />
             </label>
             <label className="text-sm">
               First branch name (defaults to the shop name)
