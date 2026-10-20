@@ -2094,6 +2094,10 @@ model Buyer {
   // or remembered from the M-Pesa number given at checkout.
   phone     String?  @unique
   name      String?
+  // Phone + PIN sign-in, which works on every network (texts only reach some numbers). Only a salted hash is kept.
+  pinHash        String?
+  pinFailCount   Int       @default(0)
+  pinLockedUntil DateTime?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

@@ -1,5 +1,6 @@
 import { BadRequestException, HttpException, UnauthorizedException } from '@nestjs/common';
 import { BuyerAuthService } from './buyer-auth.service';
+import { hashPin } from '../riders/rider-pin.util';
 import { sha256 } from './online-orders.util';
 
 const SECRET = 'test-buyer-secret';
@@ -17,7 +18,8 @@ function setup(opts: { sms?: boolean; emailSent?: boolean; smsSent?: boolean; re
     buyer: {
       upsert: jest.fn().mockImplementation(({ create }) => Promise.resolve({ id: 'buyer-1', email: null, phone: null, name: null, ...create })),
       findUnique: jest.fn(),
-      update: jest.fn(),
+      create: jest.fn().mockImplementation(({ data }) => Promise.resolve({ id: 'buyer-1', email: null, name: null, ...data })),
+      update: jest.fn().mockImplementation(({ data }) => Promise.resolve({ id: 'buyer-1', email: null, phone: '254712345678', name: null, pinHash: null, ...data })),
     },
   };
   const jwt = { signAsync: jest.fn().mockResolvedValue('signed-token') };
@@ -44,8 +46,8 @@ const futureOtp = (identifier: string, code: string, extra: Record<string, unkno
 
 describe('BuyerAuthService.methods', () => {
   it('always offers email, and SMS only when Africa\'s Talking is configured', () => {
-    expect(setup().service.methods()).toEqual({ email: true, sms: false });
-    expect(setup({ sms: true }).service.methods()).toEqual({ email: true, sms: true });
+    expect(setup().service.methods()).toEqual({ email: true, sms: false, pin: true });
+    expect(setup({ sms: true }).service.methods()).toEqual({ email: true, sms: true, pin: true });
   });
 });
 
@@ -116,7 +118,7 @@ describe('BuyerAuthService.verifyCode', () => {
     const result = await service.verifyCode({ email: 'Shopper@Example.com', code: '123456' });
     expect(prisma.buyer.upsert).toHaveBeenCalledWith({ where: { email: 'shopper@example.com' }, create: { email: 'shopper@example.com' }, update: {} });
     expect(jwt.signAsync).toHaveBeenCalledWith({ sub: 'buyer-1', scope: 'buyer' });
-    expect(result).toEqual({ accessToken: 'signed-token', buyer: { id: 'buyer-1', email: 'shopper@example.com', phone: null, name: null } });
+    expect(result).toEqual({ accessToken: 'signed-token', buyer: { id: 'buyer-1', email: 'shopper@example.com', phone: null, name: null, hasPin: false } });
   });
 
   it('creates the account by phone for an SMS code', async () => {
@@ -148,5 +150,110 @@ describe('BuyerAuthService.verifyCode', () => {
     // The stored hash is for another@example.com; the same digits for a@b.co must not match.
     const { service } = setup({ otp: futureOtp('another@example.com', '123456') });
     await expect(service.verifyCode({ email: 'a@b.co', code: '123456' })).rejects.toThrow(UnauthorizedException);
+  });
+});
+
+describe('BuyerAuthService phone + PIN', () => {
+  const stored = (pin: string, extra: Record<string, unknown> = {}) => ({
+    id: 'buyer-1', email: null, phone: '254712345678', name: null, pinFailCount: 0, pinLockedUntil: null, pinHash: hashPin(pin, SECRET), ...extra,
+  });
+
+  it('signs a shopper up by phone and PIN, storing only a hash', async () => {
+    const { service, prisma } = setup();
+    prisma.buyer.findUnique.mockResolvedValue(null);
+    const result = await service.signupWithPin({ phone: '0712 345 678', pin: '4821', name: ' Amina ' });
+    const data = prisma.buyer.create.mock.calls[0][0].data;
+    expect(data.phone).toBe('254712345678');
+    expect(data.name).toBe('Amina');
+    expect(data.pinHash).not.toContain('4821');
+    expect(result.accessToken).toBe('signed-token');
+  });
+
+  it('will not let a sign-up take over a number that already has an account', async () => {
+    const { service, prisma } = setup();
+    prisma.buyer.findUnique.mockResolvedValue(stored('4821', { pinHash: null }));
+    await expect(service.signupWithPin({ phone: '0712345678', pin: '4821' })).rejects.toThrow(/already used/);
+    expect(prisma.buyer.create).not.toHaveBeenCalled();
+  });
+
+  it('signs in with the right PIN and counts a wrong one', async () => {
+    const ok = setup();
+    ok.prisma.buyer.findUnique.mockResolvedValue(stored('4821'));
+    expect((await ok.service.loginWithPin('0712345678', '4821')).accessToken).toBe('signed-token');
+
+    const bad = setup();
+    bad.prisma.buyer.findUnique.mockResolvedValue(stored('4821'));
+    await expect(bad.service.loginWithPin('0712345678', '0000')).rejects.toThrow('Wrong phone number or PIN');
+    expect(bad.prisma.buyer.update.mock.calls[0][0].data.pinFailCount).toBe(1);
+  });
+
+  it('locks after five wrong PINs and refuses even the right PIN while locked', async () => {
+    const fifth = setup();
+    fifth.prisma.buyer.findUnique.mockResolvedValue(stored('4821', { pinFailCount: 4 }));
+    await expect(fifth.service.loginWithPin('0712345678', '0000')).rejects.toBeInstanceOf(UnauthorizedException);
+    expect(fifth.prisma.buyer.update.mock.calls[0][0].data.pinLockedUntil).toBeInstanceOf(Date);
+
+    const locked = setup();
+    locked.prisma.buyer.findUnique.mockResolvedValue(stored('4821', { pinLockedUntil: new Date(Date.now() + 600_000) }));
+    await expect(locked.service.loginWithPin('0712345678', '4821')).rejects.toBeInstanceOf(HttpException);
+  });
+
+  it('answers an unknown number and an account with no PIN exactly like a wrong PIN', async () => {
+    const none = setup();
+    none.prisma.buyer.findUnique.mockResolvedValue(null);
+    await expect(none.service.loginWithPin('0712345678', '4821')).rejects.toThrow('Wrong phone number or PIN');
+    const noPin = setup();
+    noPin.prisma.buyer.findUnique.mockResolvedValue(stored('4821', { pinHash: null }));
+    await expect(noPin.service.loginWithPin('0712345678', '4821')).rejects.toThrow('Wrong phone number or PIN');
+  });
+
+  it('sends a reset code by text, or by email when the text cannot be delivered', async () => {
+    const texted = setup({ smsSent: true });
+    texted.prisma.buyer.findUnique.mockResolvedValue(stored('4821', { email: 'amina@example.com' }));
+    expect((await texted.service.requestPinReset('0712345678')).via).toBe('sms');
+    const code = /\d{6}/.exec(texted.sms.sendSms.mock.calls[0][0].message)?.[0] as string;
+    expect(texted.prisma.buyerOtp.create.mock.calls[0][0].data.codeHash).toBe(hashFor('254712345678', code));
+
+    const emailed = setup({ smsSent: false, emailSent: true });
+    emailed.prisma.buyer.findUnique.mockResolvedValue(stored('4821', { email: 'amina@example.com' }));
+    const result = await emailed.service.requestPinReset('0712345678');
+    expect(result.via).toBe('email');
+    expect(result.message).not.toContain('amina@example.com');
+  });
+
+  it('points the shopper to support when neither a text nor an email can be sent', async () => {
+    const previous = process.env.NODE_ENV;
+    process.env.NODE_ENV = 'production';
+    try {
+      const { service, prisma } = setup({ smsSent: false });
+      prisma.buyer.findUnique.mockResolvedValue(stored('4821'));
+      const result = await service.requestPinReset('0712345678');
+      expect(result.sent).toBe(false);
+      expect(result.message).toMatch(/WhatsApp/);
+    } finally {
+      process.env.NODE_ENV = previous;
+    }
+  });
+
+  it('sets a new PIN with a valid code and clears any lock', async () => {
+    const { service, prisma } = setup({ otp: futureOtp('254712345678', '123456', { expiresAt: new Date(Date.now() + 60_000) }) });
+    prisma.buyer.findUnique.mockResolvedValue(stored('4821', { pinFailCount: 3 }));
+    await service.resetPin('0712345678', '123456', '9087');
+    const data = prisma.buyer.update.mock.calls[0][0].data;
+    expect(data.pinFailCount).toBe(0);
+    expect(data.pinLockedUntil).toBeNull();
+    expect(data.pinHash).not.toContain('9087');
+  });
+
+  it('lets a signed-in shopper add a phone and PIN, but not take a number that belongs to someone else', async () => {
+    const free = setup();
+    free.prisma.buyer.findUnique.mockResolvedValueOnce({ id: 'buyer-1', email: 'a@b.co', phone: null, pinHash: null }).mockResolvedValueOnce(null);
+    const view = await free.service.setPin('buyer-1', '4821', '0712345678');
+    expect(view.phone).toBe('254712345678');
+    expect(view.hasPin).toBe(true);
+
+    const taken = setup();
+    taken.prisma.buyer.findUnique.mockResolvedValueOnce({ id: 'buyer-1', email: 'a@b.co', phone: null, pinHash: null }).mockResolvedValueOnce({ id: 'someone-else' });
+    await expect(taken.service.setPin('buyer-1', '4821', '0712345678')).rejects.toThrow(/already used/);
   });
 });

@@ -48,6 +48,62 @@ export class VerifyBuyerCodeDto {
   code!: string;
 }
 
+const PIN_MESSAGE = 'Your PIN must be 4 to 6 digits';
+
+/** A shopper creating an account with a phone number and PIN. */
+export class BuyerPinSignupDto {
+  @IsString()
+  @MaxLength(20)
+  phone!: string;
+
+  @Matches(/^\d{4,6}$/, { message: PIN_MESSAGE })
+  pin!: string;
+
+  @IsString()
+  @IsOptional()
+  @MaxLength(100)
+  name?: string;
+}
+
+export class BuyerPinLoginDto {
+  @IsString()
+  @MaxLength(20)
+  phone!: string;
+
+  @Matches(/^\d{4,6}$/, { message: PIN_MESSAGE })
+  pin!: string;
+}
+
+export class BuyerPhoneDto {
+  @IsString()
+  @MaxLength(20)
+  phone!: string;
+}
+
+export class BuyerPinResetDto {
+  @IsString()
+  @MaxLength(20)
+  phone!: string;
+
+  @Matches(/^\s*\d{6}\s*$/, { message: 'Enter the 6-digit code we sent you' })
+  code!: string;
+
+  @Matches(/^\d{4,6}$/, { message: PIN_MESSAGE })
+  pin!: string;
+}
+
+/** A signed-in shopper adding a phone number and PIN to their account (or changing the PIN). */
+export class SetBuyerPinDto {
+  @Matches(/^\d{4,6}$/, { message: PIN_MESSAGE })
+  pin!: string;
+
+  // Needed only when the account has no phone number yet (e.g. it was made with an email).
+  @IsString()
+  @IsOptional()
+  @MaxLength(20)
+  phone?: string;
+}
+
 export class UpdateBuyerDto {
   @IsString()
   @IsOptional()
