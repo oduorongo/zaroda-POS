@@ -106,7 +106,7 @@ export class RiderAuthService {
     const rider = await this.prisma.rider.findUnique({ where: { phone } });
     // No rider account on this number: a shopper with the same phone number and PIN is the same person.
     if (!rider) return this.loginViaShopper(phone, pin, wrong);
-    if (!rider.pinHash) throw wrong;
+    if (!rider.pinHash) throw (await this.shopperPinHint(phone, pin, false)) ?? wrong;
 
     if (rider.pinLockedUntil && rider.pinLockedUntil > new Date()) {
       const minutes = Math.max(1, Math.ceil((rider.pinLockedUntil.getTime() - Date.now()) / 60_000));
@@ -120,7 +120,7 @@ export class RiderAuthService {
         where: { id: rider.id },
         data: { pinFailCount: lock ? 0 : failures, pinLockedUntil: lock ? new Date(Date.now() + PIN_LOCK_MS) : undefined },
       });
-      throw wrong;
+      throw (await this.shopperPinHint(phone, pin, true)) ?? wrong;
     }
 
     const signedIn = await this.prisma.rider.update({
@@ -128,6 +128,20 @@ export class RiderAuthService {
       data: { pinFailCount: 0, pinLockedUntil: null, lastLoginAt: new Date() },
     });
     return this.session(signedIn);
+  }
+
+  /**
+   * The PIN they typed is their SHOPPER PIN, but this number already has its own rider account, which we never take over.
+   * Say so, and how to get one PIN for both, instead of a bare "wrong PIN". Null when it is not the shopper PIN.
+   */
+  private async shopperPinHint(phone: string, pin: string, riderHasPin: boolean): Promise<Error | null> {
+    const buyer = await this.prisma.buyer.findUnique({ where: { phone } });
+    if (!buyer?.pinHash || !verifyPin(pin, buyer.pinHash, this.secret)) return null;
+    return new UnauthorizedException(
+      riderHasPin
+        ? "That is the PIN of your shopper account. This number also has a separate rider account with its own PIN. Use your rider PIN, or tap 'Forgot your PIN?' - the new PIN you choose there is set for both."
+        : "That is the PIN of your shopper account. This number already has a rider account with no PIN yet. Tap 'Forgot your PIN?' to choose one PIN for both, or sign in with email and set a PIN on your rider page.",
+    );
   }
 
   /**

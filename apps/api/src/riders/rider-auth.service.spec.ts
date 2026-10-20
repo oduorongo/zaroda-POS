@@ -219,3 +219,24 @@ describe('RiderAuthService one login with the shopper account', () => {
     expect(prisma.buyer.updateMany.mock.calls[0][0].data.pinHash).toBe(prisma.rider.update.mock.calls[0][0].data.pinHash);
   });
 });
+
+describe('RiderAuthService explains a shopper PIN typed on the rider page', () => {
+  const shopper = (pin: string) => ({ id: 'buyer-1', phone: '254712345678', name: 'Amina', pinFailCount: 0, pinLockedUntil: null, pinHash: hashPin(pin, SECRET) });
+  const rider = (pin: string | null) => ({ id: 'rider-1', phone: '254712345678', pinFailCount: 0, pinLockedUntil: null, pinHash: pin ? hashPin(pin, SECRET) : null });
+
+  it('says so when the number already has a rider account with a different PIN', async () => {
+    const { service, prisma } = setup({ rider: rider('9999'), buyer: shopper('4821') });
+    await expect(service.loginWithPin('0712345678', '4821')).rejects.toThrow(/PIN of your shopper account.*separate rider account/s);
+    expect(prisma.rider.update.mock.calls[0][0].data.pinFailCount).toBe(1);
+  });
+
+  it('says so when the rider account has no PIN yet', async () => {
+    const { service } = setup({ rider: rider(null), buyer: shopper('4821') });
+    await expect(service.loginWithPin('0712345678', '4821')).rejects.toThrow(/no PIN yet/);
+  });
+
+  it('still just says "wrong PIN" when it matches neither', async () => {
+    const { service } = setup({ rider: rider('9999'), buyer: shopper('4821') });
+    await expect(service.loginWithPin('0712345678', '0000')).rejects.toThrow('Wrong phone number or PIN');
+  });
+});
