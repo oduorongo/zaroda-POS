@@ -979,3 +979,11 @@ DROP POLICY IF EXISTS tenant_isolation ON table_reservations;
 CREATE POLICY tenant_isolation ON table_reservations
   USING ("organizationId" = current_setting('app.current_tenant', true))
   WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+-- ── expenses: money the business spent that is not stock ──────────────────
+ALTER TABLE expenses ENABLE ROW LEVEL SECURITY;
+ALTER TABLE expenses FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON expenses;
+CREATE POLICY tenant_isolation ON expenses
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
