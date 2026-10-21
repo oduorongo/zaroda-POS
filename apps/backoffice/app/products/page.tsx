@@ -69,6 +69,9 @@ export default function ProductsPage() {
   const [variantPrice, setVariantPrice] = useState("");
   const [variantName, setVariantName] = useState("");
   const [variantCost, setVariantCost] = useState("");
+  const [variantBarcode, setVariantBarcode] = useState("");
+  const [editBarcode, setEditBarcode] = useState("");
+  const [barcodeBusy, setBarcodeBusy] = useState(false);
   const [editingVariantId, setEditingVariantId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
   const [editPrice, setEditPrice] = useState("");
@@ -153,6 +156,7 @@ export default function ProductsPage() {
         name: variantName.trim() || undefined,
         price,
         cost: variantCost.trim() === "" ? undefined : Number(variantCost),
+        barcode: variantBarcode.trim() || undefined,
         quantityMode: variantMode,
       });
       setVariantForProductId(null);
@@ -160,6 +164,7 @@ export default function ProductsPage() {
       setVariantPrice("");
       setVariantName("");
       setVariantCost("");
+      setVariantBarcode("");
       setVariantMode("COUNT");
       await load();
     } catch (err) {
@@ -174,7 +179,23 @@ export default function ProductsPage() {
     setEditName(v.name ?? "");
     setEditPrice(String(Number(v.price)));
     setEditCost(v.cost === null ? "" : String(Number(v.cost)));
+    setEditBarcode(v.barcode ?? "");
     setEditError(null);
+  }
+
+  // Gives the option a barcode of the shop's own (for bread, a repacked bag... things with no printed code) and shows it.
+  async function makeBarcode(productId: string, variantId: string) {
+    setBarcodeBusy(true);
+    setEditError(null);
+    try {
+      const made = await apiPost<Variant>(`/products/${productId}/variants/${variantId}/barcode`, {});
+      setEditBarcode(made.barcode ?? "");
+      await load();
+    } catch (err) {
+      setEditError(err instanceof ApiError ? err.message : "Could not make a barcode.");
+    } finally {
+      setBarcodeBusy(false);
+    }
   }
 
   async function saveEdit(productId: string, variantId: string) {
@@ -187,7 +208,7 @@ export default function ProductsPage() {
     setEditBusy(true);
     setEditError(null);
     try {
-      await apiPatch(`/products/${productId}/variants/${variantId}`, { name: editName.trim(), price, ...(cost !== undefined ? { cost } : {}) });
+      await apiPatch(`/products/${productId}/variants/${variantId}`, { name: editName.trim(), price, barcode: editBarcode.trim(), ...(cost !== undefined ? { cost } : {}) });
       setEditingVariantId(null);
       await load();
     } catch (err) {
@@ -297,6 +318,7 @@ export default function ProductsPage() {
                           ) : (
                             v.sku
                           )}
+                          {v.barcode && <span className="block font-mono text-xs text-secondary-500">barcode {v.barcode}</span>}
                           {v.cost === null && <span className="ml-2 text-xs text-warning-700" title="Without a cost, this product's profit cannot be worked out">no cost yet</span>}
                           {v.quantityMode === "WEIGHT" && (
                             <span className="ml-2 rounded bg-amber-950 px-1.5 py-0.5 text-xs text-amber-400">
@@ -353,6 +375,26 @@ export default function ProductsPage() {
                         Cancel
                       </button>
                     </div>
+                    <div className="flex flex-wrap items-end gap-2">
+                      <label className="text-xs text-secondary-500">
+                        Barcode
+                        <input
+                          placeholder="scan it or type it"
+                          value={editBarcode}
+                          maxLength={60}
+                          onChange={(e) => setEditBarcode(e.target.value)}
+                          className="mt-1 block w-56 rounded-md border border-border bg-background p-2 font-mono text-sm text-foreground"
+                        />
+                      </label>
+                      <button
+                        onClick={() => void makeBarcode(product.id, v.id)}
+                        disabled={barcodeBusy || Boolean(editBarcode.trim())}
+                        title="For things with no barcode on them: we make one you can print on a label"
+                        className="rounded-md border border-border px-3 py-2 text-sm hover:bg-surface disabled:opacity-40"
+                      >
+                        {barcodeBusy ? "Making..." : "Make a barcode"}
+                      </button>
+                    </div>
                     <p className="text-xs text-secondary-500">The cost is used for your profit. It also updates by itself when you enter the price paid while receiving stock.</p>
                     {editError && <p className="text-sm text-red-400">{editError}</p>}
                   </div>
@@ -380,6 +422,13 @@ export default function ProductsPage() {
                     value={variantPrice}
                     onChange={(e) => setVariantPrice(e.target.value)}
                     className="w-28 rounded-md border border-border bg-background p-2 text-sm"
+                  />
+                  <input
+                    placeholder="Barcode (scan or type)"
+                    value={variantBarcode}
+                    maxLength={60}
+                    onChange={(e) => setVariantBarcode(e.target.value)}
+                    className="w-48 rounded-md border border-border bg-background p-2 font-mono text-sm"
                   />
                   <input
                     type="number"

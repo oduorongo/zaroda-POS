@@ -23,6 +23,8 @@ import {
   Store,
   ShoppingBag,
   Banknote,
+  ScanBarcode,
+  ClipboardCheck,
   TrendingUp,
   UtensilsCrossed,
   BedDouble,
@@ -65,6 +67,20 @@ const TILES: Tile[] = [
 // Mirrors components/nav.tsx exactly - owner/manager only, though the real
 // authorization boundary is the API's @Roles() guard, not this UI check.
 const MANAGER_TILES: Tile[] = [
+  {
+    href: "/stock-take",
+    label: "Stock count",
+    description: "Count your shelves by scanning, and fix the stock.",
+    icon: ClipboardCheck,
+    tone: "bg-teal-600",
+  },
+  {
+    href: "/labels",
+    label: "Barcode labels",
+    description: "Print barcode labels for your products.",
+    icon: ScanBarcode,
+    tone: "bg-slate-600",
+  },
   {
     href: "/profit",
     label: "Profit & loss",

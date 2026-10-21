@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { apiGet, apiPost, ApiError } from "../../../lib/api";
@@ -8,11 +8,15 @@ import { getSession, clearSession, isBackofficeRole, type Session } from "../../
 import { Nav } from "../../../components/nav";
 import { PageHeader } from "../../../components/page-header";
 import { variantLabel } from "../../../lib/variant-label";
+import { findByCode } from "../../../lib/barcode";
+import { useScanner } from "../../../hooks/use-scanner";
+import { BarcodeScanner } from "../../../components/barcode-scanner";
 
 interface Variant {
   id: string;
   sku: string;
   name?: string | null;
+  barcode?: string | null;
   quantityMode: "COUNT" | "WEIGHT";
   cost?: string | number | null;
   product: { name: string };
@@ -66,6 +70,9 @@ export default function ReceiveStockPage() {
   const [batchNumber, setBatchNumber] = useState("");
   const [expiryDate, setExpiryDate] = useState("");
   const [lineError, setLineError] = useState<string | null>(null);
+  const [scanOpen, setScanOpen] = useState(false);
+  const [scanNote, setScanNote] = useState<string | null>(null);
+  const quantityRef = useRef<HTMLInputElement>(null);
 
   const [lines, setLines] = useState<ReceiveLine[]>([]);
   const [submitting, setSubmitting] = useState(false);
@@ -125,6 +132,25 @@ export default function ReceiveStockPage() {
       .filter((v) => v.product.name.toLowerCase().includes(term) || v.sku.toLowerCase().includes(term) || (v.name ?? "").toLowerCase().includes(term))
       .slice(0, 25);
   }, [products, search]);
+
+  // A scanned (or typed-and-Enter) barcode picks the product and puts the cursor in the quantity box, ready for the count.
+  const everyVariant = useMemo(() => products.flatMap((p) => p.variants.map((v) => ({ ...v, product: { name: p.name } }))), [products]);
+  function onScanned(code: string) {
+    const match = findByCode(everyVariant, code);
+    if (match) {
+      setSelectedVariantId(match.id);
+      setSearch("");
+      setLineError(null);
+      setScanNote(`Found: ${variantLabel(match.product.name, match)}`);
+      setScanOpen(false);
+    } else {
+      setScanNote(`Nothing has the barcode ${code}. Add the barcode to the product first, or search by name.`);
+    }
+  }
+  useScanner(onScanned, !scanOpen);
+  useEffect(() => {
+    if (selectedVariantId) quantityRef.current?.focus();
+  }, [selectedVariantId]);
 
   const selectedVariant = useMemo(
     () => variantOptions.find((v) => v.id === selectedVariantId) ||
@@ -281,9 +307,25 @@ export default function ReceiveStockPage() {
             onChange={(e) => {
               setSearch(e.target.value);
               setSelectedVariantId("");
+              setScanNote(null);
+            }}
+            onKeyDown={(e) => {
+              // A scanner gun types the code and presses Enter.
+              if (e.key === "Enter" && search.trim()) {
+                e.preventDefault();
+                if (findByCode(everyVariant, search)) onScanned(search.trim());
+              }
             }}
             className="mt-1 w-full rounded-md border border-border bg-background p-2 text-sm"
           />
+          <div className="mt-1 flex flex-wrap items-center gap-3 text-xs text-secondary-500">
+            <button type="button" onClick={() => setScanOpen(true)} className="rounded-md border border-border px-2 py-1 hover:bg-surface">
+              Scan with the camera
+            </button>
+            <span>or scan with a scanner gun - no need to click anywhere first.</span>
+          </div>
+          {scanNote && <p className={`mt-1 text-sm ${scanNote.startsWith("Found") ? "text-emerald-500" : "text-amber-500"}`}>{scanNote}</p>}
+          {scanOpen && <BarcodeScanner onDetected={onScanned} onClose={() => setScanOpen(false)} />}
           {!selectedVariantId && search.trim() && (
             <div className="mt-1 max-h-48 overflow-y-auto rounded-md border border-border bg-background">
               {variantOptions.length === 0 ? (
@@ -315,8 +357,15 @@ export default function ReceiveStockPage() {
                 min={selectedVariant?.quantityMode === "WEIGHT" ? 0.001 : 1}
                 step={selectedVariant?.quantityMode === "WEIGHT" ? "0.001" : "1"}
                 placeholder="0"
+                ref={quantityRef}
                 value={quantity}
                 onChange={(e) => setQuantity(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    addLine();
+                  }
+                }}
                 className="mt-1 w-28 rounded-md border border-border bg-background p-2 text-sm"
               />
             </div>

@@ -241,6 +241,35 @@ export default function PosPage() {
     return { subtotal, tax, discountAmount, redemptionValue, total };
   }, [cartEntries, discount, redeemPoints, customer]);
 
+  // A scanner gun is a very fast keyboard: digits then Enter. Listen for that when nobody is typing in a box and no window is open.
+  const anyDialogOpen = checkoutOpen || customerModalOpen || discountModalOpen || prescriptionModalOpen || scannerOpen;
+  const gunRef = useRef({ addByCode, anyDialogOpen });
+  gunRef.current = { addByCode, anyDialogOpen };
+  useEffect(() => {
+    let buffer = "";
+    let last = 0;
+    function onKeyDown(e: KeyboardEvent) {
+      const el = e.target as HTMLElement | null;
+      const typing = el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT" || el.isContentEditable);
+      if (typing || e.ctrlKey || e.metaKey || e.altKey || gunRef.current.anyDialogOpen) return;
+      const now = Date.now();
+      if (now - last > 60) buffer = "";
+      last = now;
+      if (e.key === "Enter") {
+        const code = buffer;
+        buffer = "";
+        if (code.length >= 4) {
+          e.preventDefault();
+          gunRef.current.addByCode(code);
+        }
+        return;
+      }
+      if (e.key.length === 1) buffer += e.key;
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
   function openScanner() {
     scanLockRef.current = false;
     setScanStatus(null);
@@ -268,6 +297,28 @@ export default function PosPage() {
     } else {
       setScanStatus(`Not found · Haipatikani: ${value}`);
     }
+  }
+
+  // A scanner gun types the code and presses Enter. Whether it lands in the search box or nowhere in particular, the item goes
+  // straight into the cart; a code nothing has says so instead of silently doing nothing. A typed search that narrows to ONE
+  // product also adds it on Enter.
+  function addByCode(raw: string, fromSearchBox = false) {
+    const q = raw.trim().toLowerCase();
+    if (!q) return false;
+    let match = variants.find((v) => v.barcode?.toLowerCase() === q || v.sku.toLowerCase() === q);
+    if (!match && fromSearchBox && filtered.length === 1) match = filtered[0];
+    if (match) {
+      addToCart(match);
+      setSearch("");
+      setToast(`Added: ${match.productName}`);
+      setTimeout(() => setToast(null), 2000);
+      return true;
+    }
+    if (!fromSearchBox || /^[0-9]{6,}$/.test(q)) {
+      setToast(`No product has the barcode ${raw.trim()}`);
+      setTimeout(() => setToast(null), 3000);
+    }
+    return false;
   }
 
   function addToCart(variant: CachedVariant) {
@@ -695,6 +746,12 @@ export default function PosPage() {
               placeholder="Search product, code, or scan barcode... · Tafuta bidhaa"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  addByCode(search, true);
+                }
+              }}
             />
             <button
               onClick={openScanner}
