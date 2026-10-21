@@ -21,6 +21,8 @@ export interface ShopVariant {
   sku: string;
   /** What this option is called ("Large loaf 800g"), when the shop has named it. */
   name?: string | null;
+  /** The barcode printed on the product, so a shopper can find it by scanning. */
+  barcode?: string | null;
   price: number;
   quantityMode: "COUNT" | "WEIGHT";
   available: number;

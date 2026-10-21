@@ -7,11 +7,14 @@ import { getSession, clearSession, isBackofficeRole, type Session } from "../../
 import { Nav } from "../../components/nav";
 import { PageHeader } from "../../components/page-header";
 import { variantLabel, variantTitleOf } from "../../lib/variant-label";
+import { findByCode } from "../../lib/barcode";
+import { ScanControls } from "../../components/scan-controls";
 
 interface Variant {
   id: string;
   sku: string;
   name?: string | null;
+  barcode?: string | null;
   quantityMode: "COUNT" | "WEIGHT";
   product: { name: string };
 }
@@ -44,14 +47,30 @@ function VariantPicker({
   selected,
   onSelect,
   exclude,
+  scanEnabled,
 }: {
   label: string;
   products: Product[];
   selected: Variant | null;
   onSelect: (v: Variant) => void;
   exclude?: string;
+  /** A scanner gun's scan is for this picker (the first one still empty). */
+  scanEnabled: boolean;
 }) {
   const [search, setSearch] = useState("");
+  const [note, setNote] = useState<string | null>(null);
+  // A scanned barcode (camera, scanner gun, or typed with Enter) picks the item.
+  function scanned(code: string): boolean {
+    const match = findByCode(products.flatMap((p) => p.variants.map((v) => ({ ...v, product: { name: p.name } }))).filter((v) => v.id !== exclude), code);
+    if (!match) {
+      setNote(`Nothing has the barcode ${code}. Add the barcode to the product first, or search by name.`);
+      return false;
+    }
+    onSelect(match);
+    setSearch("");
+    setNote(null);
+    return true;
+  }
   const options = useMemo(() => {
     const flat = products.flatMap((p) => p.variants.map((v) => ({ ...v, product: { name: p.name } })));
     const term = search.trim().toLowerCase();
@@ -82,9 +101,19 @@ function VariantPicker({
           <input
             placeholder="Search by product name or code"
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              setNote(null);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && search.trim()) {
+                e.preventDefault();
+                scanned(search.trim());
+              }
+            }}
             className="mt-1 w-full rounded-md border border-border bg-background p-2 text-sm"
           />
+          <ScanControls onCode={scanned} enabled={scanEnabled} note={note} />
           {search.trim() && (
             <div className="mt-1 max-h-40 overflow-y-auto rounded-md border border-border bg-background">
               {options.length === 0 ? (
@@ -264,6 +293,7 @@ export default function RepackagingPage() {
               selected={fromVariant}
               onSelect={(v) => setFromVariant(v.id ? v : null)}
               exclude={toVariant?.id}
+              scanEnabled={!fromVariant}
             />
             <VariantPicker
               label="Resale item (produced)"
@@ -271,6 +301,7 @@ export default function RepackagingPage() {
               selected={toVariant}
               onSelect={(v) => setToVariant(v.id ? v : null)}
               exclude={fromVariant?.id}
+              scanEnabled={Boolean(fromVariant) && !toVariant}
             />
             <div>
               <label className="block text-xs text-secondary-500">
