@@ -8,6 +8,9 @@ import { getSession, clearSession, isBackofficeRole, type Session } from "../../
 import { Nav } from "../../components/nav";
 import { PageHeader } from "../../components/page-header";
 import { variantLabel } from "../../lib/variant-label";
+import { findByCode } from "../../lib/barcode";
+import { useScanner } from "../../hooks/use-scanner";
+import { BarcodeScanner } from "../../components/barcode-scanner";
 
 type Status = "DRAFT" | "ORDERED" | "PARTIALLY_RECEIVED" | "RECEIVED" | "CANCELLED";
 
@@ -15,6 +18,7 @@ interface Variant {
   id: string;
   sku: string;
   name?: string | null;
+  barcode?: string | null;
   quantityMode: "COUNT" | "WEIGHT";
   product: { name: string };
 }
@@ -76,6 +80,8 @@ export default function PurchaseOrdersPage() {
   const [supplierId, setSupplierId] = useState("");
   const [reference, setReference] = useState("");
   const [search, setSearch] = useState("");
+  const [scanOpen, setScanOpen] = useState(false);
+  const [scanNote, setScanNote] = useState<string | null>(null);
   const [lines, setLines] = useState<NewLine[]>([]);
   const [createBusy, setCreateBusy] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
@@ -153,6 +159,24 @@ export default function PurchaseOrdersPage() {
     });
     setSearch("");
   }
+
+  // Scanning adds the product to the order; scanning the same one again adds one more.
+  function onScanned(code: string) {
+    const flat = products.flatMap((p) => p.variants.map((v) => ({ ...v, product: { name: p.name } })));
+    const match = findByCode(flat, code);
+    if (!match) {
+      setScanNote(`Nothing has the barcode ${code}. Add the barcode to the product first, or search by name.`);
+      return;
+    }
+    setScanNote(`Added: ${variantLabel(match.product.name, match)}`);
+    setSearch("");
+    setLines((prev) =>
+      prev.some((l) => l.variantId === match.id)
+        ? prev.map((l) => (l.variantId === match.id ? { ...l, quantityOrdered: l.quantityOrdered + (l.quantityMode === "COUNT" ? 1 : 0) } : l))
+        : [...prev, { variantId: match.id, label: variantLabel(match.product.name, match), quantityOrdered: 1, quantityMode: match.quantityMode }],
+    );
+  }
+  useScanner(onScanned, formOpen && !scanOpen);
 
   function updateLineQty(variantId: string, qty: number) {
     setLines((prev) => prev.map((l) => (l.variantId === variantId ? { ...l, quantityOrdered: qty } : l)));
@@ -261,9 +285,27 @@ export default function PurchaseOrdersPage() {
             <input
               placeholder="Search by product name or code"
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              onChange={(e) => {
+                setSearch(e.target.value);
+                setScanNote(null);
+              }}
+              onKeyDown={(e) => {
+                // A scanner gun types the code and presses Enter.
+                if (e.key === "Enter" && search.trim()) {
+                  e.preventDefault();
+                  onScanned(search.trim());
+                }
+              }}
               className="mt-1 w-full rounded-md border border-border bg-background p-2 text-sm"
             />
+            <div className="mt-1 flex flex-wrap items-center gap-3 text-xs text-secondary-500">
+              <button type="button" onClick={() => setScanOpen(true)} className="rounded-md border border-border px-2 py-1 hover:bg-surface">
+                Scan with the camera
+              </button>
+              <span>or use a scanner gun.</span>
+            </div>
+            {scanNote && <p className={`mt-1 text-sm ${scanNote.startsWith("Added") ? "text-emerald-500" : "text-amber-500"}`}>{scanNote}</p>}
+            {scanOpen && <BarcodeScanner onDetected={(code) => { onScanned(code); setScanOpen(false); }} onClose={() => setScanOpen(false)} />}
             {search.trim() && (
               <div className="mt-1 max-h-40 overflow-y-auto rounded-md border border-border bg-background">
                 {variantOptions.length === 0 ? (

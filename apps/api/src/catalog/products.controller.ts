@@ -22,6 +22,7 @@ import { MAX_IMAGE_BYTES, ProductImagesService } from './product-images.service'
 import { CreateProductDto, UpdateProductDto } from './dto/product.dto';
 import {
   CreateProductVariantDto,
+  GenerateBarcodesDto,
   UpdateProductVariantDto,
 } from './dto/product-variant.dto';
 
@@ -69,6 +70,14 @@ export class ProductsController {
     await this.products.remove(id);
   }
 
+  // The label printer: barcodes for many options at once (those that have none).
+  @Roles(Role.MANAGER, Role.OWNER)
+  @Post('barcodes/generate')
+  @HttpCode(200)
+  generateBarcodes(@Body() dto: GenerateBarcodesDto) {
+    return this.variants.generateBarcodes(dto.variantIds);
+  }
+
   // ── Variants (nested under a product) ──────────────────────────────────
 
   @Get(':productId/variants')
@@ -101,6 +110,17 @@ export class ProductsController {
     @Body() dto: UpdateProductVariantDto,
   ) {
     return this.variants.update(productId, variantId, dto);
+  }
+
+  // Give an option a barcode of the shop's own, if it has none.
+  @Roles(Role.MANAGER, Role.OWNER)
+  @Post(':productId/variants/:variantId/barcode')
+  @HttpCode(200)
+  generateVariantBarcode(
+    @Param('productId', ParseUUIDPipe) productId: string,
+    @Param('variantId', ParseUUIDPipe) variantId: string,
+  ) {
+    return this.variants.generateBarcode(productId, variantId);
   }
 
   @Roles(Role.MANAGER, Role.OWNER)

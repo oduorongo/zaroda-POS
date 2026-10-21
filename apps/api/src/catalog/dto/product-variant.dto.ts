@@ -1,4 +1,7 @@
 import {
+  ArrayMaxSize,
+  ArrayMinSize,
+  IsArray,
   IsEnum,
   IsNumber,
   IsOptional,
@@ -6,6 +9,7 @@ import {
   Min,
   MaxLength,
   MinLength,
+  IsUUID,
 } from 'class-validator';
 import { PartialType } from '@nestjs/mapped-types';
 import { QuantityMode } from '@prisma/client';
@@ -49,3 +53,11 @@ export class CreateProductVariantDto {
 export class UpdateProductVariantDto extends PartialType(
   CreateProductVariantDto,
 ) {}
+
+export class GenerateBarcodesDto {
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(200)
+  @IsUUID('all', { each: true })
+  variantIds!: string[];
+}
