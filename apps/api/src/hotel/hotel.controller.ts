@@ -104,25 +104,15 @@ export class HotelController {
     return this.rooms.listBookings({ status: valid, includePast: includePast === 'true' });
   }
 
-  @Roles(Role.MANAGER, Role.OWNER)
-  @Post('bookings/:id/check-in')
-  checkIn(@Param('id', ParseUUIDPipe) id: string) {
-    return this.rooms.checkIn(id);
-  }
+  // Check-in and check-out moved to the front desk (front-desk.controller.ts): they need a room and settle the folio.
 
-  @Roles(Role.MANAGER, Role.OWNER)
-  @Post('bookings/:id/check-out')
-  checkOut(@Param('id', ParseUUIDPipe) id: string) {
-    return this.rooms.checkOut(id);
-  }
-
-  @Roles(Role.MANAGER, Role.OWNER)
+  @Roles(Role.SUPERVISOR, Role.MANAGER, Role.OWNER)
   @Post('bookings/:id/no-show')
   noShow(@Param('id', ParseUUIDPipe) id: string) {
     return this.rooms.noShow(id);
   }
 
-  @Roles(Role.MANAGER, Role.OWNER)
+  @Roles(Role.SUPERVISOR, Role.MANAGER, Role.OWNER)
   @Post('bookings/:id/cancel')
   cancel(@Param('id', ParseUUIDPipe) id: string, @Body() dto: CancelBookingDto) {
     return this.rooms.cancel(id, dto);

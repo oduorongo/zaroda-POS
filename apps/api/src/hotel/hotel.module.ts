@@ -8,6 +8,11 @@ import { HotelPublicService } from './hotel-public.service';
 import { HotelRoomsService } from './hotel-rooms.service';
 import { FrontDeskController } from './front-desk.controller';
 import { PhysicalRoomsService } from './physical-rooms.service';
+import { FrontDeskService } from './front-desk.service';
+import { FrontDeskStayService } from './front-desk-stay.service';
+import { HotelFolioService } from './hotel-folio.service';
+import { RoomChargeService } from './room-charge.service';
+import { SalesModule } from '../sales/sales.module';
 import { RoomBookingsService } from './room-bookings.service';
 import { RoomBookingAutoCompleteService } from './room-booking-autocomplete.service';
 import { HospitalityAdminService } from './hospitality-admin.service';
@@ -19,9 +24,9 @@ import { HospitalityAdminService } from './hospitality-admin.service';
  * RESTAURANT manifest (restaurant.module.ts) - there is only one manifest per industry.
  */
 @Module({
-  imports: [OnlineOrdersModule, OnlineStoreModule, NotificationsModule],
+  imports: [OnlineOrdersModule, OnlineStoreModule, NotificationsModule, SalesModule],
   controllers: [HotelController, FrontDeskController, PublicHotelsController],
-  providers: [PhysicalRoomsService, HotelRoomsService, HotelPublicService, RoomBookingsService, RoomBookingAutoCompleteService, HospitalityAdminService, ObjectStorageService],
+  providers: [PhysicalRoomsService, FrontDeskService, FrontDeskStayService, HotelFolioService, RoomChargeService, HotelRoomsService, HotelPublicService, RoomBookingsService, RoomBookingAutoCompleteService, HospitalityAdminService, ObjectStorageService],
   // The platform admin can run the automatic completion by hand and reads the hotel and table-order overviews.
   exports: [RoomBookingAutoCompleteService, HospitalityAdminService],
 })

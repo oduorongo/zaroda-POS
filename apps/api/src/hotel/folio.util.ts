@@ -205,3 +205,39 @@ export function settlementClientId(bookingId: string): string {
     .digest('hex');
   return `${h.slice(0, 8)}-${h.slice(8, 12)}-4${h.slice(13, 16)}-8${h.slice(17, 20)}-${h.slice(20, 32)}`;
 }
+
+/**
+ * The payments that are still the guest's money after refunds: a refund takes back from the newest payments first (a refund of a
+ * deposit is the usual case), so what is left is what can pay the stay.
+ */
+export function netPayments(
+  payments: PaymentEntry[],
+  refundsTotal: number,
+): PaymentEntry[] {
+  let refund = cents(refundsTotal);
+  const out: PaymentEntry[] = [];
+  for (const p of [...payments].sort(
+    (a, b) =>
+      b.createdAt.getTime() - a.createdAt.getTime() || b.id.localeCompare(a.id),
+  )) {
+    const take = Math.min(refund, cents(p.amount));
+    refund -= take;
+    const left = cents(p.amount) - take;
+    if (left > 0) out.push({ ...p, amount: fromCents(left) });
+  }
+  return out.reverse();
+}
+
+/** What the settlement sale of the room nights totals: the nights (with tax) less any adjustments taken off, rounded once, as the sale rounds. */
+export function settlementTotal(
+  rate: number,
+  quantity: number,
+  taxRate: number,
+  discount: number,
+): number {
+  return (
+    Math.round(
+      Math.round(rate * quantity * (1 + taxRate) * 100 - discount * 100),
+    ) / 100
+  );
+}

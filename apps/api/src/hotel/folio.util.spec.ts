@@ -5,12 +5,14 @@ import {
   checkOutProblem,
   folioBalance,
   folioTotals,
+  netPayments,
   nightEntries,
   parseRoomChargeReference,
   quantityFor,
   roomChargeReference,
   roomStatusProblem,
   settlementClientId,
+  settlementTotal,
   signedAmount,
 } from './folio.util';
 
@@ -233,5 +235,31 @@ describe('settlementClientId', () => {
     expect(settlementClientId('a')).toMatch(
       /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-8[0-9a-f]{3}-[0-9a-f]{12}$/,
     );
+  });
+});
+
+describe('netPayments', () => {
+  const pay = (id: string, amount: number, day: number) => ({
+    id,
+    method: 'CASH',
+    amount,
+    reference: null,
+    createdAt: new Date(2026, 9, day),
+  });
+  it('takes a refund back from the newest payments first', () => {
+    const net = netPayments([pay('a', 3000, 1), pay('b', 2000, 3)], 2500);
+    expect(net.map((p) => [p.id, p.amount])).toEqual([['a', 2500]]);
+  });
+  it('leaves the payments alone with no refund, and nothing with a full one', () => {
+    expect(netPayments([pay('a', 3000, 1)], 0)).toHaveLength(1);
+    expect(netPayments([pay('a', 3000, 1)], 3000)).toHaveLength(0);
+  });
+});
+
+describe('settlementTotal', () => {
+  it('is the nights with tax, less adjustments, rounded once', () => {
+    expect(settlementTotal(5000, 3, 0.16, 0)).toBe(17400);
+    expect(settlementTotal(5000, 3, 0.16, 400)).toBe(17000);
+    expect(settlementTotal(3333.33, 3, 0.16, 0)).toBe(11599.99);
   });
 });

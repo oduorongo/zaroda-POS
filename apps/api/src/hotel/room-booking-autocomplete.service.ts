@@ -90,6 +90,12 @@ export class RoomBookingAutoCompleteService implements OnModuleInit, OnModuleDes
             } satisfies Prisma.RoomBookingUncheckedUpdateManyInput,
           });
           done += result.count;
+          if (result.count > 0) {
+            // the guest never checked out at the desk: the room they were in is free again (to be cleaned)
+            const open = await tx.hotelRoomAssignment.findMany({ where: { bookingId: booking.id, toAt: null } });
+            await tx.hotelRoomAssignment.updateMany({ where: { id: { in: open.map((o) => o.id) } }, data: { toAt: new Date() } });
+            await tx.hotelRoom.updateMany({ where: { id: { in: open.map((o) => o.roomId) }, status: 'OCCUPIED' }, data: { status: 'VACANT_DIRTY' } });
+          }
         }
         return done;
       }, TX_OPTIONS);

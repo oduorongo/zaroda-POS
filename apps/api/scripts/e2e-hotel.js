@@ -144,12 +144,20 @@ const day = (offset) => new Date(Date.now() + 3 * 3600_000 + offset * 86_400_000
   check('the booking shows on the hotel\'s list with deposit paid and balance due at the hotel', row?.status === 'CONFIRMED' && row.depositPaid === 3600 && row.balanceDue === 8400 && row.guestName === 'Amina', row);
   const unpaidRow = list.json.find?.((b) => b.id === second.json.id);
   check('an unpaid booking shows as waiting for its deposit (nothing paid yet)', unpaidRow?.status === 'PENDING_PAYMENT' && unpaidRow.depositPaid === 0 && unpaidRow.balanceDue === 12000, unpaidRow);
-  const earlyOut = await api('POST', `/hotel/bookings/${g1.id}/check-out`, { token: owner });
-  check('a guest cannot be checked out before being checked in', earlyOut.status === 400, earlyOut);
-  const inn = await api('POST', `/hotel/bookings/${g1.id}/check-in`, { token: owner });
-  check('check-in', inn.status === 201 || inn.status === 200 ? inn.json.status === 'CHECKED_IN' : false, inn);
-  const out = await api('POST', `/hotel/bookings/${g1.id}/check-out`, { token: owner });
-  check('check-out', out.json.status === 'CHECKED_OUT', out);
+  // The hotel has real rooms now: 2 of this type (the type's quantity follows them).
+  const roomsMade = await api('POST', '/hotel/rooms/bulk', { token: owner, body: { roomTypeId: roomType.id, prefix: `M${tag.slice(-4)}-`, from: 1, to: 2 } });
+  check('two real rooms are added to the room type', roomsMade.status === 201 && roomsMade.json.added === 2, roomsMade);
+  const earlyOut = await api('POST', `/hotel/bookings/${g1.id}/check-out`, { token: owner, body: {} });
+  check('a guest cannot be checked out before being checked in', earlyOut.status === 409, earlyOut);
+  const roomsOfType = (await api('GET', `/hotel/rooms?roomTypeId=${roomType.id}`, { token: owner })).json;
+  const innEarly = await api('POST', `/hotel/bookings/${g1.id}/check-in`, { token: owner, body: { roomIds: [roomsOfType[0].id] } });
+  check('check-in before the arrival date is refused', innEarly.status === 400 && /opens on/.test(innEarly.json.message), innEarly);
+  const inn = await api('POST', `/hotel/bookings/${g1.id}/check-in`, { token: owner, body: { roomIds: [roomsOfType[0].id], overrideEarly: true } });
+  check('check-in (the owner lets her in early) into a clean room', (inn.status === 200 || inn.status === 201) && inn.json.status === 'CHECKED_IN' && inn.json.roomNumbers?.length === 1, inn);
+  const notSettled = await api('POST', `/hotel/bookings/${g1.id}/check-out`, { token: owner, body: {} });
+  check('check-out is refused while KES 8,400 is still owed', notSettled.status === 409 && /still owes KES 8400/.test(notSettled.json.message), notSettled);
+  const out = await api('POST', `/hotel/bookings/${g1.id}/check-out`, { token: owner, body: { payments: [{ method: 'CASH', amount: 8400 }] } });
+  check('check-out once the balance is paid at the desk', out.status === 200 && out.json.booking?.status === 'CHECKED_OUT' && out.json.saleId, out);
   const commission = (await sql.query(`SELECT "commissionAmount" c FROM room_bookings WHERE id = $1`, [g1.id])).rows[0].c;
   check('commission is recorded on the whole stay, not the deposit: 3% of KES 12,000 = KES 360', Math.abs(Number(commission) - 360) < 0.001, commission);
   const grid = await api('GET', `/hotel/availability?from=${A}&days=7`, { token: owner });
@@ -192,8 +200,10 @@ const day = (offset) => new Date(Date.now() + 3 * 3600_000 + offset * 86_400_000
   check('a 0% deposit still asks for KES 1 on a KES 10,000 stay', cheapBooking.status === 201 && cheapBooking.json.total === 10000 && cheapBooking.json.depositAmount === 1, cheapBooking);
   const cheapPush = (await mock('GET', '/_test/pushes')).json.filter((x) => x.phone === '254788111222').pop();
   await mock('POST', `/_test/pay/${cheapPush.merchant_request_id}`);
-  await api('POST', `/hotel/bookings/${cheapBooking.json.id}/check-in`, { token: owner });
-  const cheapOut = await api('POST', `/hotel/bookings/${cheapBooking.json.id}/check-out`, { token: owner });
+  const cheapRoom = (await api('POST', '/hotel/rooms', { token: owner, body: { roomTypeId: cheap.id, number: `C${tag.slice(-5)}` } })).json;
+  await api('POST', `/hotel/bookings/${cheapBooking.json.id}/check-in`, { token: owner, body: { roomIds: [cheapRoom.id], overrideEarly: true } });
+  const cheapOutRaw = await api('POST', `/hotel/bookings/${cheapBooking.json.id}/check-out`, { token: owner, body: { payments: [{ method: 'CASH', amount: 9999 }] } });
+  const cheapOut = { json: { status: cheapOutRaw.json.booking?.status } };
   const cheapCommission = (await sql.query(`SELECT "commissionAmount" c FROM room_bookings WHERE id = $1`, [cheapBooking.json.id])).rows[0].c;
   check('commission is still 3% of the whole KES 10,000 stay (KES 300), not 3% of the KES 1 deposit', cheapOut.json.status === 'CHECKED_OUT' && Math.abs(Number(cheapCommission) - 300) < 0.001, { cheapOut: cheapOut.json.status, cheapCommission });
   await api('DELETE', `/hotel/room-types/${cheap.id}`, { token: owner });
@@ -238,7 +248,8 @@ const day = (offset) => new Date(Date.now() + 3 * 3600_000 + offset * 86_400_000
   const future = await makeBooking('Arrives later', '0711000004', true);
   const noShow = await makeBooking('Marked no-show', '0711000005', true);
   const unpaid = await makeBooking('Never paid', '0711000006', false);
-  await api('POST', `/hotel/bookings/${oldInHouse.id}/check-in`, { token: owner });
+  const autoRoom = (await api('POST', '/hotel/rooms', { token: owner, body: { roomTypeId: auto.id, number: `AU${tag.slice(-5)}` } })).json;
+  await api('POST', `/hotel/bookings/${oldInHouse.id}/check-in`, { token: owner, body: { roomIds: [autoRoom.id], overrideEarly: true } });
   await api('POST', `/hotel/bookings/${noShow.id}/no-show`, { token: owner });
   const setDates = (id, inDay, outDay) => sql.query(`UPDATE room_bookings SET "checkIn" = $1::date, "checkOut" = $2::date WHERE id = $3`, [inDay, outDay, id]);
   await setDates(oldNotCheckedIn.id, day(-6), day(-4)); // ended 4 days ago
@@ -310,6 +321,217 @@ const day = (offset) => new Date(Date.now() + 3 * 3600_000 + offset * 86_400_000
   check('and can list rooms again', (await api('PUT', `/hotel/room-types/${unlisted.json.id}`, { token: owner, body: { name: `Quiet-${tag}`, pricePerNight: 1000, maxGuests: 1, quantity: 1, depositPercent: 30, isListed: true } })).status === 200);
   await api('DELETE', `/hotel/room-types/${blockType.id}`, { token: owner });
   await api('DELETE', `/hotel/room-types/${unlisted.json.id}`, { token: owner });
+
+  // ─────────────────────────────────────────────────────────────────────────────────────────────
+  // FRONT DESK: real rooms, bookings taken at the desk, check-in/out, the folio, charge to room
+  // ─────────────────────────────────────────────────────────────────────────────────────────────
+  {
+    const { createHash, randomUUID } = require('crypto');
+    const settlementId = (bookingId) => {
+      const h = createHash('sha256').update(`hotel-settlement:${bookingId}`).digest('hex');
+      return `${h.slice(0, 8)}-${h.slice(8, 12)}-4${h.slice(13, 16)}-8${h.slice(17, 20)}-${h.slice(20, 32)}`;
+    };
+    const h = (method, p, body, token = owner) => api(method, p, { token, body });
+    const org = (await api('GET', '/organizations/me', { token: owner })).json;
+    const branches = (await api('GET', '/branches', { token: owner })).json;
+    const branchId = branches[0].id;
+
+    section('12. Front desk - setting up (rooms, staff, a taxed room type)');
+    console.log('  (waiting a minute so the sign-in limit resets)');
+    await sleep(65_000);
+    const mkStaff = async (role) => {
+      const email = `${role.toLowerCase()}-${tag}@demo.zaroda.pos`;
+      await api('POST', '/org-users', { token: owner, body: { email, fullName: `Desk ${role}`, password: 'password123', role, branchId } });
+      return (await api('POST', '/auth/login', { body: { email, password: 'password123' } })).json.accessToken;
+    };
+    const cashier = await mkStaff('CASHIER');
+    const supervisor = await mkStaff('SUPERVISOR');
+    check('a cashier and a supervisor can sign in', Boolean(cashier && supervisor));
+    const terminalId = (await sql.query(`SELECT id FROM terminals WHERE "branchId" = $1 ORDER BY "createdAt" LIMIT 1`, [branchId])).rows[0].id;
+    const ownerOrgUserId = (await sql.query(`SELECT ou.id FROM org_users ou JOIN users u ON u.id = ou."userId" WHERE u.email = 'owner@demo.zaroda.pos' AND ou."organizationId" = $1`, [org.id])).rows[0].id;
+    const pin = await api('POST', '/auth/pin-login', { body: { terminalId, orgUserId: ownerOrgUserId, pin: '1234' } });
+    const cashierSessionId = pin.json.cashierSessionId;
+    check('a till session exists for charge-to-room sales', Boolean(cashierSessionId), pin);
+
+    const mkType = async (name, rooms, { price = 5000, listed = false } = {}) => {
+      const type = (await h('POST', '/hotel/room-types', { name: `${name}-${tag}`, pricePerNight: price, maxGuests: 2, quantity: 1, depositPercent: 30, isListed: listed })).json;
+      const made = await h('POST', '/hotel/rooms/bulk', { roomTypeId: type.id, prefix: `${name.slice(0, 2)}${tag.slice(-3)}-`, from: 1, to: rooms });
+      const list = (await h('GET', `/hotel/rooms?roomTypeId=${type.id}`)).json;
+      return { type, made, list };
+    };
+    const fdv = await mkType('Taxed', 2);
+    check('rooms are added in bulk and the room type\'s quantity follows them (2)', fdv.made.status === 201 && (await h('GET', '/hotel/room-types')).json.find((t) => t.id === fdv.type.id).quantity === 2, fdv.made);
+    check('adding a room number that exists is refused', (await h('POST', '/hotel/rooms', { roomTypeId: fdv.type.id, number: fdv.list[0].number })).status === 409);
+    check('a cashier cannot add rooms or room types', (await h('POST', '/hotel/rooms/bulk', { roomTypeId: fdv.type.id, from: 90, to: 91 }, cashier)).status === 403 && (await h('POST', '/hotel/room-types', { name: 'x', pricePerNight: 1000, maxGuests: 1, quantity: 1, depositPercent: 0 }, cashier)).status === 403);
+    check('the front desk needs a sign-in', (await api('GET', '/hotel/desk')).status === 401);
+
+    // The hotel's VAT: the room product ("Room: Taxed") gets a 16% tax class.
+    const vat = await h('POST', '/tax-classes', { name: `Room VAT ${tag}`, rate: 0.16, isExempt: false });
+    const productId = (await sql.query(`SELECT v."productId" p FROM hotel_room_types t JOIN product_variants v ON v.id = t."variantId" WHERE t.id = $1`, [fdv.type.id])).rows[0]?.p;
+    check('each room type has its own "Room: ..." product for selling nights', Boolean(productId));
+    await h('PATCH', `/products/${productId}`, { taxClassId: vat.json.id });
+
+    const stockedProduct = (await h('POST', '/products', { name: `Laundry-${tag}` })).json;
+    const laundry = (await h('POST', `/products/${stockedProduct.id}/variants`, { sku: `LDRY-${tag}`, price: 300 })).json;
+    await h('POST', '/inventory/transactions', { branchId, variantId: laundry.id, type: 'ADJUSTMENT', quantityDelta: 50 });
+
+    section('13. A booking taken at the desk');
+    const body = (over = {}) => ({ guestName: 'Wanjiru Kamau', phone: '0711 222 333', idNumber: 'A1234567', nationality: 'Kenyan', guests: 2, checkIn: day(0), checkOut: day(2), roomTypeId: fdv.type.id, ...over });
+    check('a bad phone number is refused', (await h('POST', '/hotel/bookings', body({ phone: '12' }), cashier)).status === 400);
+    check('a check-in date in the past is refused', (await h('POST', '/hotel/bookings', body({ checkIn: day(-1) }), cashier)).status === 400);
+    check('the desk needs a role that works the desk (no token = refused)', (await api('POST', '/hotel/bookings', { body: body() })).status === 401);
+    const b1 = await h('POST', '/hotel/bookings', body({ deposit: { method: 'CASH', amount: 2000 } }), cashier);
+    check('a cashier books a walk-in guest with a KES 2,000 cash deposit - no marketplace, no payment gateway', b1.status === 201 && b1.json.status === 'CONFIRMED' && b1.json.source === 'FRONT_DESK' && b1.json.total === 10000, b1);
+    check('the ID number is masked to its last four in the response', b1.json.idNumber === '****4567', b1.json.idNumber);
+    check('the deposit is on the folio, as a payment', b1.json.paid === 2000 && b1.json.balance === -2000, b1.json);
+    const full = await h('GET', `/hotel/bookings/${b1.json.id}`, undefined, supervisor);
+    check('a supervisor can open the guest\'s record and see the full ID number; a cashier cannot', full.json.idNumber === 'A1234567' && (await h('GET', `/hotel/bookings/${b1.json.id}`, undefined, cashier)).json.idNumber === '****4567');
+    const rateByCashier = await h('POST', '/hotel/bookings', body({ rate: 3000 }), cashier);
+    check('a cashier cannot change the rate', rateByCashier.status === 403, rateByCashier);
+    const b2 = await h('POST', '/hotel/bookings', body({ guestName: 'Omondi Otieno', phone: '0722333444', checkOut: day(1), rate: 4000, source: 'PHONE' }), owner);
+    check('the owner can set a different rate (KES 4,000)', b2.status === 201 && b2.json.pricePerNight === 4000 && b2.json.source === 'PHONE', b2);
+    const audits = (await sql.query(`SELECT action FROM audit_log WHERE "entityId" = $1`, [b2.json.id])).rows.map((r) => r.action);
+    check('the rate change and the booking are in the audit log', audits.includes('hotel.rate_overridden') && audits.includes('hotel.booking_created'), audits);
+    const full3 = await h('POST', '/hotel/bookings', body({ guestName: 'Third Guest', phone: '0733444555' }), cashier);
+    check('with both rooms taken for those nights, the next booking is refused', full3.status === 409 && /No .* rooms are free/.test(full3.json.message || ''), full3);
+
+    section('14. Desk bookings and marketplace bookings can never take the same last room');
+    const shared = await mkType('Shared', 1, { price: 3000, listed: true });
+    const mBody = (over = {}) => ({ roomTypeId: shared.type.id, checkIn: day(50), checkOut: day(51), rooms: 1, guests: 1, name: 'Online Olive', phone: '0766111222', ...over });
+    const online = await api('POST', `/public/hotels/${slug}/bookings`, { body: mBody() });
+    check('a guest online takes the last room (waiting for their M-Pesa deposit)', online.status === 201, online);
+    const blocked = await h('POST', '/hotel/bookings', body({ roomTypeId: shared.type.id, checkIn: day(50), checkOut: day(51), guests: 1 }), cashier);
+    check('the desk is refused while the online guest holds it', blocked.status === 409, blocked);
+    await sql.query(`UPDATE room_bookings SET "paymentDeadline" = (now() at time zone 'utc') - interval '1 minute' WHERE id = $1`, [online.json.id]);
+    const deskGets = await h('POST', '/hotel/bookings', body({ roomTypeId: shared.type.id, checkIn: day(50), checkOut: day(51), guests: 1 }), cashier);
+    check('once the online guest\'s payment window has passed, the desk can have it', deskGets.status === 201, deskGets);
+    const online2 = await api('POST', `/public/hotels/${slug}/bookings`, { body: mBody({ name: 'Online Omar', phone: '0766333444' }) });
+    check('and now the marketplace is refused', online2.status === 409, online2);
+    const race = await Promise.all([
+      api('POST', `/public/hotels/${slug}/bookings`, { body: mBody({ checkIn: day(55), checkOut: day(56), name: 'Race Online', phone: '0766555666' }) }),
+      h('POST', '/hotel/bookings', body({ roomTypeId: shared.type.id, checkIn: day(55), checkOut: day(56), guests: 1 }), cashier),
+    ]);
+    check('a guest online and the desk going for the last room in the same instant: exactly one gets it', race.filter((r) => r.status === 201).length === 1 && race.filter((r) => r.status === 409).length === 1, race.map((r) => r.status));
+
+    section('15. Check-in rules and housekeeping');
+    const rule = await mkType('Rules', 3);
+    const [r1, r2, r3] = rule.list;
+    const tomorrow = await h('POST', '/hotel/bookings', body({ roomTypeId: rule.type.id, checkIn: day(2), checkOut: day(3), guestName: 'Early Edith', phone: '0744000111' }), cashier);
+    const todayBk = await h('POST', '/hotel/bookings', body({ roomTypeId: rule.type.id, checkIn: day(0), checkOut: day(1), guestName: 'Today Tom', phone: '0744000222' }), cashier);
+    const ci = (id, roomIds, extra = {}, token = cashier) => h('POST', `/hotel/bookings/${id}/check-in`, { roomIds, ...extra }, token);
+    check('check-in before the arrival date is refused', (await ci(tomorrow.json.id, [r1.id])).status === 400);
+    check('a cashier cannot override the date', (await ci(tomorrow.json.id, [r1.id], { overrideEarly: true })).status === 403);
+    check('a supervisor cannot override it either', (await ci(tomorrow.json.id, [r1.id], { overrideEarly: true }, supervisor)).status === 403);
+    check('a room of another type is refused', (await ci(todayBk.json.id, [fdv.list[0].id])).status === 400);
+    check('a cashier cannot mark a room out of order', (await h('PATCH', `/hotel/rooms/${r1.id}/status`, { status: 'OUT_OF_ORDER' }, cashier)).status === 403);
+    check('a supervisor can', (await h('PATCH', `/hotel/rooms/${r1.id}/status`, { status: 'OUT_OF_ORDER' }, supervisor)).status === 200);
+    check('check-in into an out-of-order room is refused', (await ci(todayBk.json.id, [r1.id])).status === 409);
+    await h('PATCH', `/hotel/rooms/${r1.id}/status`, { status: 'VACANT_DIRTY' }, supervisor);
+    const dirty = await ci(todayBk.json.id, [r1.id]);
+    check('check-in into a room that is not cleaned yet is refused', dirty.status === 409 && /not cleaned/.test(dirty.json.message), dirty);
+    check('housekeeping marks it clean (a cashier may)', (await h('PATCH', `/hotel/rooms/${r1.id}/status`, { status: 'VACANT_CLEAN' }, cashier)).status === 200);
+    check('"occupied" cannot be set by hand', (await h('PATCH', `/hotel/rooms/${r1.id}/status`, { status: 'OCCUPIED' }, owner)).status === 400);
+    const second = await h('POST', '/hotel/bookings', body({ roomTypeId: rule.type.id, checkIn: day(0), checkOut: day(1), guestName: 'Same-room Sam', phone: '0744000333' }), cashier);
+    const clash = await Promise.all([ci(todayBk.json.id, [r1.id]), ci(second.json.id, [r1.id])]);
+    check('two guests checked into the same room at the same moment: exactly one gets it', clash.filter((r) => r.status === 200).length === 1 && clash.filter((r) => r.status === 409).length === 1, clash.map((r) => r.status));
+    const winnerId = clash[0].status === 200 ? todayBk.json.id : second.json.id;
+    check('the room is Occupied', (await h('GET', '/hotel/rooms', undefined, owner)).json.find((r) => r.id === r1.id).status === 'OCCUPIED');
+    const early = await ci(tomorrow.json.id, [r2.id], { overrideEarly: true }, owner);
+    check('a manager/owner can allow an early check-in', early.status === 200 && early.json.status === 'CHECKED_IN', early);
+    check('and it is audit-logged', (await sql.query(`SELECT count(*)::int n FROM audit_log WHERE action = 'hotel.early_check_in' AND "entityId" = $1`, [tomorrow.json.id])).rows[0].n === 1);
+    const deskBoard = await h('GET', '/hotel/desk', undefined, cashier);
+    check('the desk board lists arrivals, in-house guests and the room grid', deskBoard.status === 200 && Array.isArray(deskBoard.json.arrivals) && deskBoard.json.inHouse.some((g) => g.id === tomorrow.json.id) && deskBoard.json.rooms.length >= 5 && deskBoard.json.roomCounts.OCCUPIED >= 2, Object.keys(deskBoard.json));
+    check('the checked-in guests are offered for "charge to room" with their room numbers', (await h('GET', '/hotel/in-house', undefined, cashier)).json.some((g) => g.bookingId === tomorrow.json.id && g.roomNumbers.length === 1));
+    const moved = await h('POST', `/hotel/bookings/${tomorrow.json.id}/move-room`, { fromRoomId: r2.id, toRoomId: r3.id, reason: 'Air conditioning broken' }, supervisor);
+    check('a supervisor moves a guest to another clean room', moved.status === 200 && moved.json.roomNumbers[0] === r3.number, moved);
+    check('a cashier cannot move a guest', (await h('POST', `/hotel/bookings/${tomorrow.json.id}/move-room`, { fromRoomId: r3.id, toRoomId: r2.id, reason: 'Just because' }, cashier)).status === 403);
+    const roomsNow = (await h('GET', '/hotel/rooms', undefined, owner)).json;
+    check('the old room needs cleaning, the new one is occupied, and the move is logged', roomsNow.find((r) => r.id === r2.id).status === 'VACANT_DIRTY' && roomsNow.find((r) => r.id === r3.id).status === 'OCCUPIED' && (await sql.query(`SELECT count(*)::int n FROM hotel_room_assignments WHERE "bookingId" = $1`, [tomorrow.json.id])).rows[0].n === 2);
+    void winnerId;
+
+    section('16. The guest folio: nights with VAT, charges to the room, adjustments, check-out');
+    const ib1 = await ci(b1.json.id, [fdv.list[0].id], {}, owner);
+    check('the first walk-in is checked in', ib1.status === 200, ib1);
+    const folio1 = (await h('GET', `/hotel/bookings/${b1.json.id}/folio`, undefined, cashier)).json;
+    check('two nights posted with 16% VAT inside: KES 5,800 each, VAT KES 800 each', folio1.entries.filter((e) => e.type === 'ROOM_NIGHT').length === 2 && folio1.entries.filter((e) => e.type === 'ROOM_NIGHT').every((e) => e.amount === 5800 && e.taxAmount === 800), folio1.entries);
+    check('the deposit is a payment; the balance is 11,600 - 2,000 = 9,600', folio1.totals.payments === 2000 && folio1.totals.balance === 9600 && folio1.totals.roomTax === 1600, folio1.totals);
+    check('the printable folio carries the hotel\'s details', folio1.business?.name === org.name && 'kraPin' in folio1.business, folio1.business);
+
+    const chargeTo = (bookingId, over = {}) => {
+      const clientId = randomUUID();
+      return h('POST', '/sales', { clientId, branchId, terminalId, cashierSessionId, lineItems: [{ variantId: laundry.id, quantity: 1 }], payments: [{ method: 'ROOM_CHARGE', amount: 300, providerReference: `ROOM:${bookingId}:${clientId}` }], ...over });
+    };
+    const notIn = await h('POST', '/hotel/bookings', body({ roomTypeId: rule.type.id, checkIn: day(5), checkOut: day(6), guestName: 'Not Yet Nora', phone: '0744000444' }), cashier);
+    const toNotIn = await chargeTo(notIn.json.id);
+    check('charging a sale to a guest who is not checked in is refused', toNotIn.status === 400 && /cannot be charged to a room/.test(toNotIn.json.message), toNotIn);
+    check('and nothing was sold', (await sql.query(`SELECT count(*)::int n FROM sale_payments WHERE "providerReference" LIKE $1`, [`ROOM:${notIn.json.id}:%`])).rows[0].n === 0);
+    check('a made-up room reference is refused', (await chargeTo(randomUUID())).status === 400);
+    check('a charge with no room reference is refused', (await h('POST', '/sales', { clientId: randomUUID(), branchId, terminalId, cashierSessionId, lineItems: [{ variantId: laundry.id, quantity: 1 }], payments: [{ method: 'ROOM_CHARGE', amount: 300 }] })).status === 400);
+    check('an M-Pesa (receipt) payment needs its receipt code', (await h('POST', '/sales', { clientId: randomUUID(), branchId, terminalId, cashierSessionId, lineItems: [{ variantId: laundry.id, quantity: 1 }], payments: [{ method: 'MPESA_RECEIPT', amount: 300 }] })).status === 400);
+    const charged = await chargeTo(b1.json.id);
+    check('a sale is charged to the checked-in guest\'s room: it is a normal sale', charged.status === 201 && Number(charged.json.total) === 300, charged);
+    await sleep(300);
+    const folio2 = (await h('GET', `/hotel/bookings/${b1.json.id}/folio`, undefined, cashier)).json;
+    const chargeEntry = folio2.entries.find((e) => e.type === 'CHARGE');
+    check('it appears on the folio as a CHARGE linked to the sale; balance 9,900', chargeEntry?.amount === 300 && chargeEntry.saleId === charged.json.id && folio2.totals.balance === 9900, folio2.totals);
+
+    check('a cashier cannot post an adjustment or a refund', (await h('POST', `/hotel/bookings/${b1.json.id}/adjustments`, { amount: -500, reason: 'Goodwill' }, cashier)).status === 403 && (await h('POST', `/hotel/bookings/${b1.json.id}/refunds`, { method: 'CASH', amount: 100, reason: 'Oops' }, cashier)).status === 403);
+    check('an adjustment can only take money off', (await h('POST', `/hotel/bookings/${b1.json.id}/adjustments`, { amount: 500, reason: 'Extra' })).status === 400);
+    const adj = await h('POST', `/hotel/bookings/${b1.json.id}/adjustments`, { amount: -500, reason: 'Goodwill for the noise' });
+    check('the owner takes KES 500 off as an adjustment (a new entry; nothing is edited)', adj.status === 201 && adj.json.totals.balance === 9400, adj);
+    const payMpesa = await h('POST', `/hotel/bookings/${b1.json.id}/payments`, { method: 'MPESA_RECEIPT', amount: 100 }, cashier);
+    check('an M-Pesa payment at the desk needs its receipt code', payMpesa.status === 400);
+
+    const sales0 = (await sql.query(`SELECT count(*)::int n FROM sales WHERE "clientId" = $1`, [settlementId(b1.json.id)])).rows[0].n;
+    const noPay = await h('POST', `/hotel/bookings/${b1.json.id}/check-out`, {}, cashier);
+    check('check-out is refused while KES 9,400 is owed', noPay.status === 409 && /still owes KES 9400/.test(noPay.json.message) && sales0 === 0, noPay);
+    const out1 = await h('POST', `/hotel/bookings/${b1.json.id}/check-out`, { payments: [{ method: 'CASH', amount: 9400 }] }, cashier);
+    check('the guest pays KES 9,400 cash and is checked out', out1.status === 200 && out1.json.booking.status === 'CHECKED_OUT' && out1.json.folio.totals.balance === 0, out1);
+    const settleSale = (await sql.query(`SELECT id, total FROM sales WHERE "clientId" = $1`, [settlementId(b1.json.id)])).rows;
+    check('exactly ONE settlement sale was made, for the room nights less the adjustment: 11,600 - 500 = KES 11,100', settleSale.length === 1 && Number(settleSale[0].total) === 11100 && out1.json.saleId === settleSale[0].id, settleSale);
+    const lines = (await sql.query(`SELECT quantity, "unitPrice", "taxAmount" FROM sale_line_items WHERE "saleId" = $1`, [settleSale[0].id])).rows;
+    check('it records 2 nights at KES 5,000 with KES 1,600 VAT, so it reaches Sales, Reports and the tax figures', lines.length === 1 && Number(lines[0].quantity) === 2 && Number(lines[0].unitPrice) === 5000 && Math.abs(Number(lines[0].taxAmount) - 1600) < 0.01, lines);
+    const settlePay = (await sql.query(`SELECT method, amount FROM sale_payments WHERE "saleId" = $1 ORDER BY amount`, [settleSale[0].id])).rows;
+    check('its payments are the guest\'s own: the cash deposit first, then cash from the desk (KES 11,100 together)', settlePay.length === 2 && settlePay.every((p) => p.method === 'CASH') && Math.abs(settlePay.reduce((s, p) => s + Number(p.amount), 0) - 11100) < 0.01, settlePay);
+    check('the laundry charge was NOT counted again (its own sale stays as it was)', (await sql.query(`SELECT count(*)::int n FROM sales WHERE id = $1`, [charged.json.id])).rows[0].n === 1 && Number(settleSale[0].total) === 11100);
+    check('no stock moved for room nights', (await sql.query(`SELECT count(*)::int n FROM inventory_transactions WHERE "referenceId" = $1`, [settleSale[0].id])).rows[0].n === 0);
+    const again = await h('POST', `/hotel/bookings/${b1.json.id}/check-out`, {}, cashier);
+    check('checking out again is harmless: same sale, still only one', again.status === 200 && again.json.saleId === settleSale[0].id && (await sql.query(`SELECT count(*)::int n FROM sales WHERE "clientId" = $1`, [settlementId(b1.json.id)])).rows[0].n === 1, again);
+    check('the room needs cleaning after check-out; front-desk bookings carry no commission', (await h('GET', '/hotel/rooms', undefined, owner)).json.find((r) => r.id === fdv.list[0].id).status === 'VACANT_DIRTY' && Number((await sql.query(`SELECT "commissionAmount" c FROM room_bookings WHERE id = $1`, [b1.json.id])).rows[0].c) === 0);
+    check('a checked-out booking cannot be checked out or charged to again', (await chargeTo(b1.json.id)).status === 400);
+
+    section('17. Leaving a balance owing needs a manager and a reason');
+    const b3 = await h('POST', '/hotel/bookings', body({ checkOut: day(1), guestName: 'Company Guest', phone: '0788999000', roomTypeId: fdv.type.id, deposit: { method: 'CARD', amount: 1000, reference: `SLIP-${tag}` } }), cashier);
+    check('another guest books with a card deposit', b3.status === 201, b3);
+    await h('PATCH', `/hotel/rooms/${fdv.list[0].id}/status`, { status: 'VACANT_CLEAN' }, cashier);
+    check('the guest is checked in', (await ci(b3.json.id, [fdv.list[0].id], {}, cashier)).status === 200);
+    const leaveByCashier = await h('POST', `/hotel/bookings/${b3.json.id}/check-out`, { leaveBalanceReason: 'Company will pay' }, cashier);
+    check('a cashier cannot approve leaving a balance', leaveByCashier.status === 403, leaveByCashier);
+    const leave = await h('POST', `/hotel/bookings/${b3.json.id}/check-out`, { leaveBalanceReason: 'Company will pay by cheque' }, owner);
+    check('the owner can, with a reason', leave.status === 200 && leave.json.booking.status === 'CHECKED_OUT', leave);
+    const settle3 = (await sql.query(`SELECT s.id, s.total FROM sales s WHERE s."clientId" = $1`, [settlementId(b3.json.id)])).rows[0];
+    const pay3 = (await sql.query(`SELECT method, amount FROM sale_payments WHERE "saleId" = $1 ORDER BY amount`, [settle3.id])).rows;
+    check('the sale shows the card deposit (KES 1,000) and the rest (KES 4,800 with VAT) as owed on the room account', Number(settle3.total) === 5800 && pay3.some((p) => p.method === 'CARD' && Number(p.amount) === 1000) && pay3.some((p) => p.method === 'ROOM_CHARGE' && Number(p.amount) === 4800), pay3);
+    check('the reason is kept', (await sql.query(`SELECT "balanceLeftReason" r FROM room_bookings WHERE id = $1`, [b3.json.id])).rows[0].r === 'Company will pay by cheque');
+    check('a card slip number cannot be recorded twice', (await h('POST', `/hotel/bookings/${b3.json.id}/payments`, { method: 'CARD', amount: 100, reference: `SLIP-${tag}` }, cashier)).status === 409);
+
+    section('18. Cancelling, refunds and the marketplace commission rule');
+    const toCancel = await h('POST', '/hotel/bookings', body({ roomTypeId: rule.type.id, checkIn: day(7), checkOut: day(8), guestName: 'Cancel Carol', phone: '0744000555', roomId: r1.id, deposit: { method: 'CASH', amount: 1500 } }), cashier);
+    check('a booking can ask for a particular room', toCancel.status === 201 && toCancel.json.roomNumbers?.[0] === r1.number, toCancel);
+    const cancelled = await h('POST', `/hotel/bookings/${toCancel.json.id}/cancel`, { reason: 'Guest changed plans' }, supervisor);
+    check('a supervisor can cancel (the KES 1,500 deposit taken at the desk is owed back)', cancelled.status === 201 && cancelled.json.status === 'CANCELLED' && cancelled.json.refundDue === 1500, cancelled);
+    check('a refund of more than was paid is refused; a cashier cannot refund', (await h('POST', `/hotel/bookings/${toCancel.json.id}/refunds`, { method: 'CASH', amount: 5000, reason: 'Too much' })).status === 400);
+    const refund = await h('POST', `/hotel/bookings/${toCancel.json.id}/refunds`, { method: 'CASH', amount: 1500, reason: 'Cancelled by the guest' });
+    check('the owner records the KES 1,500 refund; the folio is back to zero', refund.status === 201 && refund.json.totals.balance === 0, refund);
+    check('the promised room is let go when a booking is cancelled', (await sql.query(`SELECT count(*)::int n FROM hotel_room_assignments WHERE "bookingId" = $1`, [toCancel.json.id])).rows[0].n === 0);
+    check('a marketplace guest\'s commission is still charged on the whole stay (3% of KES 12,000 = KES 360)', Math.abs(Number((await sql.query(`SELECT "commissionAmount" c FROM room_bookings WHERE id = $1`, [g1.id])).rows[0].c) - 360) < 0.001);
+
+    section('19. Row-level security on the new tables');
+    for (const t of ['hotel_rooms', 'hotel_folios', 'hotel_folio_entries', 'hotel_room_assignments']) {
+      const r = (await sql.query(`SELECT relrowsecurity AS on, relforcerowsecurity AS forced FROM pg_class WHERE relname = $1`, [t])).rows[0];
+      check(`${t} has row-level security switched on and forced`, r?.on === true && r?.forced === true, r);
+    }
+  }
 
   console.log(`\n${passed} checks passed${failures.length ? `, ${failures.length} FAILED:\n  - ${failures.join('\n  - ')}` : ' - ALL PASS'}`);
   await sql.end();

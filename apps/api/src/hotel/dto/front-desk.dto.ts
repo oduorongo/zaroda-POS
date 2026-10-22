@@ -147,19 +147,6 @@ export class PostPaymentDto {
   shiftId?: string;
 }
 
-export class PostChargeDto {
-  @Transform(trim)
-  @IsString()
-  @MinLength(2)
-  @MaxLength(120)
-  description!: string;
-
-  @IsNumber({ maxDecimalPlaces: 2 })
-  @Min(1)
-  @Max(1_000_000)
-  amount!: number;
-}
-
 export class AdjustmentDto {
   /** Negative takes money off (a discount); positive adds. */
   @IsNumber({ maxDecimalPlaces: 2 })

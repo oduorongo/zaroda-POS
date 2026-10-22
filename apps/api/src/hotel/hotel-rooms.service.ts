@@ -287,24 +287,14 @@ export class HotelRoomsService {
     return this.bookingView(updated);
   }
 
-  checkIn(id: string) {
-    return this.transition(id, [RoomBookingStatus.CONFIRMED], { status: RoomBookingStatus.CHECKED_IN, checkedInAt: new Date() });
-  }
+  // Check-in and check-out live in FrontDeskStayService now: they assign a room and settle the guest's folio. (The commission
+  // on a marketplace booking - the rate times the room price for the WHOLE stay, not the deposit, so a hotel cannot cut it by
+  // asking for a tiny deposit - is recorded there, at check-out, and billed on the next monthly commission invoice.)
 
-  /**
-   * The guest leaves. The commission is recorded now - the rate times the room price for the WHOLE stay, not the deposit,
-   * so a hotel cannot cut its commission by asking for a tiny deposit - and billed on the hotel's next monthly commission invoice.
-   */
-  checkOut(id: string) {
-    return this.transition(id, [RoomBookingStatus.CHECKED_IN], (b) => ({
-      status: RoomBookingStatus.CHECKED_OUT,
-      checkedOutAt: new Date(),
-      commissionAmount: b.paidAt ? roundMoney(Number(b.total) * Number(b.commissionRate)) : 0,
-    }));
-  }
-
-  noShow(id: string) {
-    return this.transition(id, [RoomBookingStatus.CONFIRMED], { status: RoomBookingStatus.NO_SHOW });
+  async noShow(id: string) {
+    const view = await this.transition(id, [RoomBookingStatus.CONFIRMED], { status: RoomBookingStatus.NO_SHOW });
+    await this.tenantPrisma.run((tx) => tx.hotelRoomAssignment.deleteMany({ where: { bookingId: id, toAt: null } }));
+    return view;
   }
 
   /** The hotel cancels. If the deposit was paid it sits in the hotel's own account, so the hotel must refund it. */
@@ -314,7 +304,11 @@ export class HotelRoomsService {
       cancelledAt: new Date(),
       cancelReason: dto.reason.trim(),
     });
-    return { ...view, refundDue: view.depositPaid };
+    await this.tenantPrisma.run((tx) => tx.hotelRoomAssignment.deleteMany({ where: { bookingId: id, toAt: null } }));
+    // What the guest has paid and not had back: from the folio when there is one (a deposit taken at the desk), else the online deposit.
+    const folio = await this.tenantPrisma.run((tx) => tx.hotelFolio.findUnique({ where: { bookingId: id }, include: { entries: true } }));
+    const paid = folio ? folio.entries.filter((e) => e.type === 'PAYMENT').reduce((s, e) => s + Number(e.amount), 0) - folio.entries.filter((e) => e.type === 'REFUND').reduce((s, e) => s + Number(e.amount), 0) : 0;
+    return { ...view, refundDue: Math.max(view.depositPaid, roundMoney(paid)) };
   }
 
   /** Free rooms per night per room type for the next `days` days - the hotel's at-a-glance calendar. */
