@@ -42,7 +42,7 @@ export class BatchesService {
       await this.inventoryTransactions.recordInTx(tx, {
         branchId: dto.branchId,
         variantId: dto.variantId,
-        type: InventoryTxnType.ADJUSTMENT,
+        type: InventoryTxnType.RECEIPT,
         quantityDelta: dto.quantityReceived,
         batchId: batch.id,
         referenceId: batch.id,

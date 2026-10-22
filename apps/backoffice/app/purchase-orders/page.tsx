@@ -218,6 +218,12 @@ export default function PurchaseOrdersPage() {
             <Link href="/suppliers" className="rounded-md bg-surface px-3 py-2 text-sm hover:bg-border">
               Suppliers
             </Link>
+            <Link href="/goods-receipts" className="rounded-md bg-surface px-3 py-2 text-sm hover:bg-border">
+              Goods received
+            </Link>
+            <Link href="/supplier-bills" className="rounded-md bg-surface px-3 py-2 text-sm hover:bg-border">
+              Bills
+            </Link>
             <button onClick={() => void openNew()} className="rounded-md bg-primary-600 px-3 py-2 text-sm font-semibold hover:bg-primary-500">
               + New purchase order
             </button>

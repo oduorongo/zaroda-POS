@@ -100,7 +100,15 @@ export class ProfitService {
               select: { issueDate: true, total: true, taxAmount: true, lines: { select: { quantity: true, unitCost: true } } },
             }),
       ]);
-      return { sales, refunds, wastes, expenses, payrollRuns, schoolInvoices };
+      // Stock buying: shown beside the profit, NOT taken off it (the cost of stock reaches profit when it is sold).
+      const [billed, paidOut, owing] = branchId
+        ? [[], [], []]
+        : await Promise.all([
+            tx.supplierBill.findMany({ where: { status: { not: 'VOID' }, billDate: { gte: new Date(`${query.from}T00:00:00.000Z`), lte: new Date(`${query.to}T00:00:00.000Z`) } }, select: { total: true, creditAmount: true } }),
+            tx.supplierBillPayment.findMany({ where: { paidAt: { gte: start, lt: end } }, select: { amount: true } }),
+            tx.supplierBill.findMany({ where: { status: { in: ['OPEN', 'PARTLY_PAID'] } }, select: { total: true, creditAmount: true, amountPaid: true } }),
+          ]);
+      return { sales, refunds, wastes, expenses, payrollRuns, schoolInvoices, billed, paidOut, owing };
     });
 
     const buckets = new Map<string, Totals>(listBuckets(query.from, query.to, groupBy).map((key) => [key, empty()]));
@@ -171,6 +179,14 @@ export class ProfitService {
       groupBy,
       branchId: branchId ?? null,
       totals: finish(total),
+      // What was bought from suppliers in the period, what was paid out, and what is owed now. Information only: not in the profit.
+      stockBuying: branchId
+        ? null
+        : {
+            billed: round2(data.billed.reduce((s, b) => s + Number(b.total) - Number(b.creditAmount), 0)),
+            paidToSuppliers: round2(data.paidOut.reduce((s, p) => s + Number(p.amount), 0)),
+            owedNow: round2(data.owing.reduce((s, b) => s + Number(b.total) - Number(b.creditAmount) - Number(b.amountPaid), 0)),
+          },
       periods: Array.from(buckets.entries()).map(([key, t]) => ({ key, ...finish(t) })),
       expensesByCategory: Array.from(byCategory.entries())
         .map(([category, amount]) => ({ category, label: EXPENSE_CATEGORIES.find((c) => c.key === category)?.label ?? category, amount: round2(amount) }))

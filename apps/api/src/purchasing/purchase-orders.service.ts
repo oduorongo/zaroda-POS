@@ -11,6 +11,7 @@ import { assertQuantityMatchesMode } from '../common/inventory/quantity-mode.uti
 import { InventoryTransactionsService } from '../inventory/inventory-transactions.service';
 import { CreatePurchaseOrderDto } from './dto/create-purchase-order.dto';
 import { ReceivePurchaseOrderDto } from './dto/receive-purchase-order.dto';
+import { GoodsReceiptsService } from './goods-receipts.service';
 
 const PURCHASE_ORDER_INCLUDE = {
   supplier: true,
@@ -25,6 +26,7 @@ export class PurchaseOrdersService {
     private readonly tenantPrisma: TenantScopedPrismaService,
     private readonly inventoryTransactions: InventoryTransactionsService,
     private readonly auditLog: AuditLogService,
+    private readonly receipts: GoodsReceiptsService,
   ) {}
 
   async create(dto: CreatePurchaseOrderDto) {
@@ -131,114 +133,16 @@ export class PurchaseOrdersService {
    */
   async receive(id: string, dto: ReceivePurchaseOrderDto) {
     return this.tenantPrisma.run(async (tx) => {
-      const order = await tx.purchaseOrder.findUnique({
-        where: { id },
-        include: { lineItems: { include: { variant: true } } },
+      const { receipt, warnings, bill } = await this.receipts.receiveInTx(tx, {
+        purchaseOrderId: id,
+        deliveryNote: dto.deliveryNote,
+        notes: dto.notes,
+        bill: dto.bill,
+        minMarginPercent: dto.minMarginPercent,
+        lines: dto.lines.map((l) => ({ lineItemId: l.lineItemId, quantity: l.quantity, damaged: l.damaged, damagedNote: l.damagedNote, batchNumber: l.batchNumber, expiryDate: l.expiryDate, unitCost: l.unitCost })),
       });
-      if (!order) throw new NotFoundException('Purchase order not found');
-      if (
-        order.status === PurchaseOrderStatus.RECEIVED ||
-        order.status === PurchaseOrderStatus.CANCELLED
-      ) {
-        throw new BadRequestException(
-          `Cannot receive against a purchase order that is already ${order.status}`,
-        );
-      }
-
-      const lineById = new Map(order.lineItems.map((l) => [l.id, l]));
-
-      for (const receipt of dto.lines) {
-        const line = lineById.get(receipt.lineItemId);
-        if (!line) {
-          throw new NotFoundException(
-            `Line item ${receipt.lineItemId} does not belong to this purchase order`,
-          );
-        }
-        assertQuantityMatchesMode(
-          line.variant.quantityMode,
-          receipt.quantity,
-          `Quantity received for ${line.variant.sku}`,
-        );
-        // Explicit Number() conversion, not a bare arithmetic/comparison on
-        // the Decimal fields directly - Decimal's valueOf() returns a
-        // string, so `>` and `-` on two unconverted Decimals can silently
-        // do the wrong thing (string comparison/concat semantics).
-        const remaining =
-          Number(line.quantityOrdered) - Number(line.quantityReceived);
-        if (receipt.quantity > remaining) {
-          throw new BadRequestException(
-            `Cannot receive ${receipt.quantity} for a line with only ${remaining} outstanding`,
-          );
-        }
-
-        // The price paid: what the delivery was actually charged, else the price agreed on the order.
-        const paid = receipt.unitCost ?? (line.unitCost === null ? undefined : Number(line.unitCost));
-
-        if (receipt.batchNumber) {
-          const batch = await tx.batch.create({
-            data: {
-              variantId: line.variantId,
-              batchNumber: receipt.batchNumber,
-              expiryDate: receipt.expiryDate
-                ? new Date(receipt.expiryDate)
-                : undefined,
-              quantityReceived: receipt.quantity,
-            },
-          });
-          await this.inventoryTransactions.recordInTx(tx, {
-            branchId: order.branchId,
-            variantId: line.variantId,
-            type: InventoryTxnType.ADJUSTMENT,
-            quantityDelta: receipt.quantity,
-            batchId: batch.id,
-            referenceId: order.id,
-            unitCost: paid,
-          });
-        } else {
-          await this.inventoryTransactions.recordInTx(tx, {
-            branchId: order.branchId,
-            variantId: line.variantId,
-            type: InventoryTxnType.ADJUSTMENT,
-            quantityDelta: receipt.quantity,
-            referenceId: order.id,
-            unitCost: paid,
-          });
-        }
-
-        await tx.purchaseOrderLineItem.update({
-          where: { id: line.id },
-          data: { quantityReceived: { increment: receipt.quantity } },
-        });
-      }
-
-      const refreshedLines = await tx.purchaseOrderLineItem.findMany({
-        where: { purchaseOrderId: order.id },
-      });
-      const fullyReceived = refreshedLines.every(
-        (l) => Number(l.quantityReceived) >= Number(l.quantityOrdered),
-      );
-      const partiallyReceived = refreshedLines.some(
-        (l) => Number(l.quantityReceived) > 0,
-      );
-      const status = fullyReceived
-        ? PurchaseOrderStatus.RECEIVED
-        : partiallyReceived
-          ? PurchaseOrderStatus.PARTIALLY_RECEIVED
-          : order.status;
-
-      await tx.purchaseOrder.update({ where: { id: order.id }, data: { status } });
-
-      await this.auditLog.logInTx(tx, {
-        action: 'purchase_order.received',
-        entityType: 'PurchaseOrder',
-        entityId: order.id,
-        after: { lines: dto.lines, status },
-      });
-
-      return tx.purchaseOrder.findUnique({
-        where: { id: order.id },
-        include: PURCHASE_ORDER_INCLUDE,
-      });
+      const order = await tx.purchaseOrder.findUnique({ where: { id }, include: PURCHASE_ORDER_INCLUDE });
+      return { ...order, receipt, warnings, bill };
     });
   }
 

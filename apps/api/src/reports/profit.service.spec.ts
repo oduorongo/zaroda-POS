@@ -13,7 +13,7 @@ const sale = (iso: string, total: number, lines: Line[]) => ({
   })),
 });
 
-function setup(data: { sales?: unknown[]; refunds?: unknown[]; wastes?: unknown[]; expenses?: unknown[]; payroll?: unknown[]; schoolInvoices?: unknown[] } = {}) {
+function setup(data: { sales?: unknown[]; refunds?: unknown[]; wastes?: unknown[]; expenses?: unknown[]; payroll?: unknown[]; schoolInvoices?: unknown[]; bills?: unknown[]; supplierPayments?: unknown[]; owing?: unknown[] } = {}) {
   const tx = {
     sale: { findMany: jest.fn().mockResolvedValue(data.sales ?? []) },
     refund: { findMany: jest.fn().mockResolvedValue(data.refunds ?? []) },
@@ -21,6 +21,8 @@ function setup(data: { sales?: unknown[]; refunds?: unknown[]; wastes?: unknown[
     expense: { findMany: jest.fn().mockResolvedValue(data.expenses ?? []) },
     payrollRun: { findMany: jest.fn().mockResolvedValue(data.payroll ?? []) },
     supplierInvoice: { findMany: jest.fn().mockResolvedValue(data.schoolInvoices ?? []) },
+    supplierBill: { findMany: jest.fn().mockResolvedValueOnce(data.bills ?? []).mockResolvedValueOnce(data.owing ?? []) },
+    supplierBillPayment: { findMany: jest.fn().mockResolvedValue(data.supplierPayments ?? []) },
   };
   const tenantPrisma = { run: jest.fn((fn: (t: typeof tx) => unknown) => fn(tx)) };
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -28,6 +30,24 @@ function setup(data: { sales?: unknown[]; refunds?: unknown[]; wastes?: unknown[
 }
 
 describe('ProfitService', () => {
+  it('shows stock buying beside the profit but never takes it off (the cost of stock is counted when it is sold)', async () => {
+    const { service } = setup({
+      sales: [sale('2026-10-21T07:00:00Z', 1000, [{ quantity: 1, taxAmount: 0, cost: 400 }])],
+      bills: [{ total: 5000, creditAmount: 500 }, { total: 2000, creditAmount: 0 }],
+      supplierPayments: [{ amount: 3000 }, { amount: 1000 }],
+      owing: [{ total: 5000, creditAmount: 500, amountPaid: 1000 }, { total: 2000, creditAmount: 0, amountPaid: 0 }],
+    });
+    const r = await service.profit({ from: '2026-10-21', to: '2026-10-21' });
+    expect(r.stockBuying).toEqual({ billed: 6500, paidToSuppliers: 4000, owedNow: 5500 });
+    expect(r.totals.netProfit).toBe(600); // 1000 - 400: the bills and payments do not change it
+    expect(r.totals.expenses).toBe(0);
+  });
+
+  it('leaves stock buying out when looking at one branch (bills belong to the business)', async () => {
+    const { service } = setup({});
+    expect((await service.profit({ from: '2026-10-21', to: '2026-10-21', branchId: 'b1' })).stockBuying).toBeNull();
+  });
+
   it('works out net sales, gross profit and net profit for a day', async () => {
     const { service } = setup({
       // two sales: KES 1,160 (incl. KES 160 tax) with goods that cost 600, and KES 500 with goods that cost 300
