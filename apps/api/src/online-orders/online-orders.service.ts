@@ -395,7 +395,7 @@ export class OnlineOrdersService {
   async getTable(slug: string, tableId: string) {
     return this.catalog.runForShop(slug, async (tx, shop) => {
       const table = await tx.restaurantTable.findUnique({ where: { id: tableId } });
-      if (!table) throw new NotFoundException('Table not found');
+      if (!table || table.archivedAt) throw new NotFoundException('Table not found');
       const stations = await stationsFor(tx, table.branchId);
       return { id: table.id, label: table.label, acceptsOrders: stations.length > 0 && !shop.tableOrderingBlocked };
     });
@@ -426,7 +426,7 @@ export class OnlineOrdersService {
           // Switched off by ZARODA: refuse before any money is asked for.
           if (shop.tableOrderingBlocked) throw new ServiceUnavailableException('This restaurant is not taking table orders right now');
           const table = await tx.restaurantTable.findUnique({ where: { id: dto.tableId } });
-          if (!table) throw new NotFoundException('Table not found');
+          if (!table || table.archivedAt) throw new NotFoundException('Table not found');
           // A paid order that cannot reach a kitchen screen is the worst outcome, so refuse before taking any money.
           if ((await stationsFor(tx, table.branchId)).length === 0) {
             throw new ServiceUnavailableException('This restaurant is not taking table orders yet');

@@ -42,10 +42,11 @@ export class SaleLineItemInputDto {
 }
 
 export class SalePaymentInputDto {
-  // CARD/WALLET still rejected - see SalesService.create()'s comment.
+  // WALLET is still rejected - see SalesService.create()'s comment. CARD is a payment taken on the shop's own card machine and
+  // recorded here (no gateway is involved, so nothing is verified server-side).
   // MPESA is only accepted when providerReference names an already-SUCCESS
   // MpesaStkRequest (verified server-side, never trusted from the client).
-  @IsIn(['CASH', 'MPESA'] satisfies PaymentMethod[])
+  @IsIn(['CASH', 'MPESA', 'CARD'] satisfies PaymentMethod[])
   method!: PaymentMethod;
 
   @IsNumber()

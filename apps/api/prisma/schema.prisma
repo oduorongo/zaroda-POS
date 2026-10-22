@@ -78,6 +78,8 @@ model Organization {
   customers                 Customer[]
   layaways                  Layaway[]
   restaurantTables          RestaurantTable[]
+  restaurantTabs            RestaurantTab[]
+  restaurantSettings        RestaurantSetting[]
   rentalProperties          RentalProperty[]
   rentalUnits               RentalUnit[]
   rentalListings            RentalListing[]
@@ -156,6 +158,8 @@ model Branch {
   layaways              Layaway[]
   restaurantTables      RestaurantTable[]
   kitchenStations       KitchenStation[]
+  restaurantTabs        RestaurantTab[]
+  restaurantSettings    RestaurantSetting[]
   salonResources        SalonResource[]
   salonAppointments     SalonAppointment[]
   purchaseOrders        PurchaseOrder[]
@@ -515,6 +519,7 @@ model ProductVariant {
   repackagedInto         Repackaging[]            @relation("RepackagingTo")
   recipeIngredients      RecipeIngredient[]       @relation("RecipeFor")
   restaurantDish         RestaurantDish?
+  restaurantTabLines     RestaurantTabLine[]
   usedAsIngredientIn     RecipeIngredient[]       @relation("RecipeIngredientOf")
   ingredientOfSaleLines  SaleLineItemIngredient[]
   wasteLogs              WasteLog[]
@@ -1012,6 +1017,7 @@ model Sale {
   restaurantTable      RestaurantSaleTable?
   restaurantTip        RestaurantSaleTip?
   kitchenTickets       KitchenTicket[]
+  tabSale              RestaurantTabSale?
   pharmacyPrescription PharmacySalePrescription?
   salonAppointmentSale SalonAppointmentSale?
   serviceJobSale       ServiceJobSale?
@@ -1328,6 +1334,8 @@ model RestaurantTable {
   label          String // e.g. "Table 4", "Patio 2" - free text, not a seat map (out of scope for this slice)
   seats          Int
   status         RestaurantTableStatus @default(AVAILABLE)
+  /// Set instead of deleting a table that has history (tabs, sales); it then drops off the floor.
+  archivedAt     DateTime?
   createdAt      DateTime              @default(now())
   updatedAt      DateTime              @updatedAt
 
@@ -1336,6 +1344,7 @@ model RestaurantTable {
   saleLinks    RestaurantSaleTable[]
   onlineOrders OnlineOrder[]
   reservations TableReservation[]
+  tabs         RestaurantTab[]
 
   @@unique([branchId, label])
   @@index([organizationId])
@@ -1389,12 +1398,15 @@ model KitchenStation {
   organizationId String
   branchId       String
   name           String
+  /// Set instead of deleting a station that has history; its dishes then go to the first station.
+  archivedAt     DateTime?
   createdAt      DateTime @default(now())
 
   organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   branch       Branch          @relation(fields: [branchId], references: [id], onDelete: Cascade)
   tickets      KitchenTicket[]
   dishes       RestaurantDish[]
+  tabLines     RestaurantTabLine[]
 
   @@unique([branchId, name])
   @@index([organizationId])
@@ -1593,7 +1605,9 @@ enum KitchenTicketStatus {
 // listing items three different stations need to independently track.
 model KitchenTicket {
   id           String              @id @default(uuid())
-  saleId       String
+  /// Set for a ticket from a one-off table sale. A ticket from an open tab has no sale (a tab can end in several), only a tabId.
+  saleId       String?
+  tabId        String?
   stationId    String
   courseNumber Int                 @default(1)
   status       KitchenTicketStatus @default(QUEUED)
@@ -1603,11 +1617,13 @@ model KitchenTicket {
   servedAt     DateTime?
   createdAt    DateTime            @default(now())
 
-  sale    Sale                @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  sale    Sale?               @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  tab     RestaurantTab?      @relation(fields: [tabId], references: [id])
   station KitchenStation      @relation(fields: [stationId], references: [id])
   lines   KitchenTicketLine[]
 
   @@index([stationId, status])
+  @@index([tabId])
   @@map("kitchen_tickets")
 }
 
@@ -1617,12 +1633,120 @@ model KitchenTicketLine {
   variantId String
   quantity  Int
   notes     String?
+  /// A line voided from an open tab stays on the ticket, struck through, so the kitchen knows to stop.
+  voidedAt  DateTime?
 
   ticket  KitchenTicket  @relation(fields: [ticketId], references: [id], onDelete: Cascade)
   variant ProductVariant @relation(fields: [variantId], references: [id])
 
   @@index([ticketId])
   @@map("kitchen_ticket_lines")
+}
+
+enum RestaurantTabStatus {
+  OPEN
+  CLOSED
+  VOID
+}
+
+enum RestaurantTabLineStatus {
+  ORDERED
+  PAID // settled by a sale (a tab can be paid in parts)
+  VOIDED
+}
+
+/// A running bill for a table: items are added (and sent to the kitchen) as the diners order, and paid at the end.
+/// One OPEN tab per table at a time (a partial unique index in the migration enforces it).
+model RestaurantTab {
+  id             String              @id @default(uuid())
+  organizationId String
+  branchId       String
+  tableId        String
+  status         RestaurantTabStatus @default(OPEN)
+  openedBy       String // the OrgUser who opened it
+  openedAt       DateTime            @default(now())
+  closedAt       DateTime?
+  /// The sale that paid it when one sale paid all of it; a split bill has several (see RestaurantTabSale).
+  saleId         String?
+  guestCount     Int                 @default(1)
+  notes          String?
+  voidReason     String?
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+
+  organization Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  branch       Branch               @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  table        RestaurantTable      @relation(fields: [tableId], references: [id])
+  lines        RestaurantTabLine[]
+  tabSales     RestaurantTabSale[]
+  tickets      KitchenTicket[]
+
+  @@index([organizationId, status])
+  @@index([tableId])
+  @@map("restaurant_tabs")
+}
+
+model RestaurantTabLine {
+  id                  String                  @id @default(uuid())
+  tabId               String
+  variantId           String
+  quantity            Decimal                 @db.Decimal(14, 3)
+  /// The price when it was ordered (the bill is worked out from today's price, as the sale is - this is the record).
+  unitPrice           Decimal                 @db.Decimal(12, 2)
+  stationId           String
+  courseNumber        Int                     @default(1)
+  notes               String?
+  status              RestaurantTabLineStatus @default(ORDERED)
+  voidReason          String?
+  voidedById          String?
+  voidedAt            DateTime?
+  addedById           String
+  kitchenTicketId     String?
+  kitchenTicketLineId String?
+  /// While a payer's sale is being made, the lines it covers are claimed with its clientId, so two tills cannot both
+  /// charge them. A claim older than two minutes with no sale behind it is ignored.
+  claimClientId       String?
+  claimedAt           DateTime?
+  saleId              String?
+  createdAt           DateTime                @default(now())
+
+  tab     RestaurantTab  @relation(fields: [tabId], references: [id], onDelete: Cascade)
+  variant ProductVariant @relation(fields: [variantId], references: [id])
+  station KitchenStation @relation(fields: [stationId], references: [id])
+
+  @@index([tabId])
+  @@map("restaurant_tab_lines")
+}
+
+/// Which sales paid a tab, and who each was for (a split bill has one per payer).
+model RestaurantTabSale {
+  id        String   @id @default(uuid())
+  tabId     String
+  saleId    String   @unique
+  label     String?
+  createdAt DateTime @default(now())
+
+  tab  RestaurantTab @relation(fields: [tabId], references: [id], onDelete: Cascade)
+  sale Sale          @relation(fields: [saleId], references: [id])
+
+  @@index([tabId])
+  @@map("restaurant_tab_sales")
+}
+
+/// Per-branch restaurant settings. reserveLeadMinutes: a confirmed reservation shows its table as Reserved from this
+/// long before the time.
+model RestaurantSetting {
+  id                 String   @id @default(uuid())
+  organizationId     String
+  branchId           String   @unique
+  reserveLeadMinutes Int      @default(60)
+  updatedAt          DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  branch       Branch       @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@map("restaurant_settings")
 }
 
 // ─────────────────────────────────────────────────────────────────────────

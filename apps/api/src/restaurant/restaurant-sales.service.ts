@@ -1,9 +1,10 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
-import { RestaurantTableStatus } from '@prisma/client';
+import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { RestaurantTabStatus, RestaurantTableStatus } from '@prisma/client';
 import { TenantScopedPrismaService } from '../common/prisma/tenant-scoped-prisma.service';
 import { SalesService } from '../sales/sales.service';
 import { KitchenTicketsService } from './kitchen-tickets.service';
 import { CreateTableSaleDto } from './dto/create-table-sale.dto';
+import { resolveLineStations } from './station-routing';
 
 @Injectable()
 export class RestaurantSalesService {
@@ -48,11 +49,21 @@ export class RestaurantSalesService {
     const table = await this.tenantPrisma.run((tx) =>
       tx.restaurantTable.findUnique({ where: { id: tableId } }),
     );
-    if (!table) throw new NotFoundException('Table not found');
+    if (!table || table.archivedAt) throw new NotFoundException('Table not found');
 
-    await this.kitchenTickets.assertStationsExist(
-      dto.lineItems.map((li) => li.stationId),
+    // A table with an open bill is paid through the bill, not here (this would send the table to cleaning under the diners).
+    const onTab = await this.tenantPrisma.run((tx) =>
+      tx.restaurantTab.count({ where: { tableId, status: RestaurantTabStatus.OPEN } }),
     );
+    if (onTab > 0) {
+      throw new ConflictException('This table has an open bill. Add the items to the bill and pay it there.');
+    }
+
+    // Each item's station: the one chosen, else the dish's own, else the branch's first - checked before any sale is made.
+    const stationIds = await this.tenantPrisma.run((tx) =>
+      resolveLineStations(tx, table.branchId, dto.lineItems),
+    );
+    const lineItems = dto.lineItems.map((li, i) => ({ ...li, stationId: stationIds[i] }));
 
     const sale = await this.sales.create({
       clientId: dto.clientId,
@@ -60,7 +71,7 @@ export class RestaurantSalesService {
       terminalId: dto.terminalId,
       cashierSessionId: dto.cashierSessionId,
       shiftId: dto.shiftId,
-      lineItems: dto.lineItems,
+      lineItems,
       payments: dto.payments,
       discount: dto.discount,
       customerId: dto.customerId,
@@ -95,7 +106,7 @@ export class RestaurantSalesService {
       const tickets = await this.kitchenTickets.createTicketsInTx(
         tx,
         sale.id,
-        dto.lineItems,
+        lineItems,
       );
 
       // Tracked separately from the sale itself (see the schema comment

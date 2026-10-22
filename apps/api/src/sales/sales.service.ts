@@ -58,17 +58,20 @@ export class SalesService {
   /**
    * CASH and MPESA are wired end-to-end (MPESA verified against an
    * already-SUCCESS MpesaStkRequest below - see the loop over dto.payments
-   * further down). CARD/WALLET remain rejected: no processor exists for
-   * them yet, and pretending to accept them would complete a sale nothing
-   * actually charged.
+   * further down). CARD is accepted as a payment the shop took on its own
+   * card machine and is recording (no processor is involved, so it is taken
+   * on trust like cash - added for restaurant tabs). WALLET remains rejected:
+   * no processor exists for it, and pretending to accept it would complete a
+   * sale nothing actually charged.
    */
   async create(dto: CreateSaleDto) {
     const unsupported = dto.payments.find(
-      (p) => p.method !== 'CASH' && p.method !== 'MPESA',
+      (p) =>
+        p.method !== 'CASH' && p.method !== 'MPESA' && p.method !== 'CARD',
     );
     if (unsupported) {
       throw new BadRequestException(
-        `Payment method ${unsupported.method} is not wired into sale completion yet - only CASH and MPESA are supported.`,
+        `Payment method ${unsupported.method} is not wired into sale completion yet - only CASH, MPESA and CARD are supported.`,
       );
     }
 

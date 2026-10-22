@@ -344,29 +344,40 @@ CREATE POLICY tenant_isolation ON kitchen_stations
   USING ("organizationId" = current_setting('app.current_tenant', true))
   WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
 
--- ── Scoped via saleId -> sales."organizationId" ────────────────────────────
+-- ── Scoped via saleId -> sales."organizationId", or (a ticket from an open bill, which has no sale) via
+-- tabId -> restaurant_tabs."organizationId" ──────────────────────────────────
 
 ALTER TABLE kitchen_tickets ENABLE ROW LEVEL SECURITY;
 ALTER TABLE kitchen_tickets FORCE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS tenant_isolation ON kitchen_tickets;
 CREATE POLICY tenant_isolation ON kitchen_tickets
-  USING (EXISTS (SELECT 1 FROM sales s WHERE s.id = kitchen_tickets."saleId"
-                 AND s."organizationId" = current_setting('app.current_tenant', true)))
-  WITH CHECK (EXISTS (SELECT 1 FROM sales s WHERE s.id = kitchen_tickets."saleId"
-                 AND s."organizationId" = current_setting('app.current_tenant', true)));
+  USING (
+    EXISTS (SELECT 1 FROM sales s WHERE s.id = kitchen_tickets."saleId"
+            AND s."organizationId" = current_setting('app.current_tenant', true))
+    OR EXISTS (SELECT 1 FROM restaurant_tabs t WHERE t.id = kitchen_tickets."tabId"
+            AND t."organizationId" = current_setting('app.current_tenant', true)))
+  WITH CHECK (
+    EXISTS (SELECT 1 FROM sales s WHERE s.id = kitchen_tickets."saleId"
+            AND s."organizationId" = current_setting('app.current_tenant', true))
+    OR EXISTS (SELECT 1 FROM restaurant_tabs t WHERE t.id = kitchen_tickets."tabId"
+            AND t."organizationId" = current_setting('app.current_tenant', true)));
 
--- ── Scoped via ticketId -> kitchen_tickets.saleId -> sales."organizationId" ─
+-- ── Scoped via ticketId -> kitchen_tickets -> its sale, or its open bill ────
 
 ALTER TABLE kitchen_ticket_lines ENABLE ROW LEVEL SECURITY;
 ALTER TABLE kitchen_ticket_lines FORCE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS tenant_isolation ON kitchen_ticket_lines;
 CREATE POLICY tenant_isolation ON kitchen_ticket_lines
-  USING (EXISTS (SELECT 1 FROM kitchen_tickets kt JOIN sales s ON s.id = kt."saleId"
+  USING (EXISTS (SELECT 1 FROM kitchen_tickets kt
+                 LEFT JOIN sales s ON s.id = kt."saleId"
+                 LEFT JOIN restaurant_tabs t ON t.id = kt."tabId"
                  WHERE kt.id = kitchen_ticket_lines."ticketId"
-                 AND s."organizationId" = current_setting('app.current_tenant', true)))
-  WITH CHECK (EXISTS (SELECT 1 FROM kitchen_tickets kt JOIN sales s ON s.id = kt."saleId"
+                 AND coalesce(s."organizationId", t."organizationId") = current_setting('app.current_tenant', true)))
+  WITH CHECK (EXISTS (SELECT 1 FROM kitchen_tickets kt
+                 LEFT JOIN sales s ON s.id = kt."saleId"
+                 LEFT JOIN restaurant_tabs t ON t.id = kt."tabId"
                  WHERE kt.id = kitchen_ticket_lines."ticketId"
-                 AND s."organizationId" = current_setting('app.current_tenant', true)));
+                 AND coalesce(s."organizationId", t."organizationId") = current_setting('app.current_tenant', true)));
 
 -- ── Scoped via productId -> products."organizationId" ──────────────────────
 
@@ -1059,3 +1070,32 @@ CREATE POLICY tenant_isolation ON supplier_payment_allocations
   USING (EXISTS (SELECT 1 FROM supplier_payments p WHERE p.id = supplier_payment_allocations."paymentId" AND p."organizationId" = current_setting('app.current_tenant', true)))
   WITH CHECK (EXISTS (SELECT 1 FROM supplier_payments p WHERE p.id = supplier_payment_allocations."paymentId" AND p."organizationId" = current_setting('app.current_tenant', true)));
 
+-- ── Restaurant open tabs: running bills per table, settings ─────────────────
+
+ALTER TABLE restaurant_tabs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE restaurant_tabs FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON restaurant_tabs;
+CREATE POLICY tenant_isolation ON restaurant_tabs
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+ALTER TABLE restaurant_tab_lines ENABLE ROW LEVEL SECURITY;
+ALTER TABLE restaurant_tab_lines FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON restaurant_tab_lines;
+CREATE POLICY tenant_isolation ON restaurant_tab_lines
+  USING (EXISTS (SELECT 1 FROM restaurant_tabs p WHERE p.id = restaurant_tab_lines."tabId" AND p."organizationId" = current_setting('app.current_tenant', true)))
+  WITH CHECK (EXISTS (SELECT 1 FROM restaurant_tabs p WHERE p.id = restaurant_tab_lines."tabId" AND p."organizationId" = current_setting('app.current_tenant', true)));
+
+ALTER TABLE restaurant_tab_sales ENABLE ROW LEVEL SECURITY;
+ALTER TABLE restaurant_tab_sales FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON restaurant_tab_sales;
+CREATE POLICY tenant_isolation ON restaurant_tab_sales
+  USING (EXISTS (SELECT 1 FROM restaurant_tabs p WHERE p.id = restaurant_tab_sales."tabId" AND p."organizationId" = current_setting('app.current_tenant', true)))
+  WITH CHECK (EXISTS (SELECT 1 FROM restaurant_tabs p WHERE p.id = restaurant_tab_sales."tabId" AND p."organizationId" = current_setting('app.current_tenant', true)));
+
+ALTER TABLE restaurant_settings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE restaurant_settings FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON restaurant_settings;
+CREATE POLICY tenant_isolation ON restaurant_settings
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));

@@ -14,6 +14,9 @@ import { completeTableOrderIfServed } from '../online-orders/dine-in';
 const TICKET_INCLUDE = {
   lines: { include: { variant: { include: { product: true } } } },
   station: true,
+  // where the food goes: the table of the open bill, or of the pay-first sale
+  tab: { select: { id: true, table: { select: { label: true } } } },
+  sale: { select: { restaurantTable: { select: { table: { select: { label: true } } } } } },
 } as const;
 
 // Strict forward-only sequence - no skipping ahead, no going back. A KDS
@@ -177,7 +180,8 @@ export class KitchenTicketsService {
         include: TICKET_INCLUDE,
       });
       // The last ticket of a diner's table order being served completes that order.
-      if (next === KitchenTicketStatus.SERVED) await completeTableOrderIfServed(tx, updated.saleId);
+      // (a ticket from an open bill has no sale of its own)
+      if (next === KitchenTicketStatus.SERVED && updated.saleId) await completeTableOrderIfServed(tx, updated.saleId);
       return updated;
     });
   }

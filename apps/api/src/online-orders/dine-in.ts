@@ -14,7 +14,7 @@ type OrderWithLines = OnlineOrder & { lines: OnlineOrderLine[] };
 
 /** Stations a branch has, oldest first. The first one takes any dish that has no station of its own. */
 export async function stationsFor(tx: TenantTx, branchId: string) {
-  return tx.kitchenStation.findMany({ where: { branchId }, orderBy: { createdAt: 'asc' } });
+  return tx.kitchenStation.findMany({ where: { branchId, archivedAt: null }, orderBy: { createdAt: 'asc' } });
 }
 
 /**

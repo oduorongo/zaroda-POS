@@ -27,8 +27,10 @@ export class TableOrderLineItemDto {
   @IsPositive()
   quantity!: number;
 
+  // Left out, the dish's own station is used, else the branch's first.
   @IsUUID()
-  stationId!: string;
+  @IsOptional()
+  stationId?: string;
 
   // 1 = first course (fired immediately). Anything higher is held until
   // explicitly fired via POST /restaurant/tables/:tableId/courses/:n/fire.
