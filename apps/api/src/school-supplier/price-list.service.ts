@@ -24,6 +24,7 @@ export class PriceListService {
   async list() {
     const variants = await this.tenantPrisma.run((tx) =>
       tx.productVariant.findMany({
+        where: { product: { isActive: true } },
         include: {
           product: {
             select: {

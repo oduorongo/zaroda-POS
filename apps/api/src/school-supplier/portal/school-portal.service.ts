@@ -71,7 +71,7 @@ export class SchoolPortalService {
     return this.asSchool(who, async () => {
       const variants = await this.tenantPrisma.run((tx) =>
         tx.productVariant.findMany({
-          where: { onSchoolList: true },
+          where: { onSchoolList: true, product: { isActive: true } },
           include: {
             product: {
               select: {

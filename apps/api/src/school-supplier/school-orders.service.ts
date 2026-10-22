@@ -163,7 +163,7 @@ export class SchoolOrdersService {
         );
 
       const variants = await tx.productVariant.findMany({
-        where: { id: { in: Array.from(merged.keys()) }, onSchoolList: true },
+        where: { id: { in: Array.from(merged.keys()) }, onSchoolList: true, product: { isActive: true } },
         include: {
           product: {
             select: {

@@ -464,6 +464,9 @@ model Product {
   // disagree.
   onlineVisible     Boolean  @default(false)
   onlineDescription String?
+  /// False once archived: hidden from the till, the table menu, the online shop and the school price list, but kept for reports and history.
+  isActive          Boolean  @default(true)
+  archivedAt        DateTime?
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 

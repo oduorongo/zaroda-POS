@@ -10,6 +10,7 @@ import {
   Post,
   Headers,
   PayloadTooLargeException,
+  Query,
   Req,
 } from '@nestjs/common';
 import type { Request } from 'express';
@@ -20,6 +21,8 @@ import { ProductsService } from './products.service';
 import { ProductVariantsService } from './product-variants.service';
 import { MAX_IMAGE_BYTES, ProductImagesService } from './product-images.service';
 import { CreateProductDto, UpdateProductDto } from './dto/product.dto';
+import { ImportProductsDto } from './dto/catalog-import.dto';
+import { CatalogImportService } from './catalog-import.service';
 import {
   CreateProductVariantDto,
   GenerateBarcodesDto,
@@ -36,11 +39,13 @@ export class ProductsController {
     private readonly products: ProductsService,
     private readonly variants: ProductVariantsService,
     private readonly images: ProductImagesService,
+    private readonly imports: CatalogImportService,
   ) {}
 
+  // Archived products are hidden unless ?includeArchived=true (the back office's "Show archived").
   @Get()
-  findAll() {
-    return this.products.findAll();
+  findAll(@Query('includeArchived') includeArchived?: string) {
+    return this.products.findAll({ includeArchived: includeArchived === 'true' });
   }
 
   @Get(':id')
@@ -63,11 +68,27 @@ export class ProductsController {
     return this.products.update(id, dto);
   }
 
+  // Archives a product that has history (answer { archived: true }) and deletes one that never had any ({ archived: false }).
   @Roles(Role.MANAGER, Role.OWNER)
   @Delete(':id')
-  @HttpCode(204)
-  async remove(@Param('id', ParseUUIDPipe) id: string) {
-    await this.products.remove(id);
+  @HttpCode(200)
+  remove(@Param('id', ParseUUIDPipe) id: string) {
+    return this.products.remove(id);
+  }
+
+  @Roles(Role.MANAGER, Role.OWNER)
+  @Post(':id/restore')
+  @HttpCode(200)
+  restore(@Param('id', ParseUUIDPipe) id: string) {
+    return this.products.restore(id);
+  }
+
+  // A file of products: dryRun (the default) only checks it; dryRun:false imports it in one go.
+  @Roles(Role.MANAGER, Role.OWNER)
+  @Post('import')
+  @HttpCode(200)
+  importProducts(@Body() dto: ImportProductsDto) {
+    return this.imports.run(dto);
   }
 
   // The label printer: barcodes for many options at once (those that have none).

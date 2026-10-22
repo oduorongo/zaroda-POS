@@ -14,6 +14,7 @@ import { RibbonButton, RibbonLink, ThemeToggle, TopRibbon } from "@zaroda/ui";
 const QUICK_LINKS = [
   { href: "/sales", label: "Sales" },
   { href: "/products", label: "Products" },
+  { href: "/categories", label: "Categories" },
   { href: "/reports", label: "Reports" },
 ];
 

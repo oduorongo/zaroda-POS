@@ -8,6 +8,7 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Query,
 } from '@nestjs/common';
 import { Role } from '@prisma/client';
 import { Roles } from '../auth/roles.decorator';
@@ -25,8 +26,8 @@ export class CategoriesController {
   // Reads: any authenticated role, including CASHIER - they browse the
   // catalog at the point of sale.
   @Get()
-  findAll() {
-    return this.categories.findAll();
+  findAll(@Query('withCounts') withCounts?: string) {
+    return this.categories.findAll(withCounts === 'true');
   }
 
   @Get(':id')

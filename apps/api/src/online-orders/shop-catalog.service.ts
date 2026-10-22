@@ -130,6 +130,7 @@ export class ShopCatalogService {
     return tx.product.findMany({
       where: {
         onlineVisible: true,
+        isActive: true, // an archived product is never on the shop or the table menu
         ...(productIds ? { id: { in: productIds } } : {}),
         variants: { some: {} },      },
       include: {

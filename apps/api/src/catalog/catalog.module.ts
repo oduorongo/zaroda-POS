@@ -5,6 +5,7 @@ import { TaxClassesController } from './tax-classes.controller';
 import { TaxClassesService } from './tax-classes.service';
 import { ProductsController } from './products.controller';
 import { ProductsService } from './products.service';
+import { CatalogImportService } from './catalog-import.service';
 import { ProductVariantsService } from './product-variants.service';
 import { ProductImagesService } from './product-images.service';
 import { ObjectStorageService } from '../common/storage/object-storage.service';
@@ -15,6 +16,7 @@ import { ObjectStorageService } from '../common/storage/object-storage.service';
     CategoriesService,
     TaxClassesService,
     ProductsService,
+    CatalogImportService,
     ProductVariantsService,
     ProductImagesService,
     ObjectStorageService,
