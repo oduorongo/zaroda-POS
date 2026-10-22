@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { apiGet, apiPatch, apiPost, apiDelete, ApiError } from "../../../lib/api";
 import { getSession, clearSession, isBackofficeRole, type Session } from "../../../lib/auth";
 import { Nav } from "../../../components/nav";
@@ -216,9 +217,10 @@ export default function TaxSettingsPage() {
               <CardHeader><CardTitle>eTIMS invoice sync log</CardTitle></CardHeader>
               <CardContent>
                 <EmptyState
-                  title="eTIMS integration not yet configured"
-                  description="Sales aren't submitted to KRA's Virtual Sales Control Unit yet. Once this is wired up, every completed sale's sync status (pending / synced / failed, with retry) will show here."
+                  title="Sales are not sent to KRA yet"
+                  description="The connection to KRA's eTIMS (test system) can be set up now: your PIN, each branch's device and KRA's code lists. Sending sales comes next; when it does, every sale's status (pending / sent / failed, with retry) will show here."
                 />
+                <Link href="/settings/etims" className="mt-3 inline-block text-sm text-primary-600 hover:underline">Set up the eTIMS connection</Link>
               </CardContent>
             </Card>
           </>

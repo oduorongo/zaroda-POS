@@ -120,6 +120,8 @@ model Organization {
   supplierBills             SupplierBill[]
   supplierBillPayments      SupplierBillPayment[]
   supplierBillCredits       SupplierBillCredit[]
+  etimsSetting              EtimsSetting?
+  etimsDevices              EtimsDevice[]
   repackagings              Repackaging[]
   wasteLogs                 WasteLog[]
   expenses                  Expense[]
@@ -179,6 +181,7 @@ model Branch {
   salonAppointments     SalonAppointment[]
   purchaseOrders        PurchaseOrder[]
   goodsReceipts         GoodsReceipt[]
+  etimsDevice           EtimsDevice?
   repackagings          Repackaging[]
   wasteLogs             WasteLog[]
   expenses              Expense[]
@@ -4209,4 +4212,110 @@ model SupplierBillCredit {
 
   @@index([billId])
   @@map("supplier_bill_credits")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// KRA eTIMS (OSCU) integration
+// ─────────────────────────────────────────────────────────────────────────
+
+enum EtimsEnvironment {
+  SANDBOX
+  PRODUCTION
+}
+
+enum EtimsDeviceStatus {
+  NOT_CONNECTED
+  ACTIVE
+  FAILED
+}
+
+/// A business's eTIMS switch and its taxpayer details. Off until the owner turns it on; nothing about selling changes while it is off.
+model EtimsSetting {
+  id             String           @id @default(uuid())
+  organizationId String           @unique
+  enabled        Boolean          @default(false)
+  environment    EtimsEnvironment @default(SANDBOX)
+  /// The business's KRA PIN, as KRA knows it (11 characters).
+  tin            String?
+  /// The name KRA returned when the first device was connected.
+  taxpayerName   String?
+  updatedAt      DateTime         @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("etims_settings")
+}
+
+/// One OSCU "device" per branch: the branch's KRA branch ID and the device serial KRA approved, plus the key KRA hands back (kept encrypted).
+model EtimsDevice {
+  id             String            @id @default(uuid())
+  organizationId String
+  branchId       String            @unique
+  /// KRA's two-character branch ID ("00" is the head office).
+  bhfId          String
+  /// The serial number registered with KRA for this device.
+  dvcSrlNo       String
+  status         EtimsDeviceStatus @default(NOT_CONNECTED)
+  /// The communication key from KRA, encrypted. Never sent to a screen.
+  cmcKeyEnc      String?
+  dvcId          String?
+  sdcId          String?
+  mrcNo          String?
+  bhfNm          String?
+  connectedAt    DateTime?
+  lastError      String?
+  updatedAt      DateTime          @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  branch       Branch       @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, bhfId])
+  @@index([organizationId])
+  @@map("etims_devices")
+}
+
+/// KRA's code lists (tax types, units, payment methods...), copied down so screens and requests can use them. KRA data, the same for
+/// every business, so there is no tenant on it. Kept apart per environment (sandbox and production lists differ).
+model EtimsCode {
+  environment EtimsEnvironment
+  cdCls       String
+  cdClsNm     String
+  cd          String
+  cdNm        String
+  cdDesc      String?
+  sortOrder   Int              @default(0)
+  /// e.g. the tax rate on a tax type
+  userDfnCd1  String?
+  useYn       String           @default("Y")
+  updatedAt   DateTime         @updatedAt
+
+  @@id([environment, cdCls, cd])
+  @@index([environment, cdCls])
+  @@map("etims_codes")
+}
+
+/// KRA's product classification list (what kind of thing an item is, and its usual tax type). Same for every business.
+model EtimsItemClass {
+  environment EtimsEnvironment
+  itemClsCd   String
+  itemClsNm   String
+  itemClsLvl  Int?
+  taxTyCd     String?
+  useYn       String           @default("Y")
+  updatedAt   DateTime         @updatedAt
+
+  @@id([environment, itemClsCd])
+  @@index([environment, itemClsNm])
+  @@map("etims_item_classes")
+}
+
+/// When each kind of KRA list was last downloaded, so the next request only asks for what changed ("lastReqDt").
+model EtimsSyncState {
+  environment EtimsEnvironment
+  kind        String
+  lastReqDt   String
+  updatedAt   DateTime         @updatedAt
+
+  @@id([environment, kind])
+  @@map("etims_sync_state")
 }

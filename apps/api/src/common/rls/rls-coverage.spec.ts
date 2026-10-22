@@ -49,6 +49,11 @@ const INTENTIONALLY_EXCLUDED = new Set([
   // A global price list with no organizationId - see rls.sql's "platform
   // billing tables" comment.
   'plans',
+  // KRA's own eTIMS code lists and the record of when they were last downloaded: the same data for every business (it is KRA's, not
+  // a tenant's) - see rls.sql's "KRA eTIMS" comment. The business's own eTIMS switch and devices ARE tenant tables with policies.
+  'etims_codes',
+  'etims_item_classes',
+  'etims_sync_state',
 ]);
 
 function extractMappedTables(schemaSource: string): string[] {

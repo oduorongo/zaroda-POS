@@ -1224,3 +1224,18 @@ DROP POLICY IF EXISTS tenant_isolation ON supplier_bill_credits;
 CREATE POLICY tenant_isolation ON supplier_bill_credits
   USING ("organizationId" = current_setting('app.current_tenant', true))
   WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+-- KRA eTIMS: the business's switch and its devices (the code lists are KRA's own data, shared, and have no tenant)
+ALTER TABLE etims_settings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE etims_settings FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON etims_settings;
+CREATE POLICY tenant_isolation ON etims_settings
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+ALTER TABLE etims_devices ENABLE ROW LEVEL SECURITY;
+ALTER TABLE etims_devices FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON etims_devices;
+CREATE POLICY tenant_isolation ON etims_devices
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
