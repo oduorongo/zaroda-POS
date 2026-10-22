@@ -7,11 +7,14 @@ import { getSession, clearSession, isBackofficeRole, type Session } from "../../
 import { Nav } from "../../components/nav";
 import { PageHeader } from "../../components/page-header";
 import { variantTitleOf } from "../../lib/variant-label";
+import { findByCode } from "../../lib/barcode";
+import { ScanControls } from "../../components/scan-controls";
 
 interface Variant {
   id: string;
   sku: string;
   name?: string | null;
+  barcode?: string | null;
   quantityMode: "COUNT" | "WEIGHT";
   product: { name: string };
 }
@@ -50,6 +53,19 @@ function VariantPicker({
   onSelect: (v: Variant | null) => void;
 }) {
   const [search, setSearch] = useState("");
+  const [note, setNote] = useState<string | null>(null);
+  // A scanned barcode (camera, scanner gun, or typed with Enter) picks the finished good.
+  function scanned(code: string): boolean {
+    const match = findByCode(products.flatMap((p) => p.variants.map((v) => ({ ...v, product: { name: p.name } }))), code);
+    if (!match) {
+      setNote(`Nothing has the barcode ${code}. Add the barcode to the product first, or search by name.`);
+      return false;
+    }
+    onSelect(match);
+    setSearch("");
+    setNote(null);
+    return true;
+  }
   const options = useMemo(() => {
     const flat = products.flatMap((p) => p.variants.map((v) => ({ ...v, product: { name: p.name } })));
     const term = search.trim().toLowerCase();
@@ -76,9 +92,19 @@ function VariantPicker({
           <input
             placeholder="Search by product name or code - must have a recipe (BOM) set"
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              setNote(null);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && search.trim()) {
+                e.preventDefault();
+                scanned(search.trim());
+              }
+            }}
             className="mt-1 w-full rounded-md border border-border bg-background p-2 text-sm"
           />
+          <ScanControls onCode={scanned} note={note} />
           {search.trim() && (
             <div className="mt-1 max-h-40 overflow-y-auto rounded-md border border-border bg-background">
               {options.length === 0 ? (

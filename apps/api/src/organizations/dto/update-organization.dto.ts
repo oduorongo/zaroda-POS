@@ -13,4 +13,26 @@ export class UpdateOrganizationDto {
   @IsBoolean()
   @IsOptional()
   vatRegistered?: boolean;
+
+  // The business details printed at the top of invoices, delivery notes and receipts.
+  @IsString()
+  @MaxLength(300)
+  @IsOptional()
+  address?: string;
+
+  @IsString()
+  @MaxLength(30)
+  @IsOptional()
+  phone?: string;
+
+  @IsString()
+  @MaxLength(200)
+  @IsOptional()
+  email?: string;
+
+  /** A line at the bottom of invoices, e.g. bank details or terms of payment. */
+  @IsString()
+  @MaxLength(500)
+  @IsOptional()
+  invoiceFooter?: string;
 }

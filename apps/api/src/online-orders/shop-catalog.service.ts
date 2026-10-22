@@ -276,6 +276,7 @@ export class ShopCatalogService {
             id: v.id,
             sku: v.sku,
             name: v.name,
+            barcode: v.barcode,
             price: Number(v.price),
             quantityMode: v.quantityMode,
             available: available.get(v.id) ?? 0,

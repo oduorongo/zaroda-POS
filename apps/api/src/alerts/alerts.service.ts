@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { CommissionInvoiceStatus, OnlineOrderStatus, Role, TableReservationStatus } from '@prisma/client';
+import { CommissionInvoiceStatus, OnlineOrderStatus, Role, SchoolOrderStatus, TableReservationStatus } from '@prisma/client';
 import { TenantScopedPrismaService } from '../common/prisma/tenant-scoped-prisma.service';
 import { getTenantStore } from '../common/tenant/tenant-context';
 import { dayOf, FEE_KIND, nairobiHour, pauseDate } from '../online-store/commission.util';
@@ -8,7 +8,7 @@ import { feeOrderWhere } from '../online-store/fee-orders';
 export interface StaffAlert {
   /** Stable for as long as the thing is waiting, so the app can ring once per new item and not on every refresh. */
   key: string;
-  kind: 'ORDER' | 'RESERVATION' | 'FEES';
+  kind: 'ORDER' | 'RESERVATION' | 'FEES' | 'SCHOOL_ORDER';
   title: string;
   body: string;
   /** A page in the back office where it is dealt with. */
@@ -33,7 +33,7 @@ export class AlertsService {
     const canPay = role === Role.OWNER || role === Role.MANAGER;
     const now = new Date();
     return this.tenantPrisma.run(async (tx) => {
-      const [orders, reservations, unsentFees, unpaidFeeInvoices] = await Promise.all([
+      const [orders, reservations, unsentFees, unpaidFeeInvoices, schoolOrders] = await Promise.all([
         tx.onlineOrder.findMany({
           where: { status: OnlineOrderStatus.PAID },
           orderBy: { createdAt: 'desc' },
@@ -49,6 +49,13 @@ export class AlertsService {
         // The shopper fees the shop has collected: what it holds today, and what it has been asked to send but has not.
         canPay ? tx.onlineOrder.aggregate({ where: feeOrderWhere(), _sum: { convenienceFee: true } }) : Promise.resolve(null),
         canPay ? tx.commissionInvoice.findMany({ where: { status: CommissionInvoiceStatus.ISSUED, kind: FEE_KIND }, orderBy: { issuedAt: 'desc' }, take: 5 }) : Promise.resolve([]),
+        // Orders from schools waiting for the supplier to confirm them.
+        tx.schoolOrder.findMany({
+          where: { status: SchoolOrderStatus.SUBMITTED },
+          orderBy: { submittedAt: 'desc' },
+          take: MAX_PER_KIND,
+          select: { id: true, orderNumber: true, submittedAt: true, school: { select: { name: true } } },
+        }),
       ]);
 
       const items: StaffAlert[] = [
@@ -67,6 +74,14 @@ export class AlertsService {
           body: `${r.guestName} - ${r.date.toISOString().slice(0, 10)} at ${r.time}. Waiting for your answer.`,
           href: '/restaurant',
           createdAt: r.createdAt,
+        })),
+        ...schoolOrders.map((o) => ({
+          key: `school-order:${o.id}`,
+          kind: 'SCHOOL_ORDER' as const,
+          title: `School order ${o.orderNumber}`,
+          body: `${o.school.name} has placed an order. Waiting for you to confirm it.`,
+          href: '/school-orders',
+          createdAt: o.submittedAt,
         })),
       ];
       const today = dayOf(now);

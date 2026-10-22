@@ -1,16 +1,48 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { CalendarClock, MapPin, Phone, Search } from "lucide-react";
-import { locationLabel } from "../lib/format";
+import { CalendarClock, MapPin, Phone, ScanBarcode, Search } from "lucide-react";
+import { formatQty, locationLabel, variantTitle } from "../lib/format";
 import type { Shop } from "../lib/types";
 import CartSummary from "./cart-summary";
 import ProductCard from "./product-card";
+import ShopScanner from "./shop-scanner";
+import { useStore } from "./store-provider";
 
 export default function ShopView({ shop, canReserve = false }: { shop: Shop; canReserve?: boolean }) {
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<string | null>(null);
+  const { cartFor, setLineQuantity } = useStore();
+  const [scanOpen, setScanOpen] = useState(false);
+  const [scanMessage, setScanMessage] = useState<string | null>(null);
+  const lastScan = useRef({ code: "", at: 0 });
+
+  // A scanned code finds this shop's matching product (by barcode, else product code) and puts one in the cart. The camera
+  // reads the same code many times a second, so a repeat within a couple of seconds is ignored; scanning it again later adds one more.
+  function onScanned(raw: string) {
+    const code = raw.trim().toLowerCase();
+    const now = Date.now();
+    if (!code || (lastScan.current.code === code && now - lastScan.current.at < 2500)) return;
+    lastScan.current = { code, at: now };
+    for (const product of shop.products) {
+      const variant = product.variants.find((v) => v.barcode?.toLowerCase() === code) ?? product.variants.find((v) => v.sku.toLowerCase() === code);
+      if (!variant) continue;
+      const title = variantTitle(product.name, variant.name);
+      const inCart = cartFor(shop.slug).find((l) => l.variantId === variant.id)?.quantity ?? 0;
+      const step = variant.quantityMode === "WEIGHT" ? 0.5 : 1;
+      if (variant.available <= 0) {
+        setScanMessage(`${title} is sold out right now.`);
+      } else if (inCart + step > variant.available) {
+        setScanMessage(`You already have all ${formatQty(variant.available)} of ${title} that are left.`);
+      } else {
+        setLineQuantity(shop.slug, { variantId: variant.id, productName: title, sku: variant.sku, price: variant.price, quantityMode: variant.quantityMode }, Math.round((inCart + step) * 1000) / 1000);
+        setScanMessage(`Added to your cart: ${title}. Scan another, or tap Done.`);
+      }
+      return;
+    }
+    setScanMessage("This shop does not sell that product (or has not put it online).");
+  }
 
   const categories = useMemo(() => {
     const seen = new Map<string, string>();
@@ -71,6 +103,15 @@ export default function ShopView({ shop, canReserve = false }: { shop: Shop; can
                 className="w-full rounded-md border border-border bg-surface py-2 pl-9 pr-3 text-sm"
               />
             </div>
+            <button
+              onClick={() => {
+                setScanMessage(null);
+                setScanOpen(true);
+              }}
+              className="flex items-center gap-1.5 rounded-md border border-border bg-surface px-3 py-2 text-sm hover:bg-secondary-500/10"
+            >
+              <ScanBarcode size={16} aria-hidden /> Scan
+            </button>
             {categories.length > 1 && (
               <div className="flex flex-wrap gap-1.5">
                 <button
@@ -105,6 +146,7 @@ export default function ShopView({ shop, canReserve = false }: { shop: Shop; can
 
         <CartSummary shopSlug={shop.slug} feeRate={shop.convenienceFeeRate} />
       </div>
+      {scanOpen && <ShopScanner onDetected={onScanned} onClose={() => setScanOpen(false)} statusMessage={scanMessage} />}
     </div>
   );
 }

@@ -8,6 +8,8 @@ import { getSession, clearSession, isBackofficeRole, type Session } from "../../
 import { Nav } from "../../components/nav";
 import { PageHeader } from "../../components/page-header";
 import { variantLabel, variantTitleOf } from "../../lib/variant-label";
+import { findByCode } from "../../lib/barcode";
+import { ScanControls } from "../../components/scan-controls";
 
 type QuantityMode = "COUNT" | "WEIGHT";
 type WasteReason = "EXPIRED" | "DAMAGED" | "SPOILED" | "OVERPRODUCTION" | "OTHER";
@@ -18,6 +20,7 @@ interface Variant {
   id: string;
   sku: string;
   name?: string | null;
+  barcode?: string | null;
   quantityMode: QuantityMode;
   product: { name: string };
 }
@@ -134,6 +137,19 @@ export default function WastePage() {
       .filter((v) => v.product.name.toLowerCase().includes(term) || v.sku.toLowerCase().includes(term) || (v.name ?? "").toLowerCase().includes(term))
       .slice(0, 20);
   }, [products, search]);
+
+  const [scanNote, setScanNote] = useState<string | null>(null);
+  // A scanned barcode (camera, scanner gun, or typed with Enter) picks the product being written off.
+  function scanned(code: string): boolean {
+    const match = findByCode(products.flatMap((p) => p.variants.map((v) => ({ ...v, product: { name: p.name } }))), code);
+    if (!match) {
+      setScanNote(`Nothing has the barcode ${code}. Add the barcode to the product first, or search by name.`);
+      return false;
+    }
+    setScanNote(null);
+    void pickVariant(match);
+    return true;
+  }
 
   async function pickVariant(v: Variant) {
     setVariant(v);
@@ -257,9 +273,19 @@ export default function WastePage() {
               <input
                 placeholder="Search by product name or code"
                 value={search}
-                onChange={(e) => setSearch(e.target.value)}
+                onChange={(e) => {
+                  setSearch(e.target.value);
+                  setScanNote(null);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && search.trim()) {
+                    e.preventDefault();
+                    scanned(search.trim());
+                  }
+                }}
                 className="mt-1 w-full rounded-md border border-border bg-background p-2 text-sm"
               />
+              <ScanControls onCode={scanned} note={scanNote} />
               {search.trim() && (
                 <div className="mt-1 max-h-48 overflow-y-auto rounded-md border border-border bg-background">
                   {searchOptions.length === 0 ? (

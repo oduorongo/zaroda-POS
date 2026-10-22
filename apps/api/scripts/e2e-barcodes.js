@@ -100,6 +100,14 @@ const ean13Ok = (code) => {
   check('many at once: the missing ones get one, the others are left alone', many.status === 200 && many.json.length === 3 && many.json[2].barcode === made.json.barcode && ean13Ok(many.json[0].barcode) && ean13Ok(many.json[1].barcode) && many.json[0].barcode !== many.json[1].barcode, many.json);
   check('an empty list is refused', (await api('POST', '/products/barcodes/generate', { token: owner, body: { variantIds: [] } })).status === 400);
 
+  section('3b. The online shop carries the barcode, so a shopper can scan to find a product');
+  await api('PATCH', `/products/${product.id}`, { token: owner, body: { onlineVisible: true } });
+  await api('POST', '/inventory/transactions', { token: owner, body: { branchId, variantId: y.json.id, type: 'ADJUSTMENT', quantityDelta: 5 } });
+  const slug = (await api('GET', '/online-store/me', { token: owner })).json.slug;
+  const shopView = (await api('GET', `/public/shops/${slug}`)).json;
+  const shown = shopView.products?.find((p) => p.id === product.id)?.variants.find((v) => v.sku === `SODA-Y-${tag}`);
+  check('the shop page lists the option with its barcode', Boolean(shown) && ean13Ok(shown.barcode) && shown.barcode === many.json[1].barcode, shown);
+
   section('4. A stock count from those barcodes');
   await api('POST', '/inventory/transactions', { token: owner, body: { branchId, variantId: x.json.id, type: 'ADJUSTMENT', quantityDelta: 12 } });
   const open = (await api('GET', `/stock-takes?branchId=${branchId}`, { token: owner })).json.find((s) => s.status === 'OPEN');

@@ -33,6 +33,9 @@ import {
   Factory,
   Wrench,
   Home,
+  GraduationCap,
+  FileText,
+  Tags,
 } from "lucide-react";
 import { getSession, clearSession, isBackofficeRole, type Session } from "../../lib/auth";
 import { useIdleLogout } from "../../hooks/use-idle-logout";
@@ -156,6 +159,13 @@ const VERTICAL_TILES: Record<string, Tile> = {
     icon: Home,
     tone: "bg-amber-600",
   },
+  SCHOOL_SUPPLIER: {
+    href: "/school-orders",
+    label: "School orders",
+    description: "Orders from schools to confirm and deliver.",
+    icon: ClipboardList,
+    tone: "bg-amber-600",
+  },
   SERVICE: {
     href: "/service-jobs",
     label: "Job Orders",
@@ -191,6 +201,14 @@ export default function DashboardPage() {
     ? [...TILES, ...MANAGER_TILES]
     : TILES;
   if (verticalTile) tiles.push(verticalTile);
+  // A school supplier also gets the schools, the school price list and the money screens.
+  if (session.industryType === "SCHOOL_SUPPLIER") {
+    tiles.push(
+      { href: "/schools", label: "Schools", description: "The schools you supply, their PINs and ordering link.", icon: GraduationCap, tone: "bg-amber-600" },
+      { href: "/school-prices", label: "School price list", description: "What schools can order and what they pay.", icon: Tags, tone: "bg-amber-600" },
+      { href: "/school-money", label: "Invoices & payments", description: "Who owes you, invoices, cheques and receipts.", icon: FileText, tone: "bg-amber-600" },
+    );
+  }
   // A restaurant that also lets rooms: bookings, room types and photos.
   if (session.industryType === "RESTAURANT" && MANAGER_ROLES.includes(session.role)) {
     tiles.push({ href: "/rooms", label: "Hotel rooms", description: "Rooms, bookings and check-in.", icon: BedDouble, tone: "bg-amber-600" });
