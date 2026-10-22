@@ -97,7 +97,7 @@ export default function RestaurantPage() {
       router.replace("/login");
       return;
     }
-    if (s.industryType !== "RESTAURANT") {
+    if (s.industryType !== "RESTAURANT" && s.industryType !== "HOTEL") {
       router.replace("/sales");
       return;
     }

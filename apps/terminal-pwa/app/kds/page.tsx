@@ -89,7 +89,7 @@ export default function KdsPage() {
       if (!config) return router.replace("/setup");
       const activeSession = await getActiveSession();
       if (!activeSession) return router.replace("/login");
-      if (config.industryType !== "RESTAURANT") return router.replace("/pos");
+      if (config.industryType !== "RESTAURANT" && config.industryType !== "HOTEL") return router.replace("/pos");
       setDevice(config);
       setSession(activeSession);
       try {

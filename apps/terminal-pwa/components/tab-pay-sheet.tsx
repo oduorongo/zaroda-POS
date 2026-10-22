@@ -4,7 +4,12 @@ import { useEffect, useRef, useState } from "react";
 import { ApiError, OfflineError, apiGet, apiPost } from "../lib/api";
 import { kes, normalizeKenyanPhone, type Bill, type Tab } from "../lib/tabs";
 
-type Method = "CASH" | "MPESA" | "CARD";
+type Method = "CASH" | "MPESA" | "CARD" | "ROOM_CHARGE";
+interface InHouseGuest {
+  bookingId: string;
+  guestName: string;
+  roomNumbers: string[];
+}
 type Stk = "idle" | "sending" | "pending" | "success" | "failed";
 
 interface Row {
@@ -16,6 +21,8 @@ interface Row {
   stk: Stk;
   ref: string | null;
   error: string | null;
+  /** For a charge to a room: the guest's booking. */
+  bookingId?: string;
 }
 interface Person {
   name: string;
@@ -29,6 +36,7 @@ const METHODS: [Method, string][] = [
   ["CASH", "Cash"],
   ["MPESA", "M-Pesa"],
   ["CARD", "Card"],
+  ["ROOM_CHARGE", "Room"],
 ];
 const newRow = (method: Method, amount: number): Row => ({ id: crypto.randomUUID(), method, amount: amount > 0 ? amount.toFixed(2) : "", tendered: "", phone: "", stk: "idle", ref: null, error: null });
 const input = "w-full rounded-md border border-slate-600 bg-slate-900 p-2.5";
@@ -76,6 +84,15 @@ export default function TabPaySheet({ tab, token, terminalId, cashierSessionId, 
   );
   const idFor = (key: string) => (ids.current[key] ??= crypto.randomUUID());
 
+  // Guests who are checked in, for "Room" (charge to a room). Loaded the first time it is chosen.
+  const [guests, setGuests] = useState<InHouseGuest[] | null>(null);
+  const loadGuests = () => {
+    if (guests !== null) return;
+    apiGet<InHouseGuest[]>("/hotel/in-house", token)
+      .then(setGuests)
+      .catch(() => setGuests([]));
+  };
+
   const unpaid = tab.lines.filter((l) => l.status === "ORDERED");
 
   function patchRow(id: string, patch: Partial<Row>) {
@@ -107,12 +124,14 @@ export default function TabPaySheet({ tab, token, terminalId, cashierSessionId, 
     }
   }
 
-  const payment = (row: Row, amount: number) => ({
+  // clientId: this payment's own id - a charge to a room carries it so each charge has its own unique reference.
+  const payment = (row: Row, amount: number, clientId: string) => ({
     method: row.method,
     amount,
     ...(row.method === "MPESA" ? { phoneNumber: normalizeKenyanPhone(row.phone) ?? undefined, providerReference: row.ref ?? undefined } : {}),
+    ...(row.method === "ROOM_CHARGE" ? { providerReference: `ROOM:${row.bookingId}:${clientId}` } : {}),
   });
-  const rowReady = (row: Row) => (row.method !== "MPESA" || row.stk === "success") && num(row.amount) > 0;
+  const rowReady = (row: Row) => (row.method !== "MPESA" || row.stk === "success") && (row.method !== "ROOM_CHARGE" || Boolean(row.bookingId)) && num(row.amount) > 0;
   const changeFor = (row: Row, amount: number) => (row.method === "CASH" && num(row.tendered) > amount ? num(row.tendered) - amount : 0);
 
   // ── Everything ──
@@ -136,13 +155,14 @@ export default function TabPaySheet({ tab, token, terminalId, cashierSessionId, 
     setBusy(true);
     setError(null);
     try {
+      const clientId = idFor(`all:${rows.map((r) => `${r.method}${r.amount}${r.bookingId ?? ""}`).join("|")}`);
       const result = await apiPost<{ closed: boolean }>(
         `/restaurant/tabs/${tab.id}/close`,
         {
           terminalId,
           cashierSessionId,
-          clientId: idFor(`all:${rows.map((r) => `${r.method}${r.amount}`).join("|")}`),
-          payments: rows.map((r) => payment(r, num(r.amount))),
+          clientId,
+          payments: rows.map((r) => payment(r, num(r.amount), clientId)),
           tipAmount: num(tip) || undefined,
           serviceChargeAmount: num(service) || undefined,
         },
@@ -187,13 +207,16 @@ export default function TabPaySheet({ tab, token, terminalId, cashierSessionId, 
         {
           terminalId,
           cashierSessionId,
-          payers: people.map((p, i) => ({
-            clientId: idFor(`person:${i}:${p.lineIds.join(",")}`),
+          payers: people.map((p, i) => {
+            const clientId = idFor(`person:${i}:${p.lineIds.join(",")}`);
+            return {
+            clientId,
             label: p.name,
             lineIds: p.lineIds,
-            payments: [payment(p.row, p.total)],
+            payments: [payment(p.row, p.total, clientId)],
             tipAmount: num(p.tip) || undefined,
-          })),
+            };
+          }),
         },
         token,
       );
@@ -213,7 +236,10 @@ export default function TabPaySheet({ tab, token, terminalId, cashierSessionId, 
             key={m}
             type="button"
             disabled={row.stk === "pending" || row.stk === "sending" || row.stk === "success"}
-            onClick={() => patchRow(row.id, { method: m, stk: "idle", ref: null, error: null })}
+            onClick={() => {
+              patchRow(row.id, { method: m, stk: "idle", ref: null, error: null });
+              if (m === "ROOM_CHARGE") loadGuests();
+            }}
             className={`flex-1 rounded-md p-2 text-sm ${row.method === m ? "bg-primary-600 font-semibold" : "bg-slate-700"} disabled:opacity-50`}
           >
             {label}
@@ -240,6 +266,23 @@ export default function TabPaySheet({ tab, token, terminalId, cashierSessionId, 
         </div>
       )}
       {row.method === "CARD" && <p className="text-xs text-slate-400">Take the card on your card machine, then confirm here.</p>}
+      {row.method === "ROOM_CHARGE" && (
+        <div className="space-y-1">
+          {guests === null && <p className="text-xs text-slate-400">Loading the guests...</p>}
+          {guests && guests.length === 0 && <p className="text-xs text-amber-400">Nobody is checked in right now.</p>}
+          {guests && guests.length > 0 && (
+            <select value={row.bookingId ?? ""} onChange={(e) => patchRow(row.id, { bookingId: e.target.value })} className={input}>
+              <option value="">Choose the room...</option>
+              {guests.map((g) => (
+                <option key={g.bookingId} value={g.bookingId}>
+                  Room {g.roomNumbers.join(", ")} - {g.guestName}
+                </option>
+              ))}
+            </select>
+          )}
+          <p className="text-xs text-slate-400">The amount goes on the guest&apos;s bill, to be paid when they check out.</p>
+        </div>
+      )}
     </div>
   );
 

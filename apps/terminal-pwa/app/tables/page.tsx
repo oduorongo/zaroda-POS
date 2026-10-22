@@ -106,7 +106,7 @@ export default function TablesPage() {
       if (!config) return router.replace("/setup");
       const active = await getActiveSession();
       if (!active) return router.replace("/login");
-      if (config.industryType !== "RESTAURANT") return router.replace("/pos");
+      if (config.industryType !== "RESTAURANT" && config.industryType !== "HOTEL") return router.replace("/pos");
       setDevice(config);
       setSession(active);
       setVariants(await db.variants.toArray());

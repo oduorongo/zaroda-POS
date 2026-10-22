@@ -11,6 +11,7 @@ const INDUSTRY_TYPES = [
   { value: "SALON", label: "Salon / spa" },
   { value: "RENTAL", label: "Rental properties / landlord" },
   { value: "SCHOOL_SUPPLIER", label: "School supplier (sells to schools on credit)" },
+  { value: "HOTEL", label: "Hotel / lodge (rooms, front desk)" },
 ];
 
 const BACKOFFICE_URL = process.env.NEXT_PUBLIC_BACKOFFICE_URL ?? "http://localhost:3003";

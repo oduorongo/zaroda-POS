@@ -148,18 +148,18 @@ export function BookingsSection() {
               <div className="flex flex-wrap gap-2">
                 {b.status === "CONFIRMED" && (
                   <>
-                    <button className={button} disabled={busy !== null} onClick={() => void act(`i-${b.id}`, `/hotel/bookings/${b.id}/check-in`, {}, `${b.guestName} checked in.`)}>
-                      Check in
-                    </button>
+                    <a className={button} href="/front-desk">
+                      Check in at the front desk
+                    </a>
                     <button className={ghost} disabled={busy !== null} onClick={() => window.confirm(`Mark ${b.guestName} as a no-show?`) && void act(`n-${b.id}`, `/hotel/bookings/${b.id}/no-show`, {}, "Marked as a no-show.")}>
                       No-show
                     </button>
                   </>
                 )}
                 {b.status === "CHECKED_IN" && (
-                  <button className={button} disabled={busy !== null} onClick={() => void act(`o-${b.id}`, `/hotel/bookings/${b.id}/check-out`, {}, `${b.guestName} checked out. Remember to collect the balance of ${kes(b.balanceDue)}.`)}>
-                    Check out
-                  </button>
+                  <a className={button} href="/front-desk">
+                    Check out at the front desk
+                  </a>
                 )}
                 {b.status === "PENDING_PAYMENT" && (
                   <button className={ghost} onClick={() => { setPaying(b); setReceipt(""); }}>
