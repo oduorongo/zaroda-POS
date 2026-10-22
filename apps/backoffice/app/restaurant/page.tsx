@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { apiGet, apiPatch, ApiError } from "../../lib/api";
+import { apiGet, apiPost, ApiError } from "../../lib/api";
 import { getSession, clearSession, isBackofficeRole, type Session } from "../../lib/auth";
 import { Nav } from "../../components/nav";
 import { PageHeader } from "../../components/page-header";
@@ -22,7 +22,19 @@ interface RestaurantTable {
   label: string;
   seats: number;
   status: TableStatus;
+  reservation: { guestName: string; time: string } | null;
+  tab: { id: string; openedAt: string; guestCount: number; itemCount: number; total: number } | null;
 }
+
+interface HeldCourse {
+  source: "TAB" | "SALE";
+  tabId: string | null;
+  saleId: string | null;
+  courseNumber: number;
+  items: { title: string; quantity: number; station: string }[];
+}
+
+const kes = (n: number) => `KES ${n.toLocaleString("en-KE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 interface KitchenStation {
   id: string;
@@ -32,6 +44,7 @@ interface KitchenStation {
 interface KitchenTicketLine {
   id: string;
   quantity: number;
+  voidedAt: string | null;
   variant: { product: { name: string } };
 }
 
@@ -42,6 +55,8 @@ interface KitchenTicket {
   createdAt: string;
   lines: KitchenTicketLine[];
   station: { name: string };
+  tab: { table: { label: string } } | null;
+  sale: { restaurantTable: { table: { label: string } } | null } | null;
 }
 
 const STATUS_COLOR: Record<TableStatus, string> = {
@@ -66,6 +81,7 @@ export default function RestaurantPage() {
   const [tables, setTables] = useState<RestaurantTable[]>([]);
   const [stations, setStations] = useState<KitchenStation[]>([]);
   const [tickets, setTickets] = useState<KitchenTicket[]>([]);
+  const [held, setHeld] = useState<Record<string, HeldCourse[]>>({});
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<"floor" | "setup" | "qr" | "reservations">("floor");
@@ -118,18 +134,32 @@ export default function RestaurantPage() {
       const ticketLists = await Promise.all(
         stationList.map((s) => apiGet<KitchenTicket[]>(`/restaurant/kitchen-tickets?stationId=${s.id}`)),
       );
-      setTickets(ticketLists.flat().filter((t) => t.status !== "SERVED"));
+      // a held course is not on the kitchen screen until it is fired
+      setTickets(ticketLists.flat().filter((t) => t.status !== "SERVED" && t.status !== "HELD"));
+      // courses still waiting to be fired come from the server, so they are still shown after a refresh
+      const busy = tableList.filter((t) => t.status === "OCCUPIED" || t.status === "NEEDS_CLEANING");
+      const lists = await Promise.all(busy.map((t) => apiGet<HeldCourse[]>(`/restaurant/tables/${t.id}/held-courses`).catch(() => [] as HeldCourse[])));
+      setHeld(Object.fromEntries(busy.map((t, i) => [t.id, lists[i]]).filter(([, l]) => (l as HeldCourse[]).length > 0)));
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not load the floor.");
     }
   }
 
-  async function setStatus(table: RestaurantTable, status: TableStatus) {
+  async function markClean(table: RestaurantTable) {
     try {
-      await apiPatch(`/restaurant/tables/${table.id}/status`, { status });
+      await apiPost(`/restaurant/tables/${table.id}/clean`, {});
       await loadFloor();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not update the table.");
+    }
+  }
+
+  async function fire(course: HeldCourse) {
+    try {
+      await apiPost(course.source === "TAB" ? `/restaurant/tabs/${course.tabId}/courses/${course.courseNumber}/fire` : `/restaurant/sales/${course.saleId}/courses/${course.courseNumber}/fire`, {});
+      await loadFloor();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not send that course to the kitchen.");
     }
   }
 
@@ -191,22 +221,33 @@ export default function RestaurantPage() {
                   <p className="font-bold">{t.label}</p>
                   <p className="text-xs text-secondary-500">{t.seats} seats</p>
                   <p className="mt-1 text-xs uppercase tracking-wide">{t.status.replace("_", " ")}</p>
+                  {t.tab && (
+                    <p className="mt-1 font-mono text-sm font-bold">
+                      {kes(t.tab.total)} <span className="text-xs font-normal">· {t.tab.itemCount} items</span>
+                    </p>
+                  )}
+                  {t.status === "RESERVED" && t.reservation && (
+                    <p className="mt-1 text-xs">
+                      {t.reservation.guestName} at {t.reservation.time}
+                    </p>
+                  )}
                   {t.status === "NEEDS_CLEANING" && (
                     <button
-                      onClick={() => void setStatus(t, "AVAILABLE")}
+                      onClick={() => void markClean(t)}
                       className="mt-2 rounded bg-background/60 px-2 py-1 text-xs hover:bg-background"
                     >
                       Mark clean
                     </button>
                   )}
-                  {t.status === "OCCUPIED" && (
+                  {(held[t.id] ?? []).map((c) => (
                     <button
-                      onClick={() => void setStatus(t, "NEEDS_CLEANING")}
-                      className="mt-2 rounded bg-background/60 px-2 py-1 text-xs hover:bg-background"
+                      key={`${c.tabId ?? c.saleId}-${c.courseNumber}`}
+                      onClick={() => void fire(c)}
+                      className="mt-2 block w-full rounded bg-amber-700 px-2 py-1 text-xs text-white hover:bg-amber-600"
                     >
-                      Diners left
+                      Fire course {c.courseNumber}
                     </button>
-                  )}
+                  ))}
                 </div>
               ))}
               {tables.length === 0 && <p className="col-span-full text-sm text-secondary-500">No tables at this branch.</p>}
@@ -222,10 +263,14 @@ export default function RestaurantPage() {
                     <span>{ticket.station.name}</span>
                     <span>Course {ticket.courseNumber}</span>
                   </div>
+                  {(ticket.tab?.table.label ?? ticket.sale?.restaurantTable?.table.label) && (
+                    <p className="mt-1 text-sm font-semibold">{ticket.tab?.table.label ?? ticket.sale?.restaurantTable?.table.label}</p>
+                  )}
                   <p className="mt-1 text-xs uppercase tracking-wide text-secondary-500">{ticket.status.replace("_", " ")}</p>
                   {ticket.lines.map((line) => (
-                    <p key={line.id} className="mt-1 text-sm">
+                    <p key={line.id} className={`mt-1 text-sm ${line.voidedAt ? "text-secondary-500 line-through" : ""}`}>
                       {line.quantity}x {line.variant.product.name}
+                      {line.voidedAt ? " - voided" : ""}
                     </p>
                   ))}
                 </div>

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { apiGet, apiPost, apiPut, ApiError } from "../../lib/api";
+import { apiDelete, apiGet, apiPatch, apiPost, apiPut, ApiError } from "../../lib/api";
 
 interface Table {
   id: string;
@@ -38,12 +38,98 @@ export function SetupSection({ branchId, tables, stations, onChanged }: { branch
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [editTable, setEditTable] = useState<{ id: string; label: string; seats: string } | null>(null);
+  const [editStation, setEditStation] = useState<{ id: string; name: string } | null>(null);
+  const [lead, setLead] = useState("60");
 
   const fail = (err: unknown, fallback: string) => setError(err instanceof ApiError ? err.message : fallback);
   const loadDishes = () => apiGet<Dish[]>("/restaurant/dishes").then(setDishes).catch((err) => fail(err, "Could not load your dishes."));
   useEffect(() => {
     void loadDishes();
   }, []);
+  useEffect(() => {
+    apiGet<{ reserveLeadMinutes: number }>(`/restaurant/settings?branchId=${branchId}`)
+      .then((r) => setLead(String(r.reserveLeadMinutes)))
+      .catch(() => undefined);
+  }, [branchId]);
+
+  async function saveTable(e: React.FormEvent) {
+    e.preventDefault();
+    if (!editTable) return;
+    setBusy(true);
+    setError(null);
+    setNotice(null);
+    try {
+      await apiPatch(`/restaurant/tables/${editTable.id}`, { label: editTable.label.trim(), seats: Number(editTable.seats) });
+      setNotice("Table updated.");
+      setEditTable(null);
+      onChanged();
+    } catch (err) {
+      fail(err, "Could not change the table.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function removeTable(t: Table) {
+    if (!window.confirm(`Remove ${t.label}? If it has been used it is kept in your history but taken off the floor.`)) return;
+    setError(null);
+    setNotice(null);
+    try {
+      const r = await apiDelete<{ archived: boolean }>(`/restaurant/tables/${t.id}`);
+      setNotice(r.archived ? `${t.label} was taken off the floor (it has history, so it is kept in your records).` : `${t.label} was deleted.`);
+      onChanged();
+    } catch (err) {
+      fail(err, "Could not remove the table.");
+    }
+  }
+
+  async function saveStation(e: React.FormEvent) {
+    e.preventDefault();
+    if (!editStation) return;
+    setBusy(true);
+    setError(null);
+    setNotice(null);
+    try {
+      await apiPatch(`/restaurant/stations/${editStation.id}`, { name: editStation.name.trim() });
+      setNotice("Station renamed.");
+      setEditStation(null);
+      onChanged();
+    } catch (err) {
+      fail(err, "Could not rename the station.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function removeStation(st: Station) {
+    if (!window.confirm(`Remove the ${st.name} station? Dishes sent there will go to your first station.`)) return;
+    setError(null);
+    setNotice(null);
+    try {
+      const r = await apiDelete<{ archived: boolean }>(`/restaurant/stations/${st.id}`);
+      setNotice(r.archived ? `${st.name} was taken off (it has history, so it is kept in your records).` : `${st.name} was deleted.`);
+      onChanged();
+      void loadDishes();
+    } catch (err) {
+      fail(err, "Could not remove the station.");
+    }
+  }
+
+  async function saveLead(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    setNotice(null);
+    try {
+      await apiPut("/restaurant/settings", { branchId, reserveLeadMinutes: Math.max(0, Math.round(Number(lead) || 0)) });
+      setNotice("Saved.");
+    } catch (err) {
+      fail(err, "Could not save that.");
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function addTable(e: React.FormEvent) {
     e.preventDefault();
@@ -105,9 +191,31 @@ export function SetupSection({ branchId, tables, stations, onChanged }: { branch
               Add table
             </button>
           </form>
-          <p className="text-xs text-secondary-500">
-            {tables.length === 0 ? "No tables yet." : tables.map((t) => `${t.label} (${t.seats})`).join(" · ")}
-          </p>
+          {tables.length === 0 && <p className="text-xs text-secondary-500">No tables yet.</p>}
+          <ul className="divide-y divide-border text-sm">
+            {tables.map((t) =>
+              editTable?.id === t.id ? (
+                <li key={t.id} className="py-2">
+                  <form onSubmit={saveTable} className="flex flex-wrap gap-2">
+                    <input className={`${input} min-w-0 flex-1`} required maxLength={50} value={editTable.label} onChange={(e) => setEditTable({ ...editTable, label: e.target.value })} />
+                    <input className={`${input} w-20`} required type="number" min={1} max={500} aria-label="Seats" value={editTable.seats} onChange={(e) => setEditTable({ ...editTable, seats: e.target.value })} />
+                    <button className={button} disabled={busy}>Save</button>
+                    <button type="button" className="text-xs text-secondary-500 hover:underline" onClick={() => setEditTable(null)}>Cancel</button>
+                  </form>
+                </li>
+              ) : (
+                <li key={t.id} className="flex items-center justify-between gap-2 py-1.5">
+                  <span>
+                    {t.label} <span className="text-xs text-secondary-500">({t.seats} seats)</span>
+                  </span>
+                  <span className="flex gap-3 text-xs">
+                    <button className="text-primary-600 hover:underline" onClick={() => setEditTable({ id: t.id, label: t.label, seats: String(t.seats) })}>Edit</button>
+                    <button className="text-error-600 hover:underline" onClick={() => void removeTable(t)}>Remove</button>
+                  </span>
+                </li>
+              ),
+            )}
+          </ul>
         </section>
 
         <section className="space-y-2 rounded-lg border border-border bg-surface p-4">
@@ -119,9 +227,43 @@ export function SetupSection({ branchId, tables, stations, onChanged }: { branch
               Add station
             </button>
           </form>
-          <p className="text-xs text-secondary-500">{stations.length === 0 ? "No stations yet - table ordering is switched off until you add one." : stations.map((s) => s.name).join(" · ")}</p>
+          {stations.length === 0 && <p className="text-xs text-secondary-500">No stations yet - table ordering is switched off until you add one.</p>}
+          <ul className="divide-y divide-border text-sm">
+            {stations.map((st) =>
+              editStation?.id === st.id ? (
+                <li key={st.id} className="py-2">
+                  <form onSubmit={saveStation} className="flex flex-wrap gap-2">
+                    <input className={`${input} min-w-0 flex-1`} required maxLength={50} value={editStation.name} onChange={(e) => setEditStation({ ...editStation, name: e.target.value })} />
+                    <button className={button} disabled={busy}>Save</button>
+                    <button type="button" className="text-xs text-secondary-500 hover:underline" onClick={() => setEditStation(null)}>Cancel</button>
+                  </form>
+                </li>
+              ) : (
+                <li key={st.id} className="flex items-center justify-between gap-2 py-1.5">
+                  <span>{st.name}</span>
+                  <span className="flex gap-3 text-xs">
+                    <button className="text-primary-600 hover:underline" onClick={() => setEditStation({ id: st.id, name: st.name })}>Rename</button>
+                    <button className="text-error-600 hover:underline" onClick={() => void removeStation(st)}>Remove</button>
+                  </span>
+                </li>
+              ),
+            )}
+          </ul>
         </section>
       </div>
+
+      <section className="space-y-2 rounded-lg border border-border bg-surface p-4">
+        <h2 className="font-semibold">Reserved tables</h2>
+        <p className="text-xs text-secondary-500">A table with a confirmed reservation shows as Reserved on the floor from this many minutes before the booking time (and for an hour after, if the guests are late). A table that is already occupied or being cleaned keeps showing that.</p>
+        <form onSubmit={saveLead} className="flex flex-wrap items-center gap-2 text-sm">
+          <label className="flex items-center gap-2">
+            Show as reserved
+            <input className={`${input} w-24`} type="number" min={0} max={720} value={lead} onChange={(e) => setLead(e.target.value)} />
+            minutes before
+          </label>
+          <button className={button} disabled={busy}>Save</button>
+        </form>
+      </section>
 
       <section className="space-y-3 rounded-lg border border-border bg-surface p-4">
         <div>
