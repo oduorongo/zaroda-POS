@@ -987,3 +987,75 @@ DROP POLICY IF EXISTS tenant_isolation ON expenses;
 CREATE POLICY tenant_isolation ON expenses
   USING ("organizationId" = current_setting('app.current_tenant', true))
   WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+-- ── School suppliers: schools, orders, invoices, payments, document numbers ─────────────────
+ALTER TABLE school_portals ENABLE ROW LEVEL SECURITY;
+ALTER TABLE school_portals FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON school_portals;
+CREATE POLICY tenant_isolation ON school_portals
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+-- The school portal address ("/schools/<slug>") must be found before any business is known: a request opts in with
+-- set_config('app.public_school_portal', 'on', true) and then sees only portals that are switched on. SELECT only.
+DROP POLICY IF EXISTS public_school_portal_read ON school_portals;
+CREATE POLICY public_school_portal_read ON school_portals
+  FOR SELECT
+  USING (current_setting('app.public_school_portal', true) = 'on' AND enabled);
+
+ALTER TABLE supplier_schools ENABLE ROW LEVEL SECURITY;
+ALTER TABLE supplier_schools FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON supplier_schools;
+CREATE POLICY tenant_isolation ON supplier_schools
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+ALTER TABLE school_orders ENABLE ROW LEVEL SECURITY;
+ALTER TABLE school_orders FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON school_orders;
+CREATE POLICY tenant_isolation ON school_orders
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+ALTER TABLE supplier_invoices ENABLE ROW LEVEL SECURITY;
+ALTER TABLE supplier_invoices FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON supplier_invoices;
+CREATE POLICY tenant_isolation ON supplier_invoices
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+ALTER TABLE supplier_payments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE supplier_payments FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON supplier_payments;
+CREATE POLICY tenant_isolation ON supplier_payments
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+ALTER TABLE document_counters ENABLE ROW LEVEL SECURITY;
+ALTER TABLE document_counters FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON document_counters;
+CREATE POLICY tenant_isolation ON document_counters
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+ALTER TABLE school_order_lines ENABLE ROW LEVEL SECURITY;
+ALTER TABLE school_order_lines FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON school_order_lines;
+CREATE POLICY tenant_isolation ON school_order_lines
+  USING (EXISTS (SELECT 1 FROM school_orders p WHERE p.id = school_order_lines."orderId" AND p."organizationId" = current_setting('app.current_tenant', true)))
+  WITH CHECK (EXISTS (SELECT 1 FROM school_orders p WHERE p.id = school_order_lines."orderId" AND p."organizationId" = current_setting('app.current_tenant', true)));
+
+ALTER TABLE supplier_invoice_lines ENABLE ROW LEVEL SECURITY;
+ALTER TABLE supplier_invoice_lines FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON supplier_invoice_lines;
+CREATE POLICY tenant_isolation ON supplier_invoice_lines
+  USING (EXISTS (SELECT 1 FROM supplier_invoices p WHERE p.id = supplier_invoice_lines."invoiceId" AND p."organizationId" = current_setting('app.current_tenant', true)))
+  WITH CHECK (EXISTS (SELECT 1 FROM supplier_invoices p WHERE p.id = supplier_invoice_lines."invoiceId" AND p."organizationId" = current_setting('app.current_tenant', true)));
+
+ALTER TABLE supplier_payment_allocations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE supplier_payment_allocations FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON supplier_payment_allocations;
+CREATE POLICY tenant_isolation ON supplier_payment_allocations
+  USING (EXISTS (SELECT 1 FROM supplier_payments p WHERE p.id = supplier_payment_allocations."paymentId" AND p."organizationId" = current_setting('app.current_tenant', true)))
+  WITH CHECK (EXISTS (SELECT 1 FROM supplier_payments p WHERE p.id = supplier_payment_allocations."paymentId" AND p."organizationId" = current_setting('app.current_tenant', true)));
+

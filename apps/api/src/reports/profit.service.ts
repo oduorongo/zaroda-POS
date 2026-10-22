@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
-import { PayrollRunStatus, SaleStatus } from '@prisma/client';
+import { PayrollRunStatus, SaleStatus, SupplierInvoiceStatus } from '@prisma/client';
 import { TenantScopedPrismaService } from '../common/prisma/tenant-scoped-prisma.service';
 import { EXPENSE_CATEGORIES } from '../expenses/expense-categories';
 import { ProfitQueryDto } from './dto/profit-query.dto';
@@ -68,7 +68,7 @@ export class ProfitService {
     const branchId = query.branchId;
 
     const data = await this.tenantPrisma.run(async (tx) => {
-      const [sales, refunds, wastes, expenses, payrollRuns] = await Promise.all([
+      const [sales, refunds, wastes, expenses, payrollRuns, schoolInvoices] = await Promise.all([
         tx.sale.findMany({
           where: { status: SaleStatus.COMPLETED, branchId, createdAt: { gte: start, lt: end } },
           select: {
@@ -92,8 +92,15 @@ export class ProfitService {
         branchId
           ? Promise.resolve([])
           : tx.payrollRun.findMany({ where: { status: PayrollRunStatus.PAID, paidAt: { gte: start, lt: end } }, select: { paidAt: true, payslips: { select: { grossPay: true } } } }),
+        // Invoices to schools (credit sales) count on the day they are issued, not when they are paid. They belong to no branch.
+        branchId
+          ? Promise.resolve([])
+          : tx.supplierInvoice.findMany({
+              where: { status: { not: SupplierInvoiceStatus.VOID }, issueDate: { gte: new Date(`${query.from}T00:00:00.000Z`), lte: new Date(`${query.to}T00:00:00.000Z`) } },
+              select: { issueDate: true, total: true, taxAmount: true, lines: { select: { quantity: true, unitCost: true } } },
+            }),
       ]);
-      return { sales, refunds, wastes, expenses, payrollRuns };
+      return { sales, refunds, wastes, expenses, payrollRuns, schoolInvoices };
     });
 
     const buckets = new Map<string, Totals>(listBuckets(query.from, query.to, groupBy).map((key) => [key, empty()]));
@@ -127,6 +134,23 @@ export class ProfitService {
         t.sales += Number(sale.total);
         t.tax += saleTax;
         t.costOfGoods += saleCost;
+      });
+    }
+    for (const invoice of data.schoolInvoices) {
+      let cost = 0;
+      for (const line of invoice.lines) {
+        if (line.unitCost === null) {
+          unknownCostLines++;
+          continue;
+        }
+        knownCostLines++;
+        cost += Number(line.unitCost) * Number(line.quantity);
+      }
+      add(invoice.issueDate.toISOString().slice(0, 10), (t) => {
+        t.saleCount += 1;
+        t.sales += Number(invoice.total);
+        t.tax += Number(invoice.taxAmount);
+        t.costOfGoods += cost;
       });
     }
     for (const r of data.refunds) add(nairobiDayOf(r.createdAt), (t) => (t.refunds += Number(r.amount)));

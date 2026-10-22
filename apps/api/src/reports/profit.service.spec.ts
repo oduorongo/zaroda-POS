@@ -13,13 +13,14 @@ const sale = (iso: string, total: number, lines: Line[]) => ({
   })),
 });
 
-function setup(data: { sales?: unknown[]; refunds?: unknown[]; wastes?: unknown[]; expenses?: unknown[]; payroll?: unknown[] } = {}) {
+function setup(data: { sales?: unknown[]; refunds?: unknown[]; wastes?: unknown[]; expenses?: unknown[]; payroll?: unknown[]; schoolInvoices?: unknown[] } = {}) {
   const tx = {
     sale: { findMany: jest.fn().mockResolvedValue(data.sales ?? []) },
     refund: { findMany: jest.fn().mockResolvedValue(data.refunds ?? []) },
     wasteLog: { findMany: jest.fn().mockResolvedValue(data.wastes ?? []) },
     expense: { findMany: jest.fn().mockResolvedValue(data.expenses ?? []) },
     payrollRun: { findMany: jest.fn().mockResolvedValue(data.payroll ?? []) },
+    supplierInvoice: { findMany: jest.fn().mockResolvedValue(data.schoolInvoices ?? []) },
   };
   const tenantPrisma = { run: jest.fn((fn: (t: typeof tx) => unknown) => fn(tx)) };
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -96,6 +97,23 @@ describe('ProfitService', () => {
     expect(known.totals.costOfGoods).toBe(90);
     const unknown = await setup({ sales: [sale('2026-10-21T07:00:00Z', 500, [{ quantity: 1, taxAmount: 0, cost: null, ingredients: [{ quantity: 1, cost: null }] }])] }).service.profit({ from: '2026-10-21', to: '2026-10-21' });
     expect(unknown.unknownCostLines).toBe(1);
+  });
+
+  it('counts invoices to schools as sales on the day they are issued, with the cost of the goods, but not for a single branch', async () => {
+    const schoolInvoices = [
+      { issueDate: new Date('2026-10-21T00:00:00Z'), total: 4600, taxAmount: 0, lines: [{ quantity: 80, unitCost: 30 }, { quantity: 50, unitCost: 10 }] },
+      { issueDate: new Date('2026-10-21T00:00:00Z'), total: 1160, taxAmount: 160, lines: [{ quantity: 10, unitCost: null }] },
+    ];
+    const all = await setup({ schoolInvoices }).service.profit({ from: '2026-10-21', to: '2026-10-21' });
+    expect(all.totals.sales).toBe(5760);
+    expect(all.totals.tax).toBe(160);
+    expect(all.totals.costOfGoods).toBe(2900);
+    expect(all.totals.netSales).toBe(5600);
+    expect(all.unknownCostLines).toBe(1);
+    const branch = setup({ schoolInvoices });
+    const one = await branch.service.profit({ from: '2026-10-21', to: '2026-10-21', branchId: '11111111-1111-1111-1111-111111111111' });
+    expect(one.totals.sales).toBe(0);
+    expect(branch.tx.supplierInvoice.findMany).not.toHaveBeenCalled();
   });
 
   it('counts salaries paid through Payroll, but not for a single branch', async () => {

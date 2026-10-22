@@ -11,6 +11,10 @@ const SELECT = {
   baseCurrency: true,
   kraPin: true,
   vatRegistered: true,
+  address: true,
+  phone: true,
+  email: true,
+  invoiceFooter: true,
 } as const;
 
 @Injectable()
@@ -32,7 +36,14 @@ export class OrganizationsService {
     return this.tenantPrisma.run((tx) =>
       tx.organization.update({
         where: { id: organizationId },
-        data: dto,
+        data: {
+          ...dto,
+          // an emptied box clears the detail
+          address: dto.address === undefined ? undefined : dto.address.trim() || null,
+          phone: dto.phone === undefined ? undefined : dto.phone.trim() || null,
+          email: dto.email === undefined ? undefined : dto.email.trim() || null,
+          invoiceFooter: dto.invoiceFooter === undefined ? undefined : dto.invoiceFooter.trim() || null,
+        },
         select: SELECT,
       }),
     );

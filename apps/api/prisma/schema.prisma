@@ -42,6 +42,12 @@ model Organization {
   // to enter before that integration can be wired up.
   kraPin        String?
   vatRegistered Boolean   @default(false)
+  // Letterhead for documents the business prints (invoices, delivery notes, receipts, statements).
+  address       String?
+  phone         String?
+  email         String?
+  // Printed at the foot of an invoice: who cheques are payable to, bank account, terms.
+  invoiceFooter String?
   // Soft-delete for platform-admin "delete tenant" - a deactivated org
   // can't log in (tenant login + PIN login both check this) but every
   // row it owns is preserved, unlike a hard DELETE which would cascade
@@ -53,6 +59,12 @@ model Organization {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
+  schoolPortal              SchoolPortal?
+  supplierSchools           SupplierSchool[]
+  schoolOrders              SchoolOrder[]
+  supplierInvoices          SupplierInvoice[]
+  supplierPayments          SupplierPayment[]
+  documentCounters          DocumentCounter[]
   branches                  Branch[]
   orgUsers                  OrgUser[]
   categories                Category[]
@@ -479,6 +491,9 @@ model ProductVariant {
   // this variant rather than treating cost as zero (a zero cost would
   // silently overstate margin).
   cost         Decimal?     @db.Decimal(12, 2)
+  // School suppliers: whether this option is on the price list schools order from, and the price schools pay (null = the normal price).
+  onSchoolList Boolean      @default(false)
+  schoolPrice  Decimal?     @db.Decimal(12, 2)
   // What this size/option is called to people ("Large loaf 800g"). Optional: without it the product code is all there is to tell
   // options apart. Shown with the product name in the shop, on the till and in orders.
   name         String?
@@ -509,6 +524,9 @@ model ProductVariant {
 
   @@unique([productId, sku])
   @@index([barcode])
+  schoolOrderLines   SchoolOrderLine[]
+  supplierInvoiceLines SupplierInvoiceLine[]
+
   @@map("product_variants")
 }
 
@@ -628,6 +646,9 @@ enum InventoryTxnType {
   // Stock committed to an accepted online order (OnlineOrdersService) -
   // separate from SALE so reports can tell counter and web sales apart.
   ONLINE_SALE
+  // Goods delivered to a school on credit (a school supplier's delivery note and invoice) - kept apart from SALE so the till and
+  // the credit business can be told apart.
+  CREDIT_SALE
 }
 
 model InventoryTransaction {
@@ -3300,4 +3321,261 @@ model RentalTenantOtp {
 
   @@index([email, createdAt])
   @@map("rental_tenant_otps")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// School suppliers: businesses that sell to schools on credit (price list online, school orders, delivery notes, invoices,
+// cheque payments with receipts, statements) and also sell for cash over the counter (the ordinary till).
+// ─────────────────────────────────────────────────────────────────────────
+
+enum SchoolStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+enum SchoolOrderStatus {
+  SUBMITTED // the school has sent it; the supplier has not answered yet
+  CONFIRMED // the supplier has confirmed it (maybe with changed quantities) and will deliver
+  DELIVERED // delivered: stock went down, a delivery note and an invoice exist
+  CANCELLED
+}
+
+enum SupplierInvoiceStatus {
+  ISSUED
+  PARTIALLY_PAID
+  PAID
+  VOID
+}
+
+enum SupplierPaymentMethod {
+  CHEQUE
+  BANK_TRANSFER
+  MPESA
+  CASH
+}
+
+enum SupplierPaymentStatus {
+  RECEIVED
+  BOUNCED // a cheque that did not clear: what it paid is undone
+}
+
+/// The public address of a supplier's school portal ("/schools/<slug>"). Readable without signing in only while enabled.
+model SchoolPortal {
+  id             String   @id @default(uuid())
+  organizationId String   @unique
+  slug           String   @unique
+  displayName    String
+  enabled        Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("school_portals")
+}
+
+/// A school the supplier sells to. The supplier creates it and gives the school's contact person a phone number and PIN.
+model SupplierSchool {
+  id             String       @id @default(uuid())
+  organizationId String
+  name           String
+  contactName    String?
+  /// Normalized 2547XXXXXXXX - the contact person's sign-in on the school portal.
+  phone          String
+  email          String?
+  address        String?
+  county         String?
+  /// What the school may owe at once; an order that would take it past this is flagged for the supplier (not refused).
+  creditLimit    Decimal?     @db.Decimal(12, 2)
+  /// Days after an invoice is issued that it is due.
+  creditDays     Int          @default(30)
+  status         SchoolStatus @default(ACTIVE)
+  pinHash        String?
+  pinFailCount   Int          @default(0)
+  pinLockedUntil DateTime?
+  lastLoginAt    DateTime?
+  notes          String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  orders       SchoolOrder[]
+  invoices     SupplierInvoice[]
+  payments     SupplierPayment[]
+
+  @@unique([organizationId, phone])
+  @@index([organizationId])
+  @@map("supplier_schools")
+}
+
+model SchoolOrder {
+  id               String            @id @default(uuid())
+  organizationId   String
+  schoolId         String
+  /// "SO-2026-0001": the supplier's own number, quoted by both sides.
+  orderNumber      String            @unique
+  /// The school's own order number (LPO), if it has one.
+  lpoNumber        String?
+  status           SchoolOrderStatus @default(SUBMITTED)
+  notes            String?
+  deliveryAddress  String?
+  requestedDate    DateTime?         @db.Date
+  /// True when this order, on top of what the school already owes, goes past its credit limit.
+  overCreditLimit  Boolean           @default(false)
+  submittedAt      DateTime          @default(now())
+  confirmedAt      DateTime?
+  confirmationNote String?
+  deliveredAt      DateTime?
+  /// "DN-2026-0001": the delivery note's number.
+  deliveryNoteNumber String?         @unique
+  receivedByName   String?
+  deliveryNotes    String?
+  deliveredById    String?
+  cancelledAt      DateTime?
+  cancelledBy      String? // SCHOOL | SUPPLIER
+  cancelReason     String?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  school       SupplierSchool    @relation(fields: [schoolId], references: [id])
+  lines        SchoolOrderLine[]
+  invoice      SupplierInvoice?
+
+  @@index([organizationId, status])
+  @@index([schoolId])
+  @@map("school_orders")
+}
+
+model SchoolOrderLine {
+  id                String  @id @default(uuid())
+  orderId           String
+  variantId         String
+  /// Written down when the order is placed, so the order reads the same later whatever happens to the product.
+  productName       String
+  variantSku        String
+  unitPrice         Decimal @db.Decimal(12, 2)
+  /// VAT as a fraction (0.16), 0 when exempt.
+  taxRate           Decimal @default(0) @db.Decimal(6, 4)
+  quantityOrdered   Decimal @db.Decimal(14, 3)
+  quantityConfirmed Decimal? @db.Decimal(14, 3)
+  quantityDelivered Decimal? @db.Decimal(14, 3)
+
+  order   SchoolOrder    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  variant ProductVariant @relation(fields: [variantId], references: [id])
+
+  @@index([orderId])
+  @@map("school_order_lines")
+}
+
+model SupplierInvoice {
+  id             String                @id @default(uuid())
+  organizationId String
+  schoolId       String
+  orderId        String?               @unique
+  /// "INV-2026-0001"
+  invoiceNumber  String                @unique
+  issueDate      DateTime              @db.Date
+  dueDate        DateTime              @db.Date
+  subtotal       Decimal               @db.Decimal(12, 2)
+  taxAmount      Decimal               @db.Decimal(12, 2)
+  total          Decimal               @db.Decimal(12, 2)
+  amountPaid     Decimal               @default(0) @db.Decimal(12, 2)
+  status         SupplierInvoiceStatus @default(ISSUED)
+  notes          String?
+  voidedAt       DateTime?
+  voidReason     String?
+  createdById    String?
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+
+  organization Organization                @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  school       SupplierSchool              @relation(fields: [schoolId], references: [id])
+  order        SchoolOrder?                @relation(fields: [orderId], references: [id])
+  lines        SupplierInvoiceLine[]
+  allocations  SupplierPaymentAllocation[]
+
+  @@index([organizationId, status])
+  @@index([schoolId])
+  @@map("supplier_invoices")
+}
+
+model SupplierInvoiceLine {
+  id          String  @id @default(uuid())
+  invoiceId   String
+  variantId   String?
+  description String
+  quantity    Decimal @db.Decimal(14, 3)
+  unitPrice   Decimal @db.Decimal(12, 2)
+  taxRate     Decimal @default(0) @db.Decimal(6, 4)
+  /// quantity x unitPrice, before VAT.
+  lineTotal   Decimal @db.Decimal(12, 2)
+  taxAmount   Decimal @db.Decimal(12, 2)
+  /// What the goods cost the supplier when delivered, for the profit report (null = no cost known).
+  unitCost    Decimal? @db.Decimal(12, 2)
+
+  invoice SupplierInvoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  variant ProductVariant? @relation(fields: [variantId], references: [id])
+
+  @@index([invoiceId])
+  @@map("supplier_invoice_lines")
+}
+
+/// Money received from a school (a cheque, a bank transfer...), with the receipt number the school is given.
+model SupplierPayment {
+  id             String                @id @default(uuid())
+  organizationId String
+  schoolId       String
+  /// "RC-2026-0001"
+  receiptNumber  String                @unique
+  amount         Decimal               @db.Decimal(12, 2)
+  method         SupplierPaymentMethod
+  /// The cheque number, bank reference or M-Pesa code.
+  reference      String?
+  bankName       String?
+  chequeDate     DateTime?             @db.Date
+  receivedOn     DateTime              @db.Date
+  status         SupplierPaymentStatus @default(RECEIVED)
+  bouncedAt      DateTime?
+  bounceReason   String?
+  notes          String?
+  recordedById   String?
+  createdAt      DateTime              @default(now())
+
+  organization Organization                @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  school       SupplierSchool              @relation(fields: [schoolId], references: [id])
+  allocations  SupplierPaymentAllocation[]
+
+  @@index([organizationId, receivedOn])
+  @@index([schoolId])
+  @@map("supplier_payments")
+}
+
+/// Which invoice (and how much of it) a payment was used for. A payment can be spread over several invoices, and an invoice
+/// can be paid by several payments; what is left of a payment over its allocations stays as credit on the school's account.
+model SupplierPaymentAllocation {
+  id        String  @id @default(uuid())
+  paymentId String
+  invoiceId String
+  amount    Decimal @db.Decimal(12, 2)
+
+  payment SupplierPayment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  invoice SupplierInvoice @relation(fields: [invoiceId], references: [id])
+
+  @@index([paymentId])
+  @@index([invoiceId])
+  @@map("supplier_payment_allocations")
+}
+
+/// Running numbers for printed documents, one counter per business, kind and year (INV-2026-0001, DN-..., RC-..., SO-...).
+model DocumentCounter {
+  organizationId String
+  kind           String
+  year           Int
+  last           Int    @default(0)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@id([organizationId, kind, year])
+  @@map("document_counters")
 }
