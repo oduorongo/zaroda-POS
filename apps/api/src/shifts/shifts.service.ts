@@ -23,6 +23,8 @@ export interface ShiftReport {
   voidedCount: number;
   totalSales: number;
   paymentsByMethod: Record<string, number>;
+  /** Money taken on hotel guests' room accounts during this shift (deposits, payments at the desk), by method, less refunds. */
+  roomAccountReceipts: Record<string, number>;
   expectedCash: number;
   countedCash: number | null;
   variance: number | null;
@@ -120,8 +122,16 @@ export class ShiftsService {
     const totalSales = round2(
       completed.reduce((sum, s) => sum + Number(s.total), 0),
     );
+    // Hotel: a guest's deposit or payment is cash in the drawer the moment it is taken, long before the stay is settled as a
+    // sale. So it is counted here (by when it was received), and the settlement sale carries no shift of its own.
+    const roomEntries = await tx.hotelFolioEntry.findMany({ where: { shiftId, type: { in: ['PAYMENT', 'REFUND'] } }, select: { type: true, method: true, amount: true } });
+    const roomAccountReceipts: Record<string, number> = {};
+    for (const e of roomEntries) {
+      const key = e.method ?? 'CASH';
+      roomAccountReceipts[key] = round2((roomAccountReceipts[key] ?? 0) + (e.type === 'REFUND' ? -1 : 1) * Number(e.amount));
+    }
     const cashSalesTotal = paymentsByMethod['CASH'] ?? 0;
-    const expectedCash = round2(Number(shift.openingFloat) + cashSalesTotal);
+    const expectedCash = round2(Number(shift.openingFloat) + cashSalesTotal + (roomAccountReceipts['CASH'] ?? 0));
 
     return {
       shiftId: shift.id,
@@ -132,6 +142,7 @@ export class ShiftsService {
       voidedCount: voided.length,
       totalSales,
       paymentsByMethod,
+      roomAccountReceipts,
       expectedCash,
       countedCash:
         shift.countedCash === null ? null : Number(shift.countedCash),
