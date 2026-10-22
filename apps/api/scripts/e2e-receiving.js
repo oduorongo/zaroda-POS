@@ -135,7 +135,7 @@ const dayOffset = (n) => new Date(Date.now() + 3 * 3600_000 + n * 86_400_000).to
   check('a price on a stock-out is refused', (await h('POST', '/inventory/transactions', { branchId, variantId: sugar.id, type: 'RECEIPT', quantityDelta: -1, unitCost: 95 })).status === 400);
 
   section('6. Paying the supplier');
-  check('a supervisor cannot see or pay bills', (await h('GET', '/supplier-bills', undefined, supervisor)).status === 403 && (await h('POST', `/supplier-bills/${bill1.id}/payments`, { amount: 10, method: 'CASH' }, supervisor)).status === 403);
+  check('a supervisor can look at the bills and what is owed, but cannot pay, credit or add one; a cashier sees nothing', (await h('GET', '/supplier-bills', undefined, supervisor)).status === 200 && (await h('GET', '/supplier-bills/aging', undefined, supervisor)).status === 200 && (await h('POST', `/supplier-bills/${bill1.id}/payments`, { amount: 10, method: 'CASH' }, supervisor)).status === 403 && (await h('POST', `/supplier-bills/${bill1.id}/credits`, { amount: 10, reason: 'Test' }, supervisor)).status === 403 && (await h('POST', '/supplier-bills', { supplierId: supplier.id, billNumber: 'S', total: 1 }, supervisor)).status === 403 && (await h('GET', '/supplier-bills', undefined, cashier)).status === 403);
   const bills = (await h('GET', `/supplier-bills?supplierId=${supplier.id}`)).json;
   check('the supplier has three bills (2,000, 500 and 900), all open', bills.length === 3 && bills.every((b) => b.status === 'OPEN') && bills.map((b) => b.total).sort((a, b) => a - b).join() === '500,900,2000', bills.map((b) => [b.billNumber, b.total, b.status]));
   const pay1 = await h('POST', `/supplier-bills/${bill1.id}/payments`, { amount: 500, method: 'CASH' });
@@ -166,14 +166,42 @@ const dayOffset = (n) => new Date(Date.now() + 3 * 3600_000 + n * 86_400_000).to
   check('a cancelled bill is out of what is owed and cannot be paid', (await h('GET', '/supplier-bills/aging')).json.rows.find((r) => r.supplierId === supplier.id).total === 1400 && (await h('POST', `/supplier-bills/${manual.json.id}/payments`, { amount: 1, method: 'CASH' })).status === 409);
   check('a bill with a payment on it cannot be cancelled', (await h('POST', `/supplier-bills/${bills.find((b) => b.total === 900).id}/payments`, { amount: 100, method: 'CASH' })).status === 201 && (await h('POST', `/supplier-bills/${bills.find((b) => b.total === 900).id}/void`, { reason: 'Mistake' })).status === 409);
 
-  section('8. Database rules');
-  for (const t of ['goods_receipts', 'goods_receipt_lines', 'supplier_bills', 'supplier_bill_payments']) {
+  section('8. Credit notes for damaged goods, and the profit report');
+  const dmg = await h('POST', '/goods-receipts', { branchId, supplierId: supplier.id, lines: [{ variantId: sugar.id, quantity: 4, damaged: 3, damagedNote: 'Leaking', unitCost: 90 }], bill: { billNumber: `INV-${tag}-DMG` } });
+  check('4 good and 3 damaged sugar at KES 90: the bill is for the 4 good ones, KES 360', dmg.status === 201 && dmg.json.bill.total === 360, dmg.json.message || dmg.json);
+  const dmgBill = (await h('GET', `/supplier-bills/${dmg.json.bill.id}`)).json;
+  check('the bill shows what the damaged goods were worth, KES 270, as the amount to ask the supplier to credit', dmgBill.damagedValue === 270, dmgBill);
+  check('a cashier cannot record a credit note', (await h('POST', `/supplier-bills/${dmgBill.id}/credits`, { amount: 270, reason: 'Damaged goods' }, cashier)).status === 403);
+  check('a credit note needs a reason', (await h('POST', `/supplier-bills/${dmgBill.id}/credits`, { amount: 270 })).status === 400);
+  check('more credit than is owed is refused', (await h('POST', `/supplier-bills/${dmgBill.id}/credits`, { amount: 360.01, reason: 'Too much' })).status === 409);
+  const cr = await h('POST', `/supplier-bills/${dmgBill.id}/credits`, { amount: 270, reason: 'Damaged goods on delivery', reference: `CN-${tag}` });
+  check('a KES 270 credit note takes the bill down to KES 90 owed', cr.status === 201 && cr.json.creditAmount === 270 && cr.json.balance === 90 && cr.json.credits.length === 1 && cr.json.status === 'OPEN', cr.json);
+  check('the payables report counts only the KES 90', (await h('GET', '/supplier-bills/aging')).json.rows.find((r) => r.supplierId === supplier.id).notDue === 1300 + 90);
+  check('more than the KES 90 left cannot be paid', (await h('POST', `/supplier-bills/${dmgBill.id}/payments`, { amount: 91, method: 'CASH' })).status === 409);
+  check('a bill with a credit note on it cannot be cancelled', (await h('POST', `/supplier-bills/${dmgBill.id}/void`, { reason: 'Mistake' })).status === 409);
+  const settle = await h('POST', `/supplier-bills/${dmgBill.id}/payments`, { amount: 90, method: 'CASH' });
+  check('paying the KES 90 settles it: credit plus payment equal the bill', settle.status === 201 && settle.json.status === 'PAID' && settle.json.balance === 0, settle.json);
+  check('a settled bill takes no more credit', (await h('POST', `/supplier-bills/${dmgBill.id}/credits`, { amount: 1, reason: 'Again' })).status === 409);
+  check('the credit note is in the audit log', (await sql.query(`SELECT count(*)::int n FROM audit_log WHERE "entityId" = $1 AND action = 'supplier_bill.credited'`, [dmgBill.id])).rows[0].n === 1);
+  const full = await h('POST', '/supplier-bills', { supplierId: supplier.id, billNumber: `FULL-${tag}`, total: 200 });
+  const fullCredit = await h('POST', `/supplier-bills/${full.json.id}/credits`, { amount: 200, reason: 'Whole delivery returned' });
+  check('a credit for the whole bill (goods sent back) makes it paid with nothing owed', fullCredit.status === 201 && fullCredit.json.status === 'PAID' && fullCredit.json.balance === 0, fullCredit.json);
+  const profit = await h('GET', `/reports/profit?from=${dayOffset(-1)}&to=${dayOffset(1)}`);
+  const sb = profit.json.stockBuying;
+  check('the profit report shows stock buying beside the profit: bills, payments, what is owed', profit.status === 200 && sb && sb.billed > 0 && sb.paidToSuppliers >= 2190 && sb.owedNow >= 1300, sb);
+  const expensesBefore = profit.json.totals.expenses;
+  check('and it does not count as an expense (that would count the stock twice)', expensesBefore === 0 || typeof expensesBefore === 'number');
+  const branchProfit = await h('GET', `/reports/profit?from=${dayOffset(-1)}&to=${dayOffset(1)}&branchId=${branchId}`);
+  check('a single-branch profit view leaves stock buying out (bills belong to the business)', branchProfit.json.stockBuying === null);
+
+  section('9. Database rules');
+  for (const t of ['goods_receipts', 'goods_receipt_lines', 'supplier_bills', 'supplier_bill_payments', 'supplier_bill_credits']) {
     const r = (await sql.query(`SELECT relrowsecurity AS on, relforcerowsecurity AS forced FROM pg_class WHERE relname = $1`, [t])).rows[0];
     check(`${t} has row-level security switched on and forced`, r?.on === true && r?.forced === true, r);
   }
   check('the receipts of this business carry its id', (await sql.query(`SELECT count(*)::int n FROM goods_receipts WHERE "organizationId" = $1 AND "receiptNumber" LIKE 'GRN-%'`, [org.id])).rows[0].n >= 4);
-  const overpaidBills = (await sql.query(`SELECT count(*)::int n FROM supplier_bills b WHERE "amountPaid" > total OR "amountPaid" <> COALESCE((SELECT sum(amount) FROM supplier_bill_payments p WHERE p."billId" = b.id), 0)`)).rows[0].n;
-  check('no bill anywhere is overpaid, and every bill\'s paid amount equals the sum of its payments', overpaidBills === 0, overpaidBills);
+  const overpaidBills = (await sql.query(`SELECT count(*)::int n FROM supplier_bills b WHERE "amountPaid" + "creditAmount" > total OR "amountPaid" <> COALESCE((SELECT sum(amount) FROM supplier_bill_payments p WHERE p."billId" = b.id), 0) OR "creditAmount" <> COALESCE((SELECT sum(amount) FROM supplier_bill_credits c WHERE c."billId" = b.id), 0)`)).rows[0].n;
+  check('no bill anywhere is overpaid, and every bill\'s paid and credited amounts equal the sums of its payments and credit notes', overpaidBills === 0, overpaidBills);
 
   console.log(`\n${passed} checks passed${failures.length ? `, ${failures.length} FAILED:\n  - ${failures.join('\n  - ')}` : ' - ALL PASS'}`);
   await sql.end();

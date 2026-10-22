@@ -24,6 +24,9 @@ interface Bill {
   dueDate: string;
   total: number;
   amountPaid: number;
+  creditAmount: number;
+  damagedValue: number;
+  credits: { id: string; amount: number; reason: string; reference: string | null }[];
   balance: number;
   status: "OPEN" | "PARTLY_PAID" | "PAID" | "VOID";
   overdue: boolean;
@@ -58,6 +61,7 @@ export default function SupplierBillsPage() {
   const [filter, setFilter] = useState<"unpaid" | "overdue" | "paid" | "all">("unpaid");
   const [supplierId, setSupplierId] = useState("");
   const [paying, setPaying] = useState<Bill | null>(null);
+  const [crediting, setCrediting] = useState<Bill | null>(null);
   const [adding, setAdding] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -181,12 +185,18 @@ export default function SupplierBillsPage() {
                       Billed {b.billDate} · due {b.dueDate}
                       {b.receipt && <> · <Link href={`/goods-receipts/${b.receipt.id}`} className="text-primary-400 hover:underline">{b.receipt.receiptNumber}</Link></>}
                     </p>
+                    {b.credits.length > 0 && <p className="text-xs text-secondary-500">Credit notes: {b.credits.map((c) => `${kes(c.amount)} (${c.reason}${c.reference ? `, ${c.reference}` : ""})`).join(" · ")}</p>}
                     {b.payments.length > 0 && <p className="text-xs text-secondary-500">Paid: {b.payments.map((p) => `${kes(p.amount)} ${p.method.toLowerCase()}${p.reference ? ` ${p.reference}` : ""}`).join(" · ")}</p>}
                   </div>
                   <div className="text-right">
                     <p className="font-mono text-sm">{kes(b.total)}</p>
                     <p className={`font-mono text-sm font-bold ${b.balance > 0 ? "text-amber-500" : "text-green-500"}`}>{b.status === "VOID" ? "—" : b.balance > 0 ? `Owe ${kes(b.balance)}` : "Paid"}</p>
-                    {canWrite && b.balance > 0 && b.status !== "VOID" && <button className={`${ghost} mt-2`} onClick={() => setPaying(b)}>Record a payment</button>}
+                    {canWrite && b.balance > 0 && b.status !== "VOID" && (
+                      <div className="mt-2 flex flex-wrap justify-end gap-2">
+                        <button className={ghost} onClick={() => setCrediting(b)}>Credit note{b.damagedValue > 0 ? ` (damaged ${kes(b.damagedValue)})` : ""}</button>
+                        <button className={ghost} onClick={() => setPaying(b)}>Record a payment</button>
+                      </div>
+                    )}
                   </div>
                 </li>
               ))}
@@ -195,6 +205,7 @@ export default function SupplierBillsPage() {
         </section>
 
         {paying && <PayModal bill={paying} onClose={() => setPaying(null)} onDone={(m) => { setPaying(null); setNotice(m); void load(); }} />}
+        {crediting && <CreditModal bill={crediting} onClose={() => setCrediting(null)} onDone={(m) => { setCrediting(null); setNotice(m); void load(); }} />}
         {adding && <AddBillModal suppliers={suppliers} onClose={() => setAdding(false)} onDone={(m) => { setAdding(false); setNotice(m); void load(); }} />}
       </main>
     </div>
@@ -245,6 +256,39 @@ function PayModal({ bill, onClose, onDone }: { bill: Bill; onClose: () => void; 
       </label>
       {method !== "CASH" && <label className="block text-sm">{method === "MPESA" ? "M-Pesa code" : method === "CHEQUE" ? "Cheque number" : "Bank reference"}<input className={field} value={reference} onChange={(e) => setReference(e.target.value)} /></label>}
       <button className={primary} disabled={busy || !(Number(amount) > 0) || (method !== "CASH" && !reference.trim())} onClick={() => void save()}>{busy ? "Saving..." : "Record the payment"}</button>
+    </Modal>
+  );
+}
+
+function CreditModal({ bill, onClose, onDone }: { bill: Bill; onClose: () => void; onDone: (message: string) => void }) {
+  const suggested = Math.min(bill.damagedValue, bill.balance);
+  const [amount, setAmount] = useState(suggested > 0 ? suggested.toFixed(2) : "");
+  const [reason, setReason] = useState(suggested > 0 ? "Damaged goods on delivery" : "");
+  const [reference, setReference] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function save() {
+    setBusy(true);
+    setError(null);
+    try {
+      await apiPost(`/supplier-bills/${bill.id}/credits`, { amount: Number(amount), reason: reason.trim(), reference: reference.trim() || undefined });
+      onDone(`Credit note of ${kes(Number(amount))} recorded for ${bill.supplier.name}.`);
+    } catch (e) {
+      setError(explain(e, "Could not record the credit note."));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal title={`Credit note from ${bill.supplier.name}`} onClose={onClose}>
+      {error && <p className="rounded-md bg-red-950 p-2 text-sm text-red-300">{error}</p>}
+      <p className="text-sm text-secondary-500">Bill {bill.billNumber}: still owed {kes(bill.balance)}. A credit note takes money off what you owe - for damaged goods, a wrong price, or goods returned.{bill.damagedValue > 0 ? ` The damaged goods on this delivery were worth ${kes(bill.damagedValue)}.` : ""}</p>
+      <label className="block text-sm">Amount credited (KES)<input type="number" min={0.01} step="0.01" className={field} value={amount} onChange={(e) => setAmount(e.target.value)} /></label>
+      <label className="block text-sm">Reason<input className={field} value={reason} onChange={(e) => setReason(e.target.value)} /></label>
+      <label className="block text-sm">Supplier&apos;s credit note number <span className="text-secondary-500">(optional)</span><input className={field} value={reference} onChange={(e) => setReference(e.target.value)} /></label>
+      <button className={primary} disabled={busy || !(Number(amount) > 0) || reason.trim().length < 3} onClick={() => void save()}>{busy ? "Saving..." : "Record the credit note"}</button>
     </Modal>
   );
 }

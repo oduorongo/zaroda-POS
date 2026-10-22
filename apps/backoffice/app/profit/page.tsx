@@ -30,6 +30,8 @@ interface Profit {
   expensesByCategory: { category: string; label: string; amount: number }[];
   unknownCostLines: number;
   costNote: string | null;
+  /** What was bought from suppliers, paid out and still owed. Information only - not in the profit. */
+  stockBuying: { billed: number; paidToSuppliers: number; owedNow: number } | null;
 }
 interface Branch {
   id: string;
@@ -280,6 +282,18 @@ export default function ProfitPage() {
                     </li>
                   ))}
                 </ul>
+              </div>
+            )}
+
+            {data.stockBuying && (data.stockBuying.billed > 0 || data.stockBuying.paidToSuppliers > 0 || data.stockBuying.owedNow > 0) && (
+              <div className="rounded-lg border border-border bg-surface p-4 text-sm">
+                <h2 className="mb-2 font-semibold">Stock you bought (not taken off the profit)</h2>
+                <ul className="space-y-1">
+                  <li className="flex justify-between gap-2"><span>Bills from suppliers in this period (after credit notes)</span><span className="font-mono">{kes(data.stockBuying.billed)}</span></li>
+                  <li className="flex justify-between gap-2"><span>Paid to suppliers in this period</span><span className="font-mono">{kes(data.stockBuying.paidToSuppliers)}</span></li>
+                  <li className="flex justify-between gap-2 font-semibold"><span>Still owed to suppliers now</span><span className="font-mono">{kes(data.stockBuying.owedNow)}</span></li>
+                </ul>
+                <p className="mt-2 text-xs text-secondary-500">Stock is counted as a cost when you sell it, so paying a supplier is not subtracted again here. <Link href="/supplier-bills" className="text-primary-600 hover:underline">See the supplier bills</Link>.</p>
               </div>
             )}
 

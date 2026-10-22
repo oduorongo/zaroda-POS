@@ -12,6 +12,7 @@ import {
   CreateSupplierBillDto,
   PayBillDto,
   VoidBillDto,
+  CreditBillDto,
 } from './dto/supplier-bill.dto';
 import {
   agePayables,
@@ -21,6 +22,8 @@ import {
   isoDay,
   outstanding,
   paymentProblem,
+  creditProblem,
+  damagedValue,
 } from './payables.util';
 
 const kenyaToday = () => isoDay(new Date(Date.now() + 3 * 3_600_000));
@@ -30,7 +33,14 @@ const money = (d: Prisma.Decimal | number) => Math.round(Number(d) * 100) / 100;
 const BILL_INCLUDE = {
   supplier: { select: { id: true, name: true, phone: true } },
   payments: { orderBy: { paidAt: 'asc' } },
-  receipt: { select: { id: true, receiptNumber: true } },
+  credits: { orderBy: { createdAt: 'asc' } },
+  receipt: {
+    select: {
+      id: true,
+      receiptNumber: true,
+      lines: { select: { quantityDamaged: true, unitCost: true } },
+    },
+  },
   purchaseOrder: { select: { id: true, reference: true } },
 } satisfies Prisma.SupplierBillInclude;
 
@@ -47,6 +57,7 @@ export class SupplierBillsService {
   private view(b: BillRow, today = kenyaToday()) {
     const total = money(b.total);
     const paid = money(b.amountPaid);
+    const credit = money(b.creditAmount);
     const due = isoDay(b.dueDate);
     return {
       id: b.id,
@@ -56,7 +67,17 @@ export class SupplierBillsService {
       dueDate: due,
       total,
       amountPaid: paid,
-      balance: b.status === 'VOID' ? 0 : outstanding(total, paid),
+      creditAmount: credit,
+      balance: b.status === 'VOID' ? 0 : outstanding(total, paid, credit),
+      // what the damaged goods on this delivery were worth: what to ask the supplier to credit
+      damagedValue: b.receipt
+        ? damagedValue(
+            b.receipt.lines.map((l) => ({
+              quantityDamaged: Number(l.quantityDamaged),
+              unitCost: l.unitCost === null ? null : Number(l.unitCost),
+            })),
+          )
+        : 0,
       status: b.status,
       overdue:
         b.status !== 'PAID' &&
@@ -67,10 +88,19 @@ export class SupplierBillsService {
           ? null
           : ageBucket(due, today),
       notes: b.notes,
-      receipt: b.receipt,
+      receipt: b.receipt
+        ? { id: b.receipt.id, receiptNumber: b.receipt.receiptNumber }
+        : null,
       purchaseOrder: b.purchaseOrder,
       voidReason: b.voidReason,
       createdAt: b.createdAt,
+      credits: b.credits.map((c) => ({
+        id: c.id,
+        amount: money(c.amount),
+        reason: c.reason,
+        reference: c.reference,
+        createdAt: c.createdAt,
+      })),
       payments: b.payments.map((p) => ({
         id: p.id,
         amount: money(p.amount),
@@ -190,6 +220,7 @@ export class SupplierBillsService {
         {
           total: Number(bill.total),
           amountPaid: Number(bill.amountPaid),
+          creditAmount: Number(bill.creditAmount),
           status: bill.status,
         },
         dto.amount,
@@ -224,7 +255,12 @@ export class SupplierBillsService {
         where: { id },
         data: {
           amountPaid: paid,
-          status: billStatus(Number(bill.total), paid),
+          status: billStatus(
+            Number(bill.total),
+            paid,
+            false,
+            Number(bill.creditAmount),
+          ),
         },
       });
       await this.auditLog.logInTx(tx, {
@@ -247,6 +283,70 @@ export class SupplierBillsService {
     });
   }
 
+  /**
+   * A credit note from the supplier (damaged goods, a wrong price): takes money off what is owed. It can only take off what is still
+   * owed, and a bill that is credited down to nothing becomes paid. Only ever added.
+   */
+  async credit(id: string, dto: CreditBillDto) {
+    const { organizationId, orgUserId } = getTenantStore();
+    return this.tenantPrisma.run(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM supplier_bills WHERE id = ${id} FOR UPDATE`;
+      const bill = await tx.supplierBill.findUnique({ where: { id } });
+      if (!bill) throw new NotFoundException('Bill not found');
+      const problem = creditProblem(
+        {
+          total: Number(bill.total),
+          amountPaid: Number(bill.amountPaid),
+          creditAmount: Number(bill.creditAmount),
+          status: bill.status,
+        },
+        dto.amount,
+      );
+      if (problem) throw new ConflictException(problem);
+      await tx.supplierBillCredit.create({
+        data: {
+          organizationId,
+          billId: id,
+          amount: dto.amount,
+          reason: dto.reason,
+          reference: dto.reference || null,
+          createdById: orgUserId,
+        },
+      });
+      const credit =
+        Math.round((Number(bill.creditAmount) + dto.amount) * 100) / 100;
+      await tx.supplierBill.update({
+        where: { id },
+        data: {
+          creditAmount: credit,
+          status: billStatus(
+            Number(bill.total),
+            Number(bill.amountPaid),
+            false,
+            credit,
+          ),
+        },
+      });
+      await this.auditLog.logInTx(tx, {
+        action: 'supplier_bill.credited',
+        entityType: 'SupplierBill',
+        entityId: id,
+        after: {
+          amount: dto.amount,
+          reason: dto.reason,
+          reference: dto.reference ?? null,
+          creditTotal: credit,
+        },
+      });
+      return this.view(
+        await tx.supplierBill.findUniqueOrThrow({
+          where: { id },
+          include: BILL_INCLUDE,
+        }),
+      );
+    });
+  }
+
   /** Cancels a bill entered by mistake. A bill that already has payments cannot be - its payments would be left hanging. */
   async voidBill(id: string, dto: VoidBillDto) {
     return this.tenantPrisma.run(async (tx) => {
@@ -255,9 +355,9 @@ export class SupplierBillsService {
       if (!bill) throw new NotFoundException('Bill not found');
       if (bill.status === 'VOID')
         throw new ConflictException('This bill is already cancelled');
-      if (Number(bill.amountPaid) > 0)
+      if (Number(bill.amountPaid) > 0 || Number(bill.creditAmount) > 0)
         throw new ConflictException(
-          'Payments have been recorded on this bill, so it cannot be cancelled',
+          'Payments or credit notes have been recorded on this bill, so it cannot be cancelled',
         );
       await tx.supplierBill.update({
         where: { id },
@@ -297,6 +397,7 @@ export class SupplierBillsService {
             dueDate: isoDay(b.dueDate),
             total: Number(b.total),
             amountPaid: Number(b.amountPaid),
+            creditAmount: Number(b.creditAmount),
             status: b.status,
           })),
           today,

@@ -9,6 +9,8 @@ import {
   receiptNumber,
   receiptSequence,
   receiptValue,
+  creditProblem,
+  damagedValue,
 } from './payables.util';
 
 describe('receipt numbers', () => {
@@ -216,5 +218,83 @@ describe('receiptValue', () => {
     expect(
       receiptValue([{ quantityAccepted: 1, unitCost: undefined }]),
     ).toBeNull();
+  });
+});
+
+describe('credit notes', () => {
+  it('a credit takes off what is owed, so a bill can be settled by payment plus credit', () => {
+    expect(outstanding(1000, 300, 200)).toBe(500);
+    expect(billStatus(1000, 300, false, 200)).toBe('PARTLY_PAID');
+    expect(billStatus(1000, 800, false, 200)).toBe('PAID');
+    expect(billStatus(1000, 0, false, 1000)).toBe('PAID');
+    expect(billStatus(1000, 0, false, 200)).toBe('OPEN');
+  });
+  it('a payment can only be for what is left after the credit', () => {
+    const bill = {
+      total: 1000,
+      amountPaid: 300,
+      creditAmount: 200,
+      status: 'PARTLY_PAID',
+    };
+    expect(paymentProblem(bill, 500)).toBeNull();
+    expect(paymentProblem(bill, 500.01)).toMatch(/Only KES 500.00/);
+  });
+  it('a credit can only take off what is still owed', () => {
+    const bill = {
+      total: 1000,
+      amountPaid: 300,
+      creditAmount: 0,
+      status: 'PARTLY_PAID',
+    };
+    expect(creditProblem(bill, 700)).toBeNull();
+    expect(creditProblem(bill, 700.01)).toMatch(/still owed: KES 700.00/);
+    expect(creditProblem(bill, 0)).toMatch(/above zero/);
+    expect(creditProblem({ ...bill, status: 'VOID' }, 1)).toMatch(/cancelled/);
+    expect(
+      creditProblem({ ...bill, amountPaid: 1000, status: 'PAID' }, 1),
+    ).toMatch(/Nothing is owed/);
+  });
+  it('the payables report counts only what is left after credits', () => {
+    const r = agePayables(
+      [
+        {
+          supplierId: 's',
+          supplierName: 'S',
+          dueDate: '2026-12-10',
+          total: 1000,
+          amountPaid: 100,
+          creditAmount: 400,
+          status: 'PARTLY_PAID',
+        },
+      ],
+      '2026-11-30',
+    );
+    expect(r.totals.total).toBe(500);
+    expect(
+      agePayables(
+        [
+          {
+            supplierId: 's',
+            supplierName: 'S',
+            dueDate: '2026-12-10',
+            total: 1000,
+            amountPaid: 0,
+            creditAmount: 1000,
+            status: 'OPEN',
+          },
+        ],
+        '2026-11-30',
+      ).rows,
+    ).toEqual([]);
+  });
+  it('the damaged goods on a delivery are worth quantity x the price paid', () => {
+    expect(
+      damagedValue([
+        { quantityDamaged: 5, unitCost: 100 },
+        { quantityDamaged: 2.5, unitCost: 40 },
+        { quantityDamaged: 0, unitCost: 9 },
+        { quantityDamaged: 3, unitCost: null },
+      ]),
+    ).toBe(600);
   });
 });

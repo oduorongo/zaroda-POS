@@ -32,28 +32,72 @@ export function billStatus(
   total: number,
   paid: number,
   voided = false,
+  credit = 0,
 ): BillStatus {
   if (voided) return 'VOID';
-  if (cents(paid) <= 0) return 'OPEN';
-  return cents(paid) >= cents(total) ? 'PAID' : 'PARTLY_PAID';
+  if (cents(paid) + cents(credit) >= cents(total)) return 'PAID';
+  return cents(paid) > 0 ? 'PARTLY_PAID' : 'OPEN';
 }
 
-export const outstanding = (total: number, paid: number): number =>
-  Math.max(0, money(cents(total) - cents(paid)));
+/** What is still owed: the bill, less credit notes, less payments. */
+export const outstanding = (total: number, paid: number, credit = 0): number =>
+  Math.max(0, money(cents(total) - cents(credit) - cents(paid)));
 
 /** Why a payment cannot be taken against a bill, or null. */
 export function paymentProblem(
-  bill: { total: number; amountPaid: number; status: string },
+  bill: {
+    total: number;
+    amountPaid: number;
+    creditAmount?: number;
+    status: string;
+  },
   amount: number,
 ): string | null {
   if (bill.status === 'VOID')
     return 'This bill was cancelled, so it cannot be paid';
   if (bill.status === 'PAID') return 'This bill is already fully paid';
   if (!(amount > 0)) return 'Enter an amount above zero';
-  const left = outstanding(bill.total, bill.amountPaid);
+  const left = outstanding(bill.total, bill.amountPaid, bill.creditAmount ?? 0);
   if (cents(amount) > cents(left))
     return `Only KES ${left.toFixed(2)} is still owed on this bill`;
   return null;
+}
+
+/** Why a credit note cannot be recorded against a bill, or null. A credit can only take off what is still owed. */
+export function creditProblem(
+  bill: {
+    total: number;
+    amountPaid: number;
+    creditAmount?: number;
+    status: string;
+  },
+  amount: number,
+): string | null {
+  if (bill.status === 'VOID')
+    return 'This bill was cancelled, so it cannot take a credit note';
+  if (!(amount > 0)) return 'Enter an amount above zero';
+  const left = outstanding(bill.total, bill.amountPaid, bill.creditAmount ?? 0);
+  if (left <= 0)
+    return 'Nothing is owed on this bill, so there is nothing to credit';
+  if (cents(amount) > cents(left))
+    return `A credit note can only take off what is still owed: KES ${left.toFixed(2)}`;
+  return null;
+}
+
+/** What the damaged goods on a receipt were worth at the prices paid: what to ask the supplier to credit. */
+export function damagedValue(
+  lines: { quantityDamaged: number; unitCost: number | null | undefined }[],
+): number {
+  return money(
+    lines.reduce(
+      (s, l) =>
+        s +
+        (l.quantityDamaged > 0 && l.unitCost != null
+          ? Math.round(l.quantityDamaged * cents(l.unitCost))
+          : 0),
+      0,
+    ),
+  );
 }
 
 export type AgeBucket = 'NOT_DUE' | 'DAYS_1_30' | 'DAYS_31_60' | 'DAYS_61_PLUS';
@@ -89,6 +133,7 @@ export function agePayables(
     dueDate: string;
     total: number;
     amountPaid: number;
+    creditAmount?: number;
     status: string;
   }[],
   today: string,
@@ -99,7 +144,8 @@ export function agePayables(
   >();
   for (const b of bills) {
     if (b.status === 'VOID' || b.status === 'PAID') continue;
-    const left = cents(b.total) - cents(b.amountPaid);
+    const left =
+      cents(b.total) - cents(b.creditAmount ?? 0) - cents(b.amountPaid);
     if (left <= 0) continue;
     const entry = by.get(b.supplierId) ?? {
       row: {

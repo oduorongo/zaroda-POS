@@ -1216,3 +1216,11 @@ DROP POLICY IF EXISTS tenant_isolation ON supplier_bill_payments;
 CREATE POLICY tenant_isolation ON supplier_bill_payments
   USING ("organizationId" = current_setting('app.current_tenant', true))
   WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+-- Supplier credit notes
+ALTER TABLE supplier_bill_credits ENABLE ROW LEVEL SECURITY;
+ALTER TABLE supplier_bill_credits FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON supplier_bill_credits;
+CREATE POLICY tenant_isolation ON supplier_bill_credits
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));

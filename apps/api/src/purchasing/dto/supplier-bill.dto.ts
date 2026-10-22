@@ -80,6 +80,27 @@ export class PayBillDto {
   note?: string;
 }
 
+/** A supplier's credit note against a bill: money taken off what is owed. */
+export class CreditBillDto {
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0.01)
+  @Max(1_000_000_000)
+  amount!: number;
+
+  @Transform(trim)
+  @IsString()
+  @MinLength(3)
+  @MaxLength(300)
+  reason!: string;
+
+  /** The supplier's own credit note number. */
+  @Transform(trim)
+  @IsString()
+  @IsOptional()
+  @MaxLength(60)
+  reference?: string;
+}
+
 export class VoidBillDto {
   @Transform(trim)
   @IsString()

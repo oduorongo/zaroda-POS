@@ -119,6 +119,7 @@ model Organization {
   goodsReceipts             GoodsReceipt[]
   supplierBills             SupplierBill[]
   supplierBillPayments      SupplierBillPayment[]
+  supplierBillCredits       SupplierBillCredit[]
   repackagings              Repackaging[]
   wasteLogs                 WasteLog[]
   expenses                  Expense[]
@@ -4145,6 +4146,8 @@ model SupplierBill {
   dueDate         DateTime           @db.Date
   total           Decimal            @db.Decimal(12, 2)
   amountPaid      Decimal            @default(0) @db.Decimal(12, 2)
+  /// Taken off what is owed by credit notes (damaged goods, a price correction...). Owed = total - credits - paid.
+  creditAmount    Decimal            @default(0) @db.Decimal(12, 2)
   status          SupplierBillStatus @default(OPEN)
   purchaseOrderId String?
   goodsReceiptId  String?
@@ -4159,6 +4162,7 @@ model SupplierBill {
   purchaseOrder PurchaseOrder?    @relation(fields: [purchaseOrderId], references: [id], onDelete: SetNull)
   receipt       GoodsReceipt?     @relation(fields: [goodsReceiptId], references: [id], onDelete: SetNull)
   payments      SupplierBillPayment[]
+  credits       SupplierBillCredit[]
 
   @@unique([organizationId, supplierId, billNumber])
   @@index([organizationId, status, dueDate])
@@ -4186,4 +4190,23 @@ model SupplierBillPayment {
   @@unique([organizationId, method, reference])
   @@index([billId])
   @@map("supplier_bill_payments")
+}
+
+/// A supplier's credit note against a bill: money taken off what is owed (damaged goods, a wrong price). Only ever added.
+model SupplierBillCredit {
+  id             String   @id @default(uuid())
+  organizationId String
+  billId         String
+  amount         Decimal  @db.Decimal(12, 2)
+  reason         String
+  /// The supplier's own credit note number, if they sent one.
+  reference      String?
+  createdById    String
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  bill         SupplierBill @relation(fields: [billId], references: [id], onDelete: Cascade)
+
+  @@index([billId])
+  @@map("supplier_bill_credits")
 }
