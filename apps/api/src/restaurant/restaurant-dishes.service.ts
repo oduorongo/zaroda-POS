@@ -14,6 +14,7 @@ export class RestaurantDishesService {
   async list() {
     const variants = await this.tenantPrisma.run((tx) =>
       tx.productVariant.findMany({
+        where: { product: { isActive: true } },
         include: {
           product: { select: { name: true, onlineVisible: true } },
           restaurantDish: { select: { stationId: true } },

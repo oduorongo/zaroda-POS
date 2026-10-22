@@ -1,3 +1,4 @@
+import { Transform } from 'class-transformer';
 import {
   IsBoolean,
   IsOptional,
@@ -9,6 +10,7 @@ import {
 import { PartialType } from '@nestjs/mapped-types';
 
 export class CreateProductDto {
+  @Transform(({ value }: { value: unknown }) => (typeof value === 'string' ? value.trim() : value))
   @IsString()
   @MinLength(1)
   @MaxLength(200)

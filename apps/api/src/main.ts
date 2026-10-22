@@ -3,6 +3,7 @@
 // ever required, which importing this any later than first would miss).
 import './common/observability/tracing';
 import { NestFactory } from '@nestjs/core';
+import { json, NextFunction, Request, Response, urlencoded } from 'express';
 import { ValidationPipe } from '@nestjs/common';
 import { Logger } from 'nestjs-pino';
 import { AppModule } from './app.module';
@@ -10,7 +11,17 @@ import { initSentry } from './common/observability/sentry';
 
 async function bootstrap() {
   initSentry();
-  const app = await NestFactory.create(AppModule, { bufferLogs: true });
+  // The body parsers are set up here (Nest's own are off) so that ONE route can take a bigger body than the rest: a product
+  // import carries up to 5,000 rows. Everything else keeps the usual 100 KB limit. The import's own parser must come first.
+  const app = await NestFactory.create(AppModule, { bufferLogs: true, bodyParser: false });
+  app.use('/products/import', json({ limit: '5mb' }));
+  app.use(json());
+  app.use(urlencoded({ extended: true }));
+  // a request over its limit is a clear 413, not an "internal error"
+  app.use((err: { type?: string }, _req: Request, res: Response, next: NextFunction) => {
+    if (err?.type === 'entity.too.large') return void res.status(413).json({ statusCode: 413, message: 'That request is too big' });
+    next(err);
+  });
   // bufferLogs holds Nest's own startup logs (module init, route mapping)
   // until the pino logger below is attached, so they come out as
   // structured JSON too instead of bypassing it as raw console.log lines.
