@@ -1129,3 +1129,61 @@ DROP POLICY IF EXISTS tenant_isolation ON hotel_room_assignments;
 CREATE POLICY tenant_isolation ON hotel_room_assignments
   USING (EXISTS (SELECT 1 FROM room_bookings p WHERE p.id = hotel_room_assignments."bookingId" AND p."organizationId" = current_setting('app.current_tenant', true)))
   WITH CHECK (EXISTS (SELECT 1 FROM room_bookings p WHERE p.id = hotel_room_assignments."bookingId" AND p."organizationId" = current_setting('app.current_tenant', true)));
+
+-- ── Hotel operations: settings, taxes, rates, guests, night audits, messages ─────
+
+ALTER TABLE hotel_settings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE hotel_settings FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON hotel_settings;
+CREATE POLICY tenant_isolation ON hotel_settings
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+ALTER TABLE hotel_taxes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE hotel_taxes FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON hotel_taxes;
+CREATE POLICY tenant_isolation ON hotel_taxes
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+ALTER TABLE hotel_rate_cards ENABLE ROW LEVEL SECURITY;
+ALTER TABLE hotel_rate_cards FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON hotel_rate_cards;
+CREATE POLICY tenant_isolation ON hotel_rate_cards
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+ALTER TABLE hotel_seasons ENABLE ROW LEVEL SECURITY;
+ALTER TABLE hotel_seasons FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON hotel_seasons;
+CREATE POLICY tenant_isolation ON hotel_seasons
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+ALTER TABLE hotel_meal_prices ENABLE ROW LEVEL SECURITY;
+ALTER TABLE hotel_meal_prices FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON hotel_meal_prices;
+CREATE POLICY tenant_isolation ON hotel_meal_prices
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+ALTER TABLE hotel_guests ENABLE ROW LEVEL SECURITY;
+ALTER TABLE hotel_guests FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON hotel_guests;
+CREATE POLICY tenant_isolation ON hotel_guests
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+ALTER TABLE hotel_night_audits ENABLE ROW LEVEL SECURITY;
+ALTER TABLE hotel_night_audits FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON hotel_night_audits;
+CREATE POLICY tenant_isolation ON hotel_night_audits
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+ALTER TABLE hotel_notifications ENABLE ROW LEVEL SECURITY;
+ALTER TABLE hotel_notifications FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON hotel_notifications;
+CREATE POLICY tenant_isolation ON hotel_notifications
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));

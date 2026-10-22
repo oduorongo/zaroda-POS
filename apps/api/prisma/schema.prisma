@@ -82,6 +82,14 @@ model Organization {
   restaurantSettings        RestaurantSetting[]
   hotelRooms                HotelRoom[]
   hotelFolios               HotelFolio[]
+  hotelSettings             HotelSetting?
+  hotelTaxes                HotelTax[]
+  hotelRateCards            HotelRateCard[]
+  hotelSeasons              HotelSeason[]
+  hotelMealPrices           HotelMealPrice[]
+  hotelGuests               HotelGuest[]
+  hotelNightAudits          HotelNightAudit[]
+  hotelNotifications        HotelNotification[]
   rentalProperties          RentalProperty[]
   rentalUnits               RentalUnit[]
   rentalListings            RentalListing[]
@@ -1453,6 +1461,9 @@ model HotelRoomType {
   photos       HotelRoomPhoto[]
   bookings     RoomBooking[]
   rooms        HotelRoom[]
+  rateCard     HotelRateCard?
+  seasons      HotelSeason[]
+  mealPrices   HotelMealPrice[]
 
   @@index([organizationId])
   @@map("hotel_room_types")
@@ -1524,6 +1535,19 @@ model RoomBooking {
   // No account behind a booking: the guest's browser holds a secret and only its hash is kept.
   guestTokenHash        String?
 
+  /// Who is staying: adults and children (the price can depend on it). Older bookings only know `guests`.
+  adults          Int?
+  children        Int               @default(0)
+  mealPlan        MealPlan          @default(ROOM_ONLY)
+  /// The guest-register entry this stay belongs to (a returning guest has one entry and many stays).
+  guestId         String?
+  /// The guest asked not to be texted (confirmation, reminder, thank-you).
+  smsOptOut       Boolean           @default(false)
+  /// How a stay's price was made up (nights, rates, extras) - for the folio and for explaining a change.
+  priceBreakdown  Json?
+  /// What the hotel kept of the deposit when the booking was cancelled (its cancellation policy).
+  cancelFeeKept   Decimal?          @db.Decimal(12, 2)
+
   /// Where the booking came from. Commission is only ever charged on MARKETPLACE bookings.
   source          RoomBookingSource @default(MARKETPLACE)
   idNumber        String?
@@ -1548,12 +1572,15 @@ model RoomBooking {
   roomType          HotelRoomType      @relation(fields: [roomTypeId], references: [id])
   commissionInvoice CommissionInvoice? @relation(fields: [commissionInvoiceId], references: [id])
   settlementSale    Sale?              @relation(fields: [settlementSaleId], references: [id])
+  guest             HotelGuest?        @relation(fields: [guestId], references: [id], onDelete: SetNull)
+  notifications     HotelNotification[]
   folio             HotelFolio?
   assignments       HotelRoomAssignment[]
 
   @@index([organizationId, status])
   @@index([roomTypeId, checkIn, checkOut])
   @@index([commissionInvoiceId])
+  @@index([guestId])
   @@map("room_bookings")
 }
 
@@ -1622,6 +1649,21 @@ model HotelRoomAssignment {
   @@map("hotel_room_assignments")
 }
 
+enum MealPlan {
+  ROOM_ONLY
+  BED_BREAKFAST
+  HALF_BOARD
+  FULL_BOARD
+}
+
+enum HotelNotificationKind {
+  CONFIRMATION
+  REMINDER
+  THANK_YOU
+  CANCELLATION
+  AMENDMENT
+}
+
 /// A guest's running account for a stay. Entries are only ever added; a correction is a new ADJUSTMENT by a manager.
 model HotelFolio {
   id             String   @id @default(uuid())
@@ -1648,6 +1690,8 @@ model HotelFolioEntry {
   amount      Decimal        @db.Decimal(12, 2)
   /// The tax inside a ROOM_NIGHT's amount, shown separately on the folio.
   taxAmount   Decimal        @default(0) @db.Decimal(12, 2)
+  /// That tax split by name ({ "VAT": 800, "Tourism levy": 100 }), when the hotel has set several.
+  taxBreakdown Json?
   description String
   /// The night a ROOM_NIGHT is for.
   nightDate   DateTime?      @db.Date
@@ -1666,6 +1710,167 @@ model HotelFolioEntry {
   @@index([folioId])
   @@index([saleId])
   @@map("hotel_folio_entries")
+}
+
+/// A hotel's own rules, one row per business: its cancellation policy, when the night audit runs, which messages it sends.
+model HotelSetting {
+  id                   String   @id @default(uuid())
+  organizationId       String   @unique
+  /// A booking cancelled at least this many days before arrival gets its deposit back in full.
+  cancelFreeDays       Int      @default(2)
+  /// Cancelled later than that, the hotel keeps this percent of the deposit (0 until the hotel sets a policy, so nothing changes for it).
+  cancelKeepPercent    Int      @default(0)
+  /// The night audit runs by itself at this hour (Kenya time) for the day that has just ended.
+  nightAuditHour       Int      @default(3)
+  /// An unpaid arrival is marked a no-show by the night audit once this hour of the arrival day has passed.
+  noShowCutoffHour     Int      @default(18)
+  confirmationSms      Boolean  @default(true)
+  reminderSms          Boolean  @default(true)
+  thankYouSms          Boolean  @default(true)
+  updatedAt            DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("hotel_settings")
+}
+
+/// A tax or levy on room nights, as a percent the business sets (VAT 16, tourism levy 2...). They are added on top of the room price.
+model HotelTax {
+  id             String   @id @default(uuid())
+  organizationId String
+  name           String
+  percent        Decimal  @db.Decimal(5, 2)
+  isActive       Boolean  @default(true)
+  sortOrder      Int      @default(0)
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@map("hotel_taxes")
+}
+
+/// How a room type is priced beyond its base price per night: a weekend price, what an extra adult or child costs.
+model HotelRateCard {
+  id             String   @id @default(uuid())
+  organizationId String
+  roomTypeId     String   @unique
+  /// Price per night on weekend nights; empty = the base price.
+  weekendRate    Decimal? @db.Decimal(12, 2)
+  /// Which nights are weekend nights (0 = Sunday ... 6 = Saturday). Usually Friday and Saturday.
+  weekendDays    Int[]    @default([5, 6])
+  /// Adults included in the price of one room; more than that pay the extra adult rate.
+  includedAdults Int      @default(2)
+  /// Children per room who stay free; more than that pay the extra child rate.
+  freeChildren   Int      @default(0)
+  extraAdultRate Decimal  @default(0) @db.Decimal(12, 2)
+  extraChildRate Decimal  @default(0) @db.Decimal(12, 2)
+  updatedAt      DateTime @updatedAt
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  roomType     HotelRoomType @relation(fields: [roomTypeId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@map("hotel_rate_cards")
+}
+
+/// A date range with its own price for a room type (high season, festive season...). Both ends are included.
+model HotelSeason {
+  id             String   @id @default(uuid())
+  organizationId String
+  roomTypeId     String
+  name           String
+  startDate      DateTime @db.Date
+  endDate        DateTime @db.Date
+  rate           Decimal  @db.Decimal(12, 2)
+  weekendRate    Decimal? @db.Decimal(12, 2)
+  createdAt      DateTime @default(now())
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  roomType     HotelRoomType @relation(fields: [roomTypeId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([roomTypeId, startDate, endDate])
+  @@map("hotel_seasons")
+}
+
+/// What a meal plan adds per person per night for a room type (Room only is free).
+model HotelMealPrice {
+  id             String   @id @default(uuid())
+  organizationId String
+  roomTypeId     String
+  plan           MealPlan
+  adultPrice     Decimal  @default(0) @db.Decimal(12, 2)
+  childPrice     Decimal  @default(0) @db.Decimal(12, 2)
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  roomType     HotelRoomType @relation(fields: [roomTypeId], references: [id], onDelete: Cascade)
+
+  @@unique([roomTypeId, plan])
+  @@index([organizationId])
+  @@map("hotel_meal_prices")
+}
+
+/// The guest register: a person who has stayed (or is booked). One entry however many stays; found again by phone or ID.
+model HotelGuest {
+  id             String   @id @default(uuid())
+  organizationId String
+  fullName       String
+  phone          String
+  email          String?
+  /// The ID or passport number is kept encrypted; the last four digits and a lookup hash are kept beside it.
+  idNumberEnc    String?
+  idLast4        String?
+  idHash         String?
+  nationality    String?
+  address        String?
+  vehicleReg     String?
+  smsOptOut      Boolean  @default(false)
+  notes          String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  bookings     RoomBooking[]
+
+  @@unique([organizationId, idHash])
+  @@index([organizationId, phone])
+  @@map("hotel_guests")
+}
+
+/// The close of a hotel day. One per business per day, so running it twice never doubles anything.
+model HotelNightAudit {
+  id             String   @id @default(uuid())
+  organizationId String
+  auditDate      DateTime @db.Date
+  /// "auto" when the timer ran it, otherwise the OrgUser who pressed the button.
+  ranBy          String
+  summary        Json
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, auditDate])
+  @@map("hotel_night_audits")
+}
+
+/// Which messages were sent (or skipped) for a booking, so none is sent twice.
+model HotelNotification {
+  id             String                @id @default(uuid())
+  organizationId String
+  bookingId      String
+  kind           HotelNotificationKind
+  /// SENT, SKIPPED (opted out, no number, switched off) or FAILED
+  status         String
+  detail         String?
+  createdAt      DateTime              @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  booking      RoomBooking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  @@unique([bookingId, kind])
+  @@index([organizationId])
+  @@map("hotel_notifications")
 }
 
 // Which kitchen station prepares a dish. A till order picks the station per line; an order from a table QR code

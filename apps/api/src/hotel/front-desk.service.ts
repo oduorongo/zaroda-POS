@@ -16,7 +16,7 @@ import {
 import { AuditLogService } from '../common/audit/audit-log.service';
 import { TenantScopedPrismaService } from '../common/prisma/tenant-scoped-prisma.service';
 import { getTenantStore } from '../common/tenant/tenant-context';
-import { normalizeKenyanPhone } from '../online-orders/online-orders.util';
+import { guestPhone, maskId } from './guest-format';
 import { CreateFrontDeskBookingDto } from './dto/front-desk.dto';
 import {
   folioTotals,
@@ -24,12 +24,15 @@ import {
   isSupervisorOrAbove,
 } from './folio.util';
 import { HotelFolioService } from './hotel-folio.service';
+import { HotelGuestsService } from './hotel-guests.service';
+import { HotelNotifierService } from './hotel-notifier.service';
+import { occupancyProblem } from './pricing.util';
+import { breakdownOf, loadPricing, priceWith } from './stay-pricing';
 import { PhysicalRoomsService } from './physical-rooms.service';
 import {
   nightsBetween,
   parseDay,
   stayProblem,
-  stayTotal,
   todayInKenya,
 } from './room-availability.util';
 import { roomsLeft } from './room-stock';
@@ -39,22 +42,7 @@ const generateBookingNumber = () =>
   `ZB-${Array.from({ length: 6 }, () => NUMBER_ALPHABET[randomInt(NUMBER_ALPHABET.length)]).join('')}`;
 const iso = (d: Date) => d.toISOString().slice(0, 10);
 
-/** "A1234567" -> "****4567": lists never show a whole ID or passport number. */
-export function maskId(value: string | null | undefined): string | null {
-  if (!value) return null;
-  const v = value.trim();
-  return v.length <= 4
-    ? '****'
-    : `${'*'.repeat(Math.min(v.length - 4, 8))}${v.slice(-4)}`;
-}
-
-/** A guest's phone as typed: a Kenyan mobile is normalised to 2547..., anything else (a visitor's number) is kept as digits with a plus. */
-export function guestPhone(input: string): string | null {
-  const kenyan = normalizeKenyanPhone(input);
-  if (kenyan) return kenyan;
-  const cleaned = input.replace(/[^\d+]/g, '');
-  return /^\+?\d{6,18}$/.test(cleaned) ? cleaned : null;
-}
+export { guestPhone, maskId } from './guest-format';
 
 type BookingWithRooms = RoomBooking & {
   assignments: { room: { number: string }; toAt: Date | null }[];
@@ -69,6 +57,8 @@ export class FrontDeskService {
     private readonly auditLog: AuditLogService,
     private readonly folios: HotelFolioService,
     private readonly rooms: PhysicalRoomsService,
+    private readonly guests: HotelGuestsService,
+    private readonly notifier: HotelNotifierService,
   ) {}
 
   /** One booking as the desk lists show it (the ID number masked to its last four digits). */
@@ -92,6 +82,10 @@ export class FrontDeskService {
       idNumber: maskId(b.idNumber),
       nationality: b.nationality,
       guests: b.guests,
+      adults: b.adults ?? b.guests - b.children,
+      children: b.children,
+      mealPlan: b.mealPlan,
+      guestId: b.guestId,
       rooms: b.rooms,
       roomTypeId: b.roomTypeId,
       roomTypeName: b.roomTypeName,
@@ -246,6 +240,11 @@ export class FrontDeskService {
         'A particular room can only be asked for on a one-room booking',
       );
     const nights = nightsBetween(checkIn, checkOut);
+    const children = dto.children ?? 0;
+    if (children >= dto.guests)
+      throw new BadRequestException('At least one adult is needed');
+    const adults = dto.guests - children;
+    const mealPlan = dto.mealPlan ?? 'ROOM_ONLY';
 
     let created: BookingWithRooms | undefined;
     for (let attempt = 0; attempt < 3 && !created; attempt++) {
@@ -260,10 +259,11 @@ export class FrontDeskService {
             throw new BadRequestException(
               `The hotel has ${roomType.quantity} ${roomType.name} room${roomType.quantity === 1 ? '' : 's'}`,
             );
-          if (dto.guests > roomType.maxGuests * rooms)
-            throw new BadRequestException(
-              `A ${roomType.name} sleeps up to ${roomType.maxGuests}. Use more rooms or fewer guests.`,
-            );
+          const tooMany = occupancyProblem(
+            { rooms, adults, children },
+            roomType.maxGuests,
+          );
+          if (tooMany) throw new BadRequestException(tooMany);
 
           // Two bookings (a guest online and the desk) must not take the last room between the check and the insert.
           await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${'room-type:' + roomType.id}))`;
@@ -280,7 +280,32 @@ export class FrontDeskService {
             select: { name: true },
           });
           const listed = Number(roomType.pricePerNight);
-          const rate = dto.rate ?? listed;
+          // the price list prices the stay (seasons, weekends, extra guests, meals); a manager's flat rate replaces the room price
+          const price = priceWith(await loadPricing(tx, roomType), {
+            checkIn: iso(checkIn),
+            checkOut: iso(checkOut),
+            rooms,
+            adults,
+            children,
+            mealPlan,
+            rate: dto.rate,
+          });
+          const rate = price.averageRate;
+          const guest = await this.guests.upsertInTx(
+            tx,
+            organizationId,
+            {
+              fullName: dto.guestName,
+              phone: dto.phone,
+              email: dto.email,
+              idNumber: dto.idNumber,
+              nationality: dto.nationality,
+              address: dto.address,
+              vehicleReg: dto.vehicleReg,
+              smsOptOut: dto.smsOptOut,
+            },
+            dto.guestId,
+          );
           const booking = await tx.roomBooking.create({
             data: {
               organizationId,
@@ -294,6 +319,12 @@ export class FrontDeskService {
               idNumber: dto.idNumber || null,
               nationality: dto.nationality || null,
               guests: dto.guests,
+              adults,
+              children,
+              mealPlan,
+              guestId: guest.id,
+              smsOptOut: dto.smsOptOut ?? guest.smsOptOut,
+              priceBreakdown: breakdownOf(price, dto.rate ?? null) as unknown as Prisma.InputJsonValue,
               rooms,
               checkIn,
               checkOut,
@@ -302,11 +333,12 @@ export class FrontDeskService {
               hotelName: org.name,
               roomTypeName: roomType.name,
               pricePerNight: rate,
-              total: stayTotal(rate, nights, rooms),
+              total: price.total,
               depositAmount: 0,
               commissionRate: 0,
               createdById: orgUserId,
-              rateOverriddenBy: rate !== listed ? orgUserId : null,
+              rateOverriddenBy:
+                dto.rate !== undefined && dto.rate !== listed ? orgUserId : null,
             },
           });
 
@@ -378,11 +410,15 @@ export class FrontDeskService {
               checkIn: iso(checkIn),
               checkOut: iso(checkOut),
               rooms,
+              adults,
+              children,
+              mealPlan,
               rate,
+              total: price.total,
               deposit: dto.deposit?.amount ?? 0,
             },
           });
-          if (rate !== listed) {
+          if (dto.rate !== undefined && dto.rate !== listed) {
             await this.auditLog.logInTx(tx, {
               action: 'hotel.rate_overridden',
               entityType: 'RoomBooking',
@@ -406,6 +442,8 @@ export class FrontDeskService {
     }
     if (!created)
       throw new ConflictException('Could not create the booking - try again');
+    // a text to the guest once the booking is safely saved (best-effort; never fails the booking)
+    void this.notifier.send(organizationId, created.id, 'CONFIRMATION');
     return this.deskView(created);
   }
 }

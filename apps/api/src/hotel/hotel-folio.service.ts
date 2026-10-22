@@ -19,7 +19,10 @@ import {
 } from '../common/prisma/tenant-scoped-prisma.service';
 import { getTenantStore } from '../common/tenant/tenant-context';
 import { AdjustmentDto, PostPaymentDto, RefundDto } from './dto/front-desk.dto';
-import { folioTotals, nightEntries } from './folio.util';
+import { folioTotals } from './folio.util';
+import { activeTaxLines, syncManagedTaxClass } from './hotel-tax-class';
+import { netPerNight, readBreakdown } from './stay-pricing';
+import { combinedRate, nightPostings, TaxLine } from './tax.util';
 import { ensureRoomProduct } from './physical-rooms.service';
 import { eachNight } from './room-availability.util';
 
@@ -30,6 +33,7 @@ export const entryView = (e: HotelFolioEntry) => ({
   type: e.type,
   amount: Number(e.amount),
   taxAmount: Number(e.taxAmount),
+  taxBreakdown: (e.taxBreakdown ?? null) as Record<string, number> | null,
   description: e.description,
   nightDate: e.nightDate ? e.nightDate.toISOString().slice(0, 10) : null,
   method: e.method,
@@ -48,7 +52,7 @@ export async function roomTaxRate(
     pricePerNight: unknown;
     variantId: string | null;
   },
-): Promise<{ variantId: string; taxRate: number }> {
+): Promise<{ variantId: string; taxRate: number; lines: TaxLine[] }> {
   const variantId = await ensureRoomProduct(tx, organizationId, {
     ...roomType,
     pricePerNight: Number(roomType.pricePerNight),
@@ -57,8 +61,17 @@ export async function roomTaxRate(
     where: { id: variantId },
     include: { product: { include: { taxClass: true } } },
   });
+  // When the hotel has set its own room taxes, the room product carries their combined rate (so the sale at check-out is right).
+  const lines = await activeTaxLines(tx);
+  if (lines.length > 0) {
+    const classId = await syncManagedTaxClass(tx, organizationId);
+    if (classId && variant.product.taxClassId !== classId)
+      await tx.product.update({ where: { id: variant.productId }, data: { taxClassId: classId } });
+    return { variantId, taxRate: combinedRate(lines), lines };
+  }
   const tc = variant.product.taxClass;
-  return { variantId, taxRate: tc && !tc.isExempt ? Number(tc.rate) : 0 };
+  const taxRate = tc && !tc.isExempt ? Number(tc.rate) : 0;
+  return { variantId, taxRate, lines: taxRate > 0 ? [{ name: tc?.name ?? 'Tax', percent: Math.round(taxRate * 10000) / 100 }] : [] };
 }
 
 /**
@@ -127,13 +140,11 @@ export class HotelFolioService {
     const roomType = await tx.hotelRoomType.findUniqueOrThrow({
       where: { id: booking.roomTypeId },
     });
-    const { taxRate } = await roomTaxRate(tx, booking.organizationId, roomType);
+    const { lines } = await roomTaxRate(tx, booking.organizationId, roomType);
     const nights = eachNight(booking.checkIn, booking.checkOut);
-    const amounts = nightEntries(
-      Number(booking.pricePerNight),
-      booking.rooms,
-      nights.length,
-      taxRate,
+    const amounts = nightPostings(
+      netPerNight(readBreakdown(booking.priceBreakdown), { rate: Number(booking.pricePerNight), rooms: booking.rooms, nights: nights.length }),
+      lines,
     );
     const created: HotelFolioEntry[] = [];
     for (const [i, night] of nights.entries()) {
@@ -144,6 +155,7 @@ export class HotelFolioService {
             type: 'ROOM_NIGHT',
             amount: amounts[i].amount,
             taxAmount: amounts[i].taxAmount,
+            taxBreakdown: amounts[i].breakdown,
             description: `${booking.roomTypeName}${booking.rooms > 1 ? ` x${booking.rooms}` : ''} - ${night.toISOString().slice(0, 10)}`,
             nightDate: night,
             createdById,
@@ -156,6 +168,59 @@ export class HotelFolioService {
       data: { nightsPostedAt: new Date() },
     });
     return { ...updated, entries: [...folio.entries, ...created] };
+  }
+
+  /**
+   * After a stay has been changed: makes the room nights on the folio match the booking's new price, by adding the DIFFERENCE for
+   * each night as a signed room-night entry (entries are never edited). Does nothing until the nights have been posted.
+   */
+  async syncRoomNights(tx: TenantTx, booking: RoomBooking, folio: FolioWithEntries, createdById: string, reason: string): Promise<number> {
+    if (!folio.nightsPostedAt) return 0;
+    const roomType = await tx.hotelRoomType.findUniqueOrThrow({ where: { id: booking.roomTypeId } });
+    const { lines } = await roomTaxRate(tx, booking.organizationId, roomType);
+    const nights = eachNight(booking.checkIn, booking.checkOut);
+    const targets = nightPostings(
+      netPerNight(readBreakdown(booking.priceBreakdown), { rate: Number(booking.pricePerNight), rooms: booking.rooms, nights: nights.length }),
+      lines,
+    );
+    const cents = (n: number) => Math.round(n * 100);
+    const have = new Map<string, { amount: number; tax: number; parts: Record<string, number> }>();
+    for (const e of folio.entries.filter((x) => x.type === 'ROOM_NIGHT' && x.nightDate)) {
+      const key = e.nightDate!.toISOString().slice(0, 10);
+      const cur = have.get(key) ?? { amount: 0, tax: 0, parts: {} };
+      cur.amount += cents(Number(e.amount));
+      cur.tax += cents(Number(e.taxAmount));
+      for (const [k, v] of Object.entries((e.taxBreakdown ?? {}) as Record<string, number>)) cur.parts[k] = (cur.parts[k] ?? 0) + cents(Number(v));
+      have.set(key, cur);
+    }
+    const want = new Map(nights.map((n, i) => [n.toISOString().slice(0, 10), { date: n, ...targets[i] }]));
+    let posted = 0;
+    for (const key of [...new Set([...have.keys(), ...want.keys()])].sort()) {
+      const h = have.get(key) ?? { amount: 0, tax: 0, parts: {} };
+      const w = want.get(key);
+      const dAmount = cents(w?.amount ?? 0) - h.amount;
+      const dTax = cents(w?.taxAmount ?? 0) - h.tax;
+      if (dAmount === 0 && dTax === 0) continue;
+      const parts: Record<string, number> = {};
+      for (const k of new Set([...Object.keys(h.parts), ...Object.keys(w?.breakdown ?? {})])) {
+        const d = cents(w?.breakdown?.[k] ?? 0) - (h.parts[k] ?? 0);
+        if (d !== 0) parts[k] = d / 100;
+      }
+      await tx.hotelFolioEntry.create({
+        data: {
+          folioId: folio.id,
+          type: 'ROOM_NIGHT',
+          amount: dAmount / 100,
+          taxAmount: dTax / 100,
+          taxBreakdown: parts,
+          description: `Stay changed (${key}): ${reason}`,
+          nightDate: new Date(`${key}T00:00:00Z`),
+          createdById,
+        },
+      });
+      posted += 1;
+    }
+    return posted;
   }
 
   /** Adds the folio CHARGE for any sale charged to this room whose own step did not land (see RoomChargeService). */

@@ -22,6 +22,10 @@ export interface DeskBooking {
   idNumber: string | null;
   nationality: string | null;
   guests: number;
+  adults: number;
+  children: number;
+  mealPlan: MealPlan;
+  guestId: string | null;
   rooms: number;
   roomTypeId: string;
   roomTypeName: string;
@@ -54,12 +58,41 @@ export interface RoomType {
   isActive: boolean;
 }
 
+export type MealPlan = "ROOM_ONLY" | "BED_BREAKFAST" | "HALF_BOARD" | "FULL_BOARD";
+export const MEAL_LABEL: Record<MealPlan, string> = { ROOM_ONLY: "Room only", BED_BREAKFAST: "Bed & breakfast", HALF_BOARD: "Half board", FULL_BOARD: "Full board" };
+
+/** What a stay would cost: each night, then the taxes on top (POST /hotel/bookings/quote). */
+export interface StayQuote {
+  nights: { date: string; rate: number; source: string; seasonName: string | null; extraCharge: number; mealCharge: number; total: number; tax: number }[];
+  subtotal: number;
+  roomTotal: number;
+  extraTotal: number;
+  mealTotal: number;
+  taxes: { name: string; percent: number; amount: number }[];
+  tax: number;
+  total: number;
+  averageRate: number;
+}
+
+export interface GuestSummary {
+  id: string;
+  fullName: string;
+  phone: string;
+  email: string | null;
+  idNumber: string | null;
+  nationality: string | null;
+  vehicleReg: string | null;
+  smsOptOut: boolean;
+  stays?: number;
+}
+
 export interface FolioEntry {
   id: string;
   type: "ROOM_NIGHT" | "CHARGE" | "PAYMENT" | "REFUND" | "ADJUSTMENT";
   amount: number;
   taxAmount: number;
   description: string;
+  taxBreakdown?: Record<string, number> | null;
   nightDate: string | null;
   method: string | null;
   reference: string | null;

@@ -28,6 +28,7 @@ import {
 import { FrontDeskService } from './front-desk.service';
 import { HotelFolioService, roomTaxRate } from './hotel-folio.service';
 import { todayInKenya } from './room-availability.util';
+import { readBreakdown, settlementShape } from './stay-pricing';
 
 /** The built-in "device" hotel sales are filed under, one per branch. It is not a real till (like the online shop's). */
 export const FRONT_DESK_TERMINAL_LABEL = 'Front desk';
@@ -310,8 +311,8 @@ export class FrontDeskStayService {
       const discount = roundMoney(
         -adjustments.reduce((s, e) => s + Number(e.amount), 0),
       );
-      const quantity = booking.nights * booking.rooms;
-      const rate = Number(booking.pricePerNight);
+      // a plain stay is "rate x nights x rooms"; a stay with weekend/season prices, extras or meals is one line at its agreed total
+      const { quantity, rate } = settlementShape(booking, readBreakdown(booking.priceBreakdown));
       const total = settlementTotal(rate, quantity, taxRate, discount);
 
       const payments = netPayments(

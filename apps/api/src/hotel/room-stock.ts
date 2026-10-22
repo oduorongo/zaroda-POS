@@ -3,10 +3,11 @@ import { TenantTx } from '../common/prisma/tenant-scoped-prisma.service';
 import { bookingHoldsRooms, roomsTaken } from './room-availability.util';
 
 /** How many rooms of a type are still free for every night of a stay: the type's rooms minus the busiest night. */
-export async function roomsLeft(tx: TenantTx, roomType: { id: string; quantity: number }, checkIn: Date, checkOut: Date, now: Date = new Date()): Promise<number> {
+export async function roomsLeft(tx: TenantTx, roomType: { id: string; quantity: number }, checkIn: Date, checkOut: Date, now: Date = new Date(), excludeBookingId?: string): Promise<number> {
   const bookings = await tx.roomBooking.findMany({
     where: {
       roomTypeId: roomType.id,
+      ...(excludeBookingId ? { id: { not: excludeBookingId } } : {}),
       checkIn: { lt: checkOut },
       checkOut: { gt: checkIn },
       status: { in: [RoomBookingStatus.CONFIRMED, RoomBookingStatus.CHECKED_IN, RoomBookingStatus.PENDING_PAYMENT] },
