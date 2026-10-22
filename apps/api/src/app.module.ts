@@ -48,6 +48,7 @@ import { ServiceJobsModule } from './service-jobs/service-jobs.module';
 import { PayrollModule } from './payroll/payroll.module';
 import { RosterModule } from './roster/roster.module';
 import { PurchasingModule } from './purchasing/purchasing.module';
+import { EtimsModule } from './etims/etims.module';
 import { RepackagingModule } from './repackaging/repackaging.module';
 import { RecipesModule } from './recipes/recipes.module';
 import { WasteModule } from './waste/waste.module';
@@ -123,6 +124,7 @@ import { DeliveryModule } from './delivery/delivery.module';
     StockTransfersModule,
     StockTakesModule,
     PurchasingModule,
+    EtimsModule,
     RepackagingModule,
     RecipesModule,
     WasteModule,
