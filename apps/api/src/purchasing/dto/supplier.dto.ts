@@ -1,4 +1,4 @@
-import { IsEmail, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+import { IsEmail, IsInt, IsOptional, IsString, Max, MaxLength, Min, MinLength } from 'class-validator';
 import { PartialType } from '@nestjs/mapped-types';
 
 export class CreateSupplierDto {
@@ -20,6 +20,13 @@ export class CreateSupplierDto {
   @IsOptional()
   @MaxLength(1000)
   notes?: string;
+
+  /** Days after a bill's date that it falls due. */
+  @IsInt()
+  @Min(0)
+  @Max(365)
+  @IsOptional()
+  paymentTermsDays?: number;
 }
 
 export class UpdateSupplierDto extends PartialType(CreateSupplierDto) {}

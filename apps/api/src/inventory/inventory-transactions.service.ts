@@ -88,7 +88,7 @@ export class InventoryTransactionsService {
     // A delivery received with a price: blend it into the product's cost BEFORE the stock goes up (the weights are what was
     // in stock until now). Only a receipt can carry a price - anything else is a mistake worth saying so about.
     if (dto.unitCost !== undefined) {
-      if (dto.type !== InventoryTxnType.ADJUSTMENT || dto.quantityDelta <= 0) {
+      if ((dto.type !== InventoryTxnType.RECEIPT && dto.type !== InventoryTxnType.ADJUSTMENT) || dto.quantityDelta <= 0) {
         throw new BadRequestException('A price paid only applies when stock is received');
       }
       const held = await tx.inventoryItem.aggregate({ where: { variantId: dto.variantId }, _sum: { quantity: true } });

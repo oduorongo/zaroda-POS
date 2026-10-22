@@ -12,6 +12,7 @@ export const HISTORY_SOURCES: { delegate: string; field: string }[] = [
   { delegate: 'stockTransfer', field: 'variantId' },
   { delegate: 'stockTakeLine', field: 'variantId' },
   { delegate: 'purchaseOrderLineItem', field: 'variantId' },
+  { delegate: 'goodsReceiptLine', field: 'variantId' },
   { delegate: 'recipeIngredient', field: 'variantId' },
   { delegate: 'recipeIngredient', field: 'ingredientVariantId' },
   { delegate: 'repackaging', field: 'fromVariantId' },

@@ -1187,3 +1187,32 @@ DROP POLICY IF EXISTS tenant_isolation ON hotel_notifications;
 CREATE POLICY tenant_isolation ON hotel_notifications
   USING ("organizationId" = current_setting('app.current_tenant', true))
   WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+-- Receiving stock and paying suppliers
+ALTER TABLE goods_receipts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE goods_receipts FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON goods_receipts;
+CREATE POLICY tenant_isolation ON goods_receipts
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+ALTER TABLE goods_receipt_lines ENABLE ROW LEVEL SECURITY;
+ALTER TABLE goods_receipt_lines FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON goods_receipt_lines;
+CREATE POLICY tenant_isolation ON goods_receipt_lines
+  USING (EXISTS (SELECT 1 FROM goods_receipts r WHERE r.id = goods_receipt_lines."receiptId" AND r."organizationId" = current_setting('app.current_tenant', true)))
+  WITH CHECK (EXISTS (SELECT 1 FROM goods_receipts r WHERE r.id = goods_receipt_lines."receiptId" AND r."organizationId" = current_setting('app.current_tenant', true)));
+
+ALTER TABLE supplier_bills ENABLE ROW LEVEL SECURITY;
+ALTER TABLE supplier_bills FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON supplier_bills;
+CREATE POLICY tenant_isolation ON supplier_bills
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+ALTER TABLE supplier_bill_payments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE supplier_bill_payments FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON supplier_bill_payments;
+CREATE POLICY tenant_isolation ON supplier_bill_payments
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
