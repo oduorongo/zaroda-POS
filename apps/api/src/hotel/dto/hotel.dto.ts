@@ -1,5 +1,5 @@
 import { Transform } from 'class-transformer';
-import { IsBoolean, IsEmail, IsInt, IsNumber, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min, MinLength } from 'class-validator';
+import { IsBoolean, IsEmail, IsIn, IsInt, IsNumber, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min, MinLength } from 'class-validator';
 
 const trim = ({ value }: { value: unknown }) => (typeof value === 'string' ? value.trim() : value);
 
@@ -81,6 +81,17 @@ export class CreateBookingDto {
   @Min(1)
   @Max(40)
   guests!: number;
+
+  /** How many of the guests are children (the rest are adults). */
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(39)
+  children?: number;
+
+  @IsOptional()
+  @IsIn(['ROOM_ONLY', 'BED_BREAKFAST', 'HALF_BOARD', 'FULL_BOARD'])
+  mealPlan?: 'ROOM_ONLY' | 'BED_BREAKFAST' | 'HALF_BOARD' | 'FULL_BOARD';
 
   @Transform(trim)
   @IsString()

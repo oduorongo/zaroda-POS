@@ -28,10 +28,12 @@ import {
   nightsBetween,
   parseDay,
   stayProblem,
-  stayTotal,
   todayInKenya,
 } from './room-availability.util';
 import { roomsLeft } from './room-stock';
+import { HotelGuestsService } from './hotel-guests.service';
+import { occupancyProblem } from './pricing.util';
+import { breakdownOf, loadPricing, priceWith } from './stay-pricing';
 
 const TX_OPTIONS = { timeout: 15_000, maxWait: 15_000 };
 const RETRY_COOLDOWN_MS = 60_000;
@@ -92,6 +94,7 @@ export class RoomBookingsService {
     private readonly daraja: DarajaClient,
     private readonly sms: AfricasTalkingSmsProvider,
     private readonly config: ConfigService,
+    private readonly guests: HotelGuestsService,
   ) {}
 
   private runAsTenant<T>(organizationId: string, fn: (tx: TenantTx) => Promise<T>): Promise<T> {
@@ -141,9 +144,12 @@ export class RoomBookingsService {
           const roomType = await tx.hotelRoomType.findFirst({ where: { id: dto.roomTypeId, isListed: true, isActive: true } });
           if (!roomType) throw new NotFoundException('That room is no longer on offer');
           if (dto.rooms > roomType.quantity) throw new BadRequestException(`This hotel has ${roomType.quantity} ${roomType.name} room${roomType.quantity === 1 ? '' : 's'}`);
-          if (dto.guests > roomType.maxGuests * dto.rooms) {
-            throw new BadRequestException(`A ${roomType.name} sleeps up to ${roomType.maxGuests}. Choose more rooms or fewer guests.`);
-          }
+          const children = dto.children ?? 0;
+          if (children >= dto.guests) throw new BadRequestException('At least one adult is needed');
+          const adults = dto.guests - children;
+          const mealPlan = dto.mealPlan ?? 'ROOM_ONLY';
+          const tooMany = occupancyProblem({ rooms: dto.rooms, adults, children }, roomType.maxGuests);
+          if (tooMany) throw new BadRequestException(tooMany);
 
           // Two guests must not take the last room between the availability check and the insert.
           await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${'room-type:' + roomType.id}))`;
@@ -152,8 +158,10 @@ export class RoomBookingsService {
             throw new ConflictException(left > 0 ? `Only ${left} ${roomType.name} room${left === 1 ? '' : 's'} left for those dates` : `Sorry, no ${roomType.name} rooms are free for those dates`);
           }
 
-          const price = Number(roomType.pricePerNight);
-          const total = stayTotal(price, nights, dto.rooms);
+          // the SAME price list and function the front desk and the public quote use
+          const price = priceWith(await loadPricing(tx, roomType), { checkIn: dto.checkIn, checkOut: dto.checkOut, rooms: dto.rooms, adults, children, mealPlan });
+          const total = price.total;
+          const guest = await this.guests.upsertInTx(tx, shop.organizationId, { fullName: dto.name, phone: paymentPhone, email: dto.email });
           return tx.roomBooking.create({
             data: {
               organizationId: shop.organizationId,
@@ -163,6 +171,12 @@ export class RoomBookingsService {
               guestPhone: paymentPhone,
               guestEmail: dto.email || null,
               guests: dto.guests,
+              adults,
+              children,
+              mealPlan,
+              guestId: guest.id,
+              smsOptOut: guest.smsOptOut,
+              priceBreakdown: breakdownOf(price, null) as unknown as Prisma.InputJsonValue,
               rooms: dto.rooms,
               checkIn,
               checkOut,
@@ -171,7 +185,7 @@ export class RoomBookingsService {
               hotelName: shop.displayName,
               hotelSlug: shop.slug,
               roomTypeName: roomType.name,
-              pricePerNight: price,
+              pricePerNight: price.averageRate,
               total,
               depositAmount: depositFor(total, roomType.depositPercent),
               commissionRate: shop.commissionRate ?? DEFAULT_COMMISSION_RATE,

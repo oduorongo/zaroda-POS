@@ -236,6 +236,39 @@ export class CreateFrontDeskBookingDto {
   @Max(40)
   guests!: number;
 
+  /** How many of the guests are children (the rest are adults). */
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(39)
+  children?: number;
+
+  @IsOptional()
+  @IsIn(['ROOM_ONLY', 'BED_BREAKFAST', 'HALF_BOARD', 'FULL_BOARD'])
+  mealPlan?: 'ROOM_ONLY' | 'BED_BREAKFAST' | 'HALF_BOARD' | 'FULL_BOARD';
+
+  @IsOptional()
+  @Transform(trim)
+  @IsString()
+  @MaxLength(300)
+  address?: string;
+
+  @IsOptional()
+  @Transform(trim)
+  @IsString()
+  @MaxLength(20)
+  vehicleReg?: string;
+
+  /** A returning guest picked from the register. */
+  @IsOptional()
+  @IsUUID()
+  guestId?: string;
+
+  /** The guest does not want texts. */
+  @IsOptional()
+  @IsBoolean()
+  smsOptOut?: boolean;
+
   @IsOptional()
   @IsInt()
   @Min(1)

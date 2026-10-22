@@ -57,6 +57,8 @@ const day = (offset) => new Date(Date.now() + 3 * 3600_000 + offset * 86_400_000
   check('API ready', (await api('GET', '/ready')).status === 200);
   const login = await api('POST', '/auth/login', { body: { email: 'owner@demo.zaroda.pos', password: 'password123' } });
   const owner = login.json.accessToken;
+  // A run that stopped half-way may have left room taxes switched on: the first sections expect none.
+  await api('PUT', '/hotel/taxes', { token: owner, body: { taxes: [] } });
   check('owner can sign in', Boolean(owner), login);
   const store = (await api('GET', '/online-store/me', { token: owner })).json;
   check('the shop is live with payments connected (the hotel uses its payment account)', store.isPublished && store.tumaConnected, store);
@@ -531,6 +533,290 @@ const day = (offset) => new Date(Date.now() + 3 * 3600_000 + offset * 86_400_000
       const r = (await sql.query(`SELECT relrowsecurity AS on, relforcerowsecurity AS forced FROM pg_class WHERE relname = $1`, [t])).rows[0];
       check(`${t} has row-level security switched on and forced`, r?.on === true && r?.forced === true, r);
     }
+
+    // ───────────────────────────────────────────────────────────────────────────────────────────
+    // HOTEL OPERATIONS: rate plans and taxes, changing a stay, cancellation policy, guest register, night audit, reports, texts
+    // ───────────────────────────────────────────────────────────────────────────────────────────
+    const dayMs = (s) => Date.parse(`${s}T00:00:00Z`);
+    const upTo = (from, to) => Math.round((dayMs(to) - dayMs(from)) / 86_400_000);
+    const nextDow = (dow, minOffset) => { for (let i = minOffset; i < minOffset + 8; i++) if (new Date(dayMs(day(i))).getUTCDay() === dow) return day(i); };
+    const tidy = async (ms = 700) => sleep(ms);
+
+    section('20. Rate plans and room taxes');
+    check('a cashier cannot change the hotel\'s taxes or rules', (await h('PUT', '/hotel/taxes', { taxes: [{ name: 'VAT', percent: 16 }] }, cashier)).status === 403 && (await h('PUT', '/hotel/settings', { cancelFreeDays: 1, cancelKeepPercent: 0, nightAuditHour: 3, noShowCutoffHour: 18, confirmationSms: true, reminderSms: true, thankYouSms: true }, cashier)).status === 403);
+    check('the desk can read the rules', (await h('GET', '/hotel/settings', undefined, cashier)).status === 200);
+    check('two taxes with one name are refused; so are taxes adding up to more than 100%', (await h('PUT', '/hotel/taxes', { taxes: [{ name: 'VAT', percent: 16 }, { name: 'vat', percent: 2 }] })).status === 400 && (await h('PUT', '/hotel/taxes', { taxes: [{ name: 'A', percent: 80 }, { name: 'B', percent: 30 }] })).status === 400);
+    const taxSet = await h('PUT', '/hotel/taxes', { taxes: [{ name: 'VAT', percent: 16 }, { name: 'Tourism levy', percent: 2 }] });
+    check('the owner sets VAT 16% and a tourism levy 2%', taxSet.status === 200 && taxSet.json.length === 2, taxSet);
+    const managedClass = (await sql.query(`SELECT rate FROM tax_classes WHERE name = 'Hotel room tax' AND "organizationId" = $1`, [org.id])).rows[0];
+    check('the room products carry one "Hotel room tax" class at the combined 18%', Number(managedClass?.rate) === 0.18, managedClass);
+
+    const opsType = (await h('POST', '/hotel/room-types', { name: `Plans-${tag}`, pricePerNight: 5000, maxGuests: 3, quantity: 1, depositPercent: 30, isListed: false })).json;
+    await h('POST', '/hotel/rooms/bulk', { roomTypeId: opsType.id, prefix: `P${tag.slice(-3)}-`, from: 1, to: 4 });
+    const opsRooms = (await h('GET', `/hotel/rooms?roomTypeId=${opsType.id}`)).json;
+    check('a room type with four real rooms for the rate tests', opsRooms.length === 4);
+    const rc = await h('PUT', `/hotel/room-types/${opsType.id}/rate-card`, { weekendRate: 6500, weekendDays: [5, 6], includedAdults: 2, freeChildren: 1, extraAdultRate: 1500, extraChildRate: 800 });
+    check('the rate card is saved (weekend KES 6,500, extra adult 1,500, extra child 800 after one free)', rc.status === 200 && rc.json.weekendRate === 6500 && rc.json.extraAdultRate === 1500, rc);
+    check('a cashier cannot change prices; the same weekend day twice is refused', (await h('PUT', `/hotel/room-types/${opsType.id}/rate-card`, { weekendRate: 1, weekendDays: [5], includedAdults: 2, freeChildren: 0, extraAdultRate: 0, extraChildRate: 0 }, cashier)).status === 403 && (await h('PUT', `/hotel/room-types/${opsType.id}/rate-card`, { weekendRate: 6500, weekendDays: [5, 5], includedAdults: 2, freeChildren: 0, extraAdultRate: 0, extraChildRate: 0 })).status === 400);
+    const meals = await h('PUT', `/hotel/room-types/${opsType.id}/meal-prices`, { prices: [{ plan: 'BED_BREAKFAST', adultPrice: 800, childPrice: 400 }, { plan: 'HALF_BOARD', adultPrice: 1800, childPrice: 900 }] });
+    check('meal plan prices are saved', meals.status === 200 && meals.json.meals.find((m) => m.plan === 'BED_BREAKFAST').adultPrice === 800, meals);
+    check('"room only" has no price to set', (await h('PUT', `/hotel/room-types/${opsType.id}/meal-prices`, { prices: [{ plan: 'ROOM_ONLY', adultPrice: 1, childPrice: 1 }] })).status === 400);
+    const seasonStart = day(60), seasonEnd = day(64);
+    const season = await h('POST', `/hotel/room-types/${opsType.id}/seasons`, { name: 'High season', startDate: seasonStart, endDate: seasonEnd, rate: 9000 });
+    check('a season is added', season.status === 201 && season.json.seasons.length === 1, season);
+    check('a season cannot end before it starts', (await h('POST', `/hotel/room-types/${opsType.id}/seasons`, { name: 'Bad', startDate: seasonEnd, endDate: seasonStart, rate: 100 })).status === 400);
+
+    const friday = nextDow(5, 10);
+    const sunday = day(upTo(day(0), friday) + 2);
+    const qWeekend = await h('POST', '/hotel/bookings/quote', { roomTypeId: opsType.id, checkIn: friday, checkOut: sunday, rooms: 1, guests: 2 }, cashier);
+    check('a desk quote: Friday and Saturday nights at the weekend price = KES 13,000, plus 18% tax = KES 15,340', qWeekend.status === 200 && qWeekend.json.subtotal === 13000 && qWeekend.json.tax === 2340 && qWeekend.json.total === 15340, qWeekend.json);
+    check('the quote shows each tax by name (VAT 2,080, levy 260)', qWeekend.json.taxes?.find((t) => t.name === 'VAT')?.amount === 2080 && qWeekend.json.taxes?.find((t) => t.name === 'Tourism levy')?.amount === 260, qWeekend.json.taxes);
+    const mon = nextDow(1, 10);
+    const qExtras = await h('POST', '/hotel/bookings/quote', { roomTypeId: opsType.id, checkIn: mon, checkOut: day(upTo(day(0), mon) + 2), rooms: 1, guests: 3, children: 1, mealPlan: 'BED_BREAKFAST' }, cashier);
+    // Monday and Tuesday: 5,000 each; 2 adults + 1 child: the child is free; breakfast 2 x 800 + 400 = 2,000 a night
+    check('two weekday nights with a child (free) and breakfast: 2 x (5,000 + 2,000) = KES 14,000', qExtras.json.subtotal === 14000 && qExtras.json.mealTotal === 4000 && qExtras.json.extraTotal === 0, qExtras.json);
+    const qThree = await h('POST', '/hotel/bookings/quote', { roomTypeId: opsType.id, checkIn: mon, checkOut: day(upTo(day(0), mon) + 1), rooms: 1, guests: 3 }, cashier);
+    check('a third adult pays the extra adult price: 5,000 + 1,500', qThree.json.subtotal === 6500, qThree.json);
+    const qSeason = await h('POST', '/hotel/bookings/quote', { roomTypeId: opsType.id, checkIn: seasonStart, checkOut: day(upTo(day(0), seasonStart) + 2), rooms: 1, guests: 2 }, cashier);
+    check('nights inside the season use the season price', qSeason.json.nights?.every((n) => n.source === 'SEASON' || n.source === 'WEEKEND' || n.source === 'SEASON_WEEKEND') && qSeason.json.nights[0].rate === 9000, qSeason.json.nights);
+    check('too many guests for the room is refused', (await h('POST', '/hotel/bookings/quote', { roomTypeId: opsType.id, checkIn: mon, checkOut: day(upTo(day(0), mon) + 1), rooms: 1, guests: 4 }, cashier)).status === 400);
+
+    // The marketplace uses the same function: list the type, compare its public quote with the desk quote.
+    await h('PUT', `/hotel/room-types/${opsType.id}`, { name: opsType.name, pricePerNight: 5000, maxGuests: 3, quantity: 4, depositPercent: 30, isListed: true });
+    const pub = (await api('GET', `/public/hotels/${slug}?checkIn=${friday}&checkOut=${sunday}`)).json.roomTypes?.find((r) => r.id === opsType.id);
+    check('the marketplace quote for the same stay is the same KES 13,000', pub?.quote?.total === 13000, pub?.quote);
+    const pubBooking = await api('POST', `/public/hotels/${slug}/bookings`, { body: { roomTypeId: opsType.id, checkIn: friday, checkOut: sunday, rooms: 1, guests: 2, name: 'Market Mary', phone: '0700123456' } });
+    check('and the marketplace booking is charged the same: KES 13,000, average KES 6,500 a night', pubBooking.status === 201 && pubBooking.json.total === 13000, pubBooking.json);
+    await h('PUT', `/hotel/room-types/${opsType.id}`, { name: opsType.name, pricePerNight: 5000, maxGuests: 3, quantity: 4, depositPercent: 30, isListed: false });
+
+    // A stay that is NOT one plain price: 3 nights, the first two in a season starting today, the last at the base price.
+    const mixType = (await h('POST', '/hotel/room-types', { name: `Mixed-${tag}`, pricePerNight: 5000, maxGuests: 2, quantity: 1, depositPercent: 0, isListed: false })).json;
+    await h('POST', '/hotel/rooms/bulk', { roomTypeId: mixType.id, prefix: `X${tag.slice(-3)}-`, from: 1, to: 3 });
+    const mixRooms = (await h('GET', `/hotel/rooms?roomTypeId=${mixType.id}`)).json;
+    await h('PUT', `/hotel/room-types/${mixType.id}/rate-card`, { weekendRate: null, weekendDays: [5, 6], includedAdults: 2, freeChildren: 0, extraAdultRate: 0, extraChildRate: 0 });
+    await h('POST', `/hotel/room-types/${mixType.id}/seasons`, { name: 'Now', startDate: day(0), endDate: day(1), rate: 9000 });
+    const mixed = await h('POST', '/hotel/bookings', { guestName: 'Mixed Mike', phone: '0711900100', guests: 2, checkIn: day(0), checkOut: day(3), roomTypeId: mixType.id }, cashier);
+    check('a desk booking priced night by night: 9,000 + 9,000 + 5,000 = KES 23,000', mixed.status === 201 && mixed.json.total === 23000 && mixed.json.nights === 3, mixed.json);
+    await h('PATCH', `/hotel/rooms/${mixRooms[0].id}/status`, { status: 'VACANT_CLEAN' }, cashier);
+    const mixIn = await h('POST', `/hotel/bookings/${mixed.json.id}/check-in`, { roomIds: [mixRooms[0].id] }, cashier);
+    check('checked in', mixIn.status === 200, mixIn);
+    const mixFolio = (await h('GET', `/hotel/bookings/${mixed.json.id}/folio`)).json;
+    const nightsOnFolio = mixFolio.entries.filter((e) => e.type === 'ROOM_NIGHT');
+    check('the folio has the three nights at their own prices with tax: 10,620 / 10,620 / 5,900', nightsOnFolio.map((e) => e.amount).join() === '10620,10620,5900', nightsOnFolio.map((e) => e.amount));
+    check('each night shows its tax by name (VAT and tourism levy)', nightsOnFolio.every((e) => e.taxBreakdown && 'VAT' in e.taxBreakdown && 'Tourism levy' in e.taxBreakdown), nightsOnFolio[0]);
+    check('room tax on the folio totals KES 4,140 and the folio total KES 27,140', mixFolio.totals.roomTax === 4140 && mixFolio.totals.roomNights === 27140, mixFolio.totals);
+    const mixOut = await h('POST', `/hotel/bookings/${mixed.json.id}/check-out`, { payments: [{ method: 'CASH', amount: 27140 }] }, cashier);
+    check('check-out settles exactly: balance zero and the stay is checked out', mixOut.status === 200 && mixOut.json.booking.status === 'CHECKED_OUT', mixOut.json.message || mixOut.json.booking?.status);
+    const mixSale = (await sql.query(`SELECT s.total, (SELECT count(*)::int FROM sale_line_items l WHERE l."saleId" = s.id) lines, (SELECT sum(quantity)::int FROM sale_line_items l WHERE l."saleId" = s.id) qty, (SELECT sum(l."taxAmount") FROM sale_line_items l WHERE l."saleId" = s.id) tax FROM sales s WHERE s."clientId" = $1`, [settlementId(mixed.json.id)])).rows[0];
+    check('the settlement sale is one line for the agreed price, KES 27,140 including KES 4,140 tax', Number(mixSale?.total) === 27140 && mixSale.lines === 1 && mixSale.qty === 1 && Math.abs(Number(mixSale.tax) - 4140) < 0.01, mixSale);
+
+    section('21. Changing a stay');
+    const chType = (await h('POST', '/hotel/room-types', { name: `Change-${tag}`, pricePerNight: 5000, maxGuests: 2, quantity: 1, depositPercent: 0, isListed: false })).json;
+    await h('POST', '/hotel/rooms/bulk', { roomTypeId: chType.id, prefix: `C${tag.slice(-3)}-`, from: 1, to: 3 });
+    const chRooms = (await h('GET', `/hotel/rooms?roomTypeId=${chType.id}`)).json;
+    const mkStay = (over = {}) => h('POST', '/hotel/bookings', { guestName: 'Change Chege', phone: '0711900200', guests: 2, checkIn: day(20), checkOut: day(22), roomTypeId: chType.id, ...over }, cashier);
+    const s1 = await mkStay();
+    check('a booking for two nights: KES 10,000', s1.status === 201 && s1.json.total === 10000, s1.json);
+    const amend = (id, body, token = supervisor) => h('POST', `/hotel/bookings/${id}/amend`, { reason: 'Guest asked', ...body }, token);
+    check('a cashier cannot change a stay', (await amend(s1.json.id, { checkOut: day(23) }, cashier)).status === 403);
+    const preview = await amend(s1.json.id, { checkOut: day(23), dryRun: true });
+    check('a dry run shows the new price (KES 15,000, +5,000) and saves nothing', preview.status === 200 && preview.json.preview.difference === 5000 && preview.json.preview.after.total === 15000 && (await h('GET', `/hotel/bookings/${s1.json.id}`)).json.total === 10000, preview.json);
+    const ext = await amend(s1.json.id, { checkOut: day(23) });
+    check('extending by a night re-prices the stay: 3 nights, KES 15,000', ext.status === 200 && ext.json.booking.nights === 3 && ext.json.booking.total === 15000, ext.json);
+    check('the change is in the audit log with its reason', (await sql.query(`SELECT count(*)::int n FROM audit_log WHERE "entityId" = $1 AND action = 'hotel.booking_amended'`, [s1.json.id])).rows[0].n === 1);
+    check('moving the stay to other dates keeps the nights\' price: 2 nights, KES 10,000', (await amend(s1.json.id, { checkIn: day(21), checkOut: day(23) })).json.booking?.total === 10000);
+    check('a supervisor cannot set a rate; the owner can (KES 4,000 a night -> KES 8,000)', (await amend(s1.json.id, { rate: 4000 })).status === 403 && (await amend(s1.json.id, { rate: 4000 }, owner)).json.booking?.total === 8000);
+    check('check-out must be after check-in', (await amend(s1.json.id, { checkOut: day(21) })).status === 400);
+    check('more rooms than the hotel has are refused', (await amend(s1.json.id, { rooms: 4, adults: 4 })).status === 400);
+    check('a room type that does not exist is refused', (await amend(s1.json.id, { roomTypeId: '00000000-0000-0000-0000-000000000000' })).status === 404);
+    // fill every room of the type on day(26)-day(27), then try to extend into it
+    const fillers = [];
+    for (let i = 0; i < 3; i++) fillers.push(await mkStay({ guestName: `Filler ${i}`, phone: `07119003${i}0`, checkIn: day(26), checkOut: day(27) }));
+    check('three more bookings fill the type for one night', fillers.every((f) => f.status === 201), fillers.map((f) => f.status));
+    const tooLate = await amend(s1.json.id, { checkIn: day(21), checkOut: day(28) });
+    check('extending into a night with no room left is refused (and nothing changes)', tooLate.status === 409 && (await h('GET', `/hotel/bookings/${s1.json.id}`)).json.checkOut === day(23), tooLate.json);
+    const swapType = await amend(s1.json.id, { roomTypeId: mixType.id });
+    check('changing to another room type re-prices the whole stay from that type\'s list (2 nights x 5,000 = 10,000)', swapType.status === 200 && swapType.json.booking.roomTypeId === mixType.id && swapType.json.booking.total === 10000, swapType.json);
+    check('an unpaid stay with no folio needs no folio entries', (await sql.query(`SELECT count(*)::int n FROM hotel_folio_entries e JOIN hotel_folios f ON f.id = e.\"folioId\" WHERE f.\"bookingId\" = $1`, [s1.json.id])).rows[0].n === 0);
+
+    // A guest who is in the house: extend, shorten, add a room.
+    const inHouse = await mkStay({ guestName: 'In House Ina', phone: '0711900400', checkIn: day(0), checkOut: day(2) });
+    await h('PATCH', `/hotel/rooms/${chRooms[0].id}/status`, { status: 'VACANT_CLEAN' }, cashier);
+    check('checked in', (await h('POST', `/hotel/bookings/${inHouse.json.id}/check-in`, { roomIds: [chRooms[0].id] }, cashier)).status === 200);
+    const fb = (await h('GET', `/hotel/bookings/${inHouse.json.id}/folio`)).json.totals;
+    check('the folio has two nights with tax: KES 11,800', fb.roomNights === 11800 && fb.balance === 11800, fb);
+    check('the arrival date of a guest in the house cannot change', (await amend(inHouse.json.id, { checkIn: day(1) })).status === 400);
+    const ext2 = await amend(inHouse.json.id, { checkOut: day(3) });
+    const f2 = (await h('GET', `/hotel/bookings/${inHouse.json.id}/folio`)).json;
+    check('extending a night adds KES 5,900 to the folio as a new entry (nothing edited)', ext2.status === 200 && f2.totals.roomNights === 17700 && f2.entries.filter((e) => e.type === 'ROOM_NIGHT').length === 3, f2.totals);
+    const short = await amend(inHouse.json.id, { checkOut: day(1) });
+    const f3 = (await h('GET', `/hotel/bookings/${inHouse.json.id}/folio`)).json;
+    check('leaving early takes the nights off again: one night, KES 5,900, by adjusting entries', short.status === 200 && f3.totals.roomNights === 5900 && f3.entries.some((e) => e.type === 'ROOM_NIGHT' && e.amount < 0), f3.totals);
+    check('a check-out date that has already passed is refused', (await amend(inHouse.json.id, { checkOut: day(-1) })).status === 400);
+    await h('PATCH', `/hotel/rooms/${chRooms[1].id}/status`, { status: 'VACANT_CLEAN' }, cashier);
+    check('another room needs the rooms to be chosen', (await amend(inHouse.json.id, { rooms: 2, adults: 2 })).status === 400);
+    const addRoom = await amend(inHouse.json.id, { rooms: 2, adults: 2, roomIds: [chRooms[0].id, chRooms[1].id] });
+    const f4 = (await h('GET', `/hotel/bookings/${inHouse.json.id}/folio`)).json;
+    check('adding a second room puts both rooms on the stay and doubles the night: KES 11,800', addRoom.status === 200 && addRoom.json.booking.roomNumbers.length === 2 && f4.totals.roomNights === 11800, { rooms: addRoom.json.booking?.roomNumbers, totals: f4.totals });
+    const outIna = await h('POST', `/hotel/bookings/${inHouse.json.id}/check-out`, { payments: [{ method: 'CASH', amount: f4.totals.balance }] }, cashier);
+    const inaSale = (await sql.query(`SELECT total FROM sales WHERE "clientId" = $1`, [settlementId(inHouse.json.id)])).rows[0];
+    check('check-out after the changes settles with the sale matching the folio exactly (KES 11,800)', outIna.status === 200 && Number(inaSale?.total) === 11800, outIna.json.message || inaSale);
+
+    // A marketplace booking that is lengthened pays commission on the FINAL stay.
+    await h('PUT', `/hotel/room-types/${mixType.id}`, { name: mixType.name, pricePerNight: 5000, maxGuests: 2, quantity: 3, depositPercent: 30, isListed: true });
+    const mk2 = await api('POST', `/public/hotels/${slug}/bookings`, { body: { roomTypeId: mixType.id, checkIn: day(5), checkOut: day(7), rooms: 1, guests: 1, name: 'Market Moses', phone: '0700555111' } });
+    const push2 = (await mock('GET', '/_test/pushes')).json.filter((p) => p.phone === '254700555111').pop();
+    await mock('POST', `/_test/pay/${push2?.merchant_request_id}`);
+    await sleep(300);
+    await h('PUT', `/hotel/room-types/${mixType.id}`, { name: mixType.name, pricePerNight: 5000, maxGuests: 2, quantity: 3, depositPercent: 30, isListed: false });
+    check('a marketplace booking of two nights (KES 10,000) is paid', mk2.status === 201 && mk2.json.total === 10000, mk2.json);
+    const mkAmend = await amend(mk2.json.id, { checkOut: day(8) });
+    check('a supervisor lengthens it to three nights: KES 15,000', mkAmend.status === 200 && mkAmend.json.booking.total === 15000, mkAmend.json);
+    await sql.query(`UPDATE room_bookings SET "checkIn" = $2::date, "checkOut" = $3::date WHERE id = $1`, [mk2.json.id, day(0), day(3)]);
+    await h('PATCH', `/hotel/rooms/${mixRooms[1].id}/status`, { status: 'VACANT_CLEAN' }, cashier);
+    const mkIn = await h('POST', `/hotel/bookings/${mk2.json.id}/check-in`, { roomIds: [mixRooms[1].id] }, cashier);
+    const mkFolio = (await h('GET', `/hotel/bookings/${mk2.json.id}/folio`)).json;
+    const mkOut = await h('POST', `/hotel/bookings/${mk2.json.id}/check-out`, { payments: [{ method: 'CASH', amount: Math.max(0.01, mkFolio.totals.balance) }] }, cashier);
+    const mkCommission = Number((await sql.query(`SELECT "commissionAmount" c FROM room_bookings WHERE id = $1`, [mk2.json.id])).rows[0].c);
+    check('commission is 3% of the final stay (KES 15,000 -> KES 450), not of the first booking', mkIn.status === 200 && mkOut.status === 200 && Math.abs(mkCommission - 450) < 0.01, { mkCommission, in: mkIn.json.message, out: mkOut.json.message });
+
+    section('22. Cancellation policy');
+    const rules = (over = {}) => ({ cancelFreeDays: 3, cancelKeepPercent: 50, nightAuditHour: 3, noShowCutoffHour: 18, confirmationSms: true, reminderSms: true, thankYouSms: true, ...over });
+    check('the owner sets the policy: free until 3 days before, then half the deposit is kept', (await h('PUT', '/hotel/settings', rules())).status === 200);
+    check('rules outside their range are refused', (await h('PUT', '/hotel/settings', rules({ cancelKeepPercent: 150 }))).status === 400);
+    const late = await mkStay({ guestName: 'Late Lucy', phone: '0711900500', checkIn: day(1), checkOut: day(2) });
+    await h('POST', `/hotel/bookings/${late.json.id}/payments`, { method: 'CASH', amount: 2000 }, cashier);
+    const prev = await h('GET', `/hotel/bookings/${late.json.id}/cancellation-preview`, undefined, supervisor);
+    check('the preview: one day before arrival is inside the 3 days, so KES 1,000 is kept and KES 1,000 goes back', prev.status === 200 && prev.json.withinFreeWindow === false && prev.json.feeKept === 1000 && prev.json.refundDue === 1000, prev.json);
+    check('a supervisor cannot waive the fee', (await h('POST', `/hotel/bookings/${late.json.id}/cancel`, { reason: 'Guest ill', waiveFee: true }, supervisor)).status === 403);
+    const cancelLate = await h('POST', `/hotel/bookings/${late.json.id}/cancel`, { reason: 'Guest ill' }, supervisor);
+    check('cancelling keeps half the deposit and says KES 1,000 is owed back', cancelLate.status === 201 && cancelLate.json.status === 'CANCELLED' && cancelLate.json.refundDue === 1000 && cancelLate.json.feeKept === 1000, cancelLate.json.cancellation || cancelLate.json);
+    check('the fee kept is recorded on the booking', Number((await sql.query(`SELECT "cancelFeeKept" f FROM room_bookings WHERE id = $1`, [late.json.id])).rows[0].f) === 1000);
+    check('a supervisor cannot record the refund', (await h('POST', `/hotel/bookings/${late.json.id}/cancellation-refund`, { method: 'CASH' }, supervisor)).status === 403);
+    await tidy();
+    check('the guest is texted about it (sent, failed or skipped - and only once)', (await sql.query(`SELECT count(*)::int n FROM hotel_notifications WHERE "bookingId" = $1 AND kind = 'CANCELLATION'`, [late.json.id])).rows[0].n === 1);
+    const payBack = await h('POST', `/hotel/bookings/${late.json.id}/cancellation-refund`, { method: 'CASH' });
+    check('the owner records the refund: KES 1,000 goes back and the fee stays on the folio', payBack.status === 201 && payBack.json.refunded === 1000, payBack);
+    check('doing it again is refused (nothing left to refund)', (await h('POST', `/hotel/bookings/${late.json.id}/cancellation-refund`, { method: 'CASH' })).status === 409);
+    const lateFolio = (await h('GET', `/hotel/bookings/${late.json.id}/folio`)).json.totals;
+    check('the folio keeps exactly the fee: paid 2,000, refunded 1,000', lateFolio.payments === 2000 && lateFolio.refunds === 1000, lateFolio);
+    const earlyBk = await mkStay({ guestName: 'Early Edna', phone: '0711900600', checkIn: day(15), checkOut: day(16) });
+    await h('POST', `/hotel/bookings/${earlyBk.json.id}/payments`, { method: 'CASH', amount: 2000 }, cashier);
+    const cancelEarly = await h('POST', `/hotel/bookings/${earlyBk.json.id}/cancel`, { reason: 'Plans changed' }, supervisor);
+    check('cancelling well before arrival is free: all KES 2,000 goes back', cancelEarly.json.refundDue === 2000 && cancelEarly.json.feeKept === 0, cancelEarly.json.cancellation);
+    const waive = await mkStay({ guestName: 'Waived Wale', phone: '0711900700', checkIn: day(1), checkOut: day(2) });
+    await h('POST', `/hotel/bookings/${waive.json.id}/payments`, { method: 'CASH', amount: 1000 }, cashier);
+    const cancelWaive = await h('POST', `/hotel/bookings/${waive.json.id}/cancel`, { reason: 'Hotel double-booked', waiveFee: true });
+    check('a manager can waive the fee: all KES 1,000 goes back', cancelWaive.status === 201 && cancelWaive.json.refundDue === 1000 && cancelWaive.json.feeKept === 0 && cancelWaive.json.cancellation.waived === true, cancelWaive.json.cancellation);
+    check('the cancellations are in the audit log with the money', (await sql.query(`SELECT count(*)::int n FROM audit_log WHERE action = 'hotel.booking_cancelled' AND "entityId" = ANY($1)`, [[late.json.id, earlyBk.json.id, waive.json.id]])).rows[0].n === 3);
+    const noshowPaid = await mkStay({ guestName: 'No-Show Nia', phone: '0711900800', checkIn: day(1), checkOut: day(2) });
+    await h('POST', `/hotel/bookings/${noshowPaid.json.id}/payments`, { method: 'CASH', amount: 1000 }, cashier);
+    const ns = await h('POST', `/hotel/bookings/${noshowPaid.json.id}/no-show`, {}, supervisor);
+    check('marking a no-show applies the same policy (half of KES 1,000 kept)', ns.status === 201 && ns.json.status === 'NO_SHOW' && ns.json.feeKept === 500 && ns.json.refundDue === 500, ns.json);
+    await h('PUT', '/hotel/settings', rules({ cancelKeepPercent: 0 }));
+
+    section('23. The guest register');
+    const u6 = String(Date.now()).slice(-6);
+    const ritaPhone = `0711 9${u6.slice(1)}`;
+    const ritaPhoneCompact = ritaPhone.replace(/ /g, '');
+    const ritaId = `a ${u6}-4321`;
+    const ritaIdCompact = `A${u6}4321`;
+    const g1b = await mkStay({ guestName: 'Register Rita', phone: ritaPhone, idNumber: ritaId, nationality: 'Kenyan', address: 'Nakuru', vehicleReg: 'KDA 123A', checkIn: day(30), checkOut: day(31) });
+    const g2b = await mkStay({ guestName: 'Rita Register', phone: '0799 000 111', idNumber: ritaIdCompact, checkIn: day(32), checkOut: day(33) });
+    check('the same ID number (typed another way) is the same guest, whatever the name or phone', g1b.json.guestId && g1b.json.guestId === g2b.json.guestId, [g1b.json.guestId, g2b.json.guestId]);
+    const byPhone = await h('GET', `/hotel/guests/lookup?phone=${ritaPhoneCompact}`, undefined, cashier);
+    check('a returning guest is found by phone and the ID shows only its last four', byPhone.status === 200 && byPhone.json.length === 1 && byPhone.json[0].idNumber === '****4321' && byPhone.json[0].stays === 2, byPhone.json);
+    const byId = await h('GET', `/hotel/guests/lookup?idNumber=${ritaIdCompact.toLowerCase()}`, undefined, cashier);
+    check('and by ID number', byId.json.length === 1 && byId.json[0].id === g1b.json.guestId, byId.json);
+    const stored = (await sql.query(`SELECT "idNumberEnc" e, "idLast4" l FROM hotel_guests WHERE id = $1`, [g1b.json.guestId])).rows[0];
+    check('the ID number is stored encrypted, not as typed', stored.e && !stored.e.includes(u6) && stored.l === '4321', stored);
+    check('a booking made with a guest chosen from the register uses their record', (await mkStay({ guestName: 'Register Rita', phone: ritaPhoneCompact, guestId: g1b.json.guestId, checkIn: day(34), checkOut: day(35) })).json.guestId === g1b.json.guestId);
+    check('the whole register is for a supervisor and above', (await h('GET', '/hotel/guests', undefined, cashier)).status === 403 && (await h('GET', '/hotel/guests?search=Rita', undefined, supervisor)).json.length >= 1);
+    const rec = await h('GET', `/hotel/guests/${g1b.json.guestId}`, undefined, supervisor);
+    check('a supervisor sees the whole ID number on the guest\'s own record, with the stays', (rec.json.idNumber || '').includes(u6), rec.json.idNumber);
+    check('the record keeps address, vehicle and the stays', rec.json.address === 'Nakuru' && rec.json.vehicleReg === 'KDA 123A' && rec.json.stays.length >= 3, rec.json);
+    check('the register list never shows a whole ID', !JSON.stringify((await h('GET', '/hotel/guests', undefined, supervisor)).json).includes(ritaId));
+    const card = await h('GET', `/hotel/bookings/${g1b.json.id}/registration-card`, undefined, cashier);
+    check('the registration card has the guest, ID (masked for a cashier), vehicle and stay', card.status === 200 && card.json.guestName === 'Register Rita' && card.json.idNumber?.endsWith('4321') && !card.json.idNumber.includes(u6) && card.json.vehicleReg === 'KDA 123A' && card.json.nights === 1, card.json);
+    check('a supervisor\'s registration card carries the full ID', ((await h('GET', `/hotel/bookings/${g1b.json.id}/registration-card`, undefined, supervisor)).json.idNumber || '').includes(u6));
+    const optOut = await h('PATCH', `/hotel/guests/${g1b.json.guestId}`, { smsOptOut: true });
+    check('the owner marks the guest as not wanting texts', optOut.status === 200 && optOut.json.smsOptOut === true, optOut);
+    const quiet = await mkStay({ guestName: 'Register Rita', phone: ritaPhoneCompact, guestId: g1b.json.guestId, checkIn: day(36), checkOut: day(37) });
+    await tidy(900);
+    const quietRow = (await sql.query(`SELECT status, detail FROM hotel_notifications WHERE "bookingId" = $1 AND kind = 'CONFIRMATION'`, [quiet.json.id])).rows[0];
+    check('a guest who opted out gets no confirmation text (recorded as skipped)', quietRow?.status === 'SKIPPED' && /opted out/i.test(quietRow.detail), quietRow);
+    const loud = await mkStay({ guestName: 'Loud Lena', phone: '0711900950', checkIn: day(36), checkOut: day(37) });
+    await tidy(900);
+    const loudRows = (await sql.query(`SELECT count(*)::int n, min(status) s FROM hotel_notifications WHERE "bookingId" = $1 AND kind = 'CONFIRMATION'`, [loud.json.id])).rows[0];
+    check('a front-desk booking is confirmed by text, once (sent, or failed here because no SMS account is set up)', loudRows.n === 1 && ['SENT', 'FAILED'].includes(loudRows.s), loudRows);
+
+    section('24. Night audit');
+    await sql.query(`DELETE FROM hotel_night_audits WHERE "organizationId" = $1`, [org.id]);
+    // A real overstay and a real no-show need past dates, which the API will not book: shift two bookings back in time directly.
+    const stayer = await mkStay({ guestName: 'Stayer Sam', phone: '0711901000', checkIn: day(0), checkOut: day(1) });
+    await h('PATCH', `/hotel/rooms/${chRooms[2].id}/status`, { status: 'VACANT_CLEAN' }, cashier);
+    await h('POST', `/hotel/bookings/${stayer.json.id}/check-in`, { roomIds: [chRooms[2].id] }, cashier);
+    await sql.query(`UPDATE room_bookings SET "checkIn" = $2::date, "checkOut" = $3::date, nights = 1 WHERE id = $1`, [stayer.json.id, day(-2), day(-1)]);
+    await sql.query(`UPDATE hotel_folio_entries SET "nightDate" = $2::date WHERE "folioId" = (SELECT id FROM hotel_folios WHERE "bookingId" = $1) AND type = 'ROOM_NIGHT'`, [stayer.json.id, day(-2)]);
+    const absent = await mkStay({ guestName: 'Absent Abel', phone: '0711901100', checkIn: day(40), checkOut: day(42), roomTypeId: opsType.id });
+    const absentPaid = await mkStay({ guestName: 'Deposit Dina', phone: '0711901200', checkIn: day(40), checkOut: day(42), roomTypeId: opsType.id });
+    await h('POST', `/hotel/bookings/${absentPaid.json.id}/payments`, { method: 'CASH', amount: 1000 }, cashier);
+    await sql.query(`UPDATE room_bookings SET "checkIn" = $2::date, "checkOut" = $3::date, nights = 2 WHERE id = ANY($1)`, [[absent.json.id, absentPaid.json.id], day(-1), day(1)]);
+    check('a cashier cannot close the day; the future cannot be closed', (await h('POST', '/hotel/night-audit', { date: day(-1) }, cashier)).status === 403 && (await h('POST', '/hotel/night-audit', { date: day(2) }, supervisor)).status === 400);
+    const audit1 = await h('POST', '/hotel/night-audit', { date: day(-1) }, supervisor);
+    const sum = audit1.json.summary;
+    check('the night audit closes yesterday', audit1.status === 200 && audit1.json.alreadyRun === false && sum.date === day(-1), audit1.json);
+    check('the guest who stayed past their check-out date is charged the extra night (KES 5,900 with tax)', sum.overstays.some((o) => o.guestName === 'Stayer Sam' && o.nights === 1 && o.charged === 5000), sum.overstays);
+    check('the unpaid arrival that never came is a no-show; the one with a deposit is left for the manager', sum.arrivals.noShows.some((n) => n.guestName === 'Absent Abel') && !sum.arrivals.noShows.some((n) => n.guestName === 'Deposit Dina') && sum.arrivals.stillExpectedPaid.some((n) => n.guestName === 'Deposit Dina'), sum.arrivals);
+    check('the bookings changed accordingly', (await sql.query(`SELECT status FROM room_bookings WHERE id = $1`, [absent.json.id])).rows[0].status === 'NO_SHOW' && (await sql.query(`SELECT status FROM room_bookings WHERE id = $1`, [absentPaid.json.id])).rows[0].status === 'CONFIRMED');
+    const stayerFolio = (await h('GET', `/hotel/bookings/${stayer.json.id}/folio`)).json;
+    check('the overstay night is on the folio (two nights now: KES 11,800)', stayerFolio.totals.roomNights === 11800, stayerFolio.totals);
+    check('the summary has rooms, money and balances', sum.rooms.total > 0 && typeof sum.money.roomRevenue === 'number' && typeof sum.money.outstandingInHouse === 'number', sum);
+    const entriesBefore = (await sql.query(`SELECT count(*)::int n FROM hotel_folio_entries`)).rows[0].n;
+    const audit2 = await h('POST', '/hotel/night-audit', { date: day(-1) }, owner);
+    check('running it again finds the first audit and changes nothing', audit2.status === 200 && audit2.json.alreadyRun === true && audit2.json.summary.date === sum.date && audit2.json.summary.overstays.length === sum.overstays.length && audit2.json.summary.arrivals.noShows.length === sum.arrivals.noShows.length && (await sql.query(`SELECT count(*)::int n FROM hotel_folio_entries`)).rows[0].n === entriesBefore, audit2.json.alreadyRun);
+    const twice = await Promise.all([h('POST', '/hotel/night-audit', { date: day(-3) }, owner), h('POST', '/hotel/night-audit', { date: day(-3) }, supervisor)]);
+    check('two at the same moment: both succeed, one does the work and there is one audit for that day', twice.every((r) => r.status === 200) && twice.filter((r) => r.json.alreadyRun === false).length === 1 && (await sql.query(`SELECT count(*)::int n FROM hotel_night_audits WHERE "organizationId" = $1 AND "auditDate" = $2::date`, [org.id, day(-3)])).rows[0].n === 1, twice.map((r) => r.json.alreadyRun));
+    const auditList = await h('GET', '/hotel/night-audits');
+    check('the owner can list past audits', auditList.status === 200 && auditList.json.some((a) => a.date === day(-1)), auditList.json.length);
+
+    section('25. Reports');
+    const from = day(0), to = day(6);
+    const occ = await h('GET', `/hotel/reports/occupancy?from=${from}&to=${to}`);
+    check('occupancy has a row for each of the seven days and the headline figures', occ.status === 200 && occ.json.rows.length === 7 && occ.json.figures.length === 6, occ.json.figures);
+    const expectSold = Number((await sql.query(`SELECT COALESCE(sum(rooms * GREATEST(0, LEAST("checkOut", $2::date + 1) - GREATEST("checkIn", $1::date))), 0)::int n FROM room_bookings WHERE status IN ('CONFIRMED','CHECKED_IN','CHECKED_OUT') AND "organizationId" = $3 AND "checkIn" <= $2::date AND "checkOut" > $1::date`, [from, to, org.id])).rows[0].n);
+    const soldFigure = occ.json.figures.find((f) => f.label === 'Room nights sold').value;
+    check('room nights sold agree with the bookings in the database', soldFigure === expectSold, { soldFigure, expectSold });
+    const rooms = occ.json.figures.find((f) => f.label === 'Rooms').value;
+    const occPct = occ.json.figures.find((f) => f.label === 'Occupancy %').value;
+    check('occupancy % = nights sold / (rooms x 7 days)', Math.abs(occPct - Math.round((Math.min(soldFigure, rooms * 7) / (rooms * 7)) * 10000) / 100) < 0.02, { occPct, soldFigure, rooms });
+    const rev = await h('GET', `/hotel/reports/revenue?from=${from}&to=${to}`);
+    const revTotal = rev.json.figures.find((f) => f.label.startsWith('Room revenue')).value;
+    check('revenue is split by marketplace, front desk and phone, and the parts add up to the whole', rev.json.rows.length === 3 && Math.abs(rev.json.rows.reduce((s, r) => s + r[2], 0) - revTotal) < 0.01, rev.json.rows);
+    check('ADR is revenue per room night sold; RevPAR is revenue per room night available', Math.abs(rev.json.figures.find((f) => f.label.startsWith('ADR')).value - (soldFigure ? revTotal / soldFigure : 0)) < 0.02 && Math.abs(rev.json.figures.find((f) => f.label.startsWith('RevPAR')).value - revTotal / (rooms * 7)) < 0.02);
+    const csvName = `=cmd|' /C calc'!A0`;
+    await mkStay({ guestName: csvName, phone: '0711902000', checkIn: day(45), checkOut: day(46), roomTypeId: opsType.id });
+    const arr = await h('GET', `/hotel/reports/arrivals?date=${day(45)}&format=csv`);
+    check('the CSV export defuses a guest name that would run as a spreadsheet formula', arr.status === 200 && arr.json.csv.includes(`'=cmd`) && !arr.json.csv.split('\r\n').some((line) => line.split(',').some((cell) => cell.startsWith('='))), arr.json.csv?.slice(0, 300));
+    check('the CSV has the header and a file name', arr.json.csv.startsWith('Booking,Guest,') && /^arrivals-.*\.csv$/.test(arr.json.filename), arr.json.filename);
+    const dep = await h('GET', `/hotel/reports/departures?date=${day(1)}`);
+    const inh = await h('GET', '/hotel/reports/in-house');
+    check('the departures and in-house lists work', dep.status === 200 && Array.isArray(dep.json.rows) && inh.status === 200 && inh.json.rows.every((r) => r[10] === 'CHECKED_IN'), inh.json.rows?.length);
+    check('the lists mask the ID numbers', !JSON.stringify(arr.json).includes('A1234567'));
+    const bal = await h('GET', `/hotel/reports/balances`);
+    check('outstanding balances list the guest left owing at check-out, with the reason', bal.status === 200 && bal.json.rows.some((r) => r[0] === b3.json.bookingNumber && r[6] === 'Company will pay by cheque'), bal.json.rows?.length);
+    const canc = await h('GET', `/hotel/reports/cancellations?from=${day(0)}&to=${day(0)}`);
+    check('cancellations and no-shows show the fees kept and the refunds still to pay', canc.status === 200 && canc.json.figures.find((f) => f.label === 'Fees kept (KES)').value >= 1500 && canc.json.rows.some((r) => r[1] === 'No-Show Nia' && r[2] === 'NO_SHOW' && r[8] === 500), canc.json.figures);
+    check('a cashier cannot open the reports; an unknown report, an end before the start, or a year and more are refused', (await h('GET', `/hotel/reports/occupancy?from=${from}&to=${to}`, undefined, cashier)).status === 403 && (await h('GET', '/hotel/reports/nope')).status === 400 && (await h('GET', `/hotel/reports/occupancy?from=${to}&to=${from}`)).status === 400 && (await h('GET', `/hotel/reports/occupancy?from=${day(0)}&to=${day(400)}`)).status === 400);
+    check('the reports need a sign-in', (await api('GET', '/hotel/reports/occupancy')).status === 401);
+
+    section('26. Row-level security on the hotel operations tables');
+    for (const t of ['hotel_settings', 'hotel_taxes', 'hotel_rate_cards', 'hotel_seasons', 'hotel_meal_prices', 'hotel_guests', 'hotel_night_audits', 'hotel_notifications']) {
+      const r = (await sql.query(`SELECT relrowsecurity AS on, relforcerowsecurity AS forced FROM pg_class WHERE relname = $1`, [t])).rows[0];
+      check(`${t} has row-level security switched on and forced`, r?.on === true && r?.forced === true, r);
+    }
+    // tidy the hotel's taxes so the rest of the suite (and a re-run) starts from the same place
+    await h('PUT', '/hotel/taxes', { taxes: [] });
   }
 
   console.log(`\n${passed} checks passed${failures.length ? `, ${failures.length} FAILED:\n  - ${failures.join('\n  - ')}` : ' - ALL PASS'}`);

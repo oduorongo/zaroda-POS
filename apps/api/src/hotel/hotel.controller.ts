@@ -19,7 +19,9 @@ import type { Request } from 'express';
 import { Public } from '../auth/public.decorator';
 import { Roles } from '../auth/roles.decorator';
 import { MAX_IMAGE_BYTES } from '../catalog/product-images.service';
-import { CancelBookingDto, ConfirmBookingPaymentDto, CreateBookingDto, GuestBookingTokenDto, UpsertRoomTypeDto } from './dto/hotel.dto';
+import { CancelWithPolicyDto, NoShowDto } from './dto/hotel-ops.dto';
+import { HotelChangesService } from './hotel-changes.service';
+import { ConfirmBookingPaymentDto, CreateBookingDto, GuestBookingTokenDto, UpsertRoomTypeDto } from './dto/hotel.dto';
 import { HotelPublicService } from './hotel-public.service';
 import { HotelRoomsService } from './hotel-rooms.service';
 import { parseDay } from './room-availability.util';
@@ -36,6 +38,7 @@ export class HotelController {
   constructor(
     private readonly rooms: HotelRoomsService,
     private readonly bookings: RoomBookingsService,
+    private readonly changes: HotelChangesService,
   ) {}
 
   /** Whether ZARODA has taken this hotel off the marketplace, and why. */
@@ -108,14 +111,14 @@ export class HotelController {
 
   @Roles(Role.SUPERVISOR, Role.MANAGER, Role.OWNER)
   @Post('bookings/:id/no-show')
-  noShow(@Param('id', ParseUUIDPipe) id: string) {
-    return this.rooms.noShow(id);
+  noShow(@Param('id', ParseUUIDPipe) id: string, @Body() dto: NoShowDto) {
+    return this.changes.cancel(id, { reason: dto?.reason ?? 'No-show', waiveFee: dto?.waiveFee }, true);
   }
 
   @Roles(Role.SUPERVISOR, Role.MANAGER, Role.OWNER)
   @Post('bookings/:id/cancel')
-  cancel(@Param('id', ParseUUIDPipe) id: string, @Body() dto: CancelBookingDto) {
-    return this.rooms.cancel(id, dto);
+  cancel(@Param('id', ParseUUIDPipe) id: string, @Body() dto: CancelWithPolicyDto) {
+    return this.changes.cancel(id, dto);
   }
 
   @Roles(Role.MANAGER, Role.OWNER)

@@ -3,7 +3,8 @@ import { Prisma } from '@prisma/client';
 import { TenantTx } from '../common/prisma/tenant-scoped-prisma.service';
 import { ObjectStorageService } from '../common/storage/object-storage.service';
 import { ShopCatalogService } from '../online-orders/shop-catalog.service';
-import { depositFor, nightsBetween, parseDay, stayProblem, stayTotal, todayInKenya } from './room-availability.util';
+import { depositFor, nightsBetween, parseDay, stayProblem, todayInKenya } from './room-availability.util';
+import { loadPricing, priceWith } from './stay-pricing';
 import { roomsLeft } from './room-stock';
 
 export interface StayQuery {
@@ -67,9 +68,15 @@ export class HotelPublicService {
     return needle ? hotels.filter((h) => [h.name, h.description, h.county, h.subCounty].some((v) => v?.toLowerCase().includes(needle))) : hotels;
   }
 
-  private roomView(rt: RoomTypeWithPhotos, stay: { nights: number } | null, left: number | null) {
+  /** The quote for one room for two adults (or fewer, if the room sleeps fewer), from the same price list and function a booking uses. */
+  private async quoteFor(tx: TenantTx, rt: RoomTypeWithPhotos, query: StayQuery, stay: { nights: number } | null): Promise<number | null> {
+    if (!stay || !query.checkIn || !query.checkOut) return null;
+    const pricing = await loadPricing(tx, rt);
+    return priceWith(pricing, { checkIn: query.checkIn, checkOut: query.checkOut, rooms: 1, adults: Math.min(2, rt.maxGuests), children: 0, mealPlan: 'ROOM_ONLY' }).total;
+  }
+
+  private roomView(rt: RoomTypeWithPhotos, stay: { nights: number } | null, left: number | null, total: number | null) {
     const price = Number(rt.pricePerNight);
-    const total = stay ? stayTotal(price, stay.nights, 1) : null;
     return {
       id: rt.id,
       name: rt.name,
@@ -93,6 +100,7 @@ export class HotelPublicService {
       if (roomTypes.length === 0) throw new NotFoundException('This hotel has no rooms on offer right now');
       const branch = await tx.branch.findUnique({ where: { id: shop.fulfilmentBranchId }, select: { name: true, county: true, subCounty: true } });
       const lefts = stay ? await Promise.all(roomTypes.map((rt) => roomsLeft(tx, rt, stay.checkIn, stay.checkOut))) : roomTypes.map(() => null);
+      const totals = await Promise.all(roomTypes.map((rt) => this.quoteFor(tx, rt, query, stay)));
       return {
         slug: shop.slug,
         name: shop.displayName,
@@ -100,7 +108,7 @@ export class HotelPublicService {
         contactPhone: shop.contactPhone,
         location: branch ? { branchName: branch.name, county: branch.county, subCounty: branch.subCounty } : null,
         stay: stay ? { checkIn: query.checkIn, checkOut: query.checkOut, nights: stay.nights } : null,
-        roomTypes: roomTypes.map((rt, i) => this.roomView(rt, stay, lefts[i])),
+        roomTypes: roomTypes.map((rt, i) => this.roomView(rt, stay, lefts[i], totals[i])),
       };
     });
   }
