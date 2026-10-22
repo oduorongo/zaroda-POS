@@ -13,6 +13,9 @@ import { KitchenTicketsService } from './kitchen-tickets.service';
 import { RestaurantHooksService } from './restaurant-hooks.service';
 import { RestaurantDishesController } from './restaurant-dishes.controller';
 import { RestaurantDishesService } from './restaurant-dishes.service';
+import { RestaurantTabsController } from './restaurant-tabs.controller';
+import { RestaurantTabsService } from './restaurant-tabs.service';
+import { RestaurantTabPaymentsService } from './restaurant-tab-payments.service';
 
 /**
  * Phase 4's proof that DESIGN.md §3's module contract actually works:
@@ -32,6 +35,7 @@ import { RestaurantDishesService } from './restaurant-dishes.service';
     KitchenStationsController,
     KitchenTicketsController,
     RestaurantDishesController,
+    RestaurantTabsController,
   ],
   providers: [
     RestaurantTablesService,
@@ -40,6 +44,8 @@ import { RestaurantDishesService } from './restaurant-dishes.service';
     KitchenTicketsService,
     RestaurantHooksService,
     RestaurantDishesService,
+    RestaurantTabsService,
+    RestaurantTabPaymentsService,
   ],
 })
 export class RestaurantModule implements OnModuleInit {
@@ -88,6 +94,22 @@ export class RestaurantModule implements OnModuleInit {
         {
           tableName: 'restaurant_dishes',
           description: 'Which kitchen station prepares each dish, for orders from a table QR code',
+        },
+        {
+          tableName: 'restaurant_tabs',
+          description: 'A running bill for a table, paid at the end in one or several sales',
+        },
+        {
+          tableName: 'restaurant_tab_lines',
+          description: 'Items on an open bill, each sent to a kitchen station',
+        },
+        {
+          tableName: 'restaurant_tab_sales',
+          description: 'The sales that paid a bill (several when it was split)',
+        },
+        {
+          tableName: 'restaurant_settings',
+          description: 'Per-branch restaurant settings (how early a reserved table shows as reserved)',
         },
         {
           tableName: 'kitchen_tickets',

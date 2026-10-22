@@ -34,6 +34,7 @@ import {
   Wrench,
   Home,
   GraduationCap,
+  ConciergeBell,
   FileText,
   Tags,
 } from "lucide-react";
@@ -159,6 +160,13 @@ const VERTICAL_TILES: Record<string, Tile> = {
     icon: Home,
     tone: "bg-amber-600",
   },
+  HOTEL: {
+    href: "/front-desk",
+    label: "Front desk",
+    description: "Today's arrivals, guests in the house, departures, and the room grid.",
+    icon: ConciergeBell,
+    tone: "bg-amber-600",
+  },
   SCHOOL_SUPPLIER: {
     href: "/school-orders",
     label: "School orders",
@@ -209,9 +217,11 @@ export default function DashboardPage() {
       { href: "/school-money", label: "Invoices & payments", description: "Who owes you, invoices, cheques and receipts.", icon: FileText, tone: "bg-amber-600" },
     );
   }
-  // A restaurant that also lets rooms: bookings, room types and photos.
-  if (session.industryType === "RESTAURANT" && MANAGER_ROLES.includes(session.role)) {
-    tiles.push({ href: "/rooms", label: "Hotel rooms", description: "Rooms, bookings and check-in.", icon: BedDouble, tone: "bg-amber-600" });
+  // A restaurant that also lets rooms: front desk, rooms, housekeeping, bookings and photos. A hotel gets them too, plus its restaurant.
+  if ((session.industryType === "RESTAURANT" || session.industryType === "HOTEL") && MANAGER_ROLES.includes(session.role)) {
+    if (session.industryType === "RESTAURANT") tiles.push({ href: "/front-desk", label: "Front desk", description: "Arrivals, guests in the house, check-in and check-out.", icon: ConciergeBell, tone: "bg-amber-600" });
+    tiles.push({ href: "/rooms", label: "Rooms & housekeeping", description: "Your rooms, room types, bookings and housekeeping.", icon: BedDouble, tone: "bg-amber-600" });
+    if (session.industryType === "HOTEL") tiles.push({ href: "/restaurant", label: "Restaurant", description: "Tables, kitchen and open bills (optional for a hotel).", icon: UtensilsCrossed, tone: "bg-amber-600" });
   }
 
   return (

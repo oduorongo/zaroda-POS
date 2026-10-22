@@ -210,7 +210,7 @@ export class ReservationsService {
       if (reservation.status !== TableReservationStatus.REQUESTED) throw new BadRequestException(`This request is already ${reservation.status.toLowerCase()}`);
       if (dto.tableId) {
         const table = await tx.restaurantTable.findUnique({ where: { id: dto.tableId } });
-        if (!table) throw new NotFoundException('Table not found');
+        if (!table || table.archivedAt) throw new NotFoundException('Table not found');
         if (table.seats < reservation.partySize) throw new BadRequestException(`${table.label} seats ${table.seats}, and this party is ${reservation.partySize}`);
         const others = await tx.tableReservation.findMany({
           where: { tableId: dto.tableId, date: reservation.date, id: { not: id }, status: { in: [TableReservationStatus.CONFIRMED, TableReservationStatus.SEATED] } },

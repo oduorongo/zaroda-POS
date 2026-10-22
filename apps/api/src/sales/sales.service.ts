@@ -34,6 +34,17 @@ const SALE_INCLUDE = {
   refunds: true,
 } as const;
 const SUPERVISOR_OR_ABOVE: Role[] = [Role.SUPERVISOR, Role.MANAGER, Role.OWNER];
+
+/**
+ * Options only code inside the API can pass (never the HTTP body), used by a vertical that records its own kind of sale.
+ * priceOverrides: a line's price other than the variant's current price (an agreed room rate). noStockVariantIds: lines that
+ * are not stock (room nights). trustedRoomCharge: the room-charge payment was already checked by the caller.
+ */
+export interface SaleOptions {
+  priceOverrides?: Record<string, number>;
+  noStockVariantIds?: string[];
+  trustedRoomCharge?: boolean;
+}
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
 // Loyalty rates are hardcoded org-wide for the pilot rather than a
@@ -58,22 +69,29 @@ export class SalesService {
   /**
    * CASH and MPESA are wired end-to-end (MPESA verified against an
    * already-SUCCESS MpesaStkRequest below - see the loop over dto.payments
-   * further down). CARD/WALLET remain rejected: no processor exists for
-   * them yet, and pretending to accept them would complete a sale nothing
-   * actually charged.
+   * further down). CARD is accepted as a payment the shop took on its own
+   * card machine and is recording (no processor is involved, so it is taken
+   * on trust like cash - added for restaurant tabs). WALLET remains rejected:
+   * no processor exists for it, and pretending to accept it would complete a
+   * sale nothing actually charged.
    */
-  async create(dto: CreateSaleDto) {
+  async create(dto: CreateSaleDto, opts: SaleOptions = {}) {
     const unsupported = dto.payments.find(
-      (p) => p.method !== 'CASH' && p.method !== 'MPESA',
+      (p) =>
+        p.method !== 'CASH' &&
+        p.method !== 'MPESA' &&
+        p.method !== 'CARD' &&
+        p.method !== 'MPESA_RECEIPT' &&
+        p.method !== 'ROOM_CHARGE',
     );
     if (unsupported) {
       throw new BadRequestException(
-        `Payment method ${unsupported.method} is not wired into sale completion yet - only CASH and MPESA are supported.`,
+        `Payment method ${unsupported.method} is not wired into sale completion yet - only CASH, MPESA, CARD, MPESA_RECEIPT and ROOM_CHARGE are supported.`,
       );
     }
 
     try {
-      const { sale, isNew } = await this.createInner(dto);
+      const { sale, isNew } = await this.createInner(dto, opts);
       // Fired after the transaction has committed (not from inside it) so
       // a slow/misbehaving hook (DESIGN.md §3 - e.g. a future restaurant
       // module routing an order to a KDS) can't hold the sale's own DB
@@ -120,7 +138,7 @@ export class SalesService {
     }
   }
 
-  private async createInner(dto: CreateSaleDto) {
+  private async createInner(dto: CreateSaleDto, opts: SaleOptions) {
     return withSpan(
       'sale.complete',
       {
@@ -128,11 +146,11 @@ export class SalesService {
         terminalId: dto.terminalId,
         lineItemCount: dto.lineItems.length,
       },
-      () => this.createInnerTraced(dto),
+      () => this.createInnerTraced(dto, opts),
     );
   }
 
-  private async createInnerTraced(dto: CreateSaleDto) {
+  private async createInnerTraced(dto: CreateSaleDto, opts: SaleOptions) {
     return this.tenantPrisma.run(async (tx) => {
       // Idempotent: a retried submission with the same client-generated id
       // returns the original sale rather than erroring or double-selling
@@ -200,7 +218,8 @@ export class SalesService {
             );
           }
         }
-        const unitPrice = Number(variant.price);
+        const unitPrice =
+          opts.priceOverrides?.[li.variantId] ?? Number(variant.price);
         const lineSubtotal = unitPrice * li.quantity;
         const taxClass = variant.product.taxClass;
         const taxAmount =
@@ -342,6 +361,28 @@ export class SalesService {
         }
       }
 
+      // M-Pesa paid to the business's own till, receipt code typed in: taken on trust like cash and card, but the code is
+      // required (and, being a unique payment reference, cannot be used on two sales).
+      for (const payment of dto.payments) {
+        if (payment.method === 'MPESA_RECEIPT' && !payment.providerReference?.trim()) {
+          throw new BadRequestException('An M-Pesa (receipt) payment needs the receipt code');
+        }
+        if (payment.method !== 'ROOM_CHARGE') continue;
+        if (!payment.providerReference) {
+          throw new BadRequestException('A charge to a room needs the guest\'s booking');
+        }
+        if (opts.trustedRoomCharge) continue;
+        // Nothing here knows about hotels: whoever owns room accounts answers (and must say yes), so a business with no
+        // hotel - or a guest who is not checked in - can never put a sale "on a room".
+        const answers = await this.events.emitAsync('sale.roomCharge.verify', {
+          providerReference: payment.providerReference,
+          amount: payment.amount,
+        });
+        if (!answers.some((a) => a === true)) {
+          throw new BadRequestException('That guest cannot be charged to a room');
+        }
+      }
+
       // Earned on the amount actually paid (post-discount, post-redemption)
       // - spending points to earn points back would let a customer cycle
       // an ever-larger balance out of nothing.
@@ -423,6 +464,7 @@ export class SalesService {
           .get(line.variantId)!
           .shift()!;
         const recipe = recipesByVariant.get(line.variantId);
+        if (opts.noStockVariantIds?.includes(line.variantId)) continue;
 
         if (recipe) {
           for (const ingredient of recipe) {

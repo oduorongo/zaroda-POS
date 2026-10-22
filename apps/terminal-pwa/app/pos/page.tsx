@@ -37,7 +37,12 @@ interface Batch {
   expiryDate: string | null;
 }
 
-type TenderMethod = "CASH" | "MPESA";
+type TenderMethod = "CASH" | "MPESA" | "ROOM";
+interface InHouseGuest {
+  bookingId: string;
+  guestName: string;
+  roomNumbers: string[];
+}
 type MpesaStkStatus = "idle" | "sending" | "pending" | "success" | "failed";
 
 interface ReceiptData {
@@ -127,6 +132,18 @@ export default function PosPage() {
   // multi-payment UI that's a natural follow-up, not built yet. Neither is
   // faked as working.
   const [tenderMethod, setTenderMethod] = useState<TenderMethod>("CASH");
+  // Charge to room (hotel): the guests who are checked in, picked by room number.
+  const [roomGuests, setRoomGuests] = useState<InHouseGuest[] | null>(null);
+  const [roomBookingId, setRoomBookingId] = useState("");
+  const [roomBusy, setRoomBusy] = useState(false);
+  const [roomError, setRoomError] = useState<string | null>(null);
+  useEffect(() => {
+    if (tenderMethod !== "ROOM" || !session) return;
+    setRoomGuests(null);
+    apiGet<InHouseGuest[]>("/hotel/in-house", session.accessToken)
+      .then(setRoomGuests)
+      .catch((err) => setRoomError(err instanceof OfflineError ? "Offline - charging to a room needs a connection." : err instanceof ApiError ? err.message : "Could not load the guests."));
+  }, [tenderMethod, session]);
   const [mpesaPhone, setMpesaPhone] = useState("");
   const [mpesaStatus, setMpesaStatus] = useState<MpesaStkStatus>("idle");
   const [mpesaError, setMpesaError] = useState<string | null>(null);
@@ -473,6 +490,43 @@ export default function PosPage() {
   // M-Pesa is inherently online-only (the STK push itself is a live round
   // trip to Daraja) - submitted directly, same as the pharmacy path, not
   // queued through the offline outbox the way a cash sale is.
+  // Charge to room is online-only (the till must hear from the hotel that the guest is checked in): the sale is recorded
+  // normally and the amount goes on the guest's folio, to be paid at check-out.
+  async function chargeToRoom() {
+    if (!device || !session || cartEntries.length === 0 || !roomBookingId) return;
+    const guest = roomGuests?.find((g) => g.bookingId === roomBookingId);
+    setRoomBusy(true);
+    setRoomError(null);
+    const points = Number(redeemPoints);
+    const redeemAmount = customer && Number.isFinite(points) && points > 0 ? Math.min(points, customer.loyaltyPoints) : undefined;
+    try {
+      await apiPost(
+        "/sales",
+        {
+          clientId: saleClientIdRef.current,
+          branchId: device.branchId,
+          terminalId: device.terminalId,
+          cashierSessionId: session.cashierSessionId,
+          lineItems: cartEntries.map((e) => ({ variantId: e.variant.id, quantity: e.quantity })),
+          payments: [{ method: "ROOM_CHARGE", amount: totals.total, providerReference: `ROOM:${roomBookingId}:${saleClientIdRef.current}` }],
+          discount: discount ?? undefined,
+          customerId: customer?.id ?? undefined,
+          redeemPoints: redeemAmount,
+        },
+        session.accessToken,
+      );
+      setReceipt(buildReceipt("ROOM", null, null));
+      resetSaleState();
+      setRoomBookingId("");
+      setToast(`Charged to ${guest ? `room ${guest.roomNumbers.join(", ")} (${guest.guestName})` : "the room"}.`);
+      setTimeout(() => setToast(null), 4000);
+    } catch (err) {
+      setRoomError(err instanceof OfflineError ? "Offline - charging to a room needs a connection." : err instanceof ApiError ? err.message : "Could not charge that to the room.");
+    } finally {
+      setRoomBusy(false);
+    }
+  }
+
   async function initiateMpesaPush() {
     if (!device || !session || cartEntries.length === 0) return;
     const phone = normalizeKenyanPhone(mpesaPhone);
@@ -709,7 +763,7 @@ export default function PosPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          {device.industryType === "RESTAURANT" && (
+          {(device.industryType === "RESTAURANT" || device.industryType === "HOTEL") && (
             <>
               <button onClick={() => router.push("/tables")} className="min-h-touch rounded-md bg-secondary-800 px-3 py-2 text-sm hover:bg-secondary-700">
                 Tables
@@ -997,6 +1051,16 @@ export default function PosPage() {
                   >
                     M-Pesa
                   </button>
+                  {(device?.industryType === "HOTEL" || device?.industryType === "RESTAURANT") && (
+                    <button
+                      onClick={() => setTenderMethod("ROOM")}
+                      className={`min-h-touch rounded-lg border p-3 text-sm font-medium transition-colors ${
+                        tenderMethod === "ROOM" ? "border-primary-500 bg-primary-600/20 text-primary-300" : "border-secondary-600 bg-secondary-900 text-secondary-300 hover:bg-secondary-700"
+                      }`}
+                    >
+                      Charge to room
+                    </button>
+                  )}
                   <button
                     disabled
                     title="Card processor not yet configured for this org"
@@ -1041,6 +1105,33 @@ export default function PosPage() {
                       </Button>
                     </div>
                   </>
+                )}
+
+                {tenderMethod === "ROOM" && (
+                  <div className="mt-4 space-y-3">
+                    {roomGuests === null && !roomError && <p className="text-sm text-secondary-400">Loading the guests...</p>}
+                    {roomGuests && roomGuests.length === 0 && <p className="text-sm text-secondary-400">Nobody is checked in right now.</p>}
+                    {roomGuests && roomGuests.length > 0 && (
+                      <select className="w-full rounded-md border border-secondary-600 bg-secondary-900 p-3" value={roomBookingId} onChange={(e) => setRoomBookingId(e.target.value)}>
+                        <option value="">Choose the room...</option>
+                        {roomGuests.map((g) => (
+                          <option key={g.bookingId} value={g.bookingId}>
+                            Room {g.roomNumbers.join(", ")} - {g.guestName}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                    {roomError && <p className="text-sm text-error-500">{roomError}</p>}
+                    <p className="text-xs text-secondary-400">The sale is recorded now and the amount goes on the guest&apos;s bill, to be paid when they check out.</p>
+                    <div className="flex gap-3">
+                      <Button onClick={closeCheckout} variant="secondary" size="touch" className="flex-1">
+                        Cancel
+                      </Button>
+                      <Button onClick={chargeToRoom} disabled={roomBusy || !roomBookingId} className="flex-1" size="touch">
+                        {roomBusy ? "Charging..." : `Charge KES ${totals.total.toFixed(2)} to the room`}
+                      </Button>
+                    </div>
+                  </div>
                 )}
 
                 {tenderMethod === "MPESA" && (
@@ -1336,7 +1427,7 @@ export default function PosPage() {
               <div className="flex justify-between border-t border-secondary-200 pt-1.5 text-base font-bold"><dt>Total</dt><dd>KES {receipt.total.toFixed(2)}</dd></div>
               <div className="flex justify-between text-secondary-500">
                 <dt>Paid via</dt>
-                <dd>{receipt.tenderMethod === "MPESA" ? "M-Pesa" : "Cash"}</dd>
+                <dd>{receipt.tenderMethod === "MPESA" ? "M-Pesa" : receipt.tenderMethod === "ROOM" ? "Charged to room" : "Cash"}</dd>
               </div>
               {receipt.changeDue !== null && (
                 <div className="flex justify-between text-secondary-500"><dt>Change</dt><dd>KES {receipt.changeDue.toFixed(2)}</dd></div>

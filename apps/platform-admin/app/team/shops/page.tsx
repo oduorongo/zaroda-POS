@@ -19,6 +19,7 @@ const INDUSTRIES = [
   ["SALON", "Salon"],
   ["RENTAL", "Rental landlord"],
   ["SCHOOL_SUPPLIER", "School supplier"],
+  ["HOTEL", "Hotel / lodge"],
 ] as const;
 
 const inputClass = "mt-1 w-full rounded-md border border-border bg-background p-2";

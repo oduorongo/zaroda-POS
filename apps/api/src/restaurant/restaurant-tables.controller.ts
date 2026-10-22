@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   ParseUUIDPipe,
@@ -13,6 +14,7 @@ import { Roles } from '../auth/roles.decorator';
 import { RestaurantTablesService } from './restaurant-tables.service';
 import { CreateTableDto } from './dto/create-table.dto';
 import { UpdateTableStatusDto } from './dto/update-table-status.dto';
+import { UpdateTableDto } from './dto/tab.dto';
 
 // JwtAuthGuard/RolesGuard are global. Reading the floor and updating a
 // table's status (seating a walk-in, marking it needs cleaning) are
@@ -38,6 +40,20 @@ export class RestaurantTablesController {
     return this.tables.findOne(id);
   }
 
+  @Roles(Role.SUPERVISOR, Role.MANAGER, Role.OWNER)
+  @Patch(':id')
+  update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateTableDto) {
+    return this.tables.update(id, dto);
+  }
+
+  // Removes the table, or archives it when it has history (the answer says which).
+  @Roles(Role.SUPERVISOR, Role.MANAGER, Role.OWNER)
+  @Delete(':id')
+  remove(@Param('id', ParseUUIDPipe) id: string) {
+    return this.tables.remove(id);
+  }
+
+  @Roles(Role.CASHIER, Role.SUPERVISOR, Role.MANAGER, Role.OWNER)
   @Patch(':id/status')
   updateStatus(
     @Param('id', ParseUUIDPipe) id: string,

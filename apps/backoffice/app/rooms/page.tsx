@@ -9,11 +9,15 @@ import { PageHeader } from "../../components/page-header";
 import { BookingsSection } from "./bookings-section";
 import { RoomTypesSection } from "./room-types-section";
 import { AvailabilitySection } from "./availability-section";
+import { RoomsSection } from "./rooms-section";
+import { HousekeepingSection } from "./housekeeping-section";
 
-type Tab = "bookings" | "types" | "availability";
+type Tab = "bookings" | "types" | "rooms" | "housekeeping" | "availability";
 const TABS: [Tab, string][] = [
   ["bookings", "Bookings"],
   ["types", "Room types & photos"],
+  ["rooms", "Rooms"],
+  ["housekeeping", "Housekeeping"],
   ["availability", "Availability"],
 ];
 
@@ -39,7 +43,7 @@ export default function RoomsPage() {
       router.replace("/login");
       return;
     }
-    if (s.industryType !== "RESTAURANT") {
+    if (s.industryType !== "RESTAURANT" && s.industryType !== "HOTEL") {
       router.replace("/sales");
       return;
     }
@@ -77,6 +81,8 @@ export default function RoomsPage() {
             </div>
             {tab === "bookings" && <BookingsSection />}
             {tab === "types" && <RoomTypesSection />}
+            {tab === "rooms" && <RoomsSection />}
+            {tab === "housekeeping" && <HousekeepingSection />}
             {tab === "availability" && <AvailabilitySection />}
           </>
         )}

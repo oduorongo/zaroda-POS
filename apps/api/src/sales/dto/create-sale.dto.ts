@@ -42,10 +42,12 @@ export class SaleLineItemInputDto {
 }
 
 export class SalePaymentInputDto {
-  // CARD/WALLET still rejected - see SalesService.create()'s comment.
+  // ROOM_CHARGE (a hotel guest's folio) and MPESA_RECEIPT (M-Pesa to the business's own till, receipt typed in) are added for
+  // the hotel; ROOM_CHARGE is only accepted when a room-account owner confirms the guest is checked in. WALLET is still rejected - see SalesService.create()'s comment. CARD is a payment taken on the shop's own card machine and
+  // recorded here (no gateway is involved, so nothing is verified server-side).
   // MPESA is only accepted when providerReference names an already-SUCCESS
   // MpesaStkRequest (verified server-side, never trusted from the client).
-  @IsIn(['CASH', 'MPESA'] satisfies PaymentMethod[])
+  @IsIn(['CASH', 'MPESA', 'CARD', 'MPESA_RECEIPT', 'ROOM_CHARGE'] satisfies PaymentMethod[])
   method!: PaymentMethod;
 
   @IsNumber()
