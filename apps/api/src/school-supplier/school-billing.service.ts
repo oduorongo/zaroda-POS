@@ -1,28 +1,88 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import { Prisma, SupplierInvoiceStatus, SupplierPaymentStatus } from '@prisma/client';
-import { TenantScopedPrismaService, TenantTx } from '../common/prisma/tenant-scoped-prisma.service';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import {
+  Prisma,
+  SupplierInvoiceStatus,
+  SupplierPaymentStatus,
+} from '@prisma/client';
+import {
+  TenantScopedPrismaService,
+  TenantTx,
+} from '../common/prisma/tenant-scoped-prisma.service';
 import { getTenantStore } from '../common/tenant/tenant-context';
-import { BouncePaymentDto, RecordPaymentDto, VoidInvoiceDto } from './dto/school-supplier.dto';
+import {
+  BouncePaymentDto,
+  RecordPaymentDto,
+  VoidInvoiceDto,
+} from './dto/school-supplier.dto';
 import { DocumentNumbersService } from './document-numbers.service';
 import { SchoolLedgerService } from './school-ledger.service';
 import { SchoolNotifierService } from './school-notifier.service';
-import { allocateOldestFirst, allocationProblem, fromCents, statusAfterPayment, toCents, todayKey } from './school-money.util';
+import {
+  allocateOldestFirst,
+  allocationProblem,
+  fromCents,
+  statusAfterPayment,
+  toCents,
+  todayKey,
+} from './school-money.util';
 
 const day = (d: Date | null) => (d ? d.toISOString().slice(0, 10) : null);
 
 const invoiceInclude = {
   lines: true,
-  school: { select: { id: true, name: true, contactName: true, phone: true, email: true, address: true } },
-  order: { select: { orderNumber: true, lpoNumber: true, deliveryNoteNumber: true } },
-  allocations: { include: { payment: { select: { receiptNumber: true, receivedOn: true, method: true, status: true } } } },
+  school: {
+    select: {
+      id: true,
+      name: true,
+      contactName: true,
+      phone: true,
+      email: true,
+      address: true,
+    },
+  },
+  order: {
+    select: { orderNumber: true, lpoNumber: true, deliveryNoteNumber: true },
+  },
+  allocations: {
+    include: {
+      payment: {
+        select: {
+          receiptNumber: true,
+          receivedOn: true,
+          method: true,
+          status: true,
+        },
+      },
+    },
+  },
 };
-type InvoiceFull = Prisma.SupplierInvoiceGetPayload<{ include: typeof invoiceInclude }>;
+type InvoiceFull = Prisma.SupplierInvoiceGetPayload<{
+  include: typeof invoiceInclude;
+}>;
 
 const paymentInclude = {
-  school: { select: { id: true, name: true, contactName: true, phone: true, email: true, address: true } },
-  allocations: { include: { invoice: { select: { invoiceNumber: true, total: true } } } },
+  school: {
+    select: {
+      id: true,
+      name: true,
+      contactName: true,
+      phone: true,
+      email: true,
+      address: true,
+    },
+  },
+  allocations: {
+    include: { invoice: { select: { invoiceNumber: true, total: true } } },
+  },
 };
-type PaymentFull = Prisma.SupplierPaymentGetPayload<{ include: typeof paymentInclude }>;
+type PaymentFull = Prisma.SupplierPaymentGetPayload<{
+  include: typeof paymentInclude;
+}>;
 
 function toInvoiceView(i: InvoiceFull) {
   const paid = Number(i.amountPaid);
@@ -38,7 +98,10 @@ function toInvoiceView(i: InvoiceFull) {
     taxAmount: Number(i.taxAmount),
     total: Number(i.total),
     amountPaid: paid,
-    balance: i.status === SupplierInvoiceStatus.VOID ? 0 : fromCents(toCents(i.total) - toCents(i.amountPaid)),
+    balance:
+      i.status === SupplierInvoiceStatus.VOID
+        ? 0
+        : fromCents(toCents(i.total) - toCents(i.amountPaid)),
     notes: i.notes,
     voidedAt: i.voidedAt,
     voidReason: i.voidReason,
@@ -53,7 +116,12 @@ function toInvoiceView(i: InvoiceFull) {
     })),
     payments: i.allocations
       .filter((a) => a.payment.status === SupplierPaymentStatus.RECEIVED)
-      .map((a) => ({ receiptNumber: a.payment.receiptNumber, receivedOn: day(a.payment.receivedOn), method: a.payment.method, amount: Number(a.amount) })),
+      .map((a) => ({
+        receiptNumber: a.payment.receiptNumber,
+        receivedOn: day(a.payment.receivedOn),
+        method: a.payment.method,
+        amount: Number(a.amount),
+      })),
   };
 }
 
@@ -74,8 +142,16 @@ function toPaymentView(p: PaymentFull) {
     bouncedAt: p.bouncedAt,
     bounceReason: p.bounceReason,
     allocated: fromCents(allocated),
-    onAccount: p.status === SupplierPaymentStatus.RECEIVED ? fromCents(toCents(p.amount) - allocated) : 0,
-    allocations: p.allocations.map((a) => ({ invoiceId: a.invoiceId, invoiceNumber: a.invoice.invoiceNumber, invoiceTotal: Number(a.invoice.total), amount: Number(a.amount) })),
+    onAccount:
+      p.status === SupplierPaymentStatus.RECEIVED
+        ? fromCents(toCents(p.amount) - allocated)
+        : 0,
+    allocations: p.allocations.map((a) => ({
+      invoiceId: a.invoiceId,
+      invoiceNumber: a.invoice.invoiceNumber,
+      invoiceTotal: Number(a.invoice.total),
+      amount: Number(a.amount),
+    })),
   };
 }
 
@@ -93,9 +169,26 @@ export class SchoolBillingService {
   async letterhead() {
     const { organizationId } = getTenantStore();
     const org = await this.tenantPrisma.run((tx) =>
-      tx.organization.findUnique({ where: { id: organizationId }, select: { name: true, address: true, phone: true, email: true, invoiceFooter: true } }),
+      tx.organization.findUnique({
+        where: { id: organizationId },
+        select: {
+          name: true,
+          address: true,
+          phone: true,
+          email: true,
+          invoiceFooter: true,
+        },
+      }),
     );
-    return org ?? { name: '', address: null, phone: null, email: null, invoiceFooter: null };
+    return (
+      org ?? {
+        name: '',
+        address: null,
+        phone: null,
+        email: null,
+        invoiceFooter: null,
+      }
+    );
   }
 
   // ── Invoices ───────────────────────────────────────────────────────────
@@ -103,7 +196,10 @@ export class SchoolBillingService {
   async listInvoices(status?: string, schoolId?: string) {
     const rows = await this.tenantPrisma.run((tx) =>
       tx.supplierInvoice.findMany({
-        where: { ...(status ? { status: status as SupplierInvoiceStatus } : {}), ...(schoolId ? { schoolId } : {}) },
+        where: {
+          ...(status ? { status: status as SupplierInvoiceStatus } : {}),
+          ...(schoolId ? { schoolId } : {}),
+        },
         include: invoiceInclude,
         orderBy: [{ issueDate: 'desc' }, { invoiceNumber: 'desc' }],
         take: 300,
@@ -117,7 +213,12 @@ export class SchoolBillingService {
   }
 
   async getInvoice(id: string, schoolId?: string) {
-    const row = await this.tenantPrisma.run((tx) => tx.supplierInvoice.findFirst({ where: { id, ...(schoolId ? { schoolId } : {}) }, include: invoiceInclude }));
+    const row = await this.tenantPrisma.run((tx) =>
+      tx.supplierInvoice.findFirst({
+        where: { id, ...(schoolId ? { schoolId } : {}) },
+        include: invoiceInclude,
+      }),
+    );
     if (!row) throw new NotFoundException('Invoice not found');
     return { ...toInvoiceView(row), business: await this.letterhead() };
   }
@@ -127,10 +228,22 @@ export class SchoolBillingService {
     return this.tenantPrisma.run(async (tx) => {
       const res = await tx.supplierInvoice.updateMany({
         where: { id, status: SupplierInvoiceStatus.ISSUED, amountPaid: 0 },
-        data: { status: SupplierInvoiceStatus.VOID, voidedAt: new Date(), voidReason: dto.reason.trim() },
+        data: {
+          status: SupplierInvoiceStatus.VOID,
+          voidedAt: new Date(),
+          voidReason: dto.reason.trim(),
+        },
       });
-      if (res.count === 0) throw new ConflictException('Only an invoice with no payments against it can be voided. Bounce or correct the payment first.');
-      return toInvoiceView(await tx.supplierInvoice.findUniqueOrThrow({ where: { id }, include: invoiceInclude }));
+      if (res.count === 0)
+        throw new ConflictException(
+          'Only an invoice with no payments against it can be voided. Bounce or correct the payment first.',
+        );
+      return toInvoiceView(
+        await tx.supplierInvoice.findUniqueOrThrow({
+          where: { id },
+          include: invoiceInclude,
+        }),
+      );
     });
   }
 
@@ -138,13 +251,23 @@ export class SchoolBillingService {
 
   async listPayments(schoolId?: string) {
     const rows = await this.tenantPrisma.run((tx) =>
-      tx.supplierPayment.findMany({ where: schoolId ? { schoolId } : {}, include: paymentInclude, orderBy: [{ receivedOn: 'desc' }, { receiptNumber: 'desc' }], take: 300 }),
+      tx.supplierPayment.findMany({
+        where: schoolId ? { schoolId } : {},
+        include: paymentInclude,
+        orderBy: [{ receivedOn: 'desc' }, { receiptNumber: 'desc' }],
+        take: 300,
+      }),
     );
     return rows.map(toPaymentView);
   }
 
   async getPayment(id: string, schoolId?: string) {
-    const row = await this.tenantPrisma.run((tx) => tx.supplierPayment.findFirst({ where: { id, ...(schoolId ? { schoolId } : {}) }, include: paymentInclude }));
+    const row = await this.tenantPrisma.run((tx) =>
+      tx.supplierPayment.findFirst({
+        where: { id, ...(schoolId ? { schoolId } : {}) },
+        include: paymentInclude,
+      }),
+    );
     if (!row) throw new NotFoundException('Receipt not found');
     return { ...toPaymentView(row), business: await this.letterhead() };
   }
@@ -156,9 +279,12 @@ export class SchoolBillingService {
   async recordPayment(dto: RecordPaymentDto) {
     const { organizationId, orgUserId } = getTenantStore();
     const payment = await this.tenantPrisma.run(async (tx) => {
-      const school = await tx.supplierSchool.findUnique({ where: { id: dto.schoolId } });
+      const school = await tx.supplierSchool.findUnique({
+        where: { id: dto.schoolId },
+      });
       if (!school) throw new NotFoundException('School not found');
-      if (dto.method === 'CHEQUE' && !dto.reference?.trim()) throw new BadRequestException('Enter the cheque number');
+      if (dto.method === 'CHEQUE' && !dto.reference?.trim())
+        throw new BadRequestException('Enter the cheque number');
 
       // One payment at a time per school, so two receipts cannot both use up the same invoice balance.
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${'school-pay:' + dto.schoolId}))`;
@@ -166,11 +292,22 @@ export class SchoolBillingService {
       const open = await this.ledger.openInvoices(tx, dto.schoolId);
       let allocations;
       if (dto.allocations && dto.allocations.length > 0) {
-        const problem = allocationProblem(dto.amount, dto.allocations, new Map(open.map((o) => [o.id, o.balance])));
+        const problem = allocationProblem(
+          dto.amount,
+          dto.allocations,
+          new Map(open.map((o) => [o.id, o.balance])),
+        );
         if (problem) throw new BadRequestException(problem);
         allocations = dto.allocations;
       } else {
-        allocations = allocateOldestFirst(dto.amount, open.map((o) => ({ id: o.id, balance: o.balance, issueDate: o.issueDate }))).allocations;
+        allocations = allocateOldestFirst(
+          dto.amount,
+          open.map((o) => ({
+            id: o.id,
+            balance: o.balance,
+            issueDate: o.issueDate,
+          })),
+        ).allocations;
       }
 
       const receiptNumber = await this.numbers.next(tx, organizationId, 'RC');
@@ -183,21 +320,36 @@ export class SchoolBillingService {
           method: dto.method,
           reference: dto.reference?.trim() || null,
           bankName: dto.bankName?.trim() || null,
-          chequeDate: dto.chequeDate ? new Date(`${dto.chequeDate}T00:00:00Z`) : null,
+          chequeDate: dto.chequeDate
+            ? new Date(`${dto.chequeDate}T00:00:00Z`)
+            : null,
           receivedOn: new Date(`${dto.receivedOn ?? todayKey()}T00:00:00Z`),
           notes: dto.notes?.trim() || null,
           recordedById: orgUserId,
-          allocations: { create: allocations.map((a) => ({ invoiceId: a.invoiceId, amount: a.amount })) },
+          allocations: {
+            create: allocations.map((a) => ({
+              invoiceId: a.invoiceId,
+              amount: a.amount,
+            })),
+          },
         },
       });
-      for (const a of allocations) await this.applyToInvoice(tx, a.invoiceId, a.amount);
-      return tx.supplierPayment.findUniqueOrThrow({ where: { id: created.id }, include: paymentInclude });
+      for (const a of allocations)
+        await this.applyToInvoice(tx, a.invoiceId, a.amount);
+      return tx.supplierPayment.findUniqueOrThrow({
+        where: { id: created.id },
+        include: paymentInclude,
+      });
     });
 
     const view = toPaymentView(payment);
     const org = await this.letterhead();
     await this.notifier.notify(
-      { name: payment.school.contactName ?? payment.school.name, phone: payment.school.phone, email: payment.school.email },
+      {
+        name: payment.school.contactName ?? payment.school.name,
+        phone: payment.school.phone,
+        email: payment.school.email,
+      },
       org.name,
       `Receipt ${payment.receiptNumber}`,
       `we received KES ${view.amount.toFixed(2)} (receipt ${payment.receiptNumber}). Thank you.${view.onAccount > 0 ? ` KES ${view.onAccount.toFixed(2)} is held as credit on your account.` : ''}`,
@@ -208,24 +360,58 @@ export class SchoolBillingService {
   /** A cheque that did not clear: the receipt is cancelled and the invoices it paid owe that money again. */
   async bouncePayment(id: string, dto: BouncePaymentDto) {
     return this.tenantPrisma.run(async (tx) => {
-      const payment = await tx.supplierPayment.findUnique({ where: { id }, include: { allocations: true } });
+      const payment = await tx.supplierPayment.findUnique({
+        where: { id },
+        include: { allocations: true },
+      });
       if (!payment) throw new NotFoundException('Receipt not found');
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${'school-pay:' + payment.schoolId}))`;
       const res = await tx.supplierPayment.updateMany({
         where: { id, status: SupplierPaymentStatus.RECEIVED },
-        data: { status: SupplierPaymentStatus.BOUNCED, bouncedAt: new Date(), bounceReason: dto.reason.trim() },
+        data: {
+          status: SupplierPaymentStatus.BOUNCED,
+          bouncedAt: new Date(),
+          bounceReason: dto.reason.trim(),
+        },
       });
-      if (res.count === 0) throw new ConflictException('This payment is already marked as bounced');
-      for (const a of payment.allocations) await this.applyToInvoice(tx, a.invoiceId, -Number(a.amount));
-      return toPaymentView(await tx.supplierPayment.findUniqueOrThrow({ where: { id }, include: paymentInclude }));
+      if (res.count === 0)
+        throw new ConflictException(
+          'This payment is already marked as bounced',
+        );
+      for (const a of payment.allocations)
+        await this.applyToInvoice(tx, a.invoiceId, -Number(a.amount));
+      return toPaymentView(
+        await tx.supplierPayment.findUniqueOrThrow({
+          where: { id },
+          include: paymentInclude,
+        }),
+      );
     });
   }
 
   /** Adds (or, when negative, takes back) an amount paid on an invoice and sets its status to match. */
-  private async applyToInvoice(tx: TenantTx, invoiceId: string, amount: number) {
-    const inv = await tx.supplierInvoice.findUniqueOrThrow({ where: { id: invoiceId } });
+  private async applyToInvoice(
+    tx: TenantTx,
+    invoiceId: string,
+    amount: number,
+  ) {
+    const inv = await tx.supplierInvoice.findUniqueOrThrow({
+      where: { id: invoiceId },
+    });
     const paid = fromCents(toCents(inv.amountPaid) + toCents(amount));
-    if (paid < 0 || toCents(paid) > toCents(inv.total)) throw new BadRequestException('That would pay more than the invoice total');
-    await tx.supplierInvoice.update({ where: { id: invoiceId }, data: { amountPaid: paid, status: inv.status === SupplierInvoiceStatus.VOID ? inv.status : statusAfterPayment(Number(inv.total), paid) } });
+    if (paid < 0 || toCents(paid) > toCents(inv.total))
+      throw new BadRequestException(
+        'That would pay more than the invoice total',
+      );
+    await tx.supplierInvoice.update({
+      where: { id: invoiceId },
+      data: {
+        amountPaid: paid,
+        status:
+          inv.status === SupplierInvoiceStatus.VOID
+            ? inv.status
+            : statusAfterPayment(Number(inv.total), paid),
+      },
+    });
   }
 }

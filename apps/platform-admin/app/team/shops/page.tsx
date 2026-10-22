@@ -18,6 +18,7 @@ const INDUSTRIES = [
   ["PHARMACY", "Pharmacy"],
   ["SALON", "Salon"],
   ["RENTAL", "Rental landlord"],
+  ["SCHOOL_SUPPLIER", "School supplier"],
 ] as const;
 
 const inputClass = "mt-1 w-full rounded-md border border-border bg-background p-2";

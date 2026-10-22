@@ -12,16 +12,24 @@ import {
 
 describe('invoice maths', () => {
   it('works out a line with VAT', () => {
-    expect(lineAmounts({ quantity: 10, unitPrice: 45, taxRate: 0.16 })).toEqual({ lineTotal: 450, taxAmount: 72, gross: 522 });
+    expect(lineAmounts({ quantity: 10, unitPrice: 45, taxRate: 0.16 })).toEqual(
+      { lineTotal: 450, taxAmount: 72, gross: 522 },
+    );
   });
 
   it('works out a line with no VAT and with fractions of a unit', () => {
-    expect(lineAmounts({ quantity: 2.5, unitPrice: 120, taxRate: 0 })).toEqual({ lineTotal: 300, taxAmount: 0, gross: 300 });
+    expect(lineAmounts({ quantity: 2.5, unitPrice: 120, taxRate: 0 })).toEqual({
+      lineTotal: 300,
+      taxAmount: 0,
+      gross: 300,
+    });
   });
 
   it('does not drift on awkward cents', () => {
     // 3 x 33.33 = 99.99; 16% = 15.9984 -> 16.00
-    expect(lineAmounts({ quantity: 3, unitPrice: 33.33, taxRate: 0.16 })).toEqual({ lineTotal: 99.99, taxAmount: 16, gross: 115.99 });
+    expect(
+      lineAmounts({ quantity: 3, unitPrice: 33.33, taxRate: 0.16 }),
+    ).toEqual({ lineTotal: 99.99, taxAmount: 16, gross: 115.99 });
   });
 
   it('adds up an invoice: before VAT, VAT, and the total the school pays', () => {
@@ -41,7 +49,10 @@ describe('allocating a payment', () => {
   ];
 
   it('pays the oldest invoice first', () => {
-    expect(allocateOldestFirst(2000, open)).toEqual({ allocations: [{ invoiceId: 'a', amount: 2000 }], unallocated: 0 });
+    expect(allocateOldestFirst(2000, open)).toEqual({
+      allocations: [{ invoiceId: 'a', amount: 2000 }],
+      unallocated: 0,
+    });
   });
 
   it('carries on to the next invoice once one is cleared (a partial payment can still span invoices)', () => {
@@ -61,28 +72,74 @@ describe('allocating a payment', () => {
   });
 
   it('allocates nothing when nothing is owed', () => {
-    expect(allocateOldestFirst(500, [])).toEqual({ allocations: [], unallocated: 500 });
+    expect(allocateOldestFirst(500, [])).toEqual({
+      allocations: [],
+      unallocated: 500,
+    });
   });
 
   it('skips invoices with nothing left on them', () => {
-    expect(allocateOldestFirst(100, [{ id: 'x', balance: 0, issueDate: '2026-01-01' }, { id: 'y', balance: 50, issueDate: '2026-02-01' }]).allocations).toEqual([{ invoiceId: 'y', amount: 50 }]);
+    expect(
+      allocateOldestFirst(100, [
+        { id: 'x', balance: 0, issueDate: '2026-01-01' },
+        { id: 'y', balance: 50, issueDate: '2026-02-01' },
+      ]).allocations,
+    ).toEqual([{ invoiceId: 'y', amount: 50 }]);
   });
 });
 
 describe('a person choosing the allocations', () => {
-  const balances = new Map([['a', 3000], ['b', 5000]]);
+  const balances = new Map([
+    ['a', 3000],
+    ['b', 5000],
+  ]);
 
   it('accepts amounts within each invoice and within the payment', () => {
-    expect(allocationProblem(4000, [{ invoiceId: 'a', amount: 3000 }, { invoiceId: 'b', amount: 1000 }], balances)).toBeNull();
-    expect(allocationProblem(4000, [{ invoiceId: 'a', amount: 1000 }], balances)).toBeNull(); // the rest stays as credit
+    expect(
+      allocationProblem(
+        4000,
+        [
+          { invoiceId: 'a', amount: 3000 },
+          { invoiceId: 'b', amount: 1000 },
+        ],
+        balances,
+      ),
+    ).toBeNull();
+    expect(
+      allocationProblem(4000, [{ invoiceId: 'a', amount: 1000 }], balances),
+    ).toBeNull(); // the rest stays as credit
   });
 
   it('refuses more than an invoice owes, more than the payment, an unknown invoice, a repeat, or nothing', () => {
-    expect(allocationProblem(9000, [{ invoiceId: 'a', amount: 3500 }], balances)).toMatch(/more than that invoice/);
-    expect(allocationProblem(3000, [{ invoiceId: 'a', amount: 2000 }, { invoiceId: 'b', amount: 2000 }], balances)).toMatch(/more than the payment/);
-    expect(allocationProblem(1000, [{ invoiceId: 'zzz', amount: 100 }], balances)).toMatch(/does not belong/);
-    expect(allocationProblem(1000, [{ invoiceId: 'a', amount: 100 }, { invoiceId: 'a', amount: 100 }], balances)).toMatch(/twice/);
-    expect(allocationProblem(1000, [{ invoiceId: 'a', amount: 0 }], balances)).toMatch(/more than zero/);
+    expect(
+      allocationProblem(9000, [{ invoiceId: 'a', amount: 3500 }], balances),
+    ).toMatch(/more than that invoice/);
+    expect(
+      allocationProblem(
+        3000,
+        [
+          { invoiceId: 'a', amount: 2000 },
+          { invoiceId: 'b', amount: 2000 },
+        ],
+        balances,
+      ),
+    ).toMatch(/more than the payment/);
+    expect(
+      allocationProblem(1000, [{ invoiceId: 'zzz', amount: 100 }], balances),
+    ).toMatch(/does not belong/);
+    expect(
+      allocationProblem(
+        1000,
+        [
+          { invoiceId: 'a', amount: 100 },
+          { invoiceId: 'a', amount: 100 },
+        ],
+        balances,
+      ),
+    ).toMatch(/twice/);
+    expect(
+      allocationProblem(1000, [{ invoiceId: 'a', amount: 0 }], balances),
+    ).toMatch(/more than zero/);
   });
 });
 

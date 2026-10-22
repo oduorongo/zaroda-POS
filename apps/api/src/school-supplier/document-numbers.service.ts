@@ -12,7 +12,12 @@ export type DocumentKind = 'SO' | 'DN' | 'INV' | 'RC';
  */
 @Injectable()
 export class DocumentNumbersService {
-  async next(tx: TenantTx, organizationId: string, kind: DocumentKind, now: Date = new Date()): Promise<string> {
+  async next(
+    tx: TenantTx,
+    organizationId: string,
+    kind: DocumentKind,
+    now: Date = new Date(),
+  ): Promise<string> {
     const year = Number(todayKey(now).slice(0, 4));
     const rows = await tx.$queryRaw<{ last: number }[]>`
       INSERT INTO document_counters ("organizationId", "kind", "year", "last")

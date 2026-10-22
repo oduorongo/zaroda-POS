@@ -1,4 +1,8 @@
-import { createParamDecorator, ExecutionContext, Injectable } from '@nestjs/common';
+import {
+  createParamDecorator,
+  ExecutionContext,
+  Injectable,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { AuthGuard, PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
@@ -21,7 +25,10 @@ export interface SchoolIdentity {
 }
 
 @Injectable()
-export class SchoolJwtStrategy extends PassportStrategy(Strategy, 'school-jwt') {
+export class SchoolJwtStrategy extends PassportStrategy(
+  Strategy,
+  'school-jwt',
+) {
   constructor(config: ConfigService) {
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
@@ -31,7 +38,12 @@ export class SchoolJwtStrategy extends PassportStrategy(Strategy, 'school-jwt') 
   }
 
   validate(payload: SchoolJwtPayload): SchoolIdentity | false {
-    if (payload.scope !== 'school' || typeof payload.sub !== 'string' || typeof payload.org !== 'string') return false;
+    if (
+      payload.scope !== 'school' ||
+      typeof payload.sub !== 'string' ||
+      typeof payload.org !== 'string'
+    )
+      return false;
     return { schoolId: payload.sub, organizationId: payload.org };
   }
 }
@@ -39,6 +51,8 @@ export class SchoolJwtStrategy extends PassportStrategy(Strategy, 'school-jwt') 
 @Injectable()
 export class SchoolAuthGuard extends AuthGuard('school-jwt') {}
 
-export const CurrentSchool = createParamDecorator((_: unknown, ctx: ExecutionContext): SchoolIdentity => {
-  return ctx.switchToHttp().getRequest<{ user: SchoolIdentity }>().user;
-});
+export const CurrentSchool = createParamDecorator(
+  (_: unknown, ctx: ExecutionContext): SchoolIdentity => {
+    return ctx.switchToHttp().getRequest<{ user: SchoolIdentity }>().user;
+  },
+);

@@ -1,0 +1,316 @@
+"use client";
+
+import { useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { apiGet, apiPost, ApiError } from "../../lib/api";
+import { getSession, clearSession, isBackofficeRole, type Session } from "../../lib/auth";
+import { Nav } from "../../components/nav";
+import { PageHeader } from "../../components/page-header";
+
+interface Line {
+  id: string;
+  title: string;
+  sku: string;
+  unitPrice: number;
+  quantityOrdered: number;
+  quantityConfirmed: number | null;
+  quantityDelivered: number | null;
+  lineTotal: number;
+}
+interface Order {
+  id: string;
+  orderNumber: string;
+  lpoNumber: string | null;
+  status: "SUBMITTED" | "CONFIRMED" | "DELIVERED" | "CANCELLED";
+  school: { id: string; name: string; phone: string };
+  notes: string | null;
+  deliveryAddress: string | null;
+  requestedDate: string | null;
+  overCreditLimit: boolean;
+  submittedAt: string;
+  confirmationNote: string | null;
+  deliveryNoteNumber: string | null;
+  receivedByName: string | null;
+  cancelReason: string | null;
+  cancelledBy: string | null;
+  invoice: { id: string; invoiceNumber: string; total: number } | null;
+  lines: Line[];
+  subtotal: number;
+  taxAmount: number;
+  total: number;
+}
+interface Branch {
+  id: string;
+  name: string;
+}
+
+const kes = (n: number) => `KES ${n.toLocaleString("en-KE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const field = "mt-1 w-full rounded-md border border-border bg-surface p-2 text-sm";
+const STATUS_LABEL: Record<Order["status"], string> = { SUBMITTED: "Waiting for you", CONFIRMED: "Confirmed", DELIVERED: "Delivered", CANCELLED: "Cancelled" };
+const STATUS_TONE: Record<Order["status"], string> = { SUBMITTED: "bg-amber-900 text-amber-200", CONFIRMED: "bg-blue-900 text-blue-200", DELIVERED: "bg-green-900 text-green-200", CANCELLED: "bg-secondary-500/20 text-secondary-500" };
+const FILTERS: [string, string][] = [
+  ["SUBMITTED", "Waiting"],
+  ["CONFIRMED", "To deliver"],
+  ["DELIVERED", "Delivered"],
+  ["CANCELLED", "Cancelled"],
+  ["", "All"],
+];
+
+/** Orders from schools: confirm what you can supply, then deliver with a delivery note and invoice. */
+export default function SchoolOrdersPage() {
+  const router = useRouter();
+  const [session, setSessionState] = useState<Session | null>(null);
+  const [filter, setFilter] = useState("SUBMITTED");
+  const [orders, setOrders] = useState<Order[] | null>(null);
+  const [branches, setBranches] = useState<Branch[]>([]);
+  const [openId, setOpenId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  // Working copy of the quantities, keyed by line id, and the delivery form
+  const [qtys, setQtys] = useState<Record<string, string>>({});
+  const [note, setNote] = useState("");
+  const [branchId, setBranchId] = useState("");
+  const [receivedBy, setReceivedBy] = useState("");
+  const [reason, setReason] = useState("");
+
+  const canEdit = session?.role === "OWNER" || session?.role === "MANAGER";
+
+  const load = useCallback(async () => {
+    try {
+      setOrders(await apiGet<Order[]>(`/school-supplier/orders${filter ? `?status=${filter}` : ""}`));
+      setError(null);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not load the orders.");
+    }
+  }, [filter]);
+
+  useEffect(() => {
+    const s = getSession();
+    if (!s) {
+      router.replace("/login");
+      return;
+    }
+    if (!isBackofficeRole(s.role)) {
+      clearSession();
+      router.replace("/login");
+      return;
+    }
+    setSessionState(s);
+    void apiGet<Branch[]>("/branches")
+      .then((b) => {
+        setBranches(b);
+        setBranchId((cur) => cur || b[0]?.id || "");
+      })
+      .catch(() => undefined);
+  }, [router]);
+
+  useEffect(() => {
+    if (session) void load();
+  }, [session, load]);
+
+  function open(o: Order) {
+    if (openId === o.id) {
+      setOpenId(null);
+      return;
+    }
+    setOpenId(o.id);
+    setNote("");
+    setReason("");
+    setReceivedBy("");
+    setNotice(null);
+    setQtys(Object.fromEntries(o.lines.map((l) => [l.id, String(o.status === "CONFIRMED" ? (l.quantityConfirmed ?? l.quantityOrdered) : l.quantityOrdered)])));
+  }
+
+  const lineBody = (o: Order) => o.lines.map((l) => ({ lineId: l.id, quantity: Number(qtys[l.id] ?? 0) }));
+
+  async function act(path: string, body: unknown, done: string) {
+    setBusy(true);
+    setError(null);
+    setNotice(null);
+    try {
+      await apiPost(path, body);
+      setNotice(done);
+      setOpenId(null);
+      await load();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "That did not work.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!session) return null;
+
+  return (
+    <div className="min-h-screen bg-background text-foreground">
+      <Nav session={session} />
+      <PageHeader />
+      <main className="mx-auto max-w-4xl space-y-4 p-6">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h1 className="text-xl font-bold">School orders</h1>
+          <div className="flex gap-4 text-sm">
+            <Link href="/schools" className="text-primary-600 hover:underline">Schools</Link>
+            <Link href="/school-prices" className="text-primary-600 hover:underline">Price list</Link>
+            <Link href="/school-money" className="text-primary-600 hover:underline">Invoices &amp; payments</Link>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          {FILTERS.map(([key, label]) => (
+            <button key={label} onClick={() => setFilter(key)} className={`rounded-full border px-3 py-1 text-sm ${filter === key ? "border-primary-600 bg-primary-600 text-white" : "border-border hover:bg-secondary-500/10"}`}>
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {error && <p className="rounded-md bg-red-950 p-3 text-sm text-red-300">{error}</p>}
+        {notice && <p className="rounded-md bg-green-950 p-3 text-sm text-green-300">{notice}</p>}
+        {!orders && !error && <p className="text-sm text-secondary-500">Loading...</p>}
+        {orders && orders.length === 0 && <p className="rounded-lg border border-border bg-surface p-4 text-sm text-secondary-500">No orders here.</p>}
+
+        <ul className="space-y-3">
+          {orders?.map((o) => (
+            <li key={o.id} className="rounded-lg border border-border bg-surface">
+              <button onClick={() => open(o)} className="flex w-full flex-wrap items-start justify-between gap-2 p-3 text-left">
+                <div>
+                  <p className="font-semibold">
+                    {o.school.name} <span className="font-mono text-xs text-secondary-500">{o.orderNumber}</span>
+                  </p>
+                  <p className="text-xs text-secondary-500">
+                    {new Date(o.submittedAt).toLocaleString("en-KE")}
+                    {o.lpoNumber ? ` · LPO ${o.lpoNumber}` : ""}
+                    {o.requestedDate ? ` · wanted by ${o.requestedDate}` : ""}
+                  </p>
+                </div>
+                <div className="text-right">
+                  <span className={`rounded px-2 py-0.5 text-xs ${STATUS_TONE[o.status]}`}>{STATUS_LABEL[o.status]}</span>
+                  <p className="mt-1 font-mono font-semibold">{kes(o.total)}</p>
+                  {o.overCreditLimit && o.status === "SUBMITTED" && <p className="text-xs text-red-400">Over their credit limit</p>}
+                </div>
+              </button>
+
+              {openId === o.id && (
+                <div className="space-y-3 border-t border-border p-3 text-sm">
+                  {o.notes && <p className="text-secondary-600">School&apos;s note: {o.notes}</p>}
+                  {o.deliveryAddress && <p className="text-secondary-600">Deliver to: {o.deliveryAddress}</p>}
+                  <table className="w-full">
+                    <thead>
+                      <tr className="text-left text-xs uppercase text-secondary-500">
+                        <th className="py-1">Item</th>
+                        <th className="py-1 text-right">Price</th>
+                        <th className="py-1 text-right">Asked</th>
+                        {o.status !== "SUBMITTED" && <th className="py-1 text-right">Confirmed</th>}
+                        {(o.status === "SUBMITTED" || o.status === "CONFIRMED") && canEdit ? <th className="py-1 text-right">{o.status === "SUBMITTED" ? "You supply" : "Deliver"}</th> : o.status === "DELIVERED" ? <th className="py-1 text-right">Delivered</th> : null}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {o.lines.map((l) => (
+                        <tr key={l.id} className="border-t border-border">
+                          <td className="py-1">{l.title}</td>
+                          <td className="py-1 text-right font-mono">{l.unitPrice.toFixed(2)}</td>
+                          <td className="py-1 text-right">{l.quantityOrdered}</td>
+                          {o.status !== "SUBMITTED" && <td className="py-1 text-right">{l.quantityConfirmed ?? "-"}</td>}
+                          {(o.status === "SUBMITTED" || o.status === "CONFIRMED") && canEdit ? (
+                            <td className="py-1 text-right">
+                              <input
+                                type="number"
+                                min={0}
+                                max={o.status === "SUBMITTED" ? l.quantityOrdered : (l.quantityConfirmed ?? l.quantityOrdered)}
+                                step="any"
+                                value={qtys[l.id] ?? ""}
+                                onChange={(e) => setQtys((q) => ({ ...q, [l.id]: e.target.value }))}
+                                className="w-24 rounded-md border border-border bg-surface p-1 text-right"
+                              />
+                            </td>
+                          ) : o.status === "DELIVERED" ? (
+                            <td className="py-1 text-right">{l.quantityDelivered ?? 0}</td>
+                          ) : null}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  <p className="text-right text-xs text-secondary-500">
+                    Before VAT {kes(o.subtotal)} · VAT {kes(o.taxAmount)} · <span className="font-semibold text-foreground">Total {kes(o.total)}</span>
+                  </p>
+
+                  {o.status === "SUBMITTED" && canEdit && (
+                    <div className="space-y-2">
+                      <label className="block">
+                        Message to the school <span className="text-secondary-500">(optional)</span>
+                        <input maxLength={300} value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. Only 80 books today" className={field} />
+                      </label>
+                      <div className="flex flex-wrap gap-2">
+                        <button disabled={busy} onClick={() => void act(`/school-supplier/orders/${o.id}/confirm`, { lines: lineBody(o), note: note.trim() || undefined }, `Order ${o.orderNumber} confirmed. The school has been told.`)} className="rounded-md bg-primary-600 px-4 py-2 font-semibold text-white hover:bg-primary-700 disabled:opacity-50">
+                          Confirm order
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {o.status === "CONFIRMED" && canEdit && (
+                    <div className="space-y-2">
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        {branches.length > 1 && (
+                          <label>
+                            Take stock from
+                            <select value={branchId} onChange={(e) => setBranchId(e.target.value)} className={field}>
+                              {branches.map((b) => (
+                                <option key={b.id} value={b.id}>{b.name}</option>
+                              ))}
+                            </select>
+                          </label>
+                        )}
+                        <label>
+                          Received at the school by
+                          <input maxLength={100} value={receivedBy} onChange={(e) => setReceivedBy(e.target.value)} placeholder="Name of the person who took the goods" className={field} />
+                        </label>
+                      </div>
+                      <p className="text-xs text-secondary-500">Delivering takes the goods out of stock and makes the delivery note and the invoice.</p>
+                      <button disabled={busy || !branchId || receivedBy.trim().length < 2} onClick={() => void act(`/school-supplier/orders/${o.id}/deliver`, { branchId, receivedByName: receivedBy.trim(), lines: lineBody(o) }, `Delivered. Delivery note and invoice made for ${o.orderNumber}.`)} className="rounded-md bg-green-700 px-4 py-2 font-semibold text-white hover:bg-green-800 disabled:opacity-50">
+                        Deliver and make invoice
+                      </button>
+                    </div>
+                  )}
+
+                  {(o.status === "SUBMITTED" || o.status === "CONFIRMED") && canEdit && (
+                    <div className="flex flex-wrap items-end gap-2 border-t border-border pt-3">
+                      <label className="flex-1">
+                        Cancel this order - reason
+                        <input maxLength={300} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. Out of stock" className={field} />
+                      </label>
+                      <button disabled={busy || reason.trim().length < 3} onClick={() => void act(`/school-supplier/orders/${o.id}/cancel`, { reason: reason.trim() }, `Order ${o.orderNumber} cancelled.`)} className="rounded-md border border-error-600 px-3 py-2 text-error-600 hover:bg-red-950 disabled:opacity-50">
+                        Cancel order
+                      </button>
+                    </div>
+                  )}
+
+                  {o.status === "DELIVERED" && (
+                    <div className="flex flex-wrap gap-4">
+                      <p className="text-secondary-600">Received by {o.receivedByName}</p>
+                      <Link href={`/school-print/delivery-note/${o.id}`} target="_blank" className="text-primary-600 hover:underline">
+                        Delivery note {o.deliveryNoteNumber}
+                      </Link>
+                      {o.invoice && (
+                        <Link href={`/school-print/invoice/${o.invoice.id}`} target="_blank" className="text-primary-600 hover:underline">
+                          Invoice {o.invoice.invoiceNumber}
+                        </Link>
+                      )}
+                    </div>
+                  )}
+                  {o.status === "CANCELLED" && (
+                    <p className="text-secondary-600">
+                      Cancelled by {o.cancelledBy === "SCHOOL" ? "the school" : "you"}: {o.cancelReason}
+                    </p>
+                  )}
+                </div>
+              )}
+            </li>
+          ))}
+        </ul>
+      </main>
+    </div>
+  );
+}

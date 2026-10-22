@@ -9,7 +9,8 @@ export interface Recipient {
   email: string | null;
 }
 
-const escapeHtml = (v: string) => v.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+const escapeHtml = (v: string) =>
+  v.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
 /**
  * Tells a school's contact person about their order, invoice or payment: a text first (it reaches where an email may not),
@@ -26,14 +27,27 @@ export class SchoolNotifierService {
     private readonly email: ResendEmailProvider,
   ) {}
 
-  async notify(to: Recipient, supplierName: string, subject: string, message: string): Promise<void> {
+  async notify(
+    to: Recipient,
+    supplierName: string,
+    subject: string,
+    message: string,
+  ): Promise<void> {
     try {
-      await this.sms.sendSms({ to: `+${to.phone}`, message: `${supplierName}: ${message}`.slice(0, 300) }).catch(() => ({ sent: false }));
+      await this.sms
+        .sendSms({
+          to: `+${to.phone}`,
+          message: `${supplierName}: ${message}`.slice(0, 300),
+        })
+        .catch(() => ({ sent: false }));
       if (to.email && this.email.isConfigured()) {
         await this.email.sendEmail({
           to: to.email,
           subject,
-          html: brandedEmail({ title: supplierName, bodyHtml: `<p>Hello ${escapeHtml(to.name)},</p><p>${escapeHtml(message)}</p>` }),
+          html: brandedEmail({
+            title: supplierName,
+            bodyHtml: `<p>Hello ${escapeHtml(to.name)},</p><p>${escapeHtml(message)}</p>`,
+          }),
           text: `${message}`,
         });
       }

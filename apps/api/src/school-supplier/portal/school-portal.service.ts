@@ -23,18 +23,46 @@ export class SchoolPortalService {
     private readonly schools: SchoolsService,
   ) {}
 
-  private async asSchool<T>(who: SchoolIdentity, fn: () => Promise<T>): Promise<T> {
-    return tenantContext.run({ organizationId: who.organizationId, orgUserId: 'school-portal', role: Role.CASHIER }, async () => {
-      const school = await this.tenantPrisma.run((tx) => tx.supplierSchool.findUnique({ where: { id: who.schoolId }, select: { status: true } }));
-      if (!school || school.status !== SchoolStatus.ACTIVE) throw new UnauthorizedException('This account is no longer active. Please contact your supplier.');
-      return fn();
-    });
+  private async asSchool<T>(
+    who: SchoolIdentity,
+    fn: () => Promise<T>,
+  ): Promise<T> {
+    return tenantContext.run(
+      {
+        organizationId: who.organizationId,
+        orgUserId: 'school-portal',
+        role: Role.CASHIER,
+      },
+      async () => {
+        const school = await this.tenantPrisma.run((tx) =>
+          tx.supplierSchool.findUnique({
+            where: { id: who.schoolId },
+            select: { status: true },
+          }),
+        );
+        if (!school || school.status !== SchoolStatus.ACTIVE)
+          throw new UnauthorizedException(
+            'This account is no longer active. Please contact your supplier.',
+          );
+        return fn();
+      },
+    );
   }
 
   me(who: SchoolIdentity) {
     return this.asSchool(who, async () => {
-      const [school, business] = await Promise.all([this.schools.get(who.schoolId), this.billing.letterhead()]);
-      return { school, supplier: { name: business.name, phone: business.phone, email: business.email } };
+      const [school, business] = await Promise.all([
+        this.schools.get(who.schoolId),
+        this.billing.letterhead(),
+      ]);
+      return {
+        school,
+        supplier: {
+          name: business.name,
+          phone: business.phone,
+          email: business.email,
+        },
+      };
     });
   }
 
@@ -44,7 +72,15 @@ export class SchoolPortalService {
       const variants = await this.tenantPrisma.run((tx) =>
         tx.productVariant.findMany({
           where: { onSchoolList: true },
-          include: { product: { select: { name: true, category: { select: { name: true } }, taxClass: { select: { rate: true, isExempt: true } } } } },
+          include: {
+            product: {
+              select: {
+                name: true,
+                category: { select: { name: true } },
+                taxClass: { select: { rate: true, isExempt: true } },
+              },
+            },
+          },
           orderBy: [{ product: { name: 'asc' } }, { sku: 'asc' }],
           take: 3000,
         }),
@@ -55,7 +91,10 @@ export class SchoolPortalService {
         sku: v.sku,
         category: v.product.category?.name ?? null,
         unitPrice: Number(v.schoolPrice ?? v.price),
-        taxRate: v.product.taxClass && !v.product.taxClass.isExempt ? Number(v.product.taxClass.rate) : 0,
+        taxRate:
+          v.product.taxClass && !v.product.taxClass.isExempt
+            ? Number(v.product.taxClass.rate)
+            : 0,
         allowsFractions: v.quantityMode === 'WEIGHT',
       }));
     });
@@ -68,13 +107,20 @@ export class SchoolPortalService {
     return this.asSchool(who, () => this.orders.listForSchool(who.schoolId));
   }
   getOrder(who: SchoolIdentity, id: string) {
-    return this.asSchool(who, () => this.orders.getForSchool(who.schoolId, id));
+    return this.asSchool(who, async () => ({
+      ...(await this.orders.getForSchool(who.schoolId, id)),
+      business: await this.billing.letterhead(),
+    }));
   }
   cancelOrder(who: SchoolIdentity, id: string, reason?: string) {
-    return this.asSchool(who, () => this.orders.cancelBySchool(who.schoolId, id, reason));
+    return this.asSchool(who, () =>
+      this.orders.cancelBySchool(who.schoolId, id, reason),
+    );
   }
   listInvoices(who: SchoolIdentity) {
-    return this.asSchool(who, () => this.billing.listInvoicesForSchool(who.schoolId));
+    return this.asSchool(who, () =>
+      this.billing.listInvoicesForSchool(who.schoolId),
+    );
   }
   getInvoice(who: SchoolIdentity, id: string) {
     return this.asSchool(who, () => this.billing.getInvoice(id, who.schoolId));
@@ -86,6 +132,9 @@ export class SchoolPortalService {
     return this.asSchool(who, () => this.billing.getPayment(id, who.schoolId));
   }
   statement(who: SchoolIdentity, from?: string, to?: string) {
-    return this.asSchool(who, async () => ({ ...(await this.schools.statement(who.schoolId, from, to)), business: await this.billing.letterhead() }));
+    return this.asSchool(who, async () => ({
+      ...(await this.schools.statement(who.schoolId, from, to)),
+      business: await this.billing.letterhead(),
+    }));
   }
 }

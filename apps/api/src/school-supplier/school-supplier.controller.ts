@@ -1,4 +1,15 @@
-import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Put, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  Param,
+  ParseUUIDPipe,
+  Patch,
+  Post,
+  Put,
+  Query,
+} from '@nestjs/common';
 import { Role } from '@prisma/client';
 import { Roles } from '../auth/roles.decorator';
 import {
@@ -51,7 +62,10 @@ export class SchoolSupplierController {
 
   @Roles(Role.MANAGER, Role.OWNER)
   @Patch('schools/:id')
-  updateSchool(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateSchoolDto) {
+  updateSchool(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateSchoolDto,
+  ) {
     return this.schools.update(id, dto);
   }
 
@@ -64,8 +78,13 @@ export class SchoolSupplierController {
 
   @Roles(Role.MANAGER, Role.OWNER, Role.AUDITOR)
   @Get('schools/:id/statement')
-  statement(@Param('id', ParseUUIDPipe) id: string, @Query() q: StatementQueryDto) {
-    return this.schools.statement(id, q.from, q.to).then(async (s) => ({ ...s, business: await this.billing.letterhead() }));
+  statement(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query() q: StatementQueryDto,
+  ) {
+    return this.schools
+      .statement(id, q.from, q.to)
+      .then(async (s) => ({ ...s, business: await this.billing.letterhead() }));
   }
 
   @Roles(Role.MANAGER, Role.OWNER, Role.AUDITOR)
@@ -115,13 +134,19 @@ export class SchoolSupplierController {
   @Roles(Role.MANAGER, Role.OWNER, Role.AUDITOR)
   @Get('orders/:id')
   async getOrder(@Param('id', ParseUUIDPipe) id: string) {
-    return { ...(await this.orders.get(id)), business: await this.billing.letterhead() };
+    return {
+      ...(await this.orders.get(id)),
+      business: await this.billing.letterhead(),
+    };
   }
 
   @Roles(Role.MANAGER, Role.OWNER)
   @Post('orders/:id/confirm')
   @HttpCode(200)
-  confirm(@Param('id', ParseUUIDPipe) id: string, @Body() dto: ConfirmOrderDto) {
+  confirm(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: ConfirmOrderDto,
+  ) {
     return this.orders.confirm(id, dto);
   }
 
@@ -135,7 +160,10 @@ export class SchoolSupplierController {
   @Roles(Role.MANAGER, Role.OWNER)
   @Post('orders/:id/deliver')
   @HttpCode(200)
-  deliver(@Param('id', ParseUUIDPipe) id: string, @Body() dto: DeliverOrderDto) {
+  deliver(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: DeliverOrderDto,
+  ) {
     return this.orders.deliver(id, dto);
   }
 
@@ -155,7 +183,10 @@ export class SchoolSupplierController {
   @Roles(Role.MANAGER, Role.OWNER)
   @Post('invoices/:id/void')
   @HttpCode(200)
-  voidInvoice(@Param('id', ParseUUIDPipe) id: string, @Body() dto: VoidInvoiceDto) {
+  voidInvoice(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: VoidInvoiceDto,
+  ) {
     return this.billing.voidInvoice(id, dto);
   }
 
@@ -181,7 +212,10 @@ export class SchoolSupplierController {
   @Roles(Role.MANAGER, Role.OWNER)
   @Post('payments/:id/bounce')
   @HttpCode(200)
-  bounce(@Param('id', ParseUUIDPipe) id: string, @Body() dto: BouncePaymentDto) {
+  bounce(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: BouncePaymentDto,
+  ) {
     return this.billing.bouncePayment(id, dto);
   }
 }

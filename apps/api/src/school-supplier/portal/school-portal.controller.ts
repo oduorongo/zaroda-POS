@@ -1,7 +1,22 @@
-import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Query, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  Param,
+  ParseUUIDPipe,
+  Post,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { Public } from '../../auth/public.decorator';
-import { CancelOrderDto, SchoolLoginDto, StatementQueryDto, SubmitSchoolOrderDto } from '../dto/school-supplier.dto';
+import {
+  CancelOrderDto,
+  SchoolLoginDto,
+  StatementQueryDto,
+  SubmitSchoolOrderDto,
+} from '../dto/school-supplier.dto';
 import { CurrentSchool, SchoolAuthGuard, SchoolIdentity } from './school-auth';
 import { SchoolAuthService } from './school-auth.service';
 import { SchoolPortalService } from './school-portal.service';
@@ -48,7 +63,10 @@ export class SchoolPortalController {
   }
 
   @Post('orders')
-  submit(@CurrentSchool() who: SchoolIdentity, @Body() dto: SubmitSchoolOrderDto) {
+  submit(
+    @CurrentSchool() who: SchoolIdentity,
+    @Body() dto: SubmitSchoolOrderDto,
+  ) {
     return this.portal.submitOrder(who, dto);
   }
 
@@ -58,13 +76,20 @@ export class SchoolPortalController {
   }
 
   @Get('orders/:id')
-  order(@CurrentSchool() who: SchoolIdentity, @Param('id', ParseUUIDPipe) id: string) {
+  order(
+    @CurrentSchool() who: SchoolIdentity,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
     return this.portal.getOrder(who, id);
   }
 
   @Post('orders/:id/cancel')
   @HttpCode(200)
-  cancel(@CurrentSchool() who: SchoolIdentity, @Param('id', ParseUUIDPipe) id: string, @Body() dto: CancelOrderDto) {
+  cancel(
+    @CurrentSchool() who: SchoolIdentity,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: CancelOrderDto,
+  ) {
     return this.portal.cancelOrder(who, id, dto.reason);
   }
 
@@ -74,7 +99,10 @@ export class SchoolPortalController {
   }
 
   @Get('invoices/:id')
-  invoice(@CurrentSchool() who: SchoolIdentity, @Param('id', ParseUUIDPipe) id: string) {
+  invoice(
+    @CurrentSchool() who: SchoolIdentity,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
     return this.portal.getInvoice(who, id);
   }
 
@@ -84,12 +112,18 @@ export class SchoolPortalController {
   }
 
   @Get('receipts/:id')
-  receipt(@CurrentSchool() who: SchoolIdentity, @Param('id', ParseUUIDPipe) id: string) {
+  receipt(
+    @CurrentSchool() who: SchoolIdentity,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
     return this.portal.getReceipt(who, id);
   }
 
   @Get('statement')
-  statement(@CurrentSchool() who: SchoolIdentity, @Query() q: StatementQueryDto) {
+  statement(
+    @CurrentSchool() who: SchoolIdentity,
+    @Query() q: StatementQueryDto,
+  ) {
     return this.portal.statement(who, q.from, q.to);
   }
 }

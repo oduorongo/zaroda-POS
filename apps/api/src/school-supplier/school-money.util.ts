@@ -1,7 +1,9 @@
 // The money rules of selling to schools on credit, kept as plain functions so they can be tested without a database.
 // Everything is worked in whole cents (integers) so a total can never drift by a fraction of a shilling.
 
-export const toCents = (value: number | string | { toString(): string }): number => Math.round(Number(value) * 100);
+export const toCents = (
+  value: number | string | { toString(): string },
+): number => Math.round(Number(value) * 100);
 export const fromCents = (cents: number): number => cents / 100;
 
 export interface PricedLine {
@@ -12,14 +14,26 @@ export interface PricedLine {
 }
 
 /** One line: quantity x price before VAT, the VAT on it, and the line in total. */
-export function lineAmounts(line: PricedLine): { lineTotal: number; taxAmount: number; gross: number } {
+export function lineAmounts(line: PricedLine): {
+  lineTotal: number;
+  taxAmount: number;
+  gross: number;
+} {
   const lineTotal = toCents(line.quantity * line.unitPrice);
   const taxAmount = Math.round(lineTotal * line.taxRate);
-  return { lineTotal: fromCents(lineTotal), taxAmount: fromCents(taxAmount), gross: fromCents(lineTotal + taxAmount) };
+  return {
+    lineTotal: fromCents(lineTotal),
+    taxAmount: fromCents(taxAmount),
+    gross: fromCents(lineTotal + taxAmount),
+  };
 }
 
 /** An invoice (or an order) added up: before VAT, VAT, and what the school pays. */
-export function documentTotals(lines: PricedLine[]): { subtotal: number; taxAmount: number; total: number } {
+export function documentTotals(lines: PricedLine[]): {
+  subtotal: number;
+  taxAmount: number;
+  total: number;
+} {
   let subtotal = 0;
   let tax = 0;
   for (const l of lines) {
@@ -27,7 +41,11 @@ export function documentTotals(lines: PricedLine[]): { subtotal: number; taxAmou
     subtotal += toCents(a.lineTotal);
     tax += toCents(a.taxAmount);
   }
-  return { subtotal: fromCents(subtotal), taxAmount: fromCents(tax), total: fromCents(subtotal + tax) };
+  return {
+    subtotal: fromCents(subtotal),
+    taxAmount: fromCents(tax),
+    total: fromCents(subtotal + tax),
+  };
 }
 
 // ── Payments against invoices ───────────────────────────────────────────
@@ -49,10 +67,16 @@ export interface Allocation {
  * Spreads a payment over what a school owes, oldest invoice first, and says what is left over (credit on the account).
  * Nothing is ever allocated beyond an invoice's balance.
  */
-export function allocateOldestFirst(paymentAmount: number, open: OpenInvoice[]): { allocations: Allocation[]; unallocated: number } {
+export function allocateOldestFirst(
+  paymentAmount: number,
+  open: OpenInvoice[],
+): { allocations: Allocation[]; unallocated: number } {
   let left = toCents(paymentAmount);
   const allocations: Allocation[] = [];
-  for (const inv of [...open].sort((a, b) => a.issueDate.localeCompare(b.issueDate) || a.id.localeCompare(b.id))) {
+  for (const inv of [...open].sort(
+    (a, b) =>
+      a.issueDate.localeCompare(b.issueDate) || a.id.localeCompare(b.id),
+  )) {
     if (left <= 0) break;
     const balance = toCents(inv.balance);
     if (balance <= 0) continue;
@@ -64,7 +88,11 @@ export function allocateOldestFirst(paymentAmount: number, open: OpenInvoice[]):
 }
 
 /** Checks a person's own choice of allocations: each within its invoice's balance, and together within the payment. */
-export function allocationProblem(paymentAmount: number, chosen: Allocation[], balances: Map<string, number>): string | null {
+export function allocationProblem(
+  paymentAmount: number,
+  chosen: Allocation[],
+  balances: Map<string, number>,
+): string | null {
   let sum = 0;
   const seen = new Set<string>();
   for (const a of chosen) {
@@ -72,18 +100,24 @@ export function allocationProblem(paymentAmount: number, chosen: Allocation[], b
     seen.add(a.invoiceId);
     if (!(a.amount > 0)) return 'Each amount must be more than zero';
     const balance = balances.get(a.invoiceId);
-    if (balance === undefined) return 'That invoice does not belong to this school, or is not open';
-    if (toCents(a.amount) > toCents(balance)) return 'An amount is more than that invoice still owes';
+    if (balance === undefined)
+      return 'That invoice does not belong to this school, or is not open';
+    if (toCents(a.amount) > toCents(balance))
+      return 'An amount is more than that invoice still owes';
     sum += toCents(a.amount);
   }
-  if (sum > toCents(paymentAmount)) return 'The amounts add up to more than the payment';
+  if (sum > toCents(paymentAmount))
+    return 'The amounts add up to more than the payment';
   return null;
 }
 
 export type InvoiceStatusValue = 'ISSUED' | 'PARTIALLY_PAID' | 'PAID' | 'VOID';
 
 /** An invoice's status from what has been paid against it. */
-export function statusAfterPayment(total: number, paid: number): InvoiceStatusValue {
+export function statusAfterPayment(
+  total: number,
+  paid: number,
+): InvoiceStatusValue {
   const t = toCents(total);
   const p = toCents(paid);
   if (p <= 0) return 'ISSUED';
@@ -96,17 +130,25 @@ const DAY_MS = 86_400_000;
 const NAIROBI_OFFSET_MS = 3 * 3_600_000;
 
 /** Today in Nairobi, "2026-10-22". */
-export const todayKey = (now: Date = new Date()): string => new Date(now.getTime() + NAIROBI_OFFSET_MS).toISOString().slice(0, 10);
+export const todayKey = (now: Date = new Date()): string =>
+  new Date(now.getTime() + NAIROBI_OFFSET_MS).toISOString().slice(0, 10);
 
 export function addDays(day: string, days: number): string {
-  return new Date(new Date(`${day}T00:00:00Z`).getTime() + days * DAY_MS).toISOString().slice(0, 10);
+  return new Date(new Date(`${day}T00:00:00Z`).getTime() + days * DAY_MS)
+    .toISOString()
+    .slice(0, 10);
 }
 
 export function daysBetween(from: string, to: string): number {
-  return Math.round((new Date(`${to}T00:00:00Z`).getTime() - new Date(`${from}T00:00:00Z`).getTime()) / DAY_MS);
+  return Math.round(
+    (new Date(`${to}T00:00:00Z`).getTime() -
+      new Date(`${from}T00:00:00Z`).getTime()) /
+      DAY_MS,
+  );
 }
 
-export type AgeBucket = 'CURRENT' | 'DAYS_1_30' | 'DAYS_31_60' | 'DAYS_61_90' | 'OVER_90';
+export type AgeBucket =
+  'CURRENT' | 'DAYS_1_30' | 'DAYS_31_60' | 'DAYS_61_90' | 'OVER_90';
 
 /** How late an unpaid invoice is: not yet due, or 1-30, 31-60, 61-90 or over 90 days past its due date. */
 export function ageBucket(dueDate: string, today: string): AgeBucket {
@@ -121,12 +163,20 @@ export function ageBucket(dueDate: string, today: string): AgeBucket {
 // ── Credit limit ────────────────────────────────────────────────────────
 
 /** Would this new order take the school past its credit limit (counting everything it already owes)? No limit = never. */
-export function exceedsCreditLimit(creditLimit: number | null, owed: number, newOrderTotal: number): boolean {
+export function exceedsCreditLimit(
+  creditLimit: number | null,
+  owed: number,
+  newOrderTotal: number,
+): boolean {
   if (creditLimit === null) return false;
   return toCents(owed) + toCents(newOrderTotal) > toCents(creditLimit);
 }
 
 /** "SO-2026-0007" */
-export function documentNumber(prefix: string, year: number, sequence: number): string {
+export function documentNumber(
+  prefix: string,
+  year: number,
+  sequence: number,
+): string {
   return `${prefix}-${year}-${String(sequence).padStart(4, '0')}`;
 }
