@@ -3,12 +3,12 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { apiGet, apiPost, ApiError } from "../../lib/api";
-import { addDays, field, ghostBtn, kes, METHOD_LABEL, primaryBtn, today, type Board, type DeskBooking, type Folio, type Room, type RoomType } from "./types";
+import { addDays, field, ghostBtn, kes, MEAL_LABEL, METHOD_LABEL, primaryBtn, today, type Board, type DeskBooking, type Folio, type GuestSummary, type MealPlan, type Room, type RoomType, type StayQuote } from "./types";
 
-const explain = (err: unknown, fallback: string) => (err instanceof ApiError ? err.message : fallback);
+export const explain = (err: unknown, fallback: string) => (err instanceof ApiError ? err.message : fallback);
 
 /** A centred box over the page. */
-function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
+export function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
   return (
     <div className="fixed inset-0 z-30 flex items-start justify-center overflow-y-auto bg-black/60 p-4">
       <div className="my-6 w-full max-w-xl space-y-3 rounded-xl border border-border bg-background p-5">
@@ -24,10 +24,10 @@ function Modal({ title, onClose, children }: { title: string; onClose: () => voi
   );
 }
 
-const Msg = ({ error }: { error: string | null }) => (error ? <p className="rounded-md bg-red-950 p-2 text-sm text-red-300">{error}</p> : null);
+export const Msg = ({ error }: { error: string | null }) => (error ? <p className="rounded-md bg-red-950 p-2 text-sm text-red-300">{error}</p> : null);
 
-type Method = "CASH" | "MPESA_RECEIPT" | "CARD";
-const METHODS: [Method, string][] = [
+export type Method = "CASH" | "MPESA_RECEIPT" | "CARD";
+export const METHODS: [Method, string][] = [
   ["CASH", "Cash"],
   ["MPESA_RECEIPT", "M-Pesa (receipt code)"],
   ["CARD", "Card"],
@@ -36,15 +36,56 @@ const METHODS: [Method, string][] = [
 // ── A new booking ───────────────────────────────────────────────────────
 
 export function NewBookingPanel({ types, rooms, isManager, onClose, onDone }: { types: RoomType[]; rooms: Room[]; isManager: boolean; onClose: () => void; onDone: (message: string) => void }) {
-  const [f, setF] = useState({ guestName: "", phone: "", idNumber: "", nationality: "", email: "", guests: "1", checkIn: today(), checkOut: addDays(today(), 1), roomTypeId: types[0]?.id ?? "", roomId: "", rate: "", source: "FRONT_DESK", notes: "" });
+  const [f, setF] = useState({ guestName: "", phone: "", idNumber: "", nationality: "", email: "", address: "", vehicleReg: "", guests: "1", children: "0", mealPlan: "ROOM_ONLY" as MealPlan, checkIn: today(), checkOut: addDays(today(), 1), roomTypeId: types[0]?.id ?? "", roomId: "", rate: "", source: "FRONT_DESK", notes: "" });
   const [dep, setDep] = useState({ amount: "", method: "CASH" as Method, reference: "" });
+  const [guestId, setGuestId] = useState<string | null>(null);
+  const [found, setFound] = useState<GuestSummary[] | null>(null);
+  const [quote, setQuote] = useState<StayQuote | null>(null);
+  const [quoteError, setQuoteError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const type = types.find((t) => t.id === f.roomTypeId);
   const roomsOfType = rooms.filter((r) => r.roomTypeId === f.roomTypeId && r.status !== "OUT_OF_ORDER");
   const set = (k: keyof typeof f, v: string) => setF((x) => ({ ...x, [k]: v }));
-  const nights = Math.max(0, Math.round((new Date(f.checkOut).getTime() - new Date(f.checkIn).getTime()) / 86_400_000));
-  const rate = f.rate ? Number(f.rate) : (type?.pricePerNight ?? 0);
+  const guestCount = Number(f.guests) || 1;
+  const childCount = Math.min(Number(f.children) || 0, Math.max(guestCount - 1, 0));
+
+  // The price comes from the hotel's own price list (seasons, weekends, extra guests, meals), the same one the marketplace uses.
+  useEffect(() => {
+    if (!f.roomTypeId || f.checkOut <= f.checkIn) {
+      setQuote(null);
+      return;
+    }
+    let live = true;
+    const timer = setTimeout(() => {
+      apiPost<StayQuote>("/hotel/bookings/quote", { roomTypeId: f.roomTypeId, checkIn: f.checkIn, checkOut: f.checkOut, rooms: 1, guests: guestCount, children: childCount, mealPlan: f.mealPlan, rate: isManager && f.rate ? Number(f.rate) : undefined })
+        .then((q) => live && (setQuote(q), setQuoteError(null)))
+        .catch((e) => live && (setQuote(null), setQuoteError(explain(e, "Could not work out the price."))));
+    }, 350);
+    return () => {
+      live = false;
+      clearTimeout(timer);
+    };
+  }, [f.roomTypeId, f.checkIn, f.checkOut, guestCount, childCount, f.mealPlan, f.rate, isManager]);
+
+  async function lookup() {
+    setError(null);
+    try {
+      const q = new URLSearchParams();
+      if (f.phone.trim()) q.set("phone", f.phone.trim());
+      if (f.idNumber.trim()) q.set("idNumber", f.idNumber.trim());
+      if (!q.toString()) return setError("Type the phone number or ID number first.");
+      setFound(await apiGet<GuestSummary[]>(`/hotel/guests/lookup?${q.toString()}`));
+    } catch (err) {
+      setError(explain(err, "Could not look the guest up."));
+    }
+  }
+
+  function pick(g: GuestSummary) {
+    setGuestId(g.id);
+    setFound(null);
+    setF((x) => ({ ...x, guestName: g.fullName, phone: g.phone, email: g.email ?? x.email, nationality: g.nationality ?? x.nationality, vehicleReg: g.vehicleReg ?? x.vehicleReg }));
+  }
 
   async function save(e: React.FormEvent) {
     e.preventDefault();
@@ -57,7 +98,12 @@ export function NewBookingPanel({ types, rooms, isManager, onClose, onDone }: { 
         idNumber: f.idNumber || undefined,
         nationality: f.nationality || undefined,
         email: f.email || undefined,
-        guests: Number(f.guests),
+        address: f.address || undefined,
+        vehicleReg: f.vehicleReg || undefined,
+        guestId: guestId ?? undefined,
+        guests: guestCount,
+        children: childCount || undefined,
+        mealPlan: f.mealPlan,
         checkIn: f.checkIn,
         checkOut: f.checkOut,
         roomTypeId: f.roomTypeId,
@@ -80,15 +126,36 @@ export function NewBookingPanel({ types, rooms, isManager, onClose, onDone }: { 
       <form onSubmit={save} className="space-y-3">
         <Msg error={error} />
         <div className="grid gap-3 sm:grid-cols-2">
+          <label className="text-sm">Phone<input required className={field} inputMode="tel" value={f.phone} onChange={(e) => { set("phone", e.target.value); setGuestId(null); }} placeholder="0712 345 678" /></label>
+          <label className="text-sm">ID / passport number<input className={field} value={f.idNumber} onChange={(e) => { set("idNumber", e.target.value); setGuestId(null); }} /></label>
+          <div className="sm:col-span-2">
+            <button type="button" className={ghostBtn} onClick={() => void lookup()}>Find a returning guest</button>
+            {guestId && <span className="ml-2 text-sm text-green-500">Returning guest chosen - their details are filled in.</span>}
+            {found && found.length === 0 && <span className="ml-2 text-sm text-secondary-500">Nobody with that phone or ID yet - a new guest will be added.</span>}
+            {found && found.length > 0 && (
+              <ul className="mt-2 divide-y divide-border rounded-lg border border-border">
+                {found.map((g) => (
+                  <li key={g.id} className="flex items-center justify-between gap-2 p-2 text-sm">
+                    <span>
+                      <strong>{g.fullName}</strong> · {g.phone}
+                      {g.idNumber ? ` · ID ${g.idNumber}` : ""} · {g.stays ?? 0} stay{g.stays === 1 ? "" : "s"}
+                      {g.smsOptOut && <span className="ml-2 text-xs text-amber-500">no texts</span>}
+                    </span>
+                    <button type="button" className={ghostBtn} onClick={() => pick(g)}>Use</button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
           <label className="text-sm">Guest name<input required className={field} value={f.guestName} onChange={(e) => set("guestName", e.target.value)} /></label>
-          <label className="text-sm">Phone<input required className={field} inputMode="tel" value={f.phone} onChange={(e) => set("phone", e.target.value)} placeholder="0712 345 678" /></label>
-          <label className="text-sm">ID / passport number<input className={field} value={f.idNumber} onChange={(e) => set("idNumber", e.target.value)} /></label>
           <label className="text-sm">Nationality<input className={field} value={f.nationality} onChange={(e) => set("nationality", e.target.value)} /></label>
+          <label className="text-sm">Address <span className="text-secondary-500">(optional)</span><input className={field} maxLength={300} value={f.address} onChange={(e) => set("address", e.target.value)} /></label>
+          <label className="text-sm">Vehicle registration <span className="text-secondary-500">(optional)</span><input className={field} maxLength={20} value={f.vehicleReg} onChange={(e) => set("vehicleReg", e.target.value)} /></label>
           <label className="text-sm">Arrives<input required type="date" min={today()} className={field} value={f.checkIn} onChange={(e) => set("checkIn", e.target.value)} /></label>
           <label className="text-sm">Leaves<input required type="date" min={addDays(f.checkIn, 1)} className={field} value={f.checkOut} onChange={(e) => set("checkOut", e.target.value)} /></label>
           <label className="text-sm">Room type
             <select required className={field} value={f.roomTypeId} onChange={(e) => { set("roomTypeId", e.target.value); set("roomId", ""); }}>
-              {types.map((t) => <option key={t.id} value={t.id}>{t.name} - {kes(t.pricePerNight)} a night</option>)}
+              {types.map((t) => <option key={t.id} value={t.id}>{t.name} - from {kes(t.pricePerNight)} a night</option>)}
             </select>
           </label>
           <label className="text-sm">A particular room <span className="text-secondary-500">(optional)</span>
@@ -97,10 +164,16 @@ export function NewBookingPanel({ types, rooms, isManager, onClose, onDone }: { 
               {roomsOfType.map((r) => <option key={r.id} value={r.id}>Room {r.number}</option>)}
             </select>
           </label>
-          <label className="text-sm">Guests<input required type="number" min={1} max={type?.maxGuests ?? 10} className={field} value={f.guests} onChange={(e) => set("guests", e.target.value)} /></label>
+          <label className="text-sm">Guests (all)<input required type="number" min={1} max={type?.maxGuests ?? 10} className={field} value={f.guests} onChange={(e) => set("guests", e.target.value)} /></label>
+          <label className="text-sm">…of whom children<input type="number" min={0} max={Math.max(guestCount - 1, 0)} className={field} value={f.children} onChange={(e) => set("children", e.target.value)} /></label>
+          <label className="text-sm">Meals
+            <select className={field} value={f.mealPlan} onChange={(e) => set("mealPlan", e.target.value)}>
+              {(Object.keys(MEAL_LABEL) as MealPlan[]).map((k) => <option key={k} value={k}>{MEAL_LABEL[k]}</option>)}
+            </select>
+          </label>
           <label className="text-sm">Booked by<select className={field} value={f.source} onChange={(e) => set("source", e.target.value)}><option value="FRONT_DESK">Walk-in</option><option value="PHONE">Phone</option></select></label>
           {isManager && (
-            <label className="text-sm sm:col-span-2">Rate per night <span className="text-secondary-500">(leave empty for {type ? kes(type.pricePerNight) : "the usual price"}; a change is logged)</span>
+            <label className="text-sm sm:col-span-2">Rate per night <span className="text-secondary-500">(leave empty to use the hotel&apos;s price list; a change is logged)</span>
               <input type="number" min={1} step="0.01" className={field} value={f.rate} onChange={(e) => set("rate", e.target.value)} />
             </label>
           )}
@@ -114,10 +187,27 @@ export function NewBookingPanel({ types, rooms, isManager, onClose, onDone }: { 
             <input className={field} placeholder={dep.method === "MPESA_RECEIPT" ? "M-Pesa code (needed)" : "Slip / reference"} value={dep.reference} onChange={(e) => setDep({ ...dep, reference: e.target.value })} />
           </div>
         </div>
-        <p className="text-sm text-secondary-500">{nights} night{nights === 1 ? "" : "s"} at {kes(rate)} = {kes(rate * nights)} before VAT.</p>
+        <QuoteBox quote={quote} error={quoteError} />
         <button disabled={busy || !f.roomTypeId} className={primaryBtn}>{busy ? "Booking..." : "Make the booking"}</button>
       </form>
     </Modal>
+  );
+}
+
+/** The price of a stay as the price list works it out: each night that differs, extras, meals and the taxes by name. */
+export function QuoteBox({ quote, error }: { quote: StayQuote | null; error: string | null }) {
+  if (error) return <p className="text-sm text-amber-500">{error}</p>;
+  if (!quote) return <p className="text-sm text-secondary-500">Choose the dates to see the price.</p>;
+  const n = quote.nights.length;
+  return (
+    <div className="space-y-0.5 rounded-lg border border-border p-3 text-sm">
+      <p className="flex justify-between"><span>{n} night{n === 1 ? "" : "s"} · room</span><span className="font-mono">{kes(quote.roomTotal)}</span></p>
+      {quote.extraTotal > 0 && <p className="flex justify-between"><span>Extra guests</span><span className="font-mono">{kes(quote.extraTotal)}</span></p>}
+      {quote.mealTotal > 0 && <p className="flex justify-between"><span>Meals</span><span className="font-mono">{kes(quote.mealTotal)}</span></p>}
+      {quote.taxes.map((t) => <p key={t.name} className="flex justify-between text-secondary-500"><span>{t.name} {t.percent}%</span><span className="font-mono">{kes(t.amount)}</span></p>)}
+      <p className="flex justify-between text-base font-bold"><span>Total</span><span className="font-mono">{kes(quote.total)}</span></p>
+      {quote.nights.some((x) => x.source !== "BASE") && <p className="pt-1 text-xs text-secondary-500">Some nights use a weekend or season price: {quote.nights.map((x) => `${x.date.slice(5)} ${kes(x.rate)}`).join(" · ")}</p>}
+    </div>
   );
 }
 
@@ -172,6 +262,13 @@ export function CheckInPanel({ booking, board, isManager, onClose, onDone }: { b
 
 // ── The folio, payments, adjustments, refunds ───────────────────────────
 
+/** The room taxes on a folio by name (VAT, tourism levy...), adding every night and every change to a night. */
+export function taxByName(folio: Folio): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const e of folio.entries) if (e.type === "ROOM_NIGHT" && e.taxBreakdown) for (const [name, v] of Object.entries(e.taxBreakdown)) out[name] = Math.round(((out[name] ?? 0) + v) * 100) / 100;
+  return out;
+}
+
 function FolioTable({ folio }: { folio: Folio }) {
   return (
     <>
@@ -192,7 +289,8 @@ function FolioTable({ folio }: { folio: Folio }) {
         </table>
       </div>
       <div className="space-y-0.5 text-sm">
-        <p className="flex justify-between"><span>Room nights (VAT {kes(folio.totals.roomTax)} inside)</span><span className="font-mono">{kes(folio.totals.roomNights)}</span></p>
+        <p className="flex justify-between"><span>Room nights (tax {kes(folio.totals.roomTax)} inside)</span><span className="font-mono">{kes(folio.totals.roomNights)}</span></p>
+        {Object.entries(taxByName(folio)).map(([name, amount]) => <p key={name} className="flex justify-between pl-4 text-secondary-500"><span>{name}</span><span className="font-mono">{kes(amount)}</span></p>)}
         {folio.totals.charges > 0 && <p className="flex justify-between"><span>Charged to the room</span><span className="font-mono">{kes(folio.totals.charges)}</span></p>}
         {folio.totals.adjustments !== 0 && <p className="flex justify-between"><span>Adjustments</span><span className="font-mono">{kes(folio.totals.adjustments)}</span></p>}
         <p className="flex justify-between"><span>Paid</span><span className="font-mono">{kes(folio.totals.payments - folio.totals.refunds)}</span></p>
@@ -252,6 +350,7 @@ export function FolioPanel({ booking, isManager, onClose, onChanged }: { booking
         {isManager && <button className={ghostBtn} onClick={() => setMode("adjust")}>Take money off</button>}
         {isManager && <button className={ghostBtn} onClick={() => setMode("refund")}>Refund</button>}
         <Link href={`/hotel-print/folio/${booking.id}`} target="_blank" className={ghostBtn}>Print folio</Link>
+        <Link href={`/hotel-print/card/${booking.id}`} target="_blank" className={ghostBtn}>Registration card</Link>
       </div>
       {mode && (
         <div className="space-y-2 rounded-lg border border-border p-3">

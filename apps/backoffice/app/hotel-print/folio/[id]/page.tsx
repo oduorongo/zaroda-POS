@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { apiGet, ApiError } from "../../../../lib/api";
 import { getSession } from "../../../../lib/auth";
 import { kes, METHOD_LABEL, type Folio } from "../../../front-desk/types";
+import { taxByName } from "../../../front-desk/panels";
 
 /** A plain white page for the printer (or "save as PDF"): the guest's folio, with the hotel's details and KRA PIN. */
 export default function PrintFolioPage() {
@@ -72,7 +73,10 @@ export default function PrintFolioPage() {
             <table className="ml-auto mt-3 text-sm">
               <tbody>
                 <tr><td className="pr-6 text-gray-600">Room charges</td><td className="text-right">{kes(folio.totals.roomNights).replace("KES ", "")}</td></tr>
-                <tr><td className="pr-6 text-gray-600">of which VAT / levies</td><td className="text-right">{kes(folio.totals.roomTax).replace("KES ", "")}</td></tr>
+                <tr><td className="pr-6 text-gray-600">of which taxes and levies</td><td className="text-right">{kes(folio.totals.roomTax).replace("KES ", "")}</td></tr>
+                {Object.entries(taxByName(folio)).map(([name, amount]) => (
+                  <tr key={name}><td className="pr-6 pl-4 text-gray-500">{name}</td><td className="text-right text-gray-500">{kes(amount).replace("KES ", "")}</td></tr>
+                ))}
                 {folio.totals.charges > 0 && <tr><td className="pr-6 text-gray-600">Charged to the room</td><td className="text-right">{kes(folio.totals.charges).replace("KES ", "")}</td></tr>}
                 {folio.totals.adjustments !== 0 && <tr><td className="pr-6 text-gray-600">Adjustments</td><td className="text-right">{kes(folio.totals.adjustments).replace("KES ", "")}</td></tr>}
                 <tr><td className="pr-6 text-gray-600">Paid</td><td className="text-right">{kes(folio.totals.payments - folio.totals.refunds).replace("KES ", "")}</td></tr>

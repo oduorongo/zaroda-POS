@@ -8,9 +8,10 @@ import { getSession, clearSession, isBackofficeRole, type Session } from "../../
 import { Nav } from "../../components/nav";
 import { PageHeader } from "../../components/page-header";
 import { CheckInPanel, CheckOutPanel, FolioPanel, MovePanel, NewBookingPanel } from "./panels";
+import { CancelPanel, ChangeStayPanel, NightAuditPanel } from "./ops-panels";
 import { kes, primaryBtn, ghostBtn, type Board, type DeskBooking, type RoomStatus, type RoomType } from "./types";
 
-type Panel = { kind: "new" } | { kind: "checkin" | "checkout" | "folio" | "move"; booking: DeskBooking };
+type Panel = { kind: "new" | "audit" } | { kind: "checkin" | "checkout" | "folio" | "move" | "change" | "cancel" | "noshow"; booking: DeskBooking };
 
 const ROOM_TONE: Record<RoomStatus, string> = {
   VACANT_CLEAN: "border-green-700 bg-green-950/40",
@@ -118,6 +119,9 @@ export default function FrontDeskPage() {
           </div>
           <div className="flex flex-wrap gap-2">
             <Link href="/rooms" className={ghostBtn}>Rooms &amp; housekeeping</Link>
+            {isManager && <Link href="/hotel-reports" className={ghostBtn}>Reports</Link>}
+            {isManager && <Link href="/hotel-settings" className={ghostBtn}>Rates &amp; rules</Link>}
+            {canWork && <button className={ghostBtn} onClick={() => setPanel({ kind: "audit" })}>Close the day</button>}
             {canWork && <button className={primaryBtn} onClick={() => setPanel({ kind: "new" })} disabled={types.length === 0}>New booking</button>}
           </div>
         </div>
@@ -142,6 +146,9 @@ export default function FrontDeskPage() {
             {list("Arriving today", board.arrivals, "Nobody is expected today.", (b) => (
               <>
                 <button className={ghostBtn} onClick={() => setPanel({ kind: "folio", booking: b })}>Payment</button>
+                {canWork && <button className={ghostBtn} onClick={() => setPanel({ kind: "change", booking: b })}>Change</button>}
+                {canWork && <button className={ghostBtn} onClick={() => setPanel({ kind: "cancel", booking: b })}>Cancel</button>}
+                {canWork && <button className={ghostBtn} onClick={() => setPanel({ kind: "noshow", booking: b })}>No-show</button>}
                 {canWork && <button className={primaryBtn} onClick={() => setPanel({ kind: "checkin", booking: b })}>Check in</button>}
               </>
             ))}
@@ -154,6 +161,7 @@ export default function FrontDeskPage() {
             {list("In the house", board.inHouse, "Nobody is checked in.", (b) => (
               <>
                 <button className={ghostBtn} onClick={() => setPanel({ kind: "folio", booking: b })}>Folio / payment</button>
+                {canWork && <button className={ghostBtn} onClick={() => setPanel({ kind: "change", booking: b })}>Change stay</button>}
                 {canWork && <button className={ghostBtn} onClick={() => setPanel({ kind: "move", booking: b })}>Move room</button>}
                 {canWork && <button className={primaryBtn} onClick={() => setPanel({ kind: "checkout", booking: b })}>Check out</button>}
               </>
@@ -180,9 +188,12 @@ export default function FrontDeskPage() {
         )}
 
         {panel?.kind === "new" && board && <NewBookingPanel types={types} rooms={board.rooms} isManager={isManager} onClose={() => setPanel(null)} onDone={done} />}
-        {panel?.kind === "checkin" && board && <CheckInPanel booking={panel.booking} board={board} isManager={isManager} onClose={() => setPanel(null)} onDone={done} />}
+        {panel?.kind === "checkin" && board && <CheckInPanel booking={panel.booking} board={board} isManager={isManager} onClose={() => setPanel(null)} onDone={(m) => { done(m); window.open(`/hotel-print/card/${panel.booking.id}`, "_blank"); }} />}
         {panel?.kind === "checkout" && <CheckOutPanel booking={panel.booking} isManager={isManager} onClose={() => setPanel(null)} onDone={(m, id) => { done(m); window.open(`/hotel-print/folio/${id}`, "_blank"); }} />}
         {panel?.kind === "folio" && <FolioPanel booking={panel.booking} isManager={isManager} onClose={() => setPanel(null)} onChanged={() => void load()} />}
+        {panel?.kind === "change" && board && <ChangeStayPanel booking={panel.booking} types={types} board={board} isManager={isManager} onClose={() => setPanel(null)} onDone={done} />}
+        {(panel?.kind === "cancel" || panel?.kind === "noshow") && <CancelPanel booking={panel.booking} isManager={isManager} noShow={panel.kind === "noshow"} onClose={() => setPanel(null)} onDone={done} />}
+        {panel?.kind === "audit" && <NightAuditPanel onClose={() => setPanel(null)} onDone={() => done("Day closed.")} />}
         {panel?.kind === "move" && board && <MovePanel booking={panel.booking} board={board} onClose={() => setPanel(null)} onDone={done} />}
       </main>
     </div>
