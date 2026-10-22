@@ -80,6 +80,8 @@ model Organization {
   restaurantTables          RestaurantTable[]
   restaurantTabs            RestaurantTab[]
   restaurantSettings        RestaurantSetting[]
+  hotelRooms                HotelRoom[]
+  hotelFolios               HotelFolio[]
   rentalProperties          RentalProperty[]
   rentalUnits               RentalUnit[]
   rentalListings            RentalListing[]
@@ -160,6 +162,7 @@ model Branch {
   kitchenStations       KitchenStation[]
   restaurantTabs        RestaurantTab[]
   restaurantSettings    RestaurantSetting[]
+  hotelRooms            HotelRoom[]
   salonResources        SalonResource[]
   salonAppointments     SalonAppointment[]
   purchaseOrders        PurchaseOrder[]
@@ -520,6 +523,7 @@ model ProductVariant {
   recipeIngredients      RecipeIngredient[]       @relation("RecipeFor")
   restaurantDish         RestaurantDish?
   restaurantTabLines     RestaurantTabLine[]
+  hotelRoomType          HotelRoomType?
   usedAsIngredientIn     RecipeIngredient[]       @relation("RecipeIngredientOf")
   ingredientOfSaleLines  SaleLineItemIngredient[]
   wasteLogs              WasteLog[]
@@ -1018,6 +1022,8 @@ model Sale {
   restaurantTip        RestaurantSaleTip?
   kitchenTickets       KitchenTicket[]
   tabSale              RestaurantTabSale?
+  roomSettlement       RoomBooking?
+  folioEntries         HotelFolioEntry[]
   pharmacyPrescription PharmacySalePrescription?
   salonAppointmentSale SalonAppointmentSale?
   serviceJobSale       ServiceJobSale?
@@ -1057,6 +1063,8 @@ enum PaymentMethod {
   MPESA
   CARD
   WALLET
+  ROOM_CHARGE // put on a checked-in hotel guest's folio (the sale is recorded; the guest pays at check-out)
+  MPESA_RECEIPT // paid by M-Pesa to the business's own till/paybill, receipt code typed in (taken on trust, like card)
 }
 
 model SalePayment {
@@ -1435,12 +1443,16 @@ model HotelRoomType {
   /// Advertised on the marketplace's Hotels page.
   isListed       Boolean  @default(false)
   isActive       Boolean  @default(true)
+  /// The product ("Room: Deluxe") room nights are sold as when a stay is settled, so room revenue is in Sales, Reports and tax.
+  variantId      String?  @unique
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
   organization Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  variant      ProductVariant?      @relation(fields: [variantId], references: [id], onDelete: SetNull)
   photos       HotelRoomPhoto[]
   bookings     RoomBooking[]
+  rooms        HotelRoom[]
 
   @@index([organizationId])
   @@map("hotel_room_types")
@@ -1488,7 +1500,8 @@ model RoomBooking {
   notes          String?
   // Snapshots, so the booking reads the same after the hotel renames or reprices a room.
   hotelName      String
-  hotelSlug      String
+  /// Null for a booking made at the front desk or by phone (no marketplace shop involved).
+  hotelSlug      String?
   roomTypeName   String
   pricePerNight  Decimal           @db.Decimal(12, 2)
   total          Decimal           @db.Decimal(12, 2)
@@ -1501,15 +1514,28 @@ model RoomBooking {
   /// Set when this booking's commission is rolled into a monthly invoice - a booking can only ever be billed once.
   commissionInvoiceId String?
 
-  paymentPhone          String
-  paymentDeadline       DateTime
+  paymentPhone          String?
+  paymentDeadline       DateTime?
   tumaMerchantRequestId String?
   paymentAttemptedAt    DateTime?
   mpesaReceiptNumber    String?   @unique
   paidAt                DateTime?
   lastPaymentError      String?
   // No account behind a booking: the guest's browser holds a secret and only its hash is kept.
-  guestTokenHash        String
+  guestTokenHash        String?
+
+  /// Where the booking came from. Commission is only ever charged on MARKETPLACE bookings.
+  source          RoomBookingSource @default(MARKETPLACE)
+  idNumber        String?
+  nationality     String?
+  /// Set when someone other than the nightly price was agreed (Manager or Owner only; audit-logged).
+  rateOverriddenBy String?
+  earlyCheckInBy  String?
+  /// Why a stay was checked out with money still owing (Manager or Owner).
+  balanceLeftReason String?
+  createdById     String?
+  /// The core sale that recorded the room revenue when the stay was settled at check-out.
+  settlementSaleId String? @unique
 
   checkedInAt  DateTime?
   checkedOutAt DateTime?
@@ -1521,11 +1547,125 @@ model RoomBooking {
   organization      Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   roomType          HotelRoomType      @relation(fields: [roomTypeId], references: [id])
   commissionInvoice CommissionInvoice? @relation(fields: [commissionInvoiceId], references: [id])
+  settlementSale    Sale?              @relation(fields: [settlementSaleId], references: [id])
+  folio             HotelFolio?
+  assignments       HotelRoomAssignment[]
 
   @@index([organizationId, status])
   @@index([roomTypeId, checkIn, checkOut])
   @@index([commissionInvoiceId])
   @@map("room_bookings")
+}
+
+enum RoomBookingSource {
+  MARKETPLACE
+  FRONT_DESK
+  PHONE
+}
+
+enum HotelRoomStatus {
+  VACANT_CLEAN
+  VACANT_DIRTY
+  OCCUPIED
+  OUT_OF_ORDER
+}
+
+enum FolioEntryType {
+  ROOM_NIGHT
+  CHARGE
+  PAYMENT
+  REFUND
+  ADJUSTMENT
+}
+
+/// A real room ("101"). A room TYPE's quantity follows the number of active rooms of that type once it has any.
+model HotelRoom {
+  id             String          @id @default(uuid())
+  organizationId String
+  branchId       String
+  roomTypeId     String
+  number         String
+  floor          String?
+  status         HotelRoomStatus @default(VACANT_CLEAN)
+  notes          String?
+  isActive       Boolean         @default(true)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  organization Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  branch       Branch                @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  roomType     HotelRoomType         @relation(fields: [roomTypeId], references: [id])
+  assignments  HotelRoomAssignment[]
+
+  @@unique([branchId, number])
+  @@index([organizationId])
+  @@index([roomTypeId])
+  @@map("hotel_rooms")
+}
+
+/// Which room(s) a stay is in. A room move closes one row and opens another, so the history is kept.
+model HotelRoomAssignment {
+  id        String    @id @default(uuid())
+  bookingId String
+  roomId    String
+  fromAt    DateTime  @default(now())
+  /// Null while the guest is in the room.
+  toAt      DateTime?
+  movedBy   String?
+  reason    String?
+
+  booking RoomBooking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  room    HotelRoom   @relation(fields: [roomId], references: [id])
+
+  @@index([bookingId])
+  @@index([roomId])
+  @@map("hotel_room_assignments")
+}
+
+/// A guest's running account for a stay. Entries are only ever added; a correction is a new ADJUSTMENT by a manager.
+model HotelFolio {
+  id             String   @id @default(uuid())
+  organizationId String
+  bookingId      String   @unique
+  /// Set when the nights of the stay were posted (at check-in), so they are posted exactly once.
+  nightsPostedAt DateTime?
+  createdAt      DateTime @default(now())
+
+  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  booking      RoomBooking        @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  entries      HotelFolioEntry[]
+
+  @@index([organizationId])
+  @@map("hotel_folios")
+}
+
+model HotelFolioEntry {
+  id          String         @id @default(uuid())
+  folioId     String
+  type        FolioEntryType
+  /// Always positive, except an ADJUSTMENT, which is signed (negative = a discount). A PAYMENT reduces what the guest owes;
+  /// everything else adds to it.
+  amount      Decimal        @db.Decimal(12, 2)
+  /// The tax inside a ROOM_NIGHT's amount, shown separately on the folio.
+  taxAmount   Decimal        @default(0) @db.Decimal(12, 2)
+  description String
+  /// The night a ROOM_NIGHT is for.
+  nightDate   DateTime?      @db.Date
+  /// How a PAYMENT or REFUND was made, and its receipt/slip number.
+  method      PaymentMethod?
+  reference   String?
+  /// The sale a CHARGE came from, or the settlement sale of the room nights.
+  saleId      String?
+  shiftId     String?
+  createdById String
+  createdAt   DateTime       @default(now())
+
+  folio HotelFolio @relation(fields: [folioId], references: [id], onDelete: Cascade)
+  sale  Sale?      @relation(fields: [saleId], references: [id])
+
+  @@index([folioId])
+  @@index([saleId])
+  @@map("hotel_folio_entries")
 }
 
 // Which kitchen station prepares a dish. A till order picks the station per line; an order from a table QR code

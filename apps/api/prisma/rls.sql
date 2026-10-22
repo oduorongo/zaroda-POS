@@ -1099,3 +1099,33 @@ DROP POLICY IF EXISTS tenant_isolation ON restaurant_settings;
 CREATE POLICY tenant_isolation ON restaurant_settings
   USING ("organizationId" = current_setting('app.current_tenant', true))
   WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+-- ── Hotel front desk: rooms, assignments, folios ────────────────────────────
+
+ALTER TABLE hotel_rooms ENABLE ROW LEVEL SECURITY;
+ALTER TABLE hotel_rooms FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON hotel_rooms;
+CREATE POLICY tenant_isolation ON hotel_rooms
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+ALTER TABLE hotel_folios ENABLE ROW LEVEL SECURITY;
+ALTER TABLE hotel_folios FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON hotel_folios;
+CREATE POLICY tenant_isolation ON hotel_folios
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+ALTER TABLE hotel_folio_entries ENABLE ROW LEVEL SECURITY;
+ALTER TABLE hotel_folio_entries FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON hotel_folio_entries;
+CREATE POLICY tenant_isolation ON hotel_folio_entries
+  USING (EXISTS (SELECT 1 FROM hotel_folios p WHERE p.id = hotel_folio_entries."folioId" AND p."organizationId" = current_setting('app.current_tenant', true)))
+  WITH CHECK (EXISTS (SELECT 1 FROM hotel_folios p WHERE p.id = hotel_folio_entries."folioId" AND p."organizationId" = current_setting('app.current_tenant', true)));
+
+ALTER TABLE hotel_room_assignments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE hotel_room_assignments FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON hotel_room_assignments;
+CREATE POLICY tenant_isolation ON hotel_room_assignments
+  USING (EXISTS (SELECT 1 FROM room_bookings p WHERE p.id = hotel_room_assignments."bookingId" AND p."organizationId" = current_setting('app.current_tenant', true)))
+  WITH CHECK (EXISTS (SELECT 1 FROM room_bookings p WHERE p.id = hotel_room_assignments."bookingId" AND p."organizationId" = current_setting('app.current_tenant', true)));

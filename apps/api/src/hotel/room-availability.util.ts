@@ -63,9 +63,9 @@ export function roomsTaken(bookings: HeldBooking[], checkIn: Date, checkOut: Dat
 }
 
 /** Whether a booking still keeps its rooms from other guests: paid ones, and unpaid ones still inside their payment window. */
-export function bookingHoldsRooms(booking: { status: string; paymentDeadline: Date }, now: Date = new Date()): boolean {
+export function bookingHoldsRooms(booking: { status: string; paymentDeadline: Date | null }, now: Date = new Date()): boolean {
   if (booking.status === 'CONFIRMED' || booking.status === 'CHECKED_IN') return true;
-  return booking.status === 'PENDING_PAYMENT' && booking.paymentDeadline.getTime() > now.getTime();
+  return booking.status === 'PENDING_PAYMENT' && booking.paymentDeadline !== null && booking.paymentDeadline.getTime() > now.getTime();
 }
 
 const round2 = (n: number) => Math.round(n * 100) / 100;

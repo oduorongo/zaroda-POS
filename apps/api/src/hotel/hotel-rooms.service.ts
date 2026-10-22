@@ -7,6 +7,8 @@ import { ObjectStorageService } from '../common/storage/object-storage.service';
 import { IMAGE_CONTENT_TYPES, MAX_IMAGE_BYTES, looksLikeImage } from '../catalog/product-images.service';
 import { roundMoney } from '../online-orders/online-orders.util';
 import { CancelBookingDto, UpsertRoomTypeDto } from './dto/hotel.dto';
+import { quantityFor } from './folio.util';
+import { ensureRoomProduct } from './physical-rooms.service';
 import { bookingHoldsRooms, eachNight, roomsTaken, todayInKenya } from './room-availability.util';
 
 export const MAX_ROOM_PHOTOS = 8;
@@ -86,7 +88,7 @@ export class HotelRoomsService {
     const { organizationId } = getTenantStore();
     const created = await this.tenantPrisma.run(async (tx) => {
       await this.refuseListingIfBlocked(tx, dto.isListed);
-      return tx.hotelRoomType.create({
+      const made = await tx.hotelRoomType.create({
         data: {
           organizationId,
           name: dto.name,
@@ -101,6 +103,8 @@ export class HotelRoomsService {
         },
         include: { photos: true },
       });
+      await ensureRoomProduct(tx, organizationId, made);
+      return made;
     });
     return this.view(created);
   }
@@ -110,7 +114,9 @@ export class HotelRoomsService {
       const existing = await this.requireRoomType(tx, id);
       // Staying listed is not a change; turning listing ON while blocked is refused.
       await this.refuseListingIfBlocked(tx, dto.isListed === true && !existing.isListed ? true : undefined);
-      return tx.hotelRoomType.update({
+      // Once the hotel has real rooms of this type, the count of active rooms is the quantity (the number typed is ignored).
+      const activeRooms = await tx.hotelRoom.count({ where: { roomTypeId: id, isActive: true } });
+      const saved = await tx.hotelRoomType.update({
         where: { id },
         data: {
           name: dto.name,
@@ -118,13 +124,15 @@ export class HotelRoomsService {
           amenities: dto.amenities || null,
           pricePerNight: dto.pricePerNight,
           maxGuests: dto.maxGuests,
-          quantity: dto.quantity,
+          quantity: quantityFor(activeRooms, dto.quantity),
           depositPercent: dto.depositPercent,
           ...(dto.isListed !== undefined ? { isListed: dto.isListed } : {}),
           ...(dto.isActive !== undefined ? { isActive: dto.isActive, ...(dto.isActive ? {} : { isListed: false }) } : {}),
         },
         include: { photos: true },
       });
+      await ensureRoomProduct(tx, existing.organizationId, saved);
+      return saved;
     });
     return this.view(updated);
   }
@@ -133,7 +141,7 @@ export class HotelRoomsService {
   async removeRoomType(id: string) {
     const result = await this.tenantPrisma.run(async (tx) => {
       const roomType = await this.requireRoomType(tx, id);
-      if ((await tx.roomBooking.count({ where: { roomTypeId: id } })) > 0) {
+      if ((await tx.roomBooking.count({ where: { roomTypeId: id } })) + (await tx.hotelRoom.count({ where: { roomTypeId: id } })) > 0) {
         await tx.hotelRoomType.update({ where: { id }, data: { isActive: false, isListed: false } });
         return { archived: true, keys: [] as string[] };
       }
