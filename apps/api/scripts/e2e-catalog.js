@@ -88,6 +88,9 @@ const tag = Date.now().toString(36).toUpperCase();
   const afterDel = (await h('GET', `/products/${bread.id}`)).json;
   check('its products simply become "No category"', afterDel.categoryId === null && afterDel.name === `Bread loaf ${tag}`, afterDel);
 
+  const cleared = await h('PATCH', `/products/${bread.id}`, { categoryId: null, taxClassId: null });
+  check('the back office clears a category or tax class by sending null (an empty box)', cleared.status === 200 && cleared.json.categoryId === null && cleared.json.taxClassId === null, cleared);
+
   section('3. Archive instead of delete');
   const fresh = (await h('POST', '/products', { name: `Never sold ${tag}` })).json;
   const freshDel = await h('DELETE', `/products/${fresh.id}`);

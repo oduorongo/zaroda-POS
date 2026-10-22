@@ -8,6 +8,7 @@ import { getSession, clearSession, isBackofficeRole, type Session } from "../../
 import { Nav } from "../../components/nav";
 import { PageHeader } from "../../components/page-header";
 import { variantLabel, variantTitleOf } from "../../lib/variant-label";
+import { VariantPicker, type PickedVariant } from "../../components/variant-picker";
 
 interface Variant {
   id: string;
@@ -70,6 +71,7 @@ export default function InventoryPage() {
   const [error, setError] = useState<string | null>(null);
 
   const [adjVariantId, setAdjVariantId] = useState("");
+  const [adjVariant, setAdjVariant] = useState<PickedVariant | null>(null);
   const [adjType, setAdjType] = useState("ADJUSTMENT");
   const [adjDelta, setAdjDelta] = useState("");
   const [adjBusy, setAdjBusy] = useState(false);
@@ -140,6 +142,7 @@ export default function InventoryPage() {
         quantityDelta: delta,
       });
       setAdjVariantId("");
+      setAdjVariant(null);
       setAdjDelta("");
       setAdjOpen(false);
       await loadTab();
@@ -215,12 +218,7 @@ export default function InventoryPage() {
 
             {adjOpen && (
               <div className="mb-4 flex flex-wrap items-center gap-2 rounded-lg border border-border p-3">
-                <input
-                  placeholder="Variant ID"
-                  value={adjVariantId}
-                  onChange={(e) => setAdjVariantId(e.target.value)}
-                  className="flex-1 rounded-md border border-border bg-background p-2 text-sm"
-                />
+                <VariantPicker branchId={branchId} value={adjVariant} onChange={(v) => { setAdjVariant(v); setAdjVariantId(v?.id ?? ""); }} />
                 <select
                   value={adjType}
                   onChange={(e) => setAdjType(e.target.value)}

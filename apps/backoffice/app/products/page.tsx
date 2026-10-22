@@ -3,7 +3,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { apiGet, apiPatch, apiPost, ApiError } from "../../lib/api";
+import { apiDelete, apiGet, apiPatch, apiPost, ApiError } from "../../lib/api";
+import { CATALOG_COLUMNS, downloadCsv, toCsv } from "../../lib/csv";
+import { ImportPanel } from "./import-panel";
 import { getSession, clearSession, isBackofficeRole, type Session } from "../../lib/auth";
 import { Nav } from "../../components/nav";
 import { PageHeader } from "../../components/page-header";
@@ -40,6 +42,12 @@ interface Product {
   taxClass: TaxClass | null;
   variants: Variant[];
   onlineVisible: boolean;
+  isActive: boolean;
+}
+
+interface Branch {
+  id: string;
+  name: string;
 }
 
 /**
@@ -82,6 +90,20 @@ export default function ProductsPage() {
   const [variantBusy, setVariantBusy] = useState(false);
   const [variantError, setVariantError] = useState<string | null>(null);
 
+  // Finding things, archived products, editing a product, and the CSV import
+  const [search, setSearch] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState(""); // "" = all, "__none" = no category
+  const [showArchived, setShowArchived] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [editingProductId, setEditingProductId] = useState<string | null>(null);
+  const [prodName, setProdName] = useState("");
+  const [prodCategoryId, setProdCategoryId] = useState("");
+  const [prodTaxClassId, setProdTaxClassId] = useState("");
+  const [prodBusy, setProdBusy] = useState(false);
+  const [prodError, setProdError] = useState<string | null>(null);
+  const [importOpen, setImportOpen] = useState(false);
+  const [branches, setBranches] = useState<Branch[]>([]);
+
   // Online listing controls only appear once the Online Shop add-on is on.
   // That endpoint is owner/manager-only, so other roles just don't see them.
   const [onlineShopActive, setOnlineShopActive] = useState(false);
@@ -89,7 +111,7 @@ export default function ProductsPage() {
   async function load() {
     try {
       const [productsResult, categoriesResult, taxClassesResult] = await Promise.all([
-        apiGet<Product[]>("/products"),
+        apiGet<Product[]>(`/products${showArchived ? "?includeArchived=true" : ""}`),
         apiGet<Category[]>("/categories"),
         apiGet<TaxClass[]>("/tax-classes"),
       ]);
@@ -118,11 +140,85 @@ export default function ProductsPage() {
       return;
     }
     setSessionState(s);
-    void load();
+    apiGet<Branch[]>("/branches").then(setBranches).catch(() => undefined);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router]);
 
-  const sortedProducts = useMemo(() => [...products].sort((a, b) => a.name.localeCompare(b.name)), [products]);
+  useEffect(() => {
+    if (session) void load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session, showArchived]);
+
+  const canEdit = session?.role === "OWNER" || session?.role === "MANAGER";
+
+  // Search by name, product code, option name or barcode; filter by category.
+  const sortedProducts = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return [...products]
+      .filter((p) => {
+        if (categoryFilter === "__none" ? p.category !== null : categoryFilter && p.category?.id !== categoryFilter) return false;
+        if (!q) return true;
+        return p.name.toLowerCase().includes(q) || p.variants.some((v) => v.sku.toLowerCase().includes(q) || (v.name ?? "").toLowerCase().includes(q) || (v.barcode ?? "").toLowerCase().includes(q));
+      })
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [products, search, categoryFilter]);
+
+  function startEditProduct(p: Product) {
+    setEditingProductId(p.id);
+    setProdName(p.name);
+    setProdCategoryId(p.category?.id ?? "");
+    setProdTaxClassId(p.taxClass?.id ?? "");
+    setProdError(null);
+  }
+
+  async function saveProduct(id: string) {
+    if (!prodName.trim()) return;
+    setProdBusy(true);
+    setProdError(null);
+    try {
+      // an empty box means "none": the server takes null to clear a category or tax class
+      await apiPatch(`/products/${id}`, { name: prodName.trim(), categoryId: prodCategoryId || null, taxClassId: prodTaxClassId || null });
+      setEditingProductId(null);
+      setNotice("Product updated.");
+      await load();
+    } catch (err) {
+      setProdError(err instanceof ApiError ? err.message : "Could not save that.");
+    } finally {
+      setProdBusy(false);
+    }
+  }
+
+  async function removeProduct(p: Product) {
+    if (!window.confirm(`Remove "${p.name}"? If it has ever been sold or stocked it is archived (hidden but kept in your reports); otherwise it is deleted.`)) return;
+    setNotice(null);
+    setError(null);
+    try {
+      const r = await apiDelete<{ archived: boolean }>(`/products/${p.id}`);
+      setNotice(r.archived ? `"${p.name}" is archived: it is hidden from your till and shop but kept in your reports. Tick "Show archived" to bring it back.` : `"${p.name}" was deleted.`);
+      await load();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not remove that.");
+    }
+  }
+
+  async function restoreProduct(p: Product) {
+    setNotice(null);
+    try {
+      await apiPost(`/products/${p.id}/restore`, {});
+      setNotice(`"${p.name}" is back. It is not on your online shop until you switch that on again.`);
+      await load();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not restore that.");
+    }
+  }
+
+  // The catalog as a file, in the same columns the import takes (so it can be edited and imported again).
+  function exportCatalog() {
+    const rows = sortedProducts.flatMap((p) =>
+      p.variants.map((v) => [p.name, p.category?.name ?? "", p.taxClass?.name ?? "", v.name ?? "", v.sku, Number(v.price), v.cost === null ? "" : Number(v.cost), v.barcode ?? "", v.quantityMode, ""]),
+    );
+    downloadCsv(`products-${new Date().toISOString().slice(0, 10)}.csv`, toCsv([...CATALOG_COLUMNS], rows));
+  }
 
   async function createProduct() {
     if (!newName.trim()) return;
@@ -225,8 +321,29 @@ export default function ProductsPage() {
       <Nav session={session} />
       <PageHeader />
       <main className="mx-auto max-w-4xl p-6">
-        <h1 className="mb-4 text-xl font-bold">Products</h1>
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+          <h1 className="text-xl font-bold">Products</h1>
+          <div className="flex flex-wrap gap-2">
+            <Link href="/categories" className="rounded-md border border-border px-3 py-2 text-sm hover:bg-secondary-500/10">Categories</Link>
+            <button onClick={exportCatalog} disabled={sortedProducts.length === 0} className="rounded-md border border-border px-3 py-2 text-sm hover:bg-secondary-500/10 disabled:opacity-40">Export CSV</button>
+            {canEdit && (
+              <button onClick={() => setImportOpen((v) => !v)} className="rounded-md border border-border px-3 py-2 text-sm hover:bg-secondary-500/10">Import CSV</button>
+            )}
+          </div>
+        </div>
         {error && <p className="mb-4 rounded-md bg-red-950 p-3 text-sm text-red-300">{error}</p>}
+        {notice && <p className="mb-4 rounded-md bg-green-950 p-3 text-sm text-green-300">{notice}</p>}
+        {importOpen && canEdit && (
+          <ImportPanel
+            branches={branches}
+            onClose={() => setImportOpen(false)}
+            onImported={(message) => {
+              setImportOpen(false);
+              setNotice(message);
+              void load();
+            }}
+          />
+        )}
 
         <section className="mb-6 rounded-lg border border-border p-4">
           <h2 className="mb-3 font-semibold">New product</h2>
@@ -272,21 +389,57 @@ export default function ProductsPage() {
           {createError && <p className="mt-2 text-sm text-red-400">{createError}</p>}
         </section>
 
+        <div className="mb-4 flex flex-wrap items-center gap-2">
+          <input
+            placeholder="Search by name, code or barcode"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="min-w-0 flex-1 rounded-md border border-border bg-surface p-2 text-sm"
+          />
+          <select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)} className="rounded-md border border-border bg-surface p-2 text-sm">
+            <option value="">All categories</option>
+            <option value="__none">No category</option>
+            {categories.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+          <label className="flex items-center gap-2 text-sm text-secondary-500">
+            <input type="checkbox" checked={showArchived} onChange={(e) => setShowArchived(e.target.checked)} />
+            Show archived
+          </label>
+        </div>
+
         {loading && <p className="text-secondary-500">Loading...</p>}
-        {!loading && sortedProducts.length === 0 && !error && <p className="text-secondary-500">No products yet.</p>}
+        {!loading && products.length === 0 && !error && <p className="text-secondary-500">No products yet.</p>}
+        {!loading && products.length > 0 && sortedProducts.length === 0 && <p className="text-secondary-500">No product matches that.</p>}
 
         <div className="space-y-3">
           {sortedProducts.map((product) => (
-            <div key={product.id} className="rounded-lg border border-border p-4">
+            <div key={product.id} className={`rounded-lg border border-border p-4 ${product.isActive ? "" : "opacity-70"}`}>
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="font-semibold">{product.name}</p>
+                  <p className="font-semibold">
+                    {product.name}
+                    {!product.isActive && <span className="ml-2 rounded bg-secondary-500/20 px-1.5 py-0.5 text-xs font-normal text-secondary-500">Archived</span>}
+                  </p>
                   <p className="text-xs text-secondary-500">
                     {product.category?.name ?? "No category"} · {product.taxClass?.name ?? "No tax class"}
                   </p>
                 </div>
-                <div className="flex items-center gap-2">
-                  {onlineShopActive && (
+                <div className="flex flex-wrap items-center justify-end gap-2">
+                  {canEdit && product.isActive && (
+                    <button onClick={() => (editingProductId === product.id ? setEditingProductId(null) : startEditProduct(product))} className="rounded-md bg-surface px-3 py-1.5 text-sm hover:bg-border">
+                      Edit
+                    </button>
+                  )}
+                  {canEdit && !product.isActive && (
+                    <button onClick={() => void restoreProduct(product)} className="rounded-md bg-primary-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-primary-700">
+                      Restore
+                    </button>
+                  )}
+                  {onlineShopActive && product.isActive && (
                     <Link
                       href={`/products/online/${product.id}`}
                       className={`rounded-md px-3 py-1.5 text-sm ${
@@ -296,14 +449,59 @@ export default function ProductsPage() {
                       {product.onlineVisible ? "Online ✓" : "Sell online"}
                     </Link>
                   )}
-                  <button
-                    onClick={() => setVariantForProductId(variantForProductId === product.id ? null : product.id)}
-                    className="rounded-md bg-surface px-3 py-1.5 text-sm hover:bg-border"
-                  >
-                    + Variant
-                  </button>
+                  {product.isActive && (
+                    <button
+                      onClick={() => setVariantForProductId(variantForProductId === product.id ? null : product.id)}
+                      className="rounded-md bg-surface px-3 py-1.5 text-sm hover:bg-border"
+                    >
+                      + Variant
+                    </button>
+                  )}
+                  {canEdit && product.isActive && (
+                    <button onClick={() => void removeProduct(product)} className="rounded-md px-2 py-1.5 text-sm text-red-400 hover:underline">
+                      Remove
+                    </button>
+                  )}
                 </div>
               </div>
+
+              {editingProductId === product.id && (
+                <div className="mt-3 flex flex-wrap items-end gap-2 rounded-md border border-border p-3">
+                  <label className="text-xs text-secondary-500">
+                    Name
+                    <input value={prodName} maxLength={200} onChange={(e) => setProdName(e.target.value)} className="mt-1 block w-56 rounded-md border border-border bg-background p-2 text-sm text-foreground" />
+                  </label>
+                  <label className="text-xs text-secondary-500">
+                    Category
+                    <select value={prodCategoryId} onChange={(e) => setProdCategoryId(e.target.value)} className="mt-1 block rounded-md border border-border bg-background p-2 text-sm text-foreground">
+                      <option value="">No category</option>
+                      {categories.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="text-xs text-secondary-500">
+                    Tax class
+                    <select value={prodTaxClassId} onChange={(e) => setProdTaxClassId(e.target.value)} className="mt-1 block rounded-md border border-border bg-background p-2 text-sm text-foreground">
+                      <option value="">No tax class</option>
+                      {taxClasses.map((t) => (
+                        <option key={t.id} value={t.id}>
+                          {t.name} ({(Number(t.rate) * 100).toFixed(0)}%)
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <button onClick={() => void saveProduct(product.id)} disabled={prodBusy || !prodName.trim()} className="rounded-md bg-primary-600 px-3 py-2 text-sm font-semibold text-white hover:bg-primary-500 disabled:opacity-40">
+                    {prodBusy ? "Saving..." : "Save"}
+                  </button>
+                  <button onClick={() => setEditingProductId(null)} className="rounded-md border border-border px-3 py-2 text-sm hover:bg-surface">
+                    Cancel
+                  </button>
+                  {prodError && <p className="w-full text-sm text-red-400">{prodError}</p>}
+                </div>
+              )}
 
               {product.variants.length > 0 && (
                 <table className="mt-3 w-full text-left text-sm">
