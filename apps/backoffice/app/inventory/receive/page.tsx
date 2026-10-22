@@ -50,6 +50,30 @@ interface ReceiveLine {
   expiryDate?: string;
   /** What was paid per unit (optional). */
   unitCost?: number;
+  /** Arrived broken, expired or wrong: not put into stock, written on the receipt. */
+  damaged?: number;
+}
+
+interface Supplier {
+  id: string;
+  name: string;
+}
+
+interface Warning {
+  variantId: string;
+  sku: string;
+  name: string;
+  price: number;
+  cost: number;
+  marginPercent: number;
+  previousCost: number | null;
+  reason: "BELOW_MINIMUM" | "LOSS" | "COST_UP";
+}
+
+interface ReceiptResult {
+  receipt: { id: string; receiptNumber: string };
+  warnings: Warning[];
+  bill: { id: string; billNumber: string; total: number; dueDate: string } | null;
 }
 
 export default function ReceiveStockPage() {
@@ -62,6 +86,12 @@ export default function ReceiveStockPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const [deliveryRef, setDeliveryRef] = useState("");
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const [supplierId, setSupplierId] = useState("");
+  const [makeBill, setMakeBill] = useState(false);
+  const [billNumber, setBillNumber] = useState("");
+  const [damaged, setDamaged] = useState("");
+  const [result, setResult] = useState<ReceiptResult | null>(null);
   const [search, setSearch] = useState("");
   const [selectedVariantId, setSelectedVariantId] = useState("");
   const [quantity, setQuantity] = useState("");
@@ -108,6 +138,10 @@ export default function ReceiveStockPage() {
   }, [router]);
 
   useEffect(() => {
+    apiGet<Supplier[]>("/suppliers").then(setSuppliers).catch(() => setSuppliers([]));
+  }, []);
+
+  useEffect(() => {
     if (!branchId.trim()) return;
     void loadRecent();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -116,7 +150,7 @@ export default function ReceiveStockPage() {
   async function loadRecent() {
     try {
       const txns = await apiGet<InventoryTransaction[]>(`/inventory/transactions?branchId=${branchId}`);
-      setRecent(txns.filter((t) => t.type === "ADJUSTMENT" && t.quantityDelta > 0).slice(0, 10));
+      setRecent(txns.filter((t) => (t.type === "RECEIPT" || t.type === "ADJUSTMENT") && t.quantityDelta > 0).slice(0, 10));
     } catch {
       // Non-critical - the receiving form still works without the recent log.
     }
@@ -160,17 +194,18 @@ export default function ReceiveStockPage() {
 
   function addLine() {
     setLineError(null);
-    const qty = Number(quantity);
+    const qty = Number(quantity || 0);
+    const bad = Number(damaged || 0);
     if (!selectedVariantId) {
       setLineError("Pick a product first.");
       return;
     }
-    if (!Number.isFinite(qty) || qty <= 0) {
-      setLineError("Quantity must be a positive number.");
+    if (!Number.isFinite(qty) || qty < 0 || !Number.isFinite(bad) || bad < 0 || qty + bad <= 0) {
+      setLineError("Enter the quantity received (or the quantity that was damaged).");
       return;
     }
-    if (selectedVariant?.quantityMode === "COUNT" && !Number.isInteger(qty)) {
-      setLineError("This product is sold by count - quantity must be a whole number.");
+    if (selectedVariant?.quantityMode === "COUNT" && (!Number.isInteger(qty) || !Number.isInteger(bad))) {
+      setLineError("This product is sold by count - quantities must be whole numbers.");
       return;
     }
     if (trackBatch && !batchNumber.trim()) {
@@ -192,11 +227,13 @@ export default function ReceiveStockPage() {
         batchNumber: trackBatch ? batchNumber.trim() : undefined,
         expiryDate: trackBatch && expiryDate ? expiryDate : undefined,
         unitCost: paid,
+        damaged: bad > 0 ? bad : undefined,
       },
     ]);
     setSearch("");
     setSelectedVariantId("");
     setQuantity("");
+    setDamaged("");
     setUnitCost("");
     setTrackBatch(false);
     setBatchNumber("");
@@ -213,42 +250,25 @@ export default function ReceiveStockPage() {
     if (lines.length === 0 || !branchId.trim()) return;
     setSubmitting(true);
     setSubmitError(null);
-    let done = 0;
-    const remaining = [...lines];
+    setResult(null);
     try {
-      while (remaining.length > 0) {
-        const line = remaining[0];
-        if (line.batchNumber) {
-          await apiPost("/inventory/batches", {
-            variantId: line.variantId,
-            branchId,
-            batchNumber: line.batchNumber,
-            expiryDate: line.expiryDate || undefined,
-            quantityReceived: line.quantity,
-            unitCost: line.unitCost,
-          });
-        } else {
-          await apiPost("/inventory/transactions", {
-            branchId,
-            variantId: line.variantId,
-            type: "ADJUSTMENT",
-            quantityDelta: line.quantity,
-            referenceId: deliveryRef.trim() || undefined,
-            unitCost: line.unitCost,
-          });
-        }
-        remaining.shift();
-        done += 1;
-        setLines([...remaining]);
-      }
-      setSuccessCount(done);
+      // One request: the whole delivery is received together or not at all, as one goods-received note.
+      const r = await apiPost<ReceiptResult>("/goods-receipts", {
+        branchId,
+        supplierId: supplierId || undefined,
+        deliveryNote: deliveryRef.trim() || undefined,
+        bill: makeBill ? { billNumber: billNumber.trim() || undefined } : undefined,
+        lines: lines.map((l) => ({ variantId: l.variantId, quantity: l.quantity, damaged: l.damaged, unitCost: l.unitCost, batchNumber: l.batchNumber, expiryDate: l.expiryDate })),
+      });
+      setResult(r);
+      setSuccessCount(lines.length);
+      setLines([]);
       setDeliveryRef("");
+      setBillNumber("");
+      setMakeBill(false);
       await loadRecent();
     } catch (err) {
-      setSubmitError(
-        (err instanceof ApiError ? err.message : "Could not record the delivery.") +
-          ` (${done} of ${done + remaining.length} line(s) saved; the rest are still listed below to retry.)`,
-      );
+      setSubmitError((err instanceof ApiError ? err.message : "Could not record the delivery.") + " Nothing was saved - fix it and try again.");
     } finally {
       setSubmitting(false);
     }
@@ -287,14 +307,41 @@ export default function ReceiveStockPage() {
             </select>
           </div>
           <div>
-            <label className="block text-xs text-secondary-500">Delivery reference (optional)</label>
+            <label className="block text-xs text-secondary-500">Supplier delivery note / invoice no. (optional)</label>
             <input
-              placeholder="e.g. supplier invoice # - applies to non-batch lines"
+              placeholder="e.g. the number on the supplier's paper"
               value={deliveryRef}
               onChange={(e) => setDeliveryRef(e.target.value)}
               className="mt-1 w-full rounded-md border border-border bg-surface p-2 text-sm"
             />
           </div>
+        </div>
+
+        <div className="mb-4 space-y-2 rounded-lg border border-border p-4">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div>
+              <label className="block text-xs text-secondary-500">Supplier (optional)</label>
+              <select value={supplierId} onChange={(e) => setSupplierId(e.target.value)} className="mt-1 w-full rounded-md border border-border bg-surface p-2 text-sm">
+                <option value="">No supplier</option>
+                {suppliers.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <label className="mt-5 flex items-center gap-2 text-sm">
+              <input type="checkbox" disabled={!supplierId} checked={makeBill} onChange={(e) => setMakeBill(e.target.checked)} />
+              Record what we now owe this supplier
+            </label>
+          </div>
+          {makeBill && (
+            <div>
+              <label className="block text-xs text-secondary-500">Supplier invoice number (the delivery note number is used if empty)</label>
+              <input value={billNumber} onChange={(e) => setBillNumber(e.target.value)} className="mt-1 w-full rounded-md border border-border bg-surface p-2 text-sm sm:w-1/2" />
+              <p className="mt-1 text-xs text-secondary-500">The bill is for the good stock only, at the prices you enter below (every line needs a price). It falls due after the supplier&apos;s payment terms.</p>
+            </div>
+          )}
         </div>
 
         <div className="mb-4 rounded-lg border border-border p-4">
@@ -370,6 +417,10 @@ export default function ReceiveStockPage() {
               />
             </div>
             <div>
+              <label className="block text-xs text-secondary-500">Damaged / rejected</label>
+              <input type="number" min={0} step="any" placeholder="0" value={damaged} onChange={(e) => setDamaged(e.target.value)} className="mt-1 w-28 rounded-md border border-border bg-background p-2 text-sm" />
+            </div>
+            <div>
               <label className="block text-xs text-secondary-500">
                 Price paid per {selectedVariant?.quantityMode === "WEIGHT" ? "kg / litre" : "item"} (KES, optional)
               </label>
@@ -435,6 +486,7 @@ export default function ReceiveStockPage() {
                   <div>
                     <span className="font-medium">{l.label}</span>{" "}
                     <span className="font-mono text-secondary-500">+{l.quantity}</span>
+                    {l.damaged ? <span className="ml-2 text-xs text-amber-500">{l.damaged} damaged (not added to stock)</span> : null}
                     {l.unitCost !== undefined && <span className="ml-2 text-xs text-secondary-500">at KES {l.unitCost.toLocaleString()} each</span>}
                     {l.batchNumber && (
                       <span className="ml-2 text-xs text-secondary-500">
@@ -459,8 +511,23 @@ export default function ReceiveStockPage() {
             {submitting ? "Saving..." : `Receive delivery (${lines.length})`}
           </button>
           {submitError && <p className="mt-2 text-sm text-red-400">{submitError}</p>}
-          {successCount > 0 && lines.length === 0 && !submitError && (
-            <p className="mt-2 text-sm text-emerald-400">Received {successCount} line(s) into stock.</p>
+          {result && lines.length === 0 && !submitError && (
+            <div className="mt-2 space-y-2 text-sm">
+              <p className="text-emerald-400">
+                Received {successCount} line(s) into stock as{" "}
+                <Link href={`/goods-receipts/${result.receipt.id}`} className="underline">
+                  {result.receipt.receiptNumber}
+                </Link>
+                .{result.bill && ` A bill of KES ${result.bill.total.toLocaleString()} (invoice ${result.bill.billNumber}) is due ${result.bill.dueDate}.`}
+              </p>
+              {result.warnings.map((w) => (
+                <p key={w.variantId} className="rounded-md bg-amber-950 p-2 text-amber-200">
+                  {w.reason === "LOSS" ? "Selling at a loss: " : w.reason === "BELOW_MINIMUM" ? "Thin margin: " : "Cost went up: "}
+                  {w.name} costs KES {w.cost.toLocaleString()} and sells for KES {w.price.toLocaleString()} ({w.marginPercent}% margin)
+                  {w.previousCost !== null ? `, up from KES ${w.previousCost.toLocaleString()}` : ""}. Check its selling price on the Products screen.
+                </p>
+              ))}
+            </div>
           )}
         </div>
 

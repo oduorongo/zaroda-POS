@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { apiGet, apiPatch, apiPost, ApiError } from "../../../lib/api";
 import { getSession, clearSession, isBackofficeRole, type Session } from "../../../lib/auth";
@@ -36,6 +37,26 @@ interface ReceiptDraft {
   trackBatch: boolean;
   /** What was actually paid per unit; empty = the price on the order. */
   unitCost: string;
+  /** Arrived broken, expired or wrong: not put into stock. */
+  damaged: string;
+}
+
+interface Warning {
+  variantId: string;
+  name: string;
+  price: number;
+  cost: number;
+  marginPercent: number;
+  previousCost: number | null;
+  reason: "BELOW_MINIMUM" | "LOSS" | "COST_UP";
+}
+
+interface ReceiptSummary {
+  id: string;
+  receiptNumber: string;
+  createdAt: string;
+  deliveryNote: string | null;
+  lines: { id: string; name: string; quantityAccepted: number; quantityDamaged: number }[];
 }
 
 const STATUS_COLOR: Record<Status, string> = {
@@ -56,15 +77,22 @@ export default function PurchaseOrderDetailPage() {
   const [drafts, setDrafts] = useState<Record<string, ReceiptDraft>>({});
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [deliveryNote, setDeliveryNote] = useState("");
+  const [makeBill, setMakeBill] = useState(false);
+  const [billNumber, setBillNumber] = useState("");
+  const [warnings, setWarnings] = useState<Warning[]>([]);
+  const [billMessage, setBillMessage] = useState<string | null>(null);
+  const [receipts, setReceipts] = useState<ReceiptSummary[]>([]);
 
   async function load() {
     try {
       const result = await apiGet<PurchaseOrder>(`/purchase-orders/${params.id}`);
       setOrder(result);
+      apiGet<ReceiptSummary[]>(`/goods-receipts?purchaseOrderId=${params.id}`).then(setReceipts).catch(() => setReceipts([]));
       setDrafts((prev) => {
         const next: Record<string, ReceiptDraft> = {};
         for (const l of result.lineItems) {
-          next[l.id] = prev[l.id] ?? { quantity: "", batchNumber: "", expiryDate: "", trackBatch: false, unitCost: "" };
+          next[l.id] = prev[l.id] ?? { quantity: "", batchNumber: "", expiryDate: "", trackBatch: false, unitCost: "", damaged: "" };
         }
         return next;
       });
@@ -98,11 +126,13 @@ export default function PurchaseOrderDetailPage() {
     const lines = order.lineItems
       .map((l) => {
         const d = drafts[l.id];
-        const qty = Number(d?.quantity);
-        if (!d || !Number.isFinite(qty) || qty <= 0) return null;
+        const qty = Number(d?.quantity || 0);
+        const bad = Number(d?.damaged || 0);
+        if (!d || !Number.isFinite(qty) || !Number.isFinite(bad) || qty < 0 || bad < 0 || qty + bad <= 0) return null;
         return {
           lineItemId: l.id,
           quantity: qty,
+          damaged: bad > 0 ? bad : undefined,
           batchNumber: d.trackBatch && d.batchNumber.trim() ? d.batchNumber.trim() : undefined,
           expiryDate: d.trackBatch && d.expiryDate ? d.expiryDate : undefined,
           unitCost: d.unitCost.trim() === "" ? undefined : Number(d.unitCost),
@@ -114,7 +144,17 @@ export default function PurchaseOrderDetailPage() {
     setBusy(true);
     setActionError(null);
     try {
-      await apiPost(`/purchase-orders/${order.id}/receive`, { lines });
+      const r = await apiPost<{ warnings: Warning[]; bill: { billNumber: string; total: number; dueDate: string } | null }>(`/purchase-orders/${order.id}/receive`, {
+        lines,
+        deliveryNote: deliveryNote.trim() || undefined,
+        bill: makeBill ? { billNumber: billNumber.trim() || undefined } : undefined,
+      });
+      setWarnings(r.warnings ?? []);
+      setBillMessage(r.bill ? `A bill of KES ${r.bill.total.toLocaleString()} (invoice ${r.bill.billNumber}) is due ${r.bill.dueDate}.` : null);
+      setDeliveryNote("");
+      setMakeBill(false);
+      setBillNumber("");
+      setDrafts({});
       await load();
     } catch (err) {
       setActionError(err instanceof ApiError ? err.message : "Could not record the receipt.");
@@ -212,6 +252,16 @@ export default function PurchaseOrderDetailPage() {
                                     onChange={(e) => updateDraft(l.id, { unitCost: e.target.value })}
                                     className="w-36 rounded-md border border-border bg-background p-1.5 text-sm"
                                   />
+                                  <input
+                                    type="number"
+                                    min={0}
+                                    step="any"
+                                    placeholder="damaged"
+                                    title="Arrived broken, expired or wrong: not added to stock, written on the receipt for a claim."
+                                    value={draft.damaged}
+                                    onChange={(e) => updateDraft(l.id, { damaged: e.target.value })}
+                                    className="w-24 rounded-md border border-border bg-background p-1.5 text-sm"
+                                  />
                                   <label className="flex items-center gap-1 text-xs text-secondary-500">
                                     <input
                                       type="checkbox"
@@ -248,7 +298,28 @@ export default function PurchaseOrderDetailPage() {
               </table>
             </section>
 
+            {canReceive && (
+              <div className="mt-4 space-y-2 rounded-lg border border-border p-3 text-sm">
+                <label className="block text-xs text-secondary-500">Supplier delivery note / invoice no. (optional)</label>
+                <input value={deliveryNote} onChange={(e) => setDeliveryNote(e.target.value)} className="w-full rounded-md border border-border bg-background p-2 text-sm sm:w-1/2" />
+                <label className="flex items-center gap-2">
+                  <input type="checkbox" checked={makeBill} onChange={(e) => setMakeBill(e.target.checked)} />
+                  Record what we now owe {order.supplier.name} (needs a price on every line received)
+                </label>
+                {makeBill && (
+                  <input placeholder="Supplier invoice number (delivery note number if empty)" value={billNumber} onChange={(e) => setBillNumber(e.target.value)} className="w-full rounded-md border border-border bg-background p-2 text-sm sm:w-1/2" />
+                )}
+              </div>
+            )}
+
             {actionError && <p className="mt-4 text-sm text-red-400">{actionError}</p>}
+            {billMessage && <p className="mt-4 text-sm text-emerald-400">{billMessage}</p>}
+            {warnings.map((w) => (
+              <p key={w.variantId} className="mt-2 rounded-md bg-amber-950 p-2 text-sm text-amber-200">
+                {w.reason === "LOSS" ? "Selling at a loss: " : w.reason === "BELOW_MINIMUM" ? "Thin margin: " : "Cost went up: "}
+                {w.name} now costs KES {w.cost.toLocaleString()} and sells for KES {w.price.toLocaleString()} ({w.marginPercent}% margin). Check its selling price.
+              </p>
+            ))}
 
             <div className="mt-4 flex gap-3">
               {canReceive && (
@@ -270,6 +341,28 @@ export default function PurchaseOrderDetailPage() {
                 </button>
               )}
             </div>
+            {receipts.length > 0 && (
+              <section className="mt-6">
+                <h2 className="mb-2 text-sm font-semibold text-secondary-600">Goods received against this order</h2>
+                <ul className="divide-y divide-border rounded-lg border border-border text-sm">
+                  {receipts.map((r) => (
+                    <li key={r.id} className="flex flex-wrap items-center justify-between gap-2 p-3">
+                      <span>
+                        <Link href={`/goods-receipts/${r.id}`} className="font-mono text-primary-400 hover:underline">
+                          {r.receiptNumber}
+                        </Link>{" "}
+                        · {new Date(r.createdAt).toLocaleDateString()}
+                        {r.deliveryNote ? ` · delivery note ${r.deliveryNote}` : ""}
+                      </span>
+                      <span className="text-secondary-500">
+                        {r.lines.reduce((s, l) => s + l.quantityAccepted, 0)} received
+                        {r.lines.some((l) => l.quantityDamaged > 0) ? `, ${r.lines.reduce((s, l) => s + l.quantityDamaged, 0)} damaged` : ""}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
           </>
         )}
       </main>

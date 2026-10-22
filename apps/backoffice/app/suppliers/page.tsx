@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { apiGet, apiPatch, apiPost, ApiError } from "../../lib/api";
 import { getSession, clearSession, isBackofficeRole, type Session } from "../../lib/auth";
 import { Nav } from "../../components/nav";
@@ -13,6 +14,7 @@ interface Supplier {
   phone: string | null;
   email: string | null;
   notes: string | null;
+  paymentTermsDays?: number;
 }
 
 export default function SuppliersPage() {
@@ -28,6 +30,7 @@ export default function SuppliersPage() {
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
   const [notes, setNotes] = useState("");
+  const [terms, setTerms] = useState("30");
   const [saveBusy, setSaveBusy] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
@@ -75,6 +78,7 @@ export default function SuppliersPage() {
     setPhone(s.phone ?? "");
     setEmail(s.email ?? "");
     setNotes(s.notes ?? "");
+    setTerms(String(s.paymentTermsDays ?? 30));
     setSaveError(null);
     setFormOpen(true);
   }
@@ -88,6 +92,7 @@ export default function SuppliersPage() {
       phone: phone.trim() || undefined,
       email: email.trim() || undefined,
       notes: notes.trim() || undefined,
+      paymentTermsDays: Number.isInteger(Number(terms)) && Number(terms) >= 0 ? Number(terms) : undefined,
     };
     try {
       if (editingId) {
@@ -113,9 +118,14 @@ export default function SuppliersPage() {
       <main className="mx-auto max-w-3xl p-6">
         <div className="mb-4 flex items-center justify-between">
           <h1 className="text-xl font-bold">Suppliers</h1>
-          <button onClick={openNew} className="rounded-md bg-primary-600 px-3 py-2 text-sm font-semibold hover:bg-primary-500">
-            + New supplier
-          </button>
+          <div className="flex gap-2">
+            <Link href="/supplier-bills" className="rounded-md bg-surface px-3 py-2 text-sm hover:bg-border">
+              Bills &amp; payments
+            </Link>
+            <button onClick={openNew} className="rounded-md bg-primary-600 px-3 py-2 text-sm font-semibold hover:bg-primary-500">
+              + New supplier
+            </button>
+          </div>
         </div>
 
         {formOpen && (
@@ -143,6 +153,17 @@ export default function SuppliersPage() {
                 <input
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
+                  className="mt-1 w-full rounded-md border border-border bg-background p-2 text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-secondary-500">Payment terms (days until a bill is due)</label>
+                <input
+                  type="number"
+                  min={0}
+                  max={365}
+                  value={terms}
+                  onChange={(e) => setTerms(e.target.value)}
                   className="mt-1 w-full rounded-md border border-border bg-background p-2 text-sm"
                 />
               </div>
