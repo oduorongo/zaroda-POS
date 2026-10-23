@@ -21,6 +21,11 @@ export class UpdateEtimsSettingsDto {
   @IsBoolean()
   enabled?: boolean;
 
+  /** Send finished sales, refunds and stock changes to KRA. Only sales made after this is turned on are ever sent. */
+  @IsOptional()
+  @IsBoolean()
+  sendSales?: boolean;
+
   @IsOptional()
   @IsEnum(EtimsEnvironment)
   environment?: EtimsEnvironment;
