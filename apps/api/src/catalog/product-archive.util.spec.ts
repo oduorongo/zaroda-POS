@@ -40,6 +40,8 @@ describe('HISTORY_SOURCES', () => {
       'inventoryItem.variantId',
       'lowStockAlert.variantId',
       'restaurantDish.variantId',
+      // a remembered match between a supplier's product code and ours: only a memory, not a record of anything that happened
+      'etimsSupplierItem.variantId',
     ]);
     const missing = pointing.filter(
       (p) => !known.has(p) && !goWithProduct.has(p),
