@@ -5,6 +5,7 @@ import { EtimsController } from './etims.controller';
 import { EtimsDocumentsService } from './etims-documents.service';
 import { EtimsSchedulerService } from './etims-scheduler.service';
 import { EtimsItemsService } from './etims-items.service';
+import { EtimsPurchasesService } from './etims-purchases.service';
 import { EtimsSettingsService } from './etims-settings.service';
 
 /**
@@ -20,6 +21,7 @@ import { EtimsSettingsService } from './etims-settings.service';
     EtimsCodesService,
     EtimsItemsService,
     EtimsDocumentsService,
+    EtimsPurchasesService,
     EtimsSchedulerService,
   ],
   exports: [EtimsSettingsService, EtimsClient],
