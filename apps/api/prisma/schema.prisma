@@ -122,6 +122,7 @@ model Organization {
   supplierBillCredits       SupplierBillCredit[]
   etimsSetting              EtimsSetting?
   etimsDevices              EtimsDevice[]
+  etimsItems                EtimsItem[]
   repackagings              Repackaging[]
   wasteLogs                 WasteLog[]
   expenses                  Expense[]
@@ -538,6 +539,7 @@ model ProductVariant {
   kitchenTicketLines     KitchenTicketLine[]
   purchaseOrderLineItems PurchaseOrderLineItem[]
   goodsReceiptLines      GoodsReceiptLine[]
+  etimsItem              EtimsItem?
   repackagedFrom         Repackaging[]            @relation("RepackagingFrom")
   repackagedInto         Repackaging[]            @relation("RepackagingTo")
   recipeIngredients      RecipeIngredient[]       @relation("RecipeFor")
@@ -4239,6 +4241,8 @@ model EtimsSetting {
   tin            String?
   /// The name KRA returned when the first device was connected.
   taxpayerName   String?
+  /// The last number used in an item code (KE2NTBA0000012 ends in a 7-digit counter); each new item takes the next.
+  itemSeq        Int              @default(0)
   updatedAt      DateTime         @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
@@ -4318,4 +4322,42 @@ model EtimsSyncState {
 
   @@id([environment, kind])
   @@map("etims_sync_state")
+}
+
+enum EtimsItemStatus {
+  /// Not sent to KRA yet, or sent and changed since.
+  NOT_SENT
+  REGISTERED
+  REJECTED
+}
+
+/// How one product option is known to KRA: the classification and units the owner chose, the unique item code KRA keeps it under, and
+/// whether KRA has it. An item must exist at KRA before it can be sold on an eTIMS receipt.
+model EtimsItem {
+  id             String          @id @default(uuid())
+  organizationId String
+  variantId      String          @unique
+  /// KRA's unique item code (e.g. KE2NTU0000012). Made on the first send and never changed after.
+  itemCd         String?
+  /// KRA's product classification the owner picked.
+  itemClsCd      String?
+  /// 1 raw material, 2 finished product, 3 service.
+  itemTyCd       String          @default("2")
+  pkgUnitCd      String          @default("NT")
+  qtyUnitCd      String          @default("U")
+  /// Set only to override the tax type taken from the product's tax class (A exempt, B 16%, C 0%, D non-VAT, E 8%).
+  taxTyCd        String?
+  status         EtimsItemStatus @default(NOT_SENT)
+  /// A fingerprint of what KRA was last told, so a later change to the name, price, barcode, tax or classification shows as "needs update".
+  sentHash       String?
+  lastError      String?
+  registeredAt   DateTime?
+  updatedAt      DateTime        @updatedAt
+
+  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  variant      ProductVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, itemCd])
+  @@index([organizationId, status])
+  @@map("etims_items")
 }

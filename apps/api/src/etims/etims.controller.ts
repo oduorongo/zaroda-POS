@@ -16,7 +16,14 @@ import {
   ItemClassQueryDto,
   UpdateEtimsSettingsDto,
 } from './dto/etims.dto';
+import {
+  ClassifyItemsDto,
+  ItemListQueryDto,
+  RegisterItemsDto,
+  UpdateEtimsItemDto,
+} from './dto/etims-items.dto';
 import { EtimsCodesService } from './etims-codes.service';
+import { EtimsItemsService } from './etims-items.service';
 import { EtimsSettingsService } from './etims-settings.service';
 
 // eTIMS is the business's tax setup, so it is for owners and managers; an auditor can look.
@@ -28,6 +35,7 @@ export class EtimsController {
   constructor(
     private readonly settings: EtimsSettingsService,
     private readonly codes: EtimsCodesService,
+    private readonly items: EtimsItemsService,
   ) {}
 
   @Roles(...READERS)
@@ -82,5 +90,35 @@ export class EtimsController {
   @Get('item-classes')
   itemClasses(@Query() q: ItemClassQueryDto) {
     return this.codes.searchItemClasses(q.search, q.limit);
+  }
+
+  // ── Products as KRA knows them ──
+  @Roles(...READERS)
+  @Get('items')
+  listItems(@Query() q: ItemListQueryDto) {
+    return this.items.list(q);
+  }
+
+  @Roles(...WRITERS)
+  @Put('items/:variantId')
+  updateItem(
+    @Param('variantId', ParseUUIDPipe) variantId: string,
+    @Body() dto: UpdateEtimsItemDto,
+  ) {
+    return this.items.update(variantId, dto);
+  }
+
+  @Roles(...WRITERS)
+  @Post('items/classify')
+  @HttpCode(200)
+  classify(@Body() dto: ClassifyItemsDto) {
+    return this.items.classify(dto.variantIds, dto.itemClsCd);
+  }
+
+  @Roles(...WRITERS)
+  @Post('items/register')
+  @HttpCode(200)
+  register(@Body() dto: RegisterItemsDto) {
+    return this.items.register(dto);
   }
 }

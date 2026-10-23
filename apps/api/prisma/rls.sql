@@ -1239,3 +1239,11 @@ DROP POLICY IF EXISTS tenant_isolation ON etims_devices;
 CREATE POLICY tenant_isolation ON etims_devices
   USING ("organizationId" = current_setting('app.current_tenant', true))
   WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+-- KRA eTIMS: how each product option is known to KRA
+ALTER TABLE etims_items ENABLE ROW LEVEL SECURITY;
+ALTER TABLE etims_items FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON etims_items;
+CREATE POLICY tenant_isolation ON etims_items
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));

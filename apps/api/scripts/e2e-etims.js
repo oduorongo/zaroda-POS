@@ -442,7 +442,71 @@ const PIN = `A${rand(9)}Z`;
     (await h('POST', '/etims/codes/sync', {})).status === 200,
   );
 
-  section('7. Disconnecting, and the records');
+  section("7. Products as KRA knows them");
+  const vat = (await h('POST', '/tax-classes', { name: `ETIMS VAT ${tag}`, rate: 0.16, isExempt: false })).json;
+  const exempt = (await h('POST', '/tax-classes', { name: `ETIMS exempt ${tag}`, rate: 0, isExempt: true })).json;
+  const mk = async (name, taxClassId, price = 100) => {
+    const p = (await h('POST', '/products', { name: `${name} ${tag}`, taxClassId })).json;
+    const v = (await h('POST', `/products/${p.id}/variants`, { sku: `${name.slice(0, 4).toUpperCase()}-${tag}`, price })).json;
+    return { p, v };
+  };
+  const unga = await mk('Unga', vat.id, 100);
+  const rice = await mk('Rice', exempt.id, 250);
+  const odd = await mk('REJECTME', vat.id, 50);
+  const plain = await mk('Plain', undefined, 30);
+  await sql.query("UPDATE product_variants SET \"quantityMode\" = 'WEIGHT' WHERE id = $1", [rice.v.id]);
+  const mine = (r) => r.json.rows.filter((x) => [unga, rice, odd, plain].some((m) => m.v.id === x.variantId));
+  const l1 = await h('GET', `/etims/items?search=${tag}`);
+  check('the new products are listed and need setting up (no classification yet)', l1.status === 200 && mine(l1).length === 4 && mine(l1).every((x) => x.state === 'NEEDS_SETUP' && x.problems.length > 0), mine(l1));
+  const byId = (r, m) => r.json.rows.find((x) => x.variantId === m.v.id);
+  check('the tax type is worked out: 16% is B, exempt is A, no tax class is D; weight is sold by KG', byId(l1, unga).taxTyCd === 'B' && byId(l1, rice).taxTyCd === 'A' && byId(l1, plain).taxTyCd === 'D' && byId(l1, rice).qtyUnitCd === 'KG' && byId(l1, unga).qtyUnitCd === 'U', l1.json.rows.map((x) => [x.sku, x.taxTyCd, x.qtyUnitCd]));
+  check('a cashier cannot see or change KRA items', (await h('GET', '/etims/items', undefined, cashier)).status === 403 && (await h('PUT', `/etims/items/${unga.v.id}`, { itemClsCd: '5059690800' }, cashier)).status === 403 && (await h('POST', '/etims/items/register', { all: true }, cashier)).status === 403);
+  check('a classification KRA does not have is refused', (await h('PUT', `/etims/items/${unga.v.id}`, { itemClsCd: '99999999' })).status === 400);
+  check('a unit KRA does not list is refused; a tax type outside A-E is refused', (await h('PUT', `/etims/items/${unga.v.id}`, { qtyUnitCd: 'ZZZ' })).status === 400 && (await h('PUT', `/etims/items/${unga.v.id}`, { taxTyCd: 'Q' })).status === 400);
+  const cls = await h('POST', '/etims/items/classify', { variantIds: [unga.v.id, rice.v.id, odd.v.id], itemClsCd: '5059690800' });
+  check('one classification is given to three products at once', cls.status === 200 && cls.json.updated === 3, cls.json);
+  const l2 = await h('GET', `/etims/items?search=${tag}`);
+  check('they are now ready to send; the one with no classification still needs setting up', byId(l2, unga).state === 'READY' && byId(l2, rice).state === 'READY' && byId(l2, odd).state === 'READY' && byId(l2, plain).state === 'NEEDS_SETUP');
+  check('the list can be filtered by state', (await h('GET', `/etims/items?search=${tag}&state=READY`)).json.rows.length === 3 && (await h('GET', '/etims/items?state=BOGUS')).status === 400);
+  const unsetup = await h('POST', '/etims/items/register', { variantIds: [plain.v.id] });
+  check('an item that is not set up is not sent, and says what is missing', unsetup.status === 200 && unsetup.json.sent === 0 && unsetup.json.failed.length === 1 && /classification/.test(unsetup.json.failed[0].message), unsetup.json);
+  await kra('POST', '/_test/clear-items');
+  const seqBefore = (await sql.query('SELECT "itemSeq" s FROM etims_settings WHERE "organizationId" = $1', [org.id])).rows[0].s;
+  const reg1 = await h('POST', '/etims/items/register', { variantIds: [unga.v.id, rice.v.id, odd.v.id] });
+  check('three items are sent: two accepted, and the one KRA refuses is reported with its reason', reg1.status === 200 && reg1.json.sent === 2 && reg1.json.failed.length === 1 && /991/.test(reg1.json.failed[0].message), reg1.json);
+  const saved = (await kra('GET', '/_test/items')).json;
+  const sentUnga = saved.find((s) => s.itemNm === `Unga ${tag}`);
+  check('KRA holds them with their own unique codes in the spec pattern', saved.length === 2 && saved.every((s) => /^KE2NT(U|KG)\d{7}$/.test(s.itemCd)) && new Set(saved.map((s) => s.itemCd)).size === 2, saved.map((s) => s.itemCd));
+  check('the price KRA is told has the tax in it (100 + 16% = 116) and the exempt rice is not taxed', sentUnga.dftPrc === 116 && saved.find((s) => s.itemNm === `Rice ${tag}`).dftPrc === 250 && sentUnga.taxTyCd === 'B', saved.map((s) => [s.itemNm, s.dftPrc, s.taxTyCd]));
+  check('KRA was sent the PIN, branch ID and key with each item', (await kra('GET', '/_test/requests')).json.filter((r) => r.method === 'saveItem').every((r) => r.body.tin === PIN && r.body.bhfId === '00' && /^[0-9a-f]{32}$/.test(r.body.cmcKey)));
+  const l3 = await h('GET', `/etims/items?search=${tag}`);
+  check('the list shows two registered and one rejected with the reason', byId(l3, unga).state === 'REGISTERED' && byId(l3, rice).state === 'REGISTERED' && byId(l3, odd).state === 'REJECTED' && /991/.test(byId(l3, odd).lastError), mine(l3).map((x) => [x.sku, x.state]));
+  check('the counter moved by the three codes made', (await sql.query('SELECT "itemSeq" s FROM etims_settings WHERE "organizationId" = $1', [org.id])).rows[0].s === seqBefore + 3);
+  const sendAgain = await h('POST', '/etims/items/register', { variantIds: [unga.v.id, rice.v.id] });
+  check('sending registered, unchanged items again sends nothing', sendAgain.json.sent === 0 && sendAgain.json.skipped === 2 && (await kra('GET', '/_test/items')).json.length === 2);
+  await sql.query('UPDATE product_variants SET price = 120 WHERE id = $1', [unga.v.id]);
+  check('a price change shows "needs update"', byId(await h('GET', `/etims/items?search=${tag}`), unga).state === 'NEEDS_UPDATE');
+  const upd = await h('POST', '/etims/items/register', { all: true });
+  check('"send everything that is ready or changed" sends just that one (the rejected one is left for you to fix)', upd.json.sent === 1 && upd.json.failed.length === 0, upd.json);
+  const after = (await kra('GET', '/_test/items')).json.find((s) => s.itemNm === `Unga ${tag}`);
+  check('KRA has the new price on the SAME item code', after.dftPrc === 139.2 && after.itemCd === sentUnga.itemCd, after);
+  check('the item code never changes', byId(await h('GET', `/etims/items?search=${tag}`), unga).itemCd === sentUnga.itemCd);
+  await sql.query("UPDATE products SET name = $2 WHERE id = $1", [odd.p.id, `Fixed ${tag}`]);
+  const fix = await h('PUT', `/etims/items/${odd.v.id}`, { itemTyCd: '2' });
+  check('fixing a rejected item reopens it', fix.status === 200 && fix.json.state === 'READY', fix.json);
+  await kra('POST', '/_test/fail-next?n=1&mode=894');
+  const downReg = await h('POST', '/etims/items/register', { variantIds: [odd.v.id] });
+  const oddCode = byId(await h('GET', `/etims/items?search=${tag}`), odd).itemCd;
+  check('KRA unreachable stops the round with a clear message; the item stays unsent and keeps its code', downReg.json.stopped && /Could not reach KRA/.test(downReg.json.stopped) && downReg.json.sent === 0 && Boolean(oddCode), downReg.json);
+  const okReg = await h('POST', '/etims/items/register', { variantIds: [odd.v.id] });
+  check('the next try sends it under the same code', okReg.json.sent === 1 && (await kra('GET', '/_test/items')).json.some((s) => s.itemCd === oddCode), okReg.json);
+  await sql.query('UPDATE products SET "isActive" = false, "archivedAt" = now() WHERE id = $1', [rice.p.id]);
+  check('an archived product is left out of the list', byId(await h('GET', `/etims/items?search=${tag}`), rice) === undefined);
+  const r = (await sql.query("SELECT relrowsecurity AS on, relforcerowsecurity AS forced FROM pg_class WHERE relname = 'etims_items'")).rows[0];
+  check('etims_items has row-level security switched on and forced', r?.on === true && r?.forced === true, r);
+  await sql.query('UPDATE products SET "isActive" = true, "archivedAt" = null WHERE id = $1', [rice.p.id]);
+
+  section('8. Disconnecting, and the records');
   check(
     'a cashier cannot disconnect',
     (await h('POST', `/etims/devices/${branchId}/disconnect`, {}, cashier))
