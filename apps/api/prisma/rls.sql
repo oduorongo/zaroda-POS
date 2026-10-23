@@ -1247,3 +1247,11 @@ DROP POLICY IF EXISTS tenant_isolation ON etims_items;
 CREATE POLICY tenant_isolation ON etims_items
   USING ("organizationId" = current_setting('app.current_tenant', true))
   WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+-- KRA eTIMS: sales and credit notes on their way to KRA
+ALTER TABLE etims_documents ENABLE ROW LEVEL SECURITY;
+ALTER TABLE etims_documents FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON etims_documents;
+CREATE POLICY tenant_isolation ON etims_documents
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
