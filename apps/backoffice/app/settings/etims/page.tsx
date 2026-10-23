@@ -106,7 +106,10 @@ export default function EtimsSettingsPage() {
       <main className="mx-auto max-w-3xl space-y-5 p-6">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h1 className="text-xl font-bold">KRA eTIMS connection</h1>
-          <Link href="/settings/tax" className={ghost}>Tax settings</Link>
+          <div className="flex gap-2">
+            <Link href="/settings/etims/items" className={ghost}>Products and KRA</Link>
+            <Link href="/settings/tax" className={ghost}>Tax settings</Link>
+          </div>
         </div>
         {error && <p className="rounded-md bg-red-950 p-3 text-sm text-red-300">{error}</p>}
         {notice && <p className="rounded-md bg-green-950 p-3 text-sm text-green-300">{notice}</p>}

@@ -4,7 +4,7 @@
 //
 //   node scripts/mock-kra.js            (listens on port 4020; set ETIMS_SANDBOX_URL=http://localhost:4020/etims-api/ in .env.local)
 //
-// Test controls (all under /_test): fail-next, delay, reset, bump-codes, many-classes, counts, requests.
+// Test controls (all under /_test): fail-next, delay, reset, bump-codes, many-classes, counts, items, requests.
 const http = require('http');
 const crypto = require('crypto');
 
@@ -23,6 +23,7 @@ let log = [];
 let failNext = { n: 0, mode: '894' };
 let delayMs = 0;
 let manyAdded = false;
+const items = new Map(); // `${tin}|${itemCd}` -> what was saved
 
 // ── the lists KRA would hold, each row with the moment it last changed ──
 const T0 = '20250101000000';
@@ -243,6 +244,22 @@ const handlers = {
       },
     });
   },
+  saveItem(b) {
+    const bad = checkDevice(b);
+    if (bad) return bad;
+    const need = ['itemCd', 'itemClsCd', 'itemTyCd', 'itemNm', 'orgnNatCd', 'pkgUnitCd', 'qtyUnitCd', 'taxTyCd', 'isrcAplcbYn', 'useYn', 'regrId', 'regrNm', 'modrId', 'modrNm'];
+    if (need.some((k) => b[k] === undefined || b[k] === null || b[k] === '') || typeof b.dftPrc !== 'number') return answer('910', 'Request parameter error');
+    const max = { itemCd: 20, itemClsCd: 10, itemNm: 200, bcd: 20, pkgUnitCd: 5, qtyUnitCd: 5, regrId: 20, regrNm: 60, modrId: 20, modrNm: 60 };
+    if (Object.entries(max).some(([k, n]) => typeof b[k] === 'string' && b[k].length > n)) return answer('910', 'Request parameter error');
+    if (!/^KE[123]/.test(b.itemCd)) return answer('910', 'Request parameter error');
+    if (!['1', '2', '3'].includes(b.itemTyCd) || !['A', 'B', 'C', 'D', 'E'].includes(b.taxTyCd)) return answer('910', 'Request parameter error');
+    const has = (cls, cd) => codeRows.some((r) => r.cdCls === cls && r.cd === cd);
+    if (!has('17', b.pkgUnitCd) || !has('10', b.qtyUnitCd) || !has('05', b.orgnNatCd)) return answer('910', 'Request parameter error');
+    if (b.itemNm.includes('REJECTME')) return answer('991', 'There is an error during registration');
+    if (!itemClasses.some((c) => c.itemClsCd === b.itemClsCd)) return answer('991', 'There is an error during registration');
+    items.set(`${b.tin}|${b.itemCd}`, { ...b, cmcKey: undefined, savedAt: kraNow() });
+    return answer('000', 'It is succeeded');
+  },
   selectCodeList(b) {
     const bad = checkDevice(b);
     if (bad) return bad;
@@ -310,6 +327,7 @@ const server = http.createServer((req, res) => {
       }
       if (what === 'reset') {
         installed.clear();
+        items.clear();
         log = [];
         failNext = { n: 0, mode: '894' };
         delayMs = 0;
@@ -358,6 +376,11 @@ const server = http.createServer((req, res) => {
           });
         return reply(res, { ok: true, total: itemClasses.length });
       }
+      if (what === 'clear-items') {
+        items.clear();
+        return reply(res, { ok: true });
+      }
+      if (what === 'items') return reply(res, [...items.values()]);
       if (what === 'counts')
         return reply(res, {
           codes: codeRows.length,
