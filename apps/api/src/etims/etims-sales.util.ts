@@ -327,11 +327,11 @@ export function buildSalesBody(i: SalesBodyInput): Record<string, unknown> {
 export const tracksStock = (l: Pick<KraLine, 'itemTyCd'>): boolean =>
   l.itemTyCd === '1' || l.itemTyCd === '2';
 
-/** The /insertStockIO body (spec 3.3.8.2). `sarTyCd` is "11" for a sale going out and "03" for a refund coming back in (spec 4.15). */
+/** The /insertStockIO body (spec 3.3.8.2). `sarTyCd` is the movement type of spec 4.15: "11" a sale going out, "03" a refund coming back, "02" a purchase, and so on. */
 export function buildStockIoBody(input: {
   creds: Creds;
   sarNo: number;
-  sarTyCd: '11' | '03';
+  sarTyCd: string;
   at: Date;
   lines: KraLine[];
   registrant: Registrant;

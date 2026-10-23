@@ -14,6 +14,7 @@ interface Supplier {
   phone: string | null;
   email: string | null;
   notes: string | null;
+  kraPin?: string | null;
   paymentTermsDays?: number;
 }
 
@@ -31,6 +32,7 @@ export default function SuppliersPage() {
   const [email, setEmail] = useState("");
   const [notes, setNotes] = useState("");
   const [terms, setTerms] = useState("30");
+  const [kraPin, setKraPin] = useState("");
   const [saveBusy, setSaveBusy] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
@@ -68,6 +70,7 @@ export default function SuppliersPage() {
     setPhone("");
     setEmail("");
     setNotes("");
+    setKraPin("");
     setSaveError(null);
     setFormOpen(true);
   }
@@ -79,6 +82,7 @@ export default function SuppliersPage() {
     setEmail(s.email ?? "");
     setNotes(s.notes ?? "");
     setTerms(String(s.paymentTermsDays ?? 30));
+    setKraPin(s.kraPin ?? "");
     setSaveError(null);
     setFormOpen(true);
   }
@@ -92,6 +96,8 @@ export default function SuppliersPage() {
       phone: phone.trim() || undefined,
       email: email.trim() || undefined,
       notes: notes.trim() || undefined,
+      // empty clears it when editing
+      kraPin: kraPin.trim() ? kraPin.trim() : editingId ? "" : undefined,
       paymentTermsDays: Number.isInteger(Number(terms)) && Number(terms) >= 0 ? Number(terms) : undefined,
     };
     try {
@@ -153,6 +159,15 @@ export default function SuppliersPage() {
                 <input
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
+                  className="mt-1 w-full rounded-md border border-border bg-background p-2 text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-secondary-500">KRA PIN (so their eTIMS invoices can be matched)</label>
+                <input
+                  value={kraPin}
+                  onChange={(e) => setKraPin(e.target.value)}
+                  placeholder="A123456789Z"
                   className="mt-1 w-full rounded-md border border-border bg-background p-2 text-sm"
                 />
               </div>

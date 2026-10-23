@@ -4,7 +4,7 @@
 //
 //   node scripts/mock-kra.js            (listens on port 4020; set ETIMS_SANDBOX_URL=http://localhost:4020/etims-api/ in .env.local)
 //
-// Test controls (all under /_test): fail-next, delay, reset, bump-codes, many-classes, counts, items, sales, stock-io, stock-levels, requests.
+// Test controls (all under /_test): fail-next, delay, reset, bump-codes, many-classes, counts, items, sales, stock-io, stock-levels, add-purchase, purchases, requests.
 const http = require('http');
 const crypto = require('crypto');
 
@@ -27,6 +27,8 @@ const items = new Map(); // `${tin}|${itemCd}` -> what was saved
 const sales = new Map(); // `${tin}|${bhfId}|${invcNo}` -> the sale or credit note
 const stockMoves = new Map(); // `${tin}|${bhfId}|${sarNo}` -> the stock movement
 const stockLevels = new Map(); // `${tin}|${bhfId}|${itemCd}` -> remaining quantity
+const supplierInvoices = []; // what suppliers sold to the business, as KRA would list it (each with the moment it was added)
+const purchases = new Map(); // `${tin}|${bhfId}|${invcNo}` -> a purchase the business confirmed
 
 // ── the lists KRA would hold, each row with the moment it last changed ──
 const T0 = '20250101000000';
@@ -327,6 +329,44 @@ const handlers = {
     stockLevels.set(`${b.tin}|${b.bhfId}|${b.itemCd}`, b.rsdQty);
     return answer('000', 'It is succeeded');
   },
+  selectTrnsPurchaseSalesList(b) {
+    const bad = checkDevice(b);
+    if (bad) return bad;
+    if (!/^\d{14}$/.test(b.lastReqDt || '')) return answer('910', 'Request parameter error');
+    const mine = supplierInvoices.filter((i) => i.forTin === b.tin && i.addedAt >= b.lastReqDt);
+    if (mine.length === 0) return answer('001', 'There is no search result');
+    return answer('000', 'It is succeeded', { saleList: mine.map(({ forTin: _t, addedAt: _a, ...i }) => i) });
+  },
+  insertTrnsPurchase(b) {
+    const bad = checkDevice(b);
+    if (bad) return bad;
+    const need = ['invcNo', 'orgInvcNo', 'regTyCd', 'pchsTyCd', 'rcptTyCd', 'pmtTyCd', 'pchsSttsCd', 'pchsDt', 'totItemCnt', 'totTaxblAmt', 'totTaxAmt', 'totAmt', 'regrId', 'regrNm', 'modrId', 'modrNm'];
+    if (need.some((k) => b[k] === undefined || b[k] === null || b[k] === '')) return answer('910', 'Request parameter error');
+    for (const l of ['A', 'B', 'C', 'D', 'E'])
+      for (const p of ['taxblAmt', 'taxRt', 'taxAmt'])
+        if (typeof b[p + l] !== 'number') return answer('910', 'Request parameter error');
+    if (!['A', 'M'].includes(b.regTyCd) || !['N', 'C', 'P'].includes(b.pchsTyCd) || !['P', 'R'].includes(b.rcptTyCd) || !/^0[1-6]$/.test(b.pchsSttsCd)) return answer('910', 'Request parameter error');
+    if (!/^\d{8}$/.test(b.pchsDt)) return answer('910', 'Request parameter error');
+    if (!Array.isArray(b.itemList) || b.itemList.length === 0 || b.itemList.length !== b.totItemCnt) return answer('910', 'Request parameter error');
+    const key = `${b.tin}|${b.bhfId}|${b.invcNo}`;
+    if (purchases.has(key)) return answer('994', 'The invoice number is already used');
+    const cents = (n) => Math.round(n * 100);
+    let sum = 0;
+    for (const it of b.itemList) {
+      if (!items.has(`${b.tin}|${it.itemCd}`)) return answer('910', 'The item is not registered');
+      const nums = ['qty', 'prc', 'splyAmt', 'dcAmt', 'taxblAmt', 'taxAmt', 'totAmt'];
+      if (nums.some((k) => typeof it[k] !== 'number') || !it.taxTyCd) return answer('910', 'Request parameter error');
+      sum += cents(it.totAmt);
+    }
+    if (sum !== cents(b.totAmt)) return answer('910', 'The totals do not add up');
+    if (b.regTyCd === 'A') {
+      // confirming a supplier's invoice: it has to be one KRA listed for this business
+      const known = supplierInvoices.some((i) => i.forTin === b.tin && i.spplrTin === b.spplrTin && i.spplrInvcNo === b.spplrInvcNo);
+      if (!known) return answer('910', 'There is no such supplier invoice');
+    }
+    purchases.set(key, { ...b, cmcKey: undefined, receivedAt: kraNow() });
+    return answer('000', 'It is succeeded');
+  },
   selectCodeList(b) {
     const bad = checkDevice(b);
     if (bad) return bad;
@@ -399,6 +439,8 @@ const server = http.createServer((req, res) => {
         sales.clear();
         stockMoves.clear();
         stockLevels.clear();
+        supplierInvoices.length = 0;
+        purchases.clear();
         log = [];
         failNext = { n: 0, mode: '894' };
         delayMs = 0;
@@ -453,6 +495,29 @@ const server = http.createServer((req, res) => {
       }
       if (what === 'items') return reply(res, [...items.values()]);
       if (what === 'sales') return reply(res, [...sales.values()]);
+      if (what === 'purchases') return reply(res, [...purchases.values()]);
+      if (what === 'add-purchase') {
+        // a supplier sells to the business: the body says who, and what (prices include tax, as KRA's samples do)
+        const o = raw ? JSON.parse(raw) : {};
+        const rate = { A: 0, B: 16, C: 0, D: 0, E: 8 };
+        const itemList = (o.lines || []).map((l, n) => {
+          const amt = Math.round(l.qty * l.prc * 100) / 100;
+          const tax = Math.round((amt * rate[l.taxTyCd || 'B'] * 100) / (100 + rate[l.taxTyCd || 'B'])) / 100;
+          return { itemSeq: n + 1, itemCd: l.itemCd, itemClsCd: l.itemClsCd || '5059690800', itemNm: l.itemNm, bcd: l.bcd || null, pkgUnitCd: 'NT', pkg: l.qty, qtyUnitCd: 'U', qty: l.qty, prc: l.prc, splyAmt: amt, dcRt: 0, dcAmt: 0, taxTyCd: l.taxTyCd || 'B', taxblAmt: amt, taxAmt: tax, totAmt: amt };
+        });
+        const by = { A: 0, B: 0, C: 0, D: 0, E: 0 };
+        const taxBy = { A: 0, B: 0, C: 0, D: 0, E: 0 };
+        for (const i of itemList) { by[i.taxTyCd] += i.taxblAmt; taxBy[i.taxTyCd] += i.taxAmt; }
+        const tot = itemList.reduce((s, i) => s + i.totAmt, 0);
+        const inv = {
+          forTin: o.forTin, addedAt: kraNow(), spplrTin: o.spplrTin, spplrNm: o.spplrNm || 'Test Supplier', spplrBhfId: '00', spplrInvcNo: o.spplrInvcNo, rcptTyCd: o.rcptTyCd || 'S', pmtTyCd: '01',
+          cfmDt: '2026-10-23 10:00:00', salesDt: '20261023', stockRlsDt: '2026-10-23 10:00:00', totItemCnt: itemList.length,
+          taxblAmtA: by.A, taxblAmtB: by.B, taxblAmtC: by.C, taxblAmtD: by.D, taxblAmtE: by.E, taxRtA: 0, taxRtB: 16, taxRtC: 0, taxRtD: 0, taxRtE: 8,
+          taxAmtA: taxBy.A, taxAmtB: taxBy.B, taxAmtC: taxBy.C, taxAmtD: taxBy.D, taxAmtE: taxBy.E, totTaxblAmt: tot, totTaxAmt: Object.values(taxBy).reduce((a, b2) => a + b2, 0), totAmt: tot, remark: null, itemList,
+        };
+        supplierInvoices.push(inv);
+        return reply(res, { ok: true, total: supplierInvoices.length });
+      }
       if (what === 'stock-io') return reply(res, [...stockMoves.values()]);
       if (what === 'stock-levels') return reply(res, Object.fromEntries(stockLevels));
       if (what === 'clear-documents') {

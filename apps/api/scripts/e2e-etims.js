@@ -97,6 +97,8 @@ const PIN = `A${rand(9)}Z`;
   await sql.query('DELETE FROM etims_item_classes');
   await sql.query('DELETE FROM etims_documents WHERE "organizationId" = $1', [org.id]);
   await sql.query('DELETE FROM etims_items WHERE "organizationId" = $1', [org.id]);
+  await sql.query('DELETE FROM etims_purchase_invoices WHERE "organizationId" = $1', [org.id]);
+  await sql.query('DELETE FROM etims_supplier_items WHERE "organizationId" = $1', [org.id]);
   await sql.query('DELETE FROM etims_devices WHERE "organizationId" = $1', [
     org.id,
   ]);
@@ -595,7 +597,7 @@ const PIN = `A${rand(9)}Z`;
   check('the next try carries on from the stock step and the sale is NOT sent again', r3c.json.sent === 1 && d3c.status === 'SENT' && d3c.invcNo === d3.invcNo && (await kra('GET', '/_test/sales')).json.filter((x) => x.invcNo === d3.invcNo).length === 1, d3c);
 
   // KRA refuses a sale
-  const cust = (await h('POST', '/customers', { name: 'REJECTSALE Customer', phone: '0700123456' })).json;
+  const cust = (await h('POST', '/customers', { name: 'REJECTSALE Customer', phone: `07${rand(8)}` })).json;
   const s4 = await sell([[sa, 1]], 116, { customerId: cust.id });
   const r4 = await run();
   const d4 = (await docOf(s4.json.id))[0];
@@ -640,7 +642,152 @@ const PIN = `A${rand(9)}Z`;
   await run();
   check('switching sending off stops new sales being queued', off2.json.sendSales === false && (await docOf(s6.json.id)).length === 0);
 
-  section('9. Disconnecting, and the records');
+  section('9. Purchases and stock movements go to KRA');
+  const spPin = `A${rand(9)}Z`;
+  check('a supplier PIN that is not a KRA PIN is refused', (await h('POST', '/suppliers', { name: `Bad ${tag}`, kraPin: 'nonsense' })).status === 400);
+  const sup = (await h('POST', '/suppliers', { name: `Etims Supplier ${tag}`, kraPin: ` ${spPin.toLowerCase()} ` })).json;
+  check('a supplier PIN is tidied to capitals', sup.kraPin === spPin, sup);
+  const noPinSup = (await h('POST', '/suppliers', { name: `No PIN ${tag}` })).json;
+  check('a supplier needs no PIN', Boolean(noPinSup.id) && noPinSup.kraPin === null, noPinSup);
+  check('a PIN can be cleared', (await h('PATCH', `/suppliers/${noPinSup.id}`, { kraPin: '' })).status === 200);
+
+  // sending on again starts a fresh clock
+  const on9 = await h('PUT', '/etims/settings', { sendSales: true });
+  check('sending is switched on again', on9.status === 200 && on9.json.sendSales === true, on9.json);
+  await new Promise((r) => setTimeout(r, 1100));
+  await kra('POST', '/_test/clear-documents');
+
+  const pa = await mk2('StkA', vat.id, 100);
+  const pb = await mk2('StkB', exempt.id, 250);
+  const pc = await mk2('StkC', vat.id, 40);
+  const pd = await mk2('StkD', vat.id, 70);
+  await sql.query('UPDATE product_variants SET cost = 60, barcode = $2 WHERE id = $1', [pa.v.id, `BC${rand(10)}`]);
+  await sql.query('UPDATE product_variants SET cost = 150 WHERE id = $1', [pb.v.id]);
+  const barcodeA = (await sql.query('SELECT barcode FROM product_variants WHERE id = $1', [pa.v.id])).rows[0].barcode;
+  await h('POST', '/etims/items/classify', { variantIds: [pa.v.id, pb.v.id, pc.v.id, pd.v.id], itemClsCd: '5059690800' });
+  await h('POST', '/etims/items/register', { variantIds: [pa.v.id, pb.v.id] });
+  const move = (m, qty, type = 'ADJUSTMENT') => h('POST', '/inventory/transactions', { branchId, variantId: m.v.id, type, quantityDelta: qty });
+  const movesOf = async () => (await sql.query("SELECT * FROM etims_documents WHERE \"organizationId\" = $1 AND kind = 'STOCK_MOVE' ORDER BY \"createdAt\"", [org.id])).rows;
+
+  // an adjustment up, an adjustment down
+  check('an adjustment up is recorded', (await move(pa, 10)).status === 201);
+  check('an adjustment of the second product is recorded', (await move(pb, 5)).status === 201);
+  const m1 = await run();
+  check('both movements are picked up and sent', m1.json.queued >= 2 && m1.json.sent >= 2 && m1.json.stopped === null, m1.json);
+  const io1 = (await kra('GET', '/_test/stock-io')).json;
+  const upA = io1.find((x) => x.sarTyCd === '06' && x.itemList.some((i) => i.qty === 10));
+  check('KRA was told "stock added" (type 06) with the quantity and a value (cost 60 + 16% = 69.60 each)', Boolean(upA) && upA.itemList[0].prc === 69.6 && upA.itemList[0].totAmt === 696 && upA.totItemCnt === 1, upA);
+  check('and each one has its own movement number', new Set(io1.map((x) => x.sarNo)).size === io1.length);
+  const lv1 = (await kra('GET', '/_test/stock-levels')).json;
+  check('KRA was told what is now in stock (10 and 5)', Object.values(lv1).includes(10) && Object.values(lv1).includes(5), lv1);
+  check('sending the same movements again sends nothing', (await run()).json.queued === 0 && (await kra('GET', '/_test/stock-io')).json.length === io1.length);
+
+  // waste goes out as "discarding"
+  const w = await h('POST', '/waste', { branchId, variantId: pa.v.id, quantity: 2, reason: 'DAMAGED' });
+  check('waste is recorded', w.status === 201, w.json);
+  await run();
+  const waste = (await kra('GET', '/_test/stock-io')).json.find((x) => x.sarTyCd === '15');
+  check('waste is reported as discarding (type 15)', Boolean(waste) && waste.itemList[0].qty === 2, waste);
+  const lvW = (await kra('GET', '/_test/stock-levels')).json;
+  check('and the stock level KRA holds follows (8 left)', Object.values(lvW).includes(8), lvW);
+  const adjDown = await move(pa, -1);
+  check('an adjustment down is recorded', adjDown.status === 201, adjDown.json);
+  await run();
+  check('an adjustment down is reported as type 16', (await kra('GET', '/_test/stock-io')).json.some((x) => x.sarTyCd === '16' && x.itemList[0].qty === 1));
+
+  // a product KRA does not have yet waits
+  await move(pc, 3);
+  const mw = await run();
+  const waiting = (await movesOf()).find((d) => d.status === 'PENDING' && /StkC/.test(d.lastError || ''));
+  check('stock of an unregistered product waits and says which product', mw.json.waiting >= 1 && Boolean(waiting), mw.json);
+  await h('POST', '/etims/items/register', { variantIds: [pc.v.id] });
+  await sql.query('UPDATE etims_documents SET "nextAttemptAt" = NULL WHERE id = $1', [waiting.id]);
+  check('once registered, it goes through', (await run()).json.sent >= 1 && (await sql.query('SELECT status FROM etims_documents WHERE id = $1', [waiting.id])).rows[0].status === 'SENT');
+
+  // KRA down: movements keep their place
+  await move(pb, 1);
+  await kra('POST', '/_test/fail-next?n=1&mode=894');
+  const down2 = await run();
+  check('KRA unreachable stops the pass and the movement stays queued', Boolean(down2.json.stopped) && (await movesOf()).some((d) => d.status === 'PENDING' && d.attempts === 1));
+  await sql.query("UPDATE etims_documents SET \"nextAttemptAt\" = NULL WHERE kind = 'STOCK_MOVE' AND status = 'PENDING' AND \"organizationId\" = $1", [org.id]);
+  check('the next pass sends it', (await run()).json.sent >= 1);
+
+  // a delivery: stock in as a purchase (02) and then reported as a purchase
+  const grn = await h('POST', '/goods-receipts', { branchId, supplierId: sup.id, deliveryNote: '7001', lines: [{ variantId: pa.v.id, quantity: 4, unitCost: 62 }, { variantId: pb.v.id, quantity: 2, unitCost: 150 }], bill: { billNumber: `EB-${tag}` } });
+  check('a delivery from the supplier is received', grn.status === 201, grn.json);
+  await run();
+  const delivered = (await kra('GET', '/_test/stock-io')).json.find((x) => x.sarTyCd === '02' && x.itemList.length === 2);
+  check('the stock that came in is reported as a purchase delivery (type 02)', Boolean(delivered), (await kra('GET', '/_test/stock-io')).json.map((x) => x.sarTyCd));
+  const rc = await h('GET', '/etims/purchases/receipts');
+  const mine9 = rc.json.find((x) => x.id === grn.json.receipt.id);
+  check('the delivery is listed as not yet reported, with the supplier PIN and the value', rc.status === 200 && mine9 && mine9.reported === null && mine9.supplierPin === spPin && mine9.value === 548 && mine9.missingPrices === 0, mine9);
+  check('a cashier cannot see or report deliveries', (await h('GET', '/etims/purchases/receipts', undefined, cashier)).status === 403 && (await h('POST', `/etims/purchases/receipts/${grn.json.receipt.id}/report`, {}, cashier)).status === 403);
+  const noPinGrn = await h('POST', '/goods-receipts', { branchId, supplierId: noPinSup.id, lines: [{ variantId: pa.v.id, quantity: 1, unitCost: 62 }] });
+  check('a delivery from a supplier with no PIN cannot be reported', (await h('POST', `/etims/purchases/receipts/${noPinGrn.json.receipt.id}/report`, {})).status === 400);
+  const rep = await h('POST', `/etims/purchases/receipts/${grn.json.receipt.id}/report`, {});
+  check('reporting the delivery queues a purchase', rep.status === 200 && Boolean(rep.json.documentId), rep.json);
+  check('it cannot be reported twice', (await h('POST', `/etims/purchases/receipts/${grn.json.receipt.id}/report`, {})).status === 400);
+  await run();
+  const kp = (await kra('GET', '/_test/purchases')).json;
+  const man = kp.find((x) => x.regTyCd === 'M');
+  check('KRA holds the purchase entered by hand, with the supplier, our invoice number and the amounts (248 + 16% tax + 300 exempt = 587.68)', kp.length === 1 && man.spplrTin === spPin && man.spplrInvcNo === 7001 && man.pchsSttsCd === '02' && man.rcptTyCd === 'P' && man.pmtTyCd === '02' && man.totAmt === 587.68 && man.taxAmtB === 39.68 && man.taxblAmtA === 300, man);
+  check('its invoice number comes from the purchase run, not the sales run', man.invcNo >= 1 && man.orgInvcNo === 0);
+  check('the delivery now shows as sent', (await h('GET', '/etims/purchases/receipts')).json.find((x) => x.id === grn.json.receipt.id).reported === 'SENT');
+
+  // the supplier's own eTIMS invoices
+  const post = (b) => call(KRA, 'POST', '/_test/add-purchase', { body: b });
+  await post({ forTin: PIN, spplrTin: spPin, spplrInvcNo: 555, lines: [{ itemCd: 'SUPP-A', itemNm: 'Their unga', bcd: barcodeA, qty: 3, prc: 116 }, { itemCd: 'SUPP-B', itemNm: 'Their rice', qty: 2, prc: 250, taxTyCd: 'A' }] });
+  await post({ forTin: PIN, spplrTin: spPin, spplrInvcNo: 556, rcptTyCd: 'R', lines: [{ itemCd: 'SUPP-A', itemNm: 'Their unga', qty: 1, prc: 116 }] });
+  check('a cashier cannot download or see supplier invoices', (await h('POST', '/etims/purchases/sync', {}, cashier)).status === 403 && (await h('GET', '/etims/purchases', undefined, cashier)).status === 403);
+  const sy = await h('POST', '/etims/purchases/sync', {});
+  check('the supplier invoices are downloaded', sy.status === 200 && sy.json.downloaded === 2 && sy.json.stopped === null, sy.json);
+  const pReqs = (await kra('GET', '/_test/requests')).json.filter((r) => r.method === 'selectTrnsPurchaseSalesList');
+  check('KRA was asked from the very beginning the first time, with the PIN, branch ID and key', pReqs[0].body.lastReqDt === '20180101000000' && pReqs[0].body.tin === PIN && /^[0-9a-f]{32}$/.test(pReqs[0].body.cmcKey), pReqs[0]?.body);
+  const sy2 = await h('POST', '/etims/purchases/sync', {});
+  check('downloading again brings nothing twice', sy2.json.downloaded === 0, sy2.json);
+  const pReqs2 = (await kra('GET', '/_test/requests')).json.filter((r) => r.method === 'selectTrnsPurchaseSalesList');
+  check('and KRA was asked from where the last download ended', pReqs2.length >= 2 && pReqs2[pReqs2.length - 1].body.lastReqDt !== '20180101000000');
+  const wl = await h('GET', '/etims/purchases?status=WAITING');
+  const inv = wl.json.rows.find((x) => x.invoiceNo === 555);
+  const credit9 = wl.json.rows.find((x) => x.invoiceNo === 556);
+  check('both are waiting; the supplier is recognised by its PIN; the second is a credit note', wl.json.rows.length === 2 && inv.knownSupplier === sup.name && credit9.kind === 'CREDIT_NOTE' && inv.total === 848, wl.json);
+  check('the line with a barcode we have is matched to our product; the other is not matched yet', inv.lines[0].suggested?.variantId === pa.v.id && inv.lines[0].suggested.registered === true && inv.lines[1].suggested === null, inv.lines);
+  check('accepting without matching every line is refused, naming the line', (await h('POST', `/etims/purchases/${inv.id}/accept`, { lines: [{ itemSeq: 1, variantId: pa.v.id }] })).status === 400);
+  const accUnreg = await h('POST', `/etims/purchases/${inv.id}/accept`, { lines: [{ itemSeq: 1, variantId: pa.v.id }, { itemSeq: 2, variantId: pd.v.id }] });
+  check('matching a line to a product not registered with KRA is refused, naming it', accUnreg.status === 400 && /StkD/.test(accUnreg.json.message), accUnreg.json);
+  check('a supplier credit note cannot be accepted here, only put aside', (await h('POST', `/etims/purchases/${credit9.id}/accept`, { lines: [{ itemSeq: 1, variantId: pa.v.id }] })).status === 400);
+  const acc = await h('POST', `/etims/purchases/${inv.id}/accept`, { lines: [{ itemSeq: 1, variantId: pa.v.id }, { itemSeq: 2, variantId: pb.v.id }], goodsReceiptId: grn.json.receipt.id });
+  check('with every line matched to a registered product, accepting queues a purchase', acc.status === 200 && Boolean(acc.json.documentId), acc.json);
+  check('an invoice cannot be accepted twice', (await h('POST', `/etims/purchases/${inv.id}/accept`, { lines: [{ itemSeq: 1, variantId: pa.v.id }, { itemSeq: 2, variantId: pb.v.id }] })).status === 400);
+  check('the credit note is put aside, once', (await h('POST', `/etims/purchases/${credit9.id}/dismiss`, {})).status === 200 && (await h('POST', `/etims/purchases/${credit9.id}/dismiss`, {})).status === 400);
+  await run();
+  const kp2 = (await kra('GET', '/_test/purchases')).json;
+  const auto = kp2.find((x) => x.regTyCd === 'A');
+  check("KRA holds the confirmed purchase: the supplier's invoice number, regTyCd A, the supplier's own item codes beside ours", Boolean(auto) && auto.spplrInvcNo === 555 && auto.spplrTin === spPin && auto.itemList[0].spplrItemCd === 'SUPP-A' && /^KE2NT/.test(auto.itemList[0].itemCd) && auto.itemList[0].spplrItemNm === 'Their unga', auto);
+  check("its amounts are the supplier's own (3 x 116 with 16% tax, 2 x 250 exempt = 848)", auto.totAmt === 848 && auto.taxblAmtB === 348 && auto.taxblAmtA === 500 && auto.taxAmtB === 48, auto);
+  check('the purchase numbers run on: the second is one more than the first', auto.invcNo === man.invcNo + 1);
+  check('the list shows the invoice as accepted and the other as put aside', (await h('GET', '/etims/purchases?status=ACCEPTED')).json.rows.length === 1 && (await h('GET', '/etims/purchases?status=DISMISSED')).json.rows.length === 1);
+  check('an unknown status is refused', (await h('GET', '/etims/purchases?status=BOGUS')).status === 400);
+
+  // the next invoice from the same supplier matches by itself
+  await post({ forTin: PIN, spplrTin: spPin, spplrInvcNo: 557, lines: [{ itemCd: 'SUPP-A', itemNm: 'Their unga', qty: 1, prc: 116 }, { itemCd: 'SUPP-B', itemNm: 'Their rice', qty: 1, prc: 250, taxTyCd: 'A' }] });
+  await h('POST', '/etims/purchases/sync', {});
+  const next = (await h('GET', '/etims/purchases?status=WAITING')).json.rows.find((x) => x.invoiceNo === 557);
+  check('matching is remembered: both lines of the next invoice are matched, with no barcode needed', next.lines[0].suggested?.variantId === pa.v.id && next.lines[1].suggested?.variantId === pb.v.id, next.lines);
+
+  // the screen data and the records
+  const all9 = await h('GET', '/etims/documents');
+  check('the documents list carries purchases and stock movements, with the kind of movement', all9.json.rows.some((d) => d.kind === 'PURCHASE') && all9.json.rows.some((d) => d.kind === 'STOCK_MOVE' && d.movement === '06') && all9.json.rows.some((d) => d.movement === '15'), all9.json.rows.slice(0, 3));
+  const ok9 = await h('GET', '/etims/documents?status=PENDING');
+  check('nothing is stuck except what is waiting for a reason', ok9.json.rows.every((d) => d.lastError));
+  for (const t of ['etims_purchase_invoices', 'etims_supplier_items']) {
+    const rr = (await sql.query('SELECT relrowsecurity AS on, relforcerowsecurity AS forced FROM pg_class WHERE relname = $1', [t])).rows[0];
+    check(`${t} has row-level security switched on and forced`, rr?.on === true && rr?.forced === true, rr);
+  }
+  check('the key is never kept in a purchase document', !JSON.stringify((await sql.query("SELECT payload FROM etims_documents WHERE kind = 'PURCHASE' AND \"organizationId\" = $1", [org.id])).rows).includes('cmcKey'));
+  await h('PUT', '/etims/settings', { sendSales: false });
+
+section('10. Disconnecting, and the records');
   check(
     'a cashier cannot disconnect',
     (await h('POST', `/etims/devices/${branchId}/disconnect`, {}, cashier))

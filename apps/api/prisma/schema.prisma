@@ -124,6 +124,8 @@ model Organization {
   etimsDevices              EtimsDevice[]
   etimsItems                EtimsItem[]
   etimsDocuments            EtimsDocument[]
+  etimsPurchaseInvoices     EtimsPurchaseInvoice[]
+  etimsSupplierItems        EtimsSupplierItem[]
   repackagings              Repackaging[]
   wasteLogs                 WasteLog[]
   expenses                  Expense[]
@@ -541,6 +543,7 @@ model ProductVariant {
   purchaseOrderLineItems PurchaseOrderLineItem[]
   goodsReceiptLines      GoodsReceiptLine[]
   etimsItem              EtimsItem?
+  etimsSupplierItems     EtimsSupplierItem[]
   repackagedFrom         Repackaging[]            @relation("RepackagingFrom")
   repackagedInto         Repackaging[]            @relation("RepackagingTo")
   recipeIngredients      RecipeIngredient[]       @relation("RecipeFor")
@@ -2339,6 +2342,8 @@ model Supplier {
   notes          String?
   /// Days after a bill's date that it falls due (30 unless set).
   paymentTermsDays Int    @default(30)
+  /// The supplier's KRA PIN, so their eTIMS invoices to us can be matched.
+  kraPin         String?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
@@ -4247,6 +4252,8 @@ model EtimsSetting {
   /// Whether this business sends its sales to KRA. Off until the owner turns it on; only sales made after that moment are ever sent.
   sendSales      Boolean          @default(false)
   salesStartAt   DateTime?
+  /// How far the scan for stock movements (adjustments, waste, transfers...) to report has got.
+  stockScannedAt DateTime?
   updatedAt      DateTime         @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
@@ -4275,6 +4282,9 @@ model EtimsDevice {
   /// The last invoice number and stock-movement number used on this branch's device (KRA wants each to be a running number).
   invcSeq        Int               @default(0)
   sarSeq         Int               @default(0)
+  /// The last number used for a purchase reported to KRA, and where the download of suppliers' invoices to this branch has got to (KRA's own timestamp).
+  pchsSeq        Int               @default(0)
+  purchasesSyncedAt String?
   updatedAt      DateTime          @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
@@ -4372,6 +4382,10 @@ model EtimsItem {
 enum EtimsDocKind {
   SALE
   CREDIT_NOTE
+  /// A purchase confirmed to KRA (from a supplier's eTIMS invoice, or entered by hand for a delivery).
+  PURCHASE
+  /// Stock moved for a reason other than a sale or a delivery being bought: an adjustment, waste, a transfer, repacking, production.
+  STOCK_MOVE
 }
 
 enum EtimsDocStatus {
@@ -4393,9 +4407,12 @@ model EtimsDocument {
   organizationId String
   branchId       String
   kind           EtimsDocKind
-  saleId         String
+  saleId         String?
   refundId       String?
-  /// "SALE:<id>" or "CREDIT:<id>": one document per sale or refund, ever.
+  /// For a purchase: the supplier invoice it confirms, or the goods-received note it reports.
+  purchaseInvoiceId String?
+  receiptId      String?
+  /// "SALE:<id>", "CREDIT:<id>", "PURCHASE:<id>", "STOCK:<...>": one document per thing, ever.
   sourceKey      String
   status         EtimsDocStatus @default(PENDING)
   /// The running numbers KRA was sent (made on the first attempt and kept for every retry).
@@ -4425,4 +4442,59 @@ model EtimsDocument {
   @@index([organizationId, status, createdAt])
   @@index([saleId])
   @@map("etims_documents")
+}
+
+enum EtimsPurchaseStatus {
+  /// Downloaded from KRA, waiting for someone to match it and accept it.
+  WAITING
+  ACCEPTED
+  /// Put aside without telling KRA anything (a supplier credit note, or an invoice that is not ours).
+  DISMISSED
+}
+
+/// A supplier's eTIMS invoice to this business, as KRA lists it (/selectTrnsPurchaseSalesList). Accepting it confirms the purchase to KRA.
+model EtimsPurchaseInvoice {
+  id             String              @id @default(uuid())
+  organizationId String
+  /// The branch whose device downloaded it.
+  branchId       String
+  spplrTin       String
+  spplrNm        String?
+  spplrBhfId     String
+  spplrInvcNo    Int
+  /// S = sale to us, R = the supplier's credit note.
+  rcptTyCd       String
+  pmtTyCd        String?
+  salesDt        String?
+  totAmt         Decimal             @db.Decimal(14, 2)
+  /// The invoice exactly as KRA listed it (totals by tax type and every line).
+  body           Json
+  status         EtimsPurchaseStatus @default(WAITING)
+  /// The delivery note this invoice was matched to, if any (the goods themselves come in through receiving).
+  goodsReceiptId String?
+  decidedAt      DateTime?
+  createdAt      DateTime            @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, branchId, spplrTin, spplrBhfId, spplrInvcNo, rcptTyCd])
+  @@index([organizationId, status, createdAt])
+  @@map("etims_purchase_invoices")
+}
+
+/// What a supplier calls a product, matched to ours once, so their next invoice matches by itself.
+model EtimsSupplierItem {
+  id             String   @id @default(uuid())
+  organizationId String
+  spplrTin       String
+  spplrItemCd    String
+  variantId      String
+  createdAt      DateTime @default(now())
+
+  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  variant      ProductVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, spplrTin, spplrItemCd])
+  @@index([variantId])
+  @@map("etims_supplier_items")
 }
