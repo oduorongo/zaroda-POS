@@ -123,6 +123,7 @@ model Organization {
   etimsSetting              EtimsSetting?
   etimsDevices              EtimsDevice[]
   etimsItems                EtimsItem[]
+  etimsDocuments            EtimsDocument[]
   repackagings              Repackaging[]
   wasteLogs                 WasteLog[]
   expenses                  Expense[]
@@ -4243,6 +4244,9 @@ model EtimsSetting {
   taxpayerName   String?
   /// The last number used in an item code (KE2NTBA0000012 ends in a 7-digit counter); each new item takes the next.
   itemSeq        Int              @default(0)
+  /// Whether this business sends its sales to KRA. Off until the owner turns it on; only sales made after that moment are ever sent.
+  sendSales      Boolean          @default(false)
+  salesStartAt   DateTime?
   updatedAt      DateTime         @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
@@ -4268,6 +4272,9 @@ model EtimsDevice {
   bhfNm          String?
   connectedAt    DateTime?
   lastError      String?
+  /// The last invoice number and stock-movement number used on this branch's device (KRA wants each to be a running number).
+  invcSeq        Int               @default(0)
+  sarSeq         Int               @default(0)
   updatedAt      DateTime          @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
@@ -4360,4 +4367,62 @@ model EtimsItem {
   @@unique([organizationId, itemCd])
   @@index([organizationId, status])
   @@map("etims_items")
+}
+
+enum EtimsDocKind {
+  SALE
+  CREDIT_NOTE
+}
+
+enum EtimsDocStatus {
+  /// Waiting to be sent, or sent in part and being retried.
+  PENDING
+  /// Everything KRA needs has been sent and accepted.
+  SENT
+  /// KRA refused it; someone has to fix what it complained about and send it again.
+  REJECTED
+  /// Cannot be sent by the system (for example a part refund); the reason is written on it.
+  MANUAL
+}
+
+/// One sale (or a credit note for a refunded sale) on its way to KRA: the sale itself, then the stock movement it caused, then the new
+/// stock balance of each item - in that order, because KRA refuses stock for a sale it has not got. Each step is remembered, so a retry
+/// carries on where it stopped and nothing is ever sent twice.
+model EtimsDocument {
+  id             String         @id @default(uuid())
+  organizationId String
+  branchId       String
+  kind           EtimsDocKind
+  saleId         String
+  refundId       String?
+  /// "SALE:<id>" or "CREDIT:<id>": one document per sale or refund, ever.
+  sourceKey      String
+  status         EtimsDocStatus @default(PENDING)
+  /// The running numbers KRA was sent (made on the first attempt and kept for every retry).
+  invcNo         Int?
+  sarNo          Int?
+  saleDone       Boolean        @default(false)
+  stockDone      Boolean        @default(false)
+  masterDone     Boolean        @default(false)
+  /// What KRA answered when it took the sale: its receipt number, signature and internal data (these belong on the receipt).
+  curRcptNo      Int?
+  totRcptNo      Int?
+  intrlData      String?
+  rcptSign       String?
+  sdcDateTime    String?
+  /// The sale as it was sent (without the key), so a credit note can repeat its lines and the screen can show what KRA was told.
+  payload        Json?
+  attempts       Int            @default(0)
+  nextAttemptAt  DateTime?
+  lastError      String?
+  sentAt         DateTime?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, sourceKey])
+  @@index([organizationId, status, createdAt])
+  @@index([saleId])
+  @@map("etims_documents")
 }

@@ -47,6 +47,16 @@ interface Sale {
   refunds: Refund[];
 }
 
+interface KraDoc {
+  id: string;
+  kind: "SALE" | "CREDIT_NOTE";
+  status: "PENDING" | "SENT" | "REJECTED" | "MANUAL";
+  invcNo: number | null;
+  curRcptNo: number | null;
+  rcptSign: string | null;
+  lastError: string | null;
+}
+
 interface OrgUser {
   id: string;
   role: string;
@@ -61,6 +71,7 @@ export default function SaleDetailPage() {
   const [session, setSessionState] = useState<Session | null>(null);
   const [sale, setSale] = useState<Sale | null>(null);
   const [orgUsers, setOrgUsers] = useState<OrgUser[]>([]);
+  const [kra, setKra] = useState<KraDoc[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   const [refundAmount, setRefundAmount] = useState("");
@@ -79,6 +90,8 @@ export default function SaleDetailPage() {
       ]);
       setSale(saleResult);
       setOrgUsers(orgUsersResult);
+      // what was sent to KRA for this sale; not everyone may see it, and a business that does not use eTIMS has none
+      setKra(await apiGet<KraDoc[]>(`/etims/documents/by-sale/${params.id}`).catch(() => []));
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not load sale.");
     }
@@ -165,6 +178,24 @@ export default function SaleDetailPage() {
                 </tbody>
               </table>
             </section>
+
+            {kra.length > 0 && (
+              <section className="mt-4 rounded-lg border border-border p-3">
+                <h2 className="font-semibold">KRA eTIMS</h2>
+                {kra.map((d) => (
+                  <p key={d.id} className="mt-1 text-sm">
+                    {d.kind === "SALE" ? "Sale" : "Credit note"}:{" "}
+                    {d.status === "SENT"
+                      ? `sent to KRA${d.invcNo ? ` (invoice ${d.invcNo}${d.curRcptNo ? `, receipt ${d.curRcptNo}` : ""})` : ""}`
+                      : d.status === "PENDING"
+                        ? `waiting to be sent${d.lastError ? ` - ${d.lastError}` : ""}`
+                        : d.status === "REJECTED"
+                          ? `refused by KRA - ${d.lastError ?? "see Sales sent to KRA"}`
+                          : `${d.lastError ?? "has to be done by hand on the KRA portal"}`}
+                  </p>
+                ))}
+              </section>
+            )}
 
             <section className="mt-4 rounded-lg border border-border p-3">
               <h2 className="font-semibold">Payments</h2>

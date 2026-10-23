@@ -2,6 +2,8 @@ import { Module } from '@nestjs/common';
 import { EtimsClient } from './etims.client';
 import { EtimsCodesService } from './etims-codes.service';
 import { EtimsController } from './etims.controller';
+import { EtimsDocumentsService } from './etims-documents.service';
+import { EtimsSchedulerService } from './etims-scheduler.service';
 import { EtimsItemsService } from './etims-items.service';
 import { EtimsSettingsService } from './etims-settings.service';
 
@@ -17,6 +19,8 @@ import { EtimsSettingsService } from './etims-settings.service';
     EtimsSettingsService,
     EtimsCodesService,
     EtimsItemsService,
+    EtimsDocumentsService,
+    EtimsSchedulerService,
   ],
   exports: [EtimsSettingsService, EtimsClient],
 })

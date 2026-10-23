@@ -95,6 +95,8 @@ const PIN = `A${rand(9)}Z`;
   await sql.query('DELETE FROM etims_sync_state');
   await sql.query('DELETE FROM etims_codes');
   await sql.query('DELETE FROM etims_item_classes');
+  await sql.query('DELETE FROM etims_documents WHERE "organizationId" = $1', [org.id]);
+  await sql.query('DELETE FROM etims_items WHERE "organizationId" = $1', [org.id]);
   await sql.query('DELETE FROM etims_devices WHERE "organizationId" = $1', [
     org.id,
   ]);
@@ -506,7 +508,139 @@ const PIN = `A${rand(9)}Z`;
   check('etims_items has row-level security switched on and forced', r?.on === true && r?.forced === true, r);
   await sql.query('UPDATE products SET "isActive" = true, "archivedAt" = null WHERE id = $1', [rice.p.id]);
 
-  section('8. Disconnecting, and the records');
+  section('8. Sales, refunds and stock go to KRA');
+  const { randomUUID } = require('crypto');
+  const terminalId = (await sql.query('SELECT id FROM terminals WHERE "branchId" = $1 ORDER BY "createdAt" LIMIT 1', [branchId])).rows[0].id;
+  const ownerOrgUserId = (await sql.query("SELECT ou.id FROM org_users ou JOIN users u ON u.id = ou.\"userId\" WHERE u.email = 'owner@demo.zaroda.pos' AND ou.\"organizationId\" = $1", [org.id])).rows[0].id;
+  const till = await call(API, 'POST', '/auth/pin-login', { body: { terminalId, orgUserId: ownerOrgUserId, pin: '1234' } });
+  const cashierSessionId = till.json.cashierSessionId;
+  check('a till session exists', Boolean(cashierSessionId), till.json);
+  const mk2 = async (name, taxClassId, price) => {
+    const p = (await h('POST', '/products', { name: `${name} ${tag}`, taxClassId })).json;
+    const v = (await h('POST', `/products/${p.id}/variants`, { sku: `S${name.slice(0, 5).toUpperCase()}-${tag}`, price })).json;
+    return { p, v };
+  };
+  const sa = await mk2('SaleA', vat.id, 100);
+  const sb = await mk2('SaleB', exempt.id, 250);
+  const sc = await mk2('SaleC', vat.id, 40);
+  const sell = (lines, pay, body = {}) =>
+    h('POST', '/sales', {
+      clientId: randomUUID(), branchId, terminalId, cashierSessionId,
+      lineItems: lines.map(([m, quantity]) => ({ variantId: m.v.id, quantity })),
+      payments: [{ method: 'CASH', amount: pay }],
+      ...body,
+    });
+  const docOf = async (saleId) => (await sql.query('SELECT * FROM etims_documents WHERE "saleId" = $1 ORDER BY "createdAt"', [saleId])).rows;
+  const run = () => h('POST', '/etims/documents/run', {});
+  await kra('POST', '/_test/clear-documents');
+
+  const earlier = await sell([[sa, 1]], 116);
+  check('a sale made before sending is switched on is recorded', earlier.status === 201, earlier.json);
+  const off = await run();
+  check('nothing is queued while sending is off', off.status === 200 && off.json.queued === 0 && (await docOf(earlier.json.id)).length === 0, off.json);
+  check('a cashier cannot switch sending on', (await h('PUT', '/etims/settings', { sendSales: true }, cashier)).status === 403);
+  const on = await h('PUT', '/etims/settings', { sendSales: true });
+  check('the owner switches it on, and it says from when', on.status === 200 && on.json.sendSales === true && Boolean(on.json.salesStartAt), on.json);
+  await new Promise((r) => setTimeout(r, 1100));
+
+  // register two of the three new products; the third is left unregistered on purpose
+  await h('POST', '/etims/items/classify', { variantIds: [sa.v.id, sb.v.id, sc.v.id], itemClsCd: '5059690800' });
+  await h('POST', '/etims/items/register', { variantIds: [sa.v.id, sb.v.id] });
+
+  const s1 = await sell([[sa, 2], [sb, 1]], 482);
+  check('a sale of two registered products (232 with VAT + 250 exempt) is recorded', s1.status === 201 && Number(s1.json.total) === 482, s1.json);
+  const r1 = await run();
+  check('one pass queues and sends it', r1.status === 200 && r1.json.queued === 1 && r1.json.sent === 1 && r1.json.stopped === null, r1.json);
+  check('the earlier sale was not sent', (await docOf(earlier.json.id)).length === 0);
+  const d1 = (await docOf(s1.json.id))[0];
+  check("the document is sent with all three steps done, and KRA's receipt details kept", d1.status === 'SENT' && d1.saleDone && d1.stockDone && d1.masterDone && d1.invcNo >= 1 && d1.curRcptNo > 0 && /^[0-9A-F]+$/.test(d1.rcptSign || '') && Boolean(d1.intrlData), d1);
+  const ksales = (await kra('GET', '/_test/sales')).json;
+  const ks1 = ksales.find((x) => x.invcNo === d1.invcNo);
+  check('KRA holds one sale with the tax inside each amount: B 232 (tax 32), A 250, total 482', ksales.length === 1 && ks1.rcptTyCd === 'S' && ks1.taxblAmtB === 232 && ks1.taxAmtB === 32 && ks1.taxblAmtA === 250 && ks1.totAmt === 482 && ks1.totItemCnt === 2 && ks1.pmtTyCd === '01', ks1);
+  check('KRA was told our own reference (the sale id) and the PIN and branch', ks1.trdInvcNo === s1.json.id && ks1.tin === PIN && ks1.bhfId === '00');
+  const kio = (await kra('GET', '/_test/stock-io')).json;
+  check('stock went out (type 11) for both lines', kio.length === 1 && kio[0].sarTyCd === '11' && kio[0].itemList.length === 2 && kio[0].sarNo === d1.sarNo, kio);
+  const levels = (await kra('GET', '/_test/stock-levels')).json;
+  check('KRA was told what is left of each item', Object.keys(levels).length === 2 && Object.values(levels).every((q) => typeof q === 'number' && q >= 0), levels);
+  const r1b = await run();
+  check('running again sends nothing twice', r1b.json.queued === 0 && r1b.json.sent === 0 && (await kra('GET', '/_test/sales')).json.length === 1);
+
+  // a product KRA does not have yet
+  const s2 = await sell([[sc, 1]], 46.4);
+  const r2 = await run();
+  const d2 = (await docOf(s2.json.id))[0];
+  check('a sale of an unregistered product is not sent; it waits and says which product', s2.status === 201 && r2.json.sent === 0 && r2.json.waiting === 1 && d2.status === 'PENDING' && /SaleC/.test(d2.lastError) && d2.invcNo === null, d2);
+  await h('POST', '/etims/items/register', { variantIds: [sc.v.id] });
+  await sql.query('UPDATE etims_documents SET "nextAttemptAt" = NULL WHERE id = $1', [d2.id]);
+  const r2b = await run();
+  check('once the product is registered, the waiting sale goes through', r2b.json.sent === 1 && (await docOf(s2.json.id))[0].status === 'SENT');
+  check('invoice numbers run on one by one with no gaps', (await docOf(s2.json.id))[0].invcNo === d1.invcNo + 1);
+
+  // KRA down, and a failure part-way
+  const s3 = await sell([[sa, 1]], 116);
+  await kra('POST', '/_test/fail-next?n=1&mode=894');
+  const r3 = await run();
+  const d3 = (await docOf(s3.json.id))[0];
+  check('KRA unreachable: the pass stops, the document stays pending with a retry time, and keeps its number', r3.json.stopped && /Could not reach KRA/.test(r3.json.stopped) && d3.status === 'PENDING' && d3.attempts === 1 && d3.nextAttemptAt !== null && d3.invcNo === d1.invcNo + 2 && !d3.saleDone, d3);
+  const r3a = await run();
+  check('it is not tried again before the retry time', r3a.json.sent === 0 && (await docOf(s3.json.id))[0].attempts === 1);
+  await kra('POST', '/_test/fail-next?n=1&mode=894&only=insertStockIO');
+  await sql.query('UPDATE etims_documents SET "nextAttemptAt" = NULL WHERE id = $1', [d3.id]);
+  const r3b = await run();
+  const d3b = (await docOf(s3.json.id))[0];
+  check('the sale step went through but the stock step failed: it remembers the sale step', r3b.json.stopped && d3b.saleDone && !d3b.stockDone && d3b.status === 'PENDING', d3b);
+  await sql.query('UPDATE etims_documents SET "nextAttemptAt" = NULL WHERE id = $1', [d3.id]);
+  const r3c = await run();
+  const d3c = (await docOf(s3.json.id))[0];
+  check('the next try carries on from the stock step and the sale is NOT sent again', r3c.json.sent === 1 && d3c.status === 'SENT' && d3c.invcNo === d3.invcNo && (await kra('GET', '/_test/sales')).json.filter((x) => x.invcNo === d3.invcNo).length === 1, d3c);
+
+  // KRA refuses a sale
+  const cust = (await h('POST', '/customers', { name: 'REJECTSALE Customer', phone: '0700123456' })).json;
+  const s4 = await sell([[sa, 1]], 116, { customerId: cust.id });
+  const r4 = await run();
+  const d4 = (await docOf(s4.json.id))[0];
+  check('a sale KRA refuses is marked rejected with the reason, and the pass carries on', r4.json.rejected === 1 && d4.status === 'REJECTED' && /910|wrong/.test(d4.lastError) && r4.json.stopped === null, d4);
+  const r4a = await run();
+  check('a rejected document is not tried again by itself', r4a.json.sent === 0 && (await docOf(s4.json.id))[0].attempts === d4.attempts);
+  await sql.query('UPDATE customers SET name = $2 WHERE id = $1', [cust.id, 'Fixed Customer']);
+  check('a cashier cannot retry', (await h('POST', `/etims/documents/${d4.id}/retry`, {}, cashier)).status === 403);
+  const retried = await h('POST', `/etims/documents/${d4.id}/retry`, {});
+  check('after fixing it, retry puts it back in the queue', retried.status === 200 && retried.json.status === 'PENDING');
+  check('and it then goes through', (await run()).json.sent === 1 && (await docOf(s4.json.id))[0].status === 'SENT');
+
+  // refunds
+  const full = await h('POST', `/sales/${s1.json.id}/refunds`, { clientId: randomUUID(), amount: 482, reason: 'Customer returned everything', approvedById: ownerOrgUserId });
+  check('a full refund is recorded', full.status === 201 || full.status === 200, full.json);
+  const rf = await run();
+  const credit = (await sql.query("SELECT * FROM etims_documents WHERE \"saleId\" = $1 AND kind = 'CREDIT_NOTE'", [s1.json.id])).rows[0];
+  check('a full refund becomes a credit note that is sent', rf.json.sent === 1 && credit?.status === 'SENT' && credit.invcNo > d1.invcNo, credit);
+  const kc = (await kra('GET', '/_test/sales')).json.find((x) => x.invcNo === credit.invcNo);
+  check('the credit note is a refund receipt (R) pointing at the original invoice, for the same amounts', kc.rcptTyCd === 'R' && kc.orgInvcNo === d1.invcNo && kc.totAmt === 482 && kc.taxAmtB === 32 && kc.rfdRsnCd === '06' && Boolean(kc.rfdDt), kc);
+  check('the stock came back in (type 03)', (await kra('GET', '/_test/stock-io')).json.some((x) => x.sarTyCd === '03' && x.sarNo === credit.sarNo));
+  const s5 = await sell([[sa, 2]], 232);
+  await run();
+  await h('POST', `/sales/${s5.json.id}/refunds`, { clientId: randomUUID(), amount: 50, reason: 'Goodwill', approvedById: ownerOrgUserId });
+  const rp = await run();
+  const part = (await sql.query("SELECT * FROM etims_documents WHERE \"saleId\" = $1 AND kind = 'CREDIT_NOTE'", [s5.json.id])).rows[0];
+  check('a part refund cannot be sent by itself: it is marked for doing by hand, with the reason', part?.status === 'MANUAL' && /whole sale|by hand/.test(part.lastError) && rp.json.sent === 0, part);
+  check('a part refund cannot be retried from here', (await h('POST', `/etims/documents/${part.id}/retry`, {})).status === 400);
+
+  // the screens' data
+  const lst = await h('GET', '/etims/documents');
+  check('the list shows counts by state and the documents', lst.status === 200 && lst.json.counts.SENT >= 5 && lst.json.counts.MANUAL >= 1 && lst.json.rows.length > 0 && lst.json.rows[0].steps !== undefined, lst.json.counts);
+  check('it can be filtered by state; an unknown state is refused', (await h('GET', '/etims/documents?status=MANUAL')).json.rows.every((x) => x.status === 'MANUAL') && (await h('GET', '/etims/documents?status=BOGUS')).status === 400);
+  const bySale = await h('GET', `/etims/documents/by-sale/${s1.json.id}`);
+  check('a sale shows its own documents (the sale and its credit note)', bySale.status === 200 && bySale.json.length === 2 && bySale.json[0].kind === 'SALE' && bySale.json[1].kind === 'CREDIT_NOTE', bySale.json);
+  check('a cashier cannot see the documents or run a send', (await h('GET', '/etims/documents', undefined, cashier)).status === 403 && (await h('POST', '/etims/documents/run', {}, cashier)).status === 403);
+  const rlsDoc = (await sql.query("SELECT relrowsecurity AS on, relforcerowsecurity AS forced FROM pg_class WHERE relname = 'etims_documents'")).rows[0];
+  check('etims_documents has row-level security switched on and forced', rlsDoc?.on === true && rlsDoc?.forced === true, rlsDoc);
+  check('the key is never kept in a document', !JSON.stringify((await sql.query('SELECT payload FROM etims_documents WHERE "organizationId" = $1', [org.id])).rows).includes('cmcKey'));
+  const off2 = await h('PUT', '/etims/settings', { sendSales: false });
+  const s6 = await sell([[sa, 1]], 116);
+  await run();
+  check('switching sending off stops new sales being queued', off2.json.sendSales === false && (await docOf(s6.json.id)).length === 0);
+
+  section('9. Disconnecting, and the records');
   check(
     'a cashier cannot disconnect',
     (await h('POST', `/etims/devices/${branchId}/disconnect`, {}, cashier))

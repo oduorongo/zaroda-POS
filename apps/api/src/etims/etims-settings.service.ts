@@ -102,6 +102,8 @@ export class EtimsSettingsService {
       return {
         enabled: setting?.enabled ?? false,
         environment: setting?.environment ?? 'SANDBOX',
+        sendSales: setting?.sendSales ?? false,
+        salesStartAt: setting?.salesStartAt ?? null,
         tin: setting?.tin ?? null,
         taxpayerName: setting?.taxpayerName ?? null,
         // live KRA needs the integration to be certified first
@@ -146,8 +148,13 @@ export class EtimsSettingsService {
         throw new BadRequestException(
           "Enter the business's KRA PIN before turning eTIMS on.",
         );
+      if (dto.sendSales === true && !((dto.enabled ?? before?.enabled) === true))
+        throw new BadRequestException('Turn eTIMS on before sending sales to KRA.');
       const data = {
         ...(dto.enabled !== undefined ? { enabled: dto.enabled } : {}),
+        // switching sending on starts the clock: only sales made from now on are ever sent
+        ...(dto.sendSales !== undefined ? { sendSales: dto.sendSales } : {}),
+        ...(dto.sendSales === true && !before?.sendSales ? { salesStartAt: new Date() } : {}),
         ...(tin !== undefined ? { tin } : {}),
       };
       await tx.etimsSetting.upsert({

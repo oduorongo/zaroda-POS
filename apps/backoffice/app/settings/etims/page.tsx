@@ -22,6 +22,8 @@ interface Overview {
   environment: "SANDBOX" | "PRODUCTION";
   tin: string | null;
   taxpayerName: string | null;
+  sendSales: boolean;
+  salesStartAt: string | null;
   productionAvailable: boolean;
   branches: { branchId: string; branchName: string; device: Device | null }[];
 }
@@ -108,13 +110,14 @@ export default function EtimsSettingsPage() {
           <h1 className="text-xl font-bold">KRA eTIMS connection</h1>
           <div className="flex gap-2">
             <Link href="/settings/etims/items" className={ghost}>Products and KRA</Link>
+            <Link href="/settings/etims/documents" className={ghost}>Sales sent to KRA</Link>
             <Link href="/settings/tax" className={ghost}>Tax settings</Link>
           </div>
         </div>
         {error && <p className="rounded-md bg-red-950 p-3 text-sm text-red-300">{error}</p>}
         {notice && <p className="rounded-md bg-green-950 p-3 text-sm text-green-300">{notice}</p>}
         <p className="rounded-md bg-amber-950 p-3 text-sm text-amber-200">
-          This is the first step of the eTIMS connection and it talks to KRA&apos;s <strong>test</strong> system only. Your sales are <strong>not</strong> sent to KRA yet, and nothing about how you sell changes. Connecting a branch checks your PIN and device with KRA and downloads KRA&apos;s lists.
+          This talks to KRA&apos;s <strong>test</strong> system only, so nothing you send here counts as a real tax record yet. Selling never waits for KRA: a sale is always completed at the till, and sent to KRA afterwards in the background.
         </p>
 
         {data && (
@@ -169,6 +172,18 @@ export default function EtimsSettingsPage() {
                   </div>
                 );
               })}
+            </section>
+
+            <section className="space-y-3 rounded-xl border border-border bg-surface p-4">
+              <h2 className="font-semibold">Send sales to KRA</h2>
+              <p className="text-sm text-secondary-500">When this is on, each finished sale is sent to KRA with the stock it used, and a refund of a whole sale is sent as a credit note. Only sales made <strong>after you switch it on</strong> are sent. Every product on a sale must be registered with KRA first (Products and KRA); a sale with an unregistered product waits until it is.</p>
+              <label className="flex items-center gap-2 text-sm">
+                <input type="checkbox" disabled={!canWrite || busy !== null || !data.enabled || !anyActive} checked={data.sendSales} onChange={(e) => void run("send", () => apiPut("/etims/settings", { sendSales: e.target.checked }), e.target.checked ? "Sales are now sent to KRA (the test system), starting from now." : "Sales are no longer sent to KRA.")} />
+                Send my sales to KRA
+              </label>
+              {data.sendSales && data.salesStartAt && <p className="text-xs text-secondary-500">Sending started on {new Date(data.salesStartAt).toLocaleString()}.</p>}
+              {(!data.enabled || !anyActive) && <p className="text-xs text-secondary-500">Turn eTIMS on and connect a branch first.</p>}
+              <Link href="/settings/etims/documents" className={`${ghost} inline-block`}>See what has been sent</Link>
             </section>
 
             <section className="space-y-3 rounded-xl border border-border bg-surface p-4">

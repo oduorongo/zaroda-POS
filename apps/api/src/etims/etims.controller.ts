@@ -22,7 +22,9 @@ import {
   RegisterItemsDto,
   UpdateEtimsItemDto,
 } from './dto/etims-items.dto';
+import { DocumentListQueryDto } from './dto/etims-documents.dto';
 import { EtimsCodesService } from './etims-codes.service';
+import { EtimsDocumentsService } from './etims-documents.service';
 import { EtimsItemsService } from './etims-items.service';
 import { EtimsSettingsService } from './etims-settings.service';
 
@@ -36,6 +38,7 @@ export class EtimsController {
     private readonly settings: EtimsSettingsService,
     private readonly codes: EtimsCodesService,
     private readonly items: EtimsItemsService,
+    private readonly documents: EtimsDocumentsService,
   ) {}
 
   @Roles(...READERS)
@@ -120,5 +123,33 @@ export class EtimsController {
   @HttpCode(200)
   register(@Body() dto: RegisterItemsDto) {
     return this.items.register(dto);
+  }
+
+  // ── Sales, refunds and stock sent to KRA ──
+  @Roles(...READERS)
+  @Get('documents')
+  listDocuments(@Query() q: DocumentListQueryDto) {
+    return this.documents.list(q);
+  }
+
+  @Roles(...READERS)
+  @Get('documents/by-sale/:saleId')
+  documentsForSale(@Param('saleId', ParseUUIDPipe) saleId: string) {
+    return this.documents.forSale(saleId);
+  }
+
+  /** Send what is waiting now instead of at the next timed pass. */
+  @Roles(...WRITERS)
+  @Post('documents/run')
+  @HttpCode(200)
+  runDocuments() {
+    return this.documents.runPass();
+  }
+
+  @Roles(...WRITERS)
+  @Post('documents/:id/retry')
+  @HttpCode(200)
+  retryDocument(@Param('id', ParseUUIDPipe) id: string) {
+    return this.documents.retry(id);
   }
 }

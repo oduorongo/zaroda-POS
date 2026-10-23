@@ -4,7 +4,7 @@
 //
 //   node scripts/mock-kra.js            (listens on port 4020; set ETIMS_SANDBOX_URL=http://localhost:4020/etims-api/ in .env.local)
 //
-// Test controls (all under /_test): fail-next, delay, reset, bump-codes, many-classes, counts, items, requests.
+// Test controls (all under /_test): fail-next, delay, reset, bump-codes, many-classes, counts, items, sales, stock-io, stock-levels, requests.
 const http = require('http');
 const crypto = require('crypto');
 
@@ -24,6 +24,9 @@ let failNext = { n: 0, mode: '894' };
 let delayMs = 0;
 let manyAdded = false;
 const items = new Map(); // `${tin}|${itemCd}` -> what was saved
+const sales = new Map(); // `${tin}|${bhfId}|${invcNo}` -> the sale or credit note
+const stockMoves = new Map(); // `${tin}|${bhfId}|${sarNo}` -> the stock movement
+const stockLevels = new Map(); // `${tin}|${bhfId}|${itemCd}` -> remaining quantity
 
 // ── the lists KRA would hold, each row with the moment it last changed ──
 const T0 = '20250101000000';
@@ -260,6 +263,70 @@ const handlers = {
     items.set(`${b.tin}|${b.itemCd}`, { ...b, cmcKey: undefined, savedAt: kraNow() });
     return answer('000', 'It is succeeded');
   },
+  saveTrnsSalesOsdc(b) {
+    const bad = checkDevice(b);
+    if (bad) return bad;
+    const need = ['trdInvcNo', 'invcNo', 'salesTyCd', 'rcptTyCd', 'pmtTyCd', 'salesSttsCd', 'cfmDt', 'salesDt', 'totItemCnt', 'totTaxblAmt', 'totTaxAmt', 'totAmt', 'prchrAcptcYn', 'regrId', 'regrNm', 'modrId', 'modrNm'];
+    if (need.some((k) => b[k] === undefined || b[k] === null || b[k] === '')) return answer('910', 'Request parameter error');
+    for (const l of ['A', 'B', 'C', 'D', 'E'])
+      for (const p of ['taxblAmt', 'taxRt', 'taxAmt'])
+        if (typeof b[p + l] !== 'number') return answer('910', 'Request parameter error');
+    if (!Array.isArray(b.itemList) || b.itemList.length === 0 || b.itemList.length !== b.totItemCnt) return answer('910', 'Request parameter error');
+    if (!['S', 'R'].includes(b.rcptTyCd) || !/^\d{14}$/.test(b.cfmDt) || !/^\d{8}$/.test(b.salesDt)) return answer('910', 'Request parameter error');
+    if (b.rcptTyCd === 'R' && (!b.rfdRsnCd || !b.rfdDt || !(b.orgInvcNo > 0))) return answer('910', 'Request parameter error');
+    if (b.rcptTyCd === 'S' && b.orgInvcNo !== 0) return answer('910', 'Request parameter error');
+    const key = `${b.tin}|${b.bhfId}|${b.invcNo}`;
+    if (sales.has(key)) return answer('994', 'The invoice number is already used');
+    if (b.rcptTyCd === 'R' && !sales.has(`${b.tin}|${b.bhfId}|${b.orgInvcNo}`)) return answer('910', 'The original invoice is not found');
+    const cents = (n) => Math.round(n * 100);
+    let sum = 0;
+    for (const it of b.itemList) {
+      if (!items.has(`${b.tin}|${it.itemCd}`)) return answer('910', 'The item is not registered');
+      const nums = ['qty', 'prc', 'splyAmt', 'dcAmt', 'taxblAmt', 'taxAmt', 'totAmt'];
+      if (nums.some((k) => typeof it[k] !== 'number') || !it.taxTyCd) return answer('910', 'Request parameter error');
+      if (cents(it.splyAmt) - cents(it.dcAmt) !== cents(it.totAmt)) return answer('910', 'The item amounts do not add up');
+      sum += cents(it.totAmt);
+    }
+    if (sum !== cents(b.totAmt) || cents(b.totAmt) !== cents(b.totTaxblAmt)) return answer('910', 'The totals do not add up');
+    const taxSum = ['A', 'B', 'C', 'D', 'E'].reduce((s, l) => s + cents(b['taxAmt' + l]), 0);
+    if (taxSum !== cents(b.totTaxAmt)) return answer('910', 'The tax totals do not add up');
+    if (b.custNm && b.custNm.includes('REJECTSALE')) return answer('910', 'Request parameter error');
+    const n = [...sales.keys()].filter((k) => k.startsWith(`${b.tin}|${b.bhfId}|`)).length + 1;
+    sales.set(key, { ...b, cmcKey: undefined, receivedAt: kraNow() });
+    return answer('000', 'It is succeeded', {
+      rcptNo: n,
+      intrlData: crypto.createHash('sha256').update(key).digest('hex').slice(0, 32).toUpperCase(),
+      rcptSign: crypto.createHash('sha256').update(key + 'sign').digest('hex').slice(0, 16).toUpperCase(),
+      totRcptNo: n,
+      vsdcRcptPbctDate: kraNow(),
+      sdcId: 'KRACU013000001',
+      mrcNo: 'WIS01000150',
+      curRcptNo: n,
+      sdcDateTime: kraNow(),
+    });
+  },
+  insertStockIO(b) {
+    const bad = checkDevice(b);
+    if (bad) return bad;
+    const need = ['sarNo', 'orgSarNo', 'regTyCd', 'sarTyCd', 'ocrnDt', 'totItemCnt', 'totTaxblAmt', 'totTaxAmt', 'totAmt', 'regrId', 'regrNm', 'modrId', 'modrNm'];
+    if (need.some((k) => b[k] === undefined || b[k] === null || b[k] === '')) return answer('910', 'Request parameter error');
+    if (!['11', '03', '02', '04', '05', '06', '12', '13', '14', '15', '16', '17'].includes(b.sarTyCd)) return answer('910', 'Request parameter error');
+    if (!Array.isArray(b.itemList) || b.itemList.length === 0 || b.itemList.length !== b.totItemCnt) return answer('910', 'Request parameter error');
+    for (const it of b.itemList)
+      if (!items.has(`${b.tin}|${it.itemCd}`) || typeof it.qty !== 'number' || it.qty <= 0 || typeof it.totAmt !== 'number') return answer('910', 'Request parameter error');
+    const key = `${b.tin}|${b.bhfId}|${b.sarNo}`;
+    if (stockMoves.has(key)) return answer('994', 'The stock movement number is already used');
+    stockMoves.set(key, { ...b, cmcKey: undefined, receivedAt: kraNow() });
+    return answer('000', 'It is succeeded');
+  },
+  saveStockMaster(b) {
+    const bad = checkDevice(b);
+    if (bad) return bad;
+    if (!b.itemCd || typeof b.rsdQty !== 'number' || !b.regrId || !b.regrNm || !b.modrId || !b.modrNm) return answer('910', 'Request parameter error');
+    if (!items.has(`${b.tin}|${b.itemCd}`)) return answer('910', 'The item is not registered');
+    stockLevels.set(`${b.tin}|${b.bhfId}|${b.itemCd}`, b.rsdQty);
+    return answer('000', 'It is succeeded');
+  },
   selectCodeList(b) {
     const bad = checkDevice(b);
     if (bad) return bad;
@@ -318,6 +385,7 @@ const server = http.createServer((req, res) => {
         failNext = {
           n: Number(url.searchParams.get('n') || 1),
           mode: url.searchParams.get('mode') || '894',
+          only: url.searchParams.get('only') || '',
         };
         return reply(res, { ok: true, failNext });
       }
@@ -328,6 +396,9 @@ const server = http.createServer((req, res) => {
       if (what === 'reset') {
         installed.clear();
         items.clear();
+        sales.clear();
+        stockMoves.clear();
+        stockLevels.clear();
         log = [];
         failNext = { n: 0, mode: '894' };
         delayMs = 0;
@@ -381,6 +452,15 @@ const server = http.createServer((req, res) => {
         return reply(res, { ok: true });
       }
       if (what === 'items') return reply(res, [...items.values()]);
+      if (what === 'sales') return reply(res, [...sales.values()]);
+      if (what === 'stock-io') return reply(res, [...stockMoves.values()]);
+      if (what === 'stock-levels') return reply(res, Object.fromEntries(stockLevels));
+      if (what === 'clear-documents') {
+        sales.clear();
+        stockMoves.clear();
+        stockLevels.clear();
+        return reply(res, { ok: true });
+      }
       if (what === 'counts')
         return reply(res, {
           codes: codeRows.length,
@@ -400,7 +480,7 @@ const server = http.createServer((req, res) => {
     }
     log.push({ method, body, at: new Date().toISOString() });
     if (delayMs) await new Promise((r) => setTimeout(r, delayMs));
-    if (failNext.n > 0) {
+    if (failNext.n > 0 && (!failNext.only || failNext.only === method)) {
       failNext.n -= 1;
       if (failNext.mode === 'http500') {
         res.writeHead(500, { 'Content-Type': 'text/html' });
