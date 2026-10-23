@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { EtimsClient } from './etims.client';
 import { EtimsCodesService } from './etims-codes.service';
 import { EtimsController } from './etims.controller';
+import { EtimsItemsService } from './etims-items.service';
 import { EtimsSettingsService } from './etims-settings.service';
 
 /**
@@ -11,7 +12,12 @@ import { EtimsSettingsService } from './etims-settings.service';
  */
 @Module({
   controllers: [EtimsController],
-  providers: [EtimsClient, EtimsSettingsService, EtimsCodesService],
+  providers: [
+    EtimsClient,
+    EtimsSettingsService,
+    EtimsCodesService,
+    EtimsItemsService,
+  ],
   exports: [EtimsSettingsService, EtimsClient],
 })
 export class EtimsModule {}
