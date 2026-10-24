@@ -1255,3 +1255,18 @@ DROP POLICY IF EXISTS tenant_isolation ON etims_documents;
 CREATE POLICY tenant_isolation ON etims_documents
   USING ("organizationId" = current_setting('app.current_tenant', true))
   WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+-- School supplier: each drop of goods to a school, and what was in it
+ALTER TABLE school_deliveries ENABLE ROW LEVEL SECURITY;
+ALTER TABLE school_deliveries FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON school_deliveries;
+CREATE POLICY tenant_isolation ON school_deliveries
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+ALTER TABLE school_delivery_lines ENABLE ROW LEVEL SECURITY;
+ALTER TABLE school_delivery_lines FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON school_delivery_lines;
+CREATE POLICY tenant_isolation ON school_delivery_lines
+  USING (EXISTS (SELECT 1 FROM school_deliveries p WHERE p.id = school_delivery_lines."deliveryId" AND p."organizationId" = current_setting('app.current_tenant', true)))
+  WITH CHECK (EXISTS (SELECT 1 FROM school_deliveries p WHERE p.id = school_delivery_lines."deliveryId" AND p."organizationId" = current_setting('app.current_tenant', true)));

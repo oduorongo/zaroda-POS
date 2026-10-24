@@ -129,6 +129,7 @@ describe('paymentCode', () => {
     ).toBe('06');
     expect(paymentCode([{ method: 'CARD', amount: 10 }])).toBe('05');
     expect(paymentCode([{ method: 'ROOM_CHARGE', amount: 10 }])).toBe('02');
+    expect(paymentCode([{ method: 'ACCOUNT', amount: 10 }])).toBe('02');
     expect(paymentCode([])).toBe('01');
   });
 });

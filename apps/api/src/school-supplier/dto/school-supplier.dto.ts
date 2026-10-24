@@ -271,6 +271,28 @@ export class DeliverOrderDto {
   notes?: string;
 }
 
+/** Closing an order that was delivered in part, giving up the rest. */
+export class CloseBalanceDto {
+  @IsString()
+  @MinLength(3)
+  @MaxLength(300)
+  note!: string;
+}
+
+/** The school saying one delivery arrived. */
+export class ConfirmReceiptDto {
+  /** Who at the school received the goods. */
+  @IsString()
+  @MinLength(2)
+  @MaxLength(100)
+  name!: string;
+
+  @IsString()
+  @IsOptional()
+  @MaxLength(300)
+  note?: string;
+}
+
 // ── Payments ──────────────────────────────────────────────────────────────
 
 export class AllocationDto {

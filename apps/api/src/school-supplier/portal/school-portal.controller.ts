@@ -13,6 +13,7 @@ import { Throttle } from '@nestjs/throttler';
 import { Public } from '../../auth/public.decorator';
 import {
   CancelOrderDto,
+  ConfirmReceiptDto,
   SchoolLoginDto,
   StatementQueryDto,
   SubmitSchoolOrderDto,
@@ -91,6 +92,25 @@ export class SchoolPortalController {
     @Body() dto: CancelOrderDto,
   ) {
     return this.portal.cancelOrder(who, id, dto.reason);
+  }
+
+  @Get('deliveries/:id')
+  delivery(
+    @CurrentSchool() who: SchoolIdentity,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.portal.getDelivery(who, id);
+  }
+
+  /** The school confirms the goods of one delivery arrived. */
+  @Post('deliveries/:id/confirm-received')
+  @HttpCode(200)
+  confirmReceived(
+    @CurrentSchool() who: SchoolIdentity,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: ConfirmReceiptDto,
+  ) {
+    return this.portal.confirmReceived(who, id, dto);
   }
 
   @Get('invoices')

@@ -3,7 +3,10 @@ import { Role, SchoolStatus } from '@prisma/client';
 import { TenantScopedPrismaService } from '../../common/prisma/tenant-scoped-prisma.service';
 import { tenantContext } from '../../common/tenant/tenant-context';
 import { variantTitle } from '../../catalog/variant-title';
-import { SubmitSchoolOrderDto } from '../dto/school-supplier.dto';
+import {
+  ConfirmReceiptDto,
+  SubmitSchoolOrderDto,
+} from '../dto/school-supplier.dto';
 import { SchoolBillingService } from '../school-billing.service';
 import { SchoolOrdersService } from '../school-orders.service';
 import { SchoolsService } from '../schools.service';
@@ -115,6 +118,17 @@ export class SchoolPortalService {
   cancelOrder(who: SchoolIdentity, id: string, reason?: string) {
     return this.asSchool(who, () =>
       this.orders.cancelBySchool(who.schoolId, id, reason),
+    );
+  }
+  getDelivery(who: SchoolIdentity, id: string) {
+    return this.asSchool(who, async () => ({
+      ...(await this.orders.deliveryNote(id, who.schoolId)),
+      business: await this.billing.letterhead(),
+    }));
+  }
+  confirmReceived(who: SchoolIdentity, id: string, dto: ConfirmReceiptDto) {
+    return this.asSchool(who, () =>
+      this.orders.confirmReceived(who.schoolId, id, dto),
     );
   }
   listInvoices(who: SchoolIdentity) {

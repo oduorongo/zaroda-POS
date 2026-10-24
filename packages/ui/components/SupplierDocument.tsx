@@ -35,19 +35,24 @@ export interface DocInvoice {
   payments: { receiptNumber: string; receivedOn: string | null; method: string; amount: number }[];
   business: DocBusiness;
 }
-export interface DocOrder {
+/** One delivery's note: this drop, and how the order stands (ordered, delivered before, delivered now, still to come). */
+export interface DocDelivery {
+  deliveryNoteNumber: string;
+  sequence: number;
+  deliveredAt: string;
+  receivedByName: string;
+  notes: string | null;
+  schoolConfirmedAt: string | null;
+  schoolConfirmedBy: string | null;
   orderNumber: string;
   lpoNumber: string | null;
-  deliveryNoteNumber: string | null;
-  deliveredAt: string | null;
   deliveryAddress: string | null;
-  receivedByName: string | null;
-  deliveryNotes: string | null;
   school: DocSchool;
-  lines: { id: string; title: string; sku: string; quantityOrdered: number; quantityConfirmed: number | null; quantityDelivered: number | null }[];
+  lines: { id: string; title: string; sku: string; ordered: number; before: number; now: number; balance: number }[];
   invoice: { invoiceNumber: string } | null;
   business: DocBusiness;
 }
+
 export interface DocReceipt {
   receiptNumber: string;
   status: string;
@@ -196,18 +201,20 @@ export function InvoiceDocument({ invoice }: { invoice: DocInvoice }) {
   );
 }
 
-export function DeliveryNoteDocument({ order }: { order: DocOrder }) {
+export function DeliveryNoteDocument({ delivery }: { delivery: DocDelivery }) {
+  const anyBalance = delivery.lines.some((l) => l.balance > 0);
   return (
     <div className="rounded border border-gray-400 p-6">
-      <Letterhead business={order.business} title="Delivery note" number={order.deliveryNoteNumber ?? undefined} />
+      <Letterhead business={delivery.business} title="Delivery note" number={delivery.deliveryNoteNumber} />
       <Parties
-        school={order.school}
+        school={delivery.school}
         rows={[
-          ["Delivered on", order.deliveredAt ? order.deliveredAt.slice(0, 10) : null],
-          ["Order no.", order.orderNumber],
-          ["LPO no.", order.lpoNumber],
-          ["Deliver to", order.deliveryAddress],
-          ["Invoice", order.invoice?.invoiceNumber],
+          ["Delivered on", delivery.deliveredAt.slice(0, 10)],
+          ["Delivery", `No. ${delivery.sequence} for this order`],
+          ["Order no.", delivery.orderNumber],
+          ["LPO no.", delivery.lpoNumber],
+          ["Deliver to", delivery.deliveryAddress],
+          ["Invoice", delivery.invoice?.invoiceNumber],
         ]}
       />
       <table className="mt-4 w-full text-sm">
@@ -215,21 +222,35 @@ export function DeliveryNoteDocument({ order }: { order: DocOrder }) {
           <tr className="border-b border-gray-400 text-left text-xs uppercase text-gray-600">
             <th className="py-1">Item</th>
             <th className="py-1 text-right">Ordered</th>
-            <th className="py-1 text-right">Delivered</th>
+            <th className="py-1 text-right">Delivered before</th>
+            <th className="py-1 text-right">Delivered now</th>
+            <th className="py-1 text-right">Still to come</th>
           </tr>
         </thead>
         <tbody>
-          {order.lines.map((l) => (
+          {delivery.lines.map((l) => (
             <tr key={l.id} className="border-b border-gray-200">
               <td className="py-1">{l.title}</td>
-              <td className="py-1 text-right">{qty(l.quantityOrdered)}</td>
-              <td className="py-1 text-right font-semibold">{qty(l.quantityDelivered ?? 0)}</td>
+              <td className="py-1 text-right">{qty(l.ordered)}</td>
+              <td className="py-1 text-right">{qty(l.before)}</td>
+              <td className="py-1 text-right font-semibold">{qty(l.now)}</td>
+              <td className="py-1 text-right">{l.balance > 0 ? qty(l.balance) : "-"}</td>
             </tr>
           ))}
         </tbody>
       </table>
-      {order.deliveryNotes && <p className="mt-3 text-sm text-gray-700">Note: {order.deliveryNotes}</p>}
-      <p className="mt-6 text-sm">Goods received in good order by: <strong>{order.receivedByName ?? "____________________"}</strong></p>
+      {anyBalance ? (
+        <p className="mt-3 text-sm text-gray-700">Part delivery: the items marked &quot;still to come&quot; will follow on a later delivery note.</p>
+      ) : (
+        <p className="mt-3 text-sm text-gray-700">With this delivery the order is complete.</p>
+      )}
+      {delivery.notes && <p className="mt-2 text-sm text-gray-700">Note: {delivery.notes}</p>}
+      <p className="mt-6 text-sm">Goods received in good order by: <strong>{delivery.receivedByName || "____________________"}</strong></p>
+      {delivery.schoolConfirmedAt && (
+        <p className="mt-1 text-sm text-gray-700">
+          Receipt confirmed by the school online: {delivery.schoolConfirmedBy ?? ""} on {delivery.schoolConfirmedAt.slice(0, 10)}.
+        </p>
+      )}
       <div className="mt-10 grid grid-cols-2 gap-10 text-sm">
         <p className="border-t border-gray-500 pt-1">Received by (name, signature, date) - school stamp</p>
         <p className="border-t border-gray-500 pt-1">Delivered by (name, signature)</p>

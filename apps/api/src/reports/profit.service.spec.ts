@@ -136,6 +136,12 @@ describe('ProfitService', () => {
     expect(branch.tx.supplierInvoice.findMany).not.toHaveBeenCalled();
   });
 
+  it('counts only the invoices that were NOT also recorded as a sale (the others are in the sales already, so they are not counted twice)', async () => {
+    const t = setup({});
+    await t.service.profit({ from: '2026-10-21', to: '2026-10-21' });
+    expect(t.tx.supplierInvoice.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ saleId: null }) }));
+  });
+
   it('counts salaries paid through Payroll, but not for a single branch', async () => {
     const payroll = [{ paidAt: new Date('2026-10-21T07:00:00Z'), payslips: [{ grossPay: 20000 }, { grossPay: 15000 }] }];
     const all = await setup({ payroll }).service.profit({ from: '2026-10-21', to: '2026-10-21' });

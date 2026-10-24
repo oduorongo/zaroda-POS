@@ -190,6 +190,7 @@ export function paymentCode(
     case 'CASH':
       return '01';
     case 'ROOM_CHARGE':
+    case 'ACCOUNT':
       return '02';
     case 'CARD':
       return '05';

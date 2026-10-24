@@ -15,6 +15,7 @@ import { Roles } from '../auth/roles.decorator';
 import {
   BouncePaymentDto,
   CancelOrderDto,
+  CloseBalanceDto,
   ConfirmOrderDto,
   CreateSchoolDto,
   DeliverOrderDto,
@@ -165,6 +166,27 @@ export class SchoolSupplierController {
     @Body() dto: DeliverOrderDto,
   ) {
     return this.orders.deliver(id, dto);
+  }
+
+  /** Stop waiting to deliver the rest of a partly delivered order. */
+  @Roles(Role.MANAGER, Role.OWNER)
+  @Post('orders/:id/close-balance')
+  @HttpCode(200)
+  closeBalance(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: CloseBalanceDto,
+  ) {
+    return this.orders.closeBalance(id, dto);
+  }
+
+  /** One delivery's note, ready to print. */
+  @Roles(Role.MANAGER, Role.OWNER, Role.AUDITOR)
+  @Get('deliveries/:id')
+  async getDelivery(@Param('id', ParseUUIDPipe) id: string) {
+    return {
+      ...(await this.orders.deliveryNote(id)),
+      business: await this.billing.letterhead(),
+    };
   }
 
   // ── Invoices ──

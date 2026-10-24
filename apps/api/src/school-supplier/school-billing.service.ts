@@ -45,9 +45,8 @@ const invoiceInclude = {
       address: true,
     },
   },
-  order: {
-    select: { orderNumber: true, lpoNumber: true, deliveryNoteNumber: true },
-  },
+  order: { select: { orderNumber: true, lpoNumber: true } },
+  delivery: { select: { deliveryNoteNumber: true, sequence: true } },
   allocations: {
     include: {
       payment: {
@@ -93,7 +92,12 @@ function toInvoiceView(i: InvoiceFull) {
     issueDate: day(i.issueDate),
     dueDate: day(i.dueDate),
     school: i.school,
-    order: i.order,
+    // the delivery note this invoice goes with (one invoice per delivery)
+    order: i.order
+      ? { ...i.order, deliveryNoteNumber: i.delivery?.deliveryNoteNumber ?? null }
+      : null,
+    deliveryId: i.deliveryId,
+    saleId: i.saleId,
     subtotal: Number(i.subtotal),
     taxAmount: Number(i.taxAmount),
     total: Number(i.total),
@@ -238,6 +242,16 @@ export class SchoolBillingService {
         throw new ConflictException(
           'Only an invoice with no payments against it can be voided. Bounce or correct the payment first.',
         );
+      // the sale it was recorded as is cancelled with it, so Sales and the reports stop counting it
+      const voided = await tx.supplierInvoice.findUniqueOrThrow({
+        where: { id },
+        select: { saleId: true },
+      });
+      if (voided.saleId)
+        await tx.sale.updateMany({
+          where: { id: voided.saleId },
+          data: { status: 'VOIDED' },
+        });
       return toInvoiceView(
         await tx.supplierInvoice.findUniqueOrThrow({
           where: { id },
