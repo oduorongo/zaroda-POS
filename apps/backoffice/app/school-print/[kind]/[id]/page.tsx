@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { DeliveryNoteDocument, InvoiceDocument, ReceiptDocument, StatementDocument, type DocInvoice, type DocOrder, type DocReceipt, type DocStatement } from "@zaroda/ui";
+import { DeliveryNoteDocument, InvoiceDocument, ReceiptDocument, StatementDocument, type DocInvoice, type DocDelivery, type DocReceipt, type DocStatement } from "@zaroda/ui";
 import { apiGet, ApiError } from "../../../../lib/api";
 import { getSession } from "../../../../lib/auth";
 
@@ -12,7 +12,7 @@ export default function SchoolPrintPage() {
   const search = useSearchParams();
   const { kind, id } = useParams<{ kind: string; id: string }>();
   const [invoice, setInvoice] = useState<DocInvoice | null>(null);
-  const [order, setOrder] = useState<DocOrder | null>(null);
+  const [delivery, setDelivery] = useState<DocDelivery | null>(null);
   const [receipt, setReceipt] = useState<DocReceipt | null>(null);
   const [statement, setStatement] = useState<DocStatement | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -31,7 +31,7 @@ export default function SchoolPrintPage() {
       kind === "invoice"
         ? apiGet<DocInvoice>(`/school-supplier/invoices/${id}`).then(setInvoice)
         : kind === "delivery-note"
-          ? apiGet<DocOrder>(`/school-supplier/orders/${id}`).then(setOrder)
+          ? apiGet<DocDelivery>(`/school-supplier/deliveries/${id}`).then(setDelivery)
           : kind === "receipt"
             ? apiGet<DocReceipt>(`/school-supplier/payments/${id}`).then(setReceipt)
             : apiGet<DocStatement>(`/school-supplier/schools/${id}/statement?${query.toString()}`).then(setStatement);
@@ -49,7 +49,7 @@ export default function SchoolPrintPage() {
         </div>
         {error && <p className="text-red-700">{error}</p>}
         {invoice && <InvoiceDocument invoice={invoice} />}
-        {order && <DeliveryNoteDocument order={order} />}
+        {delivery && <DeliveryNoteDocument delivery={delivery} />}
         {receipt && <ReceiptDocument receipt={receipt} />}
         {statement && <StatementDocument statement={statement} />}
       </div>

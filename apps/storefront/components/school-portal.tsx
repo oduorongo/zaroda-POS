@@ -7,6 +7,7 @@ import { ApiError } from "../lib/api";
 import { kes } from "../lib/format";
 import {
   schoolCancelOrder,
+  schoolConfirmReceived,
   schoolInvoices,
   schoolLogin,
   schoolMe,
@@ -46,6 +47,7 @@ const primary = "rounded-md bg-primary-600 px-4 py-3 font-semibold text-white ho
 const STATUS: Record<SchoolOrder["status"], [string, string]> = {
   SUBMITTED: ["Waiting for the supplier", "bg-warning-50 text-warning-900"],
   CONFIRMED: ["Confirmed - on its way", "bg-primary-50 text-primary-900"],
+  PARTIALLY_DELIVERED: ["Part delivered - the rest is to come", "bg-warning-50 text-warning-900"],
   DELIVERED: ["Delivered", "bg-success-50 text-success-900"],
   CANCELLED: ["Cancelled", "bg-secondary-500/10 text-secondary-600"],
 };
@@ -359,6 +361,25 @@ function NewOrder({ token, guard, onPlaced }: { token: string; guard: Guard; onP
 function Orders({ token, slug, orders, guard, onChanged }: { token: string; slug: string; orders: SchoolOrder[] | null; guard: Guard; onChanged: () => Promise<void> }) {
   const [openId, setOpenId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [receivedBy, setReceivedBy] = useState("");
+  const [confirming, setConfirming] = useState<string | null>(null);
+
+  async function confirmReceived(deliveryId: string) {
+    if (receivedBy.trim().length < 2) {
+      setError("Enter the name of the person who received the goods.");
+      return;
+    }
+    try {
+      await schoolConfirmReceived(token, deliveryId, { name: receivedBy.trim() });
+      setConfirming(null);
+      setReceivedBy("");
+      setError(null);
+      await onChanged();
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 401) guard(err, "");
+      else setError(err instanceof ApiError ? err.message : "Could not confirm it.");
+    }
+  }
 
   async function cancel(o: SchoolOrder) {
     if (!window.confirm(`Withdraw order ${o.orderNumber}?`)) return;
@@ -400,7 +421,9 @@ function Orders({ token, slug, orders, guard, onChanged }: { token: string; slug
                     <tr className="text-left text-xs uppercase text-secondary-500">
                       <th className="py-1">Item</th>
                       <th className="py-1 text-right">Asked</th>
-                      {o.status !== "SUBMITTED" && o.status !== "CANCELLED" && <th className="py-1 text-right">{o.status === "DELIVERED" ? "Delivered" : "Confirmed"}</th>}
+                      {o.status !== "SUBMITTED" && o.status !== "CANCELLED" && <th className="py-1 text-right">Confirmed</th>}
+                      {o.deliveries.length > 0 && <th className="py-1 text-right">Delivered</th>}
+                      {o.hasBalance && <th className="py-1 text-right">Still to come</th>}
                     </tr>
                   </thead>
                   <tbody>
@@ -408,7 +431,9 @@ function Orders({ token, slug, orders, guard, onChanged }: { token: string; slug
                       <tr key={l.id} className="border-t border-border">
                         <td className="py-1">{l.title}</td>
                         <td className="py-1 text-right">{l.quantityOrdered}</td>
-                        {o.status !== "SUBMITTED" && o.status !== "CANCELLED" && <td className="py-1 text-right">{o.status === "DELIVERED" ? (l.quantityDelivered ?? 0) : (l.quantityConfirmed ?? l.quantityOrdered)}</td>}
+                        {o.status !== "SUBMITTED" && o.status !== "CANCELLED" && <td className="py-1 text-right">{l.quantityConfirmed ?? l.quantityOrdered}</td>}
+                        {o.deliveries.length > 0 && <td className="py-1 text-right">{l.quantityDelivered}</td>}
+                        {o.hasBalance && <td className="py-1 text-right font-semibold">{l.balance > 0 ? l.balance : "-"}</td>}
                       </tr>
                     ))}
                   </tbody>
@@ -417,13 +442,35 @@ function Orders({ token, slug, orders, guard, onChanged }: { token: string; slug
                 {o.status === "CANCELLED" && <p className="text-secondary-600">Cancelled by {o.cancelledBy === "SCHOOL" ? "you" : "the supplier"}: {o.cancelReason}</p>}
                 <div className="flex flex-wrap gap-4">
                   {o.status === "SUBMITTED" && <button onClick={() => void cancel(o)} className="text-error-600 hover:underline">Withdraw this order</button>}
-                  {o.status === "DELIVERED" && (
-                    <>
-                      <Link href={`/schools/${slug}/print/delivery-note/${o.id}`} target="_blank" className="text-primary-600 hover:underline">Delivery note {o.deliveryNoteNumber}</Link>
-                      {o.invoice && <Link href={`/schools/${slug}/print/invoice/${o.invoice.id}`} target="_blank" className="text-primary-600 hover:underline">Invoice {o.invoice.invoiceNumber}</Link>}
-                    </>
-                  )}
                 </div>
+                {o.balanceClosedNote && <p className="text-secondary-600">The supplier closed this order with what was delivered. Reason: {o.balanceClosedNote}</p>}
+                {o.deliveries.length > 0 && (
+                  <div className="space-y-2">
+                    <p className="text-xs uppercase text-secondary-500">Deliveries</p>
+                    {o.deliveries.map((d) => (
+                      <div key={d.id} className="rounded-md border border-border p-2">
+                        <p className="text-secondary-600">
+                          {new Date(d.deliveredAt).toLocaleDateString("en-KE")} · received by {d.receivedByName} · {d.lines.map((l) => `${l.quantity} ${l.title}`).join(", ")}
+                        </p>
+                        <div className="mt-1 flex flex-wrap items-center gap-4">
+                          <Link href={`/schools/${slug}/print/delivery-note/${d.id}`} target="_blank" className="text-primary-600 hover:underline">Delivery note {d.deliveryNoteNumber}</Link>
+                          {d.invoice && <Link href={`/schools/${slug}/print/invoice/${d.invoice.id}`} target="_blank" className="text-primary-600 hover:underline">Invoice {d.invoice.invoiceNumber} · {kes(d.invoice.total)}</Link>}
+                          {d.schoolConfirmedAt ? (
+                            <span className="text-success-700">Receipt confirmed by {d.schoolConfirmedBy}</span>
+                          ) : confirming === d.id ? (
+                            <span className="flex flex-wrap items-center gap-2">
+                              <input value={receivedBy} onChange={(e) => setReceivedBy(e.target.value)} maxLength={100} placeholder="Who received the goods?" className="rounded-md border border-border bg-surface p-1" />
+                              <button onClick={() => void confirmReceived(d.id)} className="rounded-md bg-primary-600 px-3 py-1 font-semibold text-white">Confirm</button>
+                              <button onClick={() => setConfirming(null)} className="text-secondary-500 hover:underline">Not now</button>
+                            </span>
+                          ) : (
+                            <button onClick={() => { setConfirming(d.id); setReceivedBy(""); }} className="text-primary-600 hover:underline">We received these goods</button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
           </li>
