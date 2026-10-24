@@ -92,11 +92,12 @@ export class ProfitService {
         branchId
           ? Promise.resolve([])
           : tx.payrollRun.findMany({ where: { status: PayrollRunStatus.PAID, paidAt: { gte: start, lt: end } }, select: { paidAt: true, payslips: { select: { grossPay: true } } } }),
-        // Invoices to schools (credit sales) count on the day they are issued, not when they are paid. They belong to no branch.
+        // Invoices to schools (credit sales) count on the day they are issued, not when they are paid. An invoice that was also
+        // recorded as a sale (every new one) is counted as that sale above, so only the older ones are counted here.
         branchId
           ? Promise.resolve([])
           : tx.supplierInvoice.findMany({
-              where: { status: { not: SupplierInvoiceStatus.VOID }, issueDate: { gte: new Date(`${query.from}T00:00:00.000Z`), lte: new Date(`${query.to}T00:00:00.000Z`) } },
+              where: { status: { not: SupplierInvoiceStatus.VOID }, saleId: null, issueDate: { gte: new Date(`${query.from}T00:00:00.000Z`), lte: new Date(`${query.to}T00:00:00.000Z`) } },
               select: { issueDate: true, total: true, taxAmount: true, lines: { select: { quantity: true, unitCost: true } } },
             }),
       ]);

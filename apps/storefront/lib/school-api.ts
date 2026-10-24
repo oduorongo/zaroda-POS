@@ -1,5 +1,5 @@
 import { API_URL, ApiError } from "./api";
-import type { DocInvoice, DocOrder, DocReceipt, DocStatement } from "@zaroda/ui";
+import type { DocDelivery, DocInvoice, DocReceipt, DocStatement } from "@zaroda/ui";
 
 // A school's own sign-in and ordering, against the supplier's portal. Separate from the shopper calls: a school token is a
 // different kind of token and only works on /school-portal.
@@ -43,19 +43,34 @@ export interface OrderLine {
   unitPrice: number;
   quantityOrdered: number;
   quantityConfirmed: number | null;
-  quantityDelivered: number | null;
+  /** Everything delivered so far. */
+  quantityDelivered: number;
+  /** Still to come. */
+  balance: number;
+}
+export interface SchoolDelivery {
+  id: string;
+  sequence: number;
+  deliveryNoteNumber: string;
+  deliveredAt: string;
+  receivedByName: string;
+  schoolConfirmedAt: string | null;
+  schoolConfirmedBy: string | null;
+  invoice: { id: string; invoiceNumber: string; total: number } | null;
+  lines: { lineId: string; title: string; quantity: number }[];
 }
 export interface SchoolOrder {
   id: string;
   orderNumber: string;
   lpoNumber: string | null;
-  status: "SUBMITTED" | "CONFIRMED" | "DELIVERED" | "CANCELLED";
+  status: "SUBMITTED" | "CONFIRMED" | "PARTIALLY_DELIVERED" | "DELIVERED" | "CANCELLED";
   submittedAt: string;
   confirmationNote: string | null;
-  deliveryNoteNumber: string | null;
   cancelReason: string | null;
   cancelledBy: string | null;
-  invoice: { id: string; invoiceNumber: string; total: number } | null;
+  balanceClosedNote: string | null;
+  hasBalance: boolean;
+  deliveries: SchoolDelivery[];
   lines: OrderLine[];
   subtotal: number;
   taxAmount: number;
@@ -94,5 +109,6 @@ export const schoolInvoices = (token: string) => call<SchoolInvoice[]>("/school-
 export const schoolReceipts = (token: string) => call<SchoolReceipt[]>("/school-portal/receipts", { token });
 export const schoolStatement = (token: string) => call<DocStatement>("/school-portal/statement", { token });
 export const schoolInvoiceDoc = (token: string, id: string) => call<DocInvoice>(`/school-portal/invoices/${id}`, { token });
-export const schoolOrderDoc = (token: string, id: string) => call<DocOrder>(`/school-portal/orders/${id}`, { token });
+export const schoolDeliveryDoc = (token: string, id: string) => call<DocDelivery>(`/school-portal/deliveries/${id}`, { token });
+export const schoolConfirmReceived = (token: string, id: string, body: { name: string; note?: string }) => call<SchoolOrder>(`/school-portal/deliveries/${id}/confirm-received`, { token, method: "POST", body: JSON.stringify(body) });
 export const schoolReceiptDoc = (token: string, id: string) => call<DocReceipt>(`/school-portal/receipts/${id}`, { token });

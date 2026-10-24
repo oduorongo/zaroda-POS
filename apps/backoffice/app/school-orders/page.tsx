@@ -15,14 +15,28 @@ interface Line {
   unitPrice: number;
   quantityOrdered: number;
   quantityConfirmed: number | null;
-  quantityDelivered: number | null;
+  /** Everything delivered so far. */
+  quantityDelivered: number;
+  /** Still to come. */
+  balance: number;
   lineTotal: number;
+}
+interface Delivery {
+  id: string;
+  sequence: number;
+  deliveryNoteNumber: string;
+  deliveredAt: string;
+  receivedByName: string;
+  schoolConfirmedAt: string | null;
+  schoolConfirmedBy: string | null;
+  invoice: { id: string; invoiceNumber: string; total: number } | null;
+  lines: { lineId: string; title: string; quantity: number }[];
 }
 interface Order {
   id: string;
   orderNumber: string;
   lpoNumber: string | null;
-  status: "SUBMITTED" | "CONFIRMED" | "DELIVERED" | "CANCELLED";
+  status: "SUBMITTED" | "CONFIRMED" | "PARTIALLY_DELIVERED" | "DELIVERED" | "CANCELLED";
   school: { id: string; name: string; phone: string };
   notes: string | null;
   deliveryAddress: string | null;
@@ -30,11 +44,11 @@ interface Order {
   overCreditLimit: boolean;
   submittedAt: string;
   confirmationNote: string | null;
-  deliveryNoteNumber: string | null;
-  receivedByName: string | null;
   cancelReason: string | null;
   cancelledBy: string | null;
-  invoice: { id: string; invoiceNumber: string; total: number } | null;
+  balanceClosedNote: string | null;
+  hasBalance: boolean;
+  deliveries: Delivery[];
   lines: Line[];
   subtotal: number;
   taxAmount: number;
@@ -47,11 +61,12 @@ interface Branch {
 
 const kes = (n: number) => `KES ${n.toLocaleString("en-KE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const field = "mt-1 w-full rounded-md border border-border bg-surface p-2 text-sm";
-const STATUS_LABEL: Record<Order["status"], string> = { SUBMITTED: "Waiting for you", CONFIRMED: "Confirmed", DELIVERED: "Delivered", CANCELLED: "Cancelled" };
-const STATUS_TONE: Record<Order["status"], string> = { SUBMITTED: "bg-amber-900 text-amber-200", CONFIRMED: "bg-blue-900 text-blue-200", DELIVERED: "bg-green-900 text-green-200", CANCELLED: "bg-secondary-500/20 text-secondary-500" };
+const STATUS_LABEL: Record<Order["status"], string> = { SUBMITTED: "Waiting for you", CONFIRMED: "Confirmed", PARTIALLY_DELIVERED: "Balance to deliver", DELIVERED: "Delivered", CANCELLED: "Cancelled" };
+const STATUS_TONE: Record<Order["status"], string> = { SUBMITTED: "bg-amber-900 text-amber-200", CONFIRMED: "bg-blue-900 text-blue-200", PARTIALLY_DELIVERED: "bg-orange-900 text-orange-200", DELIVERED: "bg-green-900 text-green-200", CANCELLED: "bg-secondary-500/20 text-secondary-500" };
 const FILTERS: [string, string][] = [
   ["SUBMITTED", "Waiting"],
   ["CONFIRMED", "To deliver"],
+  ["PARTIALLY_DELIVERED", "Balance to deliver"],
   ["DELIVERED", "Delivered"],
   ["CANCELLED", "Cancelled"],
   ["", "All"],
@@ -121,7 +136,7 @@ export default function SchoolOrdersPage() {
     setReason("");
     setReceivedBy("");
     setNotice(null);
-    setQtys(Object.fromEntries(o.lines.map((l) => [l.id, String(o.status === "CONFIRMED" ? (l.quantityConfirmed ?? l.quantityOrdered) : l.quantityOrdered)])));
+    setQtys(Object.fromEntries(o.lines.map((l) => [l.id, String(o.status === "CONFIRMED" ? (l.quantityConfirmed ?? l.quantityOrdered) : o.status === "PARTIALLY_DELIVERED" ? l.balance : l.quantityOrdered)])));
   }
 
   const lineBody = (o: Order) => o.lines.map((l) => ({ lineId: l.id, quantity: Number(qtys[l.id] ?? 0) }));
@@ -203,7 +218,9 @@ export default function SchoolOrdersPage() {
                         <th className="py-1 text-right">Price</th>
                         <th className="py-1 text-right">Asked</th>
                         {o.status !== "SUBMITTED" && <th className="py-1 text-right">Confirmed</th>}
-                        {(o.status === "SUBMITTED" || o.status === "CONFIRMED") && canEdit ? <th className="py-1 text-right">{o.status === "SUBMITTED" ? "You supply" : "Deliver"}</th> : o.status === "DELIVERED" ? <th className="py-1 text-right">Delivered</th> : null}
+                        {o.deliveries.length > 0 && <th className="py-1 text-right">Delivered</th>}
+                        {o.hasBalance && <th className="py-1 text-right">Balance</th>}
+                        {(o.status === "SUBMITTED" || o.status === "CONFIRMED" || o.status === "PARTIALLY_DELIVERED") && canEdit && <th className="py-1 text-right">{o.status === "SUBMITTED" ? "You supply" : "Deliver now"}</th>}
                       </tr>
                     </thead>
                     <tbody>
@@ -213,21 +230,21 @@ export default function SchoolOrdersPage() {
                           <td className="py-1 text-right font-mono">{l.unitPrice.toFixed(2)}</td>
                           <td className="py-1 text-right">{l.quantityOrdered}</td>
                           {o.status !== "SUBMITTED" && <td className="py-1 text-right">{l.quantityConfirmed ?? "-"}</td>}
-                          {(o.status === "SUBMITTED" || o.status === "CONFIRMED") && canEdit ? (
+                          {o.deliveries.length > 0 && <td className="py-1 text-right">{l.quantityDelivered}</td>}
+                          {o.hasBalance && <td className="py-1 text-right font-semibold">{l.balance > 0 ? l.balance : "-"}</td>}
+                          {(o.status === "SUBMITTED" || o.status === "CONFIRMED" || o.status === "PARTIALLY_DELIVERED") && canEdit && (
                             <td className="py-1 text-right">
                               <input
                                 type="number"
                                 min={0}
-                                max={o.status === "SUBMITTED" ? l.quantityOrdered : (l.quantityConfirmed ?? l.quantityOrdered)}
+                                max={o.status === "SUBMITTED" ? l.quantityOrdered : o.status === "CONFIRMED" ? (l.quantityConfirmed ?? l.quantityOrdered) : l.balance}
                                 step="any"
                                 value={qtys[l.id] ?? ""}
                                 onChange={(e) => setQtys((q) => ({ ...q, [l.id]: e.target.value }))}
                                 className="w-24 rounded-md border border-border bg-surface p-1 text-right"
                               />
                             </td>
-                          ) : o.status === "DELIVERED" ? (
-                            <td className="py-1 text-right">{l.quantityDelivered ?? 0}</td>
-                          ) : null}
+                          )}
                         </tr>
                       ))}
                     </tbody>
@@ -250,7 +267,7 @@ export default function SchoolOrdersPage() {
                     </div>
                   )}
 
-                  {o.status === "CONFIRMED" && canEdit && (
+                  {(o.status === "CONFIRMED" || o.status === "PARTIALLY_DELIVERED") && canEdit && (
                     <div className="space-y-2">
                       <div className="grid gap-3 sm:grid-cols-2">
                         {branches.length > 1 && (
@@ -268,8 +285,8 @@ export default function SchoolOrdersPage() {
                           <input maxLength={100} value={receivedBy} onChange={(e) => setReceivedBy(e.target.value)} placeholder="Name of the person who took the goods" className={field} />
                         </label>
                       </div>
-                      <p className="text-xs text-secondary-500">Delivering takes the goods out of stock and makes the delivery note and the invoice.</p>
-                      <button disabled={busy || !branchId || receivedBy.trim().length < 2} onClick={() => void act(`/school-supplier/orders/${o.id}/deliver`, { branchId, receivedByName: receivedBy.trim(), lines: lineBody(o) }, `Delivered. Delivery note and invoice made for ${o.orderNumber}.`)} className="rounded-md bg-green-700 px-4 py-2 font-semibold text-white hover:bg-green-800 disabled:opacity-50">
+                      <p className="text-xs text-secondary-500">Each delivery takes the goods out of stock, makes its own delivery note and invoice, and is recorded as a sale. To send only part now, lower the numbers in &quot;Deliver now&quot;: what is left stays on the order as the balance, to deliver later.</p>
+                      <button disabled={busy || !branchId || receivedBy.trim().length < 2} onClick={() => void act(`/school-supplier/orders/${o.id}/deliver`, { branchId, receivedByName: receivedBy.trim(), lines: lineBody(o) }, `Delivered. Delivery note and invoice made for ${o.orderNumber}. If anything was left out it stays as the balance.`)} className="rounded-md bg-green-700 px-4 py-2 font-semibold text-white hover:bg-green-800 disabled:opacity-50">
                         Deliver and make invoice
                       </button>
                     </div>
@@ -287,17 +304,44 @@ export default function SchoolOrdersPage() {
                     </div>
                   )}
 
-                  {o.status === "DELIVERED" && (
-                    <div className="flex flex-wrap gap-4">
-                      <p className="text-secondary-600">Received by {o.receivedByName}</p>
-                      <Link href={`/school-print/delivery-note/${o.id}`} target="_blank" className="text-primary-600 hover:underline">
-                        Delivery note {o.deliveryNoteNumber}
-                      </Link>
-                      {o.invoice && (
-                        <Link href={`/school-print/invoice/${o.invoice.id}`} target="_blank" className="text-primary-600 hover:underline">
-                          Invoice {o.invoice.invoiceNumber}
-                        </Link>
-                      )}
+                  {o.status === "PARTIALLY_DELIVERED" && canEdit && (
+                    <div className="flex flex-wrap items-end gap-2 border-t border-border pt-3">
+                      <label className="flex-1">
+                        Will not deliver the balance - reason
+                        <input maxLength={300} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. Out of stock, the school agreed to leave it" className={field} />
+                      </label>
+                      <button disabled={busy || reason.trim().length < 3} onClick={() => void act(`/school-supplier/orders/${o.id}/close-balance`, { note: reason.trim() }, `Order ${o.orderNumber} closed with what was delivered.`)} className="rounded-md border border-error-600 px-3 py-2 text-error-600 hover:bg-red-950 disabled:opacity-50">
+                        Close order without the balance
+                      </button>
+                    </div>
+                  )}
+
+                  {o.balanceClosedNote && <p className="text-secondary-600">Closed without the balance: {o.balanceClosedNote}</p>}
+                  {o.deliveries.length > 0 && (
+                    <div className="space-y-2 border-t border-border pt-3">
+                      <p className="text-xs uppercase text-secondary-500">Deliveries</p>
+                      {o.deliveries.map((d) => (
+                        <div key={d.id} className="rounded-md border border-border p-2">
+                          <p className="text-secondary-600">
+                            {d.sequence}. {new Date(d.deliveredAt).toLocaleDateString("en-KE")} · received by {d.receivedByName} · {d.lines.map((l) => `${l.quantity} ${l.title}`).join(", ")}
+                          </p>
+                          <div className="mt-1 flex flex-wrap gap-4">
+                            <Link href={`/school-print/delivery-note/${d.id}`} target="_blank" className="text-primary-600 hover:underline">
+                              Delivery note {d.deliveryNoteNumber}
+                            </Link>
+                            {d.invoice && (
+                              <Link href={`/school-print/invoice/${d.invoice.id}`} target="_blank" className="text-primary-600 hover:underline">
+                                Invoice {d.invoice.invoiceNumber} · {kes(d.invoice.total)}
+                              </Link>
+                            )}
+                            {d.schoolConfirmedAt ? (
+                              <span className="text-green-400">School confirmed receipt ({d.schoolConfirmedBy})</span>
+                            ) : (
+                              <span className="text-secondary-500">School has not confirmed receipt yet</span>
+                            )}
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   )}
                   {o.status === "CANCELLED" && (

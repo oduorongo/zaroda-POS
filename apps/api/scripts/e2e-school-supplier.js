@@ -60,7 +60,7 @@ const phoneB = '0722' + String(Math.floor(100000 + Math.random() * 899999));
   const branchId = (await api('GET', '/branches', { token: owner })).json[0].id;
 
   section('1. Protection');
-  for (const t of ['school_portals', 'supplier_schools', 'school_orders', 'school_order_lines', 'supplier_invoices', 'supplier_invoice_lines', 'supplier_payments', 'supplier_payment_allocations', 'document_counters']) {
+  for (const t of ['school_portals', 'supplier_schools', 'school_orders', 'school_order_lines', 'school_deliveries', 'school_delivery_lines', 'supplier_invoices', 'supplier_invoice_lines', 'supplier_payments', 'supplier_payment_allocations', 'document_counters']) {
     const r = (await sql.query(`SELECT relrowsecurity AS on, relforcerowsecurity AS forced FROM pg_class WHERE relname = $1`, [t])).rows[0];
     check(`${t} has row-level security switched on and forced`, r?.on === true && r?.forced === true, r);
   }
@@ -159,14 +159,14 @@ const phoneB = '0722' + String(Math.floor(100000 + Math.random() * 899999));
 
   const stockBefore = { book: await stockOf(book.id), pen: await stockOf(pen.id) };
   const delivered = await api('POST', `/school-supplier/orders/${o1.json.id}/deliver`, { token: owner, body: { branchId, receivedByName: 'Mr Otieno', notes: 'Left at the bursar\'s office' } });
-  check('the order is delivered', delivered.status === 200 && delivered.json.status === 'DELIVERED' && delivered.json.receivedByName === 'Mr Otieno', delivered);
-  check('it gets a delivery note number and an invoice number', /^DN-\d{4}-\d{4}$/.test(delivered.json.deliveryNoteNumber) && /^INV-\d{4}-\d{4}$/.test(delivered.json.invoice?.invoiceNumber), delivered.json);
+  check('the order is delivered', delivered.status === 200 && delivered.json.status === 'DELIVERED' && delivered.json.deliveries[0].receivedByName === 'Mr Otieno', delivered);
+  check('it gets a delivery note number and an invoice number', /^DN-\d{4}-\d{4}$/.test(delivered.json.deliveries[0]?.deliveryNoteNumber) && /^INV-\d{4}-\d{4}$/.test(delivered.json.deliveries[0]?.invoice?.invoiceNumber), delivered.json);
   check('stock came down by what was delivered (80 books, 50 pens)', (await stockOf(book.id)) === stockBefore.book - 80 && (await stockOf(pen.id)) === stockBefore.pen - 50);
-  const movement = await sql.query(`SELECT type, "quantityDelta" FROM inventory_transactions WHERE "referenceId" = $1 ORDER BY "quantityDelta"`, [o1.json.id]);
+  const movement = await sql.query(`SELECT type, "quantityDelta" FROM inventory_transactions WHERE "referenceId" = $1 ORDER BY "quantityDelta"`, [delivered.json.deliveries[0].id]);
   check('each movement is recorded as a credit sale', movement.rows.length === 2 && movement.rows.every((r) => r.type === 'CREDIT_SALE'), movement.rows);
   check('delivering again is refused', (await api('POST', `/school-supplier/orders/${o1.json.id}/deliver`, { token: owner, body: { branchId, receivedByName: 'Mr Otieno' } })).status === 409);
 
-  const invoiceId = delivered.json.invoice.id;
+  const invoiceId = delivered.json.deliveries[0].invoice.id;
   const inv = await api('GET', `/school-supplier/invoices/${invoiceId}`, { token: owner });
   check('the invoice shows exactly what was delivered: total 4600, nothing paid', inv.status === 200 && inv.json.total === 4600 && inv.json.balance === 4600 && inv.json.status === 'ISSUED' && inv.json.lines.length === 2, inv.json);
   check('it falls due after the school\'s 30 credit days', inv.json.issueDate === nairobi() && inv.json.dueDate === nairobi(30), [inv.json.issueDate, inv.json.dueDate]);
@@ -260,6 +260,99 @@ const phoneB = '0722' + String(Math.floor(100000 + Math.random() * 899999));
   const closed = await api('POST', '/school-auth/login', { body: { slug, phone: phoneA, pin: pinA } });
   check('and then nobody can sign in', closed.status === 401, closed);
   await api('PUT', '/school-supplier/portal', { token: owner, body: { slug, displayName: `Jaribu Stationers ${tag}`, enabled: true } });
+
+  section('12. Delivering in parts: the balance, a note and an invoice for each drop');
+  await receive(book.id, 200, 30);
+  const o5 = await api('POST', '/school-portal/orders', { token: tokenA, body: { lpoNumber: 'LPO-88', lines: [{ variantId: book.id, quantity: 100 }, { variantId: pen.id, quantity: 40 }] } });
+  const o5book = o5.json.lines.find((l) => l.sku === `EXB-${tag}`);
+  const o5pen = o5.json.lines.find((l) => l.sku === `PEN-${tag}`);
+  await api('POST', `/school-supplier/orders/${o5.json.id}/confirm`, { token: owner, body: {} });
+  const bad41 = await api('POST', `/school-supplier/orders/${o5.json.id}/deliver`, { token: owner, body: { branchId, receivedByName: 'Mr Otieno', lines: [{ lineId: o5book.id, quantity: 101 }] } });
+  check('delivering more than was agreed is refused, saying how much is left', bad41.status === 400 && /only 100 left/.test(bad41.json.message), bad41.json);
+  const stockPart0 = await stockOf(book.id);
+  const part1 = await api('POST', `/school-supplier/orders/${o5.json.id}/deliver`, { token: owner, body: { branchId, receivedByName: 'Mr Otieno', lines: [{ lineId: o5book.id, quantity: 60 }] } });
+  check('delivering 60 of 100 books (and the full 40 pens) leaves the order partly delivered', part1.status === 200 && part1.json.status === 'PARTIALLY_DELIVERED' && part1.json.hasBalance === true && part1.json.deliveries.length === 1, part1.json);
+  const pb = part1.json.lines.find((l) => l.id === o5book.id);
+  const pp = part1.json.lines.find((l) => l.id === o5pen.id);
+  check('the order shows what is delivered and what is still to come (books 60 / 40 left, pens 40 / none)', pb.quantityDelivered === 60 && pb.balance === 40 && pp.quantityDelivered === 40 && pp.balance === 0, [pb, pp]);
+  check('stock came down by 60 books only', (await stockOf(book.id)) === stockPart0 - 60);
+  const d1 = part1.json.deliveries[0];
+  check('that drop has its own delivery note and its own invoice (60 x 45 + 40 x 20 = 3500)', /^DN-\d{4}-\d{4}$/.test(d1.deliveryNoteNumber) && d1.invoice?.total === 3500 && d1.sequence === 1, d1);
+  check('the school sees the balance too', (await api('GET', `/school-portal/orders/${o5.json.id}`, { token: tokenA })).json.lines.find((l) => l.id === o5book.id).balance === 40);
+  check('the partly delivered order cannot be cancelled (close the balance instead)', (await api('POST', `/school-supplier/orders/${o5.json.id}/cancel`, { token: owner, body: { reason: 'no longer needed' } })).status === 409);
+  const listPartial = await api('GET', '/school-supplier/orders?status=PARTIALLY_DELIVERED', { token: owner });
+  check('it can be found in the list of orders with a balance', listPartial.status === 200 && listPartial.json.some((o) => o.id === o5.json.id), listPartial.json.length);
+
+  // the invoice is also an ordinary sale
+  const inv1 = await api('GET', `/school-supplier/invoices/${d1.invoice.id}`, { token: owner });
+  check('the invoice knows the delivery note it goes with', inv1.json.order?.deliveryNoteNumber === d1.deliveryNoteNumber && inv1.json.saleId, inv1.json);
+  const sale1 = (await sql.query('SELECT s.id, s.status, s.total::float AS total, s."branchId", (SELECT method FROM sale_payments WHERE "saleId" = s.id LIMIT 1) AS method, (SELECT count(*)::int FROM sale_line_items WHERE "saleId" = s.id) AS lines FROM sales s WHERE s."clientId" = $1', [`school-invoice-${d1.invoice.id}`])).rows[0];
+  check('it was recorded as a completed sale of the same amount, on account, with its lines', sale1 && sale1.status === 'COMPLETED' && sale1.total === 3500 && sale1.method === 'ACCOUNT' && sale1.lines === 2 && sale1.branchId === branchId, sale1);
+  const saleApi = await api('GET', `/sales/${sale1.id}`, { token: owner });
+  check('the sale shows in Sales', saleApi.status === 200 && Number(saleApi.json.total) === 3500, saleApi.status);
+  const salesList = await api('GET', '/sales', { token: owner });
+  check('and in the sales list', salesList.status === 200 && JSON.stringify(salesList.json).includes(sale1.id));
+  check('no stock was taken a second time for the sale', (await stockOf(book.id)) === stockPart0 - 60);
+
+  // the delivery note
+  const note1 = await api('GET', `/school-supplier/deliveries/${d1.id}`, { token: owner });
+  const nb = note1.json.lines?.find((l) => l.id === o5book.id);
+  check('the delivery note shows ordered 100, delivered before 0, now 60, still to come 40', note1.status === 200 && nb.ordered === 100 && nb.before === 0 && nb.now === 60 && nb.balance === 40 && note1.json.invoice?.invoiceNumber === d1.invoice.invoiceNumber, note1.json);
+  check('it carries the business letterhead and who received the goods', note1.json.business?.name === me.name && note1.json.receivedByName === 'Mr Otieno', note1.json.business);
+  check('the school can open its delivery note, the other school cannot', (await api('GET', `/school-portal/deliveries/${d1.id}`, { token: tokenA })).status === 200 && (await api('GET', `/school-portal/deliveries/${d1.id}`, { token: tokenB })).status === 404);
+
+  // the school confirms receipt
+  check('the other school cannot confirm it', (await api('POST', `/school-portal/deliveries/${d1.id}/confirm-received`, { token: tokenB, body: { name: 'Someone' } })).status === 404);
+  check('a name is needed', (await api('POST', `/school-portal/deliveries/${d1.id}/confirm-received`, { token: tokenA, body: {} })).status === 400);
+  const conf = await api('POST', `/school-portal/deliveries/${d1.id}/confirm-received`, { token: tokenA, body: { name: 'Mrs Akinyi', note: 'All boxes sealed' } });
+  check('the school confirms the goods arrived', conf.status === 200 && conf.json.deliveries[0].schoolConfirmedBy === 'Mrs Akinyi' && Boolean(conf.json.deliveries[0].schoolConfirmedAt), conf.json);
+  check('it cannot be confirmed twice', (await api('POST', `/school-portal/deliveries/${d1.id}/confirm-received`, { token: tokenA, body: { name: 'Mrs Akinyi' } })).status === 409);
+  check('the supplier sees the confirmation on the order', (await api('GET', `/school-supplier/orders/${o5.json.id}`, { token: owner })).json.deliveries[0].schoolConfirmedBy === 'Mrs Akinyi');
+
+  // the rest follows
+  const part2 = await api('POST', `/school-supplier/orders/${o5.json.id}/deliver`, { token: owner, body: { branchId, receivedByName: 'Mr Otieno' } });
+  check('delivering again takes the whole balance and completes the order', part2.status === 200 && part2.json.status === 'DELIVERED' && part2.json.hasBalance === false && part2.json.deliveries.length === 2, part2.json);
+  const d2 = part2.json.deliveries[1];
+  check('the second drop has its own number and invoice (40 x 45 = 1800)', d2.sequence === 2 && d2.deliveryNoteNumber !== d1.deliveryNoteNumber && d2.invoice?.total === 1800 && d2.invoice.id !== d1.invoice.id, d2);
+  check('the books delivered add up to the 100 ordered', part2.json.lines.find((l) => l.id === o5book.id).quantityDelivered === 100);
+  const note2 = await api('GET', `/school-supplier/deliveries/${d2.id}`, { token: owner });
+  const nb2 = note2.json.lines?.find((l) => l.id === o5book.id);
+  check('the second delivery note shows 60 delivered before, 40 now, none to come', nb2.before === 60 && nb2.now === 40 && nb2.balance === 0, nb2);
+  check('a finished order cannot be delivered again', (await api('POST', `/school-supplier/orders/${o5.json.id}/deliver`, { token: owner, body: { branchId, receivedByName: 'Mr Otieno' } })).status === 409);
+  check('each invoice is its own sale', (await sql.query("SELECT count(*)::int AS n FROM sales WHERE \"clientId\" LIKE 'school-invoice-%' AND \"organizationId\" = $1 AND status = 'COMPLETED'", [orgId])).rows[0].n >= 2);
+
+  // two people delivering at the same moment cannot deliver the same balance twice
+  const o7 = await api('POST', '/school-portal/orders', { token: tokenA, body: { lines: [{ variantId: pen.id, quantity: 10 }] } });
+  await api('POST', `/school-supplier/orders/${o7.json.id}/confirm`, { token: owner, body: {} });
+  const pensBefore = await stockOf(pen.id);
+  const twice = await Promise.all([1, 2].map(() => api('POST', `/school-supplier/orders/${o7.json.id}/deliver`, { token: owner, body: { branchId, receivedByName: 'Mr Otieno' } })));
+  check('two deliveries of the same balance at once: one goes through, the other is refused', twice.filter((r) => r.status === 200).length === 1 && (await stockOf(pen.id)) === pensBefore - 10, twice.map((r) => r.status));
+
+  // giving up the balance
+  const o6 = await api('POST', '/school-portal/orders', { token: tokenA, body: { lines: [{ variantId: book.id, quantity: 50 }] } });
+  await api('POST', `/school-supplier/orders/${o6.json.id}/confirm`, { token: owner, body: {} });
+  check('an order with nothing delivered cannot have its balance closed', (await api('POST', `/school-supplier/orders/${o6.json.id}/close-balance`, { token: owner, body: { note: 'not needed' } })).status === 409);
+  const o6book = o6.json.lines[0];
+  const part6 = await api('POST', `/school-supplier/orders/${o6.json.id}/deliver`, { token: owner, body: { branchId, receivedByName: 'Mr Otieno', lines: [{ lineId: o6book.id, quantity: 20 }] } });
+  check('20 of 50 delivered', part6.status === 200 && part6.json.status === 'PARTIALLY_DELIVERED', part6.json);
+  check('closing the balance needs a reason', (await api('POST', `/school-supplier/orders/${o6.json.id}/close-balance`, { token: owner, body: {} })).status === 400);
+  const closed6 = await api('POST', `/school-supplier/orders/${o6.json.id}/close-balance`, { token: owner, body: { note: 'Supplier out of stock for the rest' } });
+  check('closing the balance finishes the order at what was delivered (20 x 45 = 900)', closed6.status === 200 && closed6.json.status === 'DELIVERED' && closed6.json.hasBalance === false && closed6.json.total === 900 && Boolean(closed6.json.balanceClosedAt), closed6.json);
+  check('it cannot be closed twice, or delivered further', (await api('POST', `/school-supplier/orders/${o6.json.id}/close-balance`, { token: owner, body: { note: 'again' } })).status === 409 && (await api('POST', `/school-supplier/orders/${o6.json.id}/deliver`, { token: owner, body: { branchId, receivedByName: 'Mr Otieno' } })).status === 409);
+
+  // voiding the invoice cancels its sale
+  const inv6 = part6.json.deliveries[0].invoice;
+  const sale6 = (await sql.query('SELECT id FROM sales WHERE "clientId" = $1', [`school-invoice-${inv6.id}`])).rows[0];
+  const voided6 = await api('POST', `/school-supplier/invoices/${inv6.id}/void`, { token: owner, body: { reason: 'Raised in error' } });
+  check('voiding an invoice voids the sale it was recorded as', voided6.status === 200 && (await sql.query('SELECT status FROM sales WHERE id = $1', [sale6.id])).rows[0].status === 'VOIDED', voided6.json);
+
+  // old data: a delivered order from before this change was given its delivery, and one delivered short can be finished
+  const legacy = (await sql.query("SELECT count(*)::int AS n FROM school_orders o WHERE o.status = 'DELIVERED' AND o.\"organizationId\" = $1 AND NOT EXISTS (SELECT 1 FROM school_deliveries d WHERE d.\"orderId\" = o.id)", [orgId])).rows[0].n;
+  check('every delivered order has at least one delivery behind it', legacy === 0, legacy);
+  for (const t of ['school_deliveries', 'school_delivery_lines']) {
+    const r = (await sql.query(`SELECT relrowsecurity AS on, relforcerowsecurity AS forced FROM pg_class WHERE relname = $1`, [t])).rows[0];
+    check(`${t} has row-level security switched on and forced`, r?.on === true && r?.forced === true, r);
+  }
 
   await sql.end();
   console.log(`\n${passed} checks passed${failures.length ? `, ${failures.length} FAILED:\n - ${failures.join('\n - ')}` : ' - all good'}`);

@@ -1,16 +1,16 @@
 "use client";
 
-import { DeliveryNoteDocument, InvoiceDocument, ReceiptDocument, StatementDocument, type DocInvoice, type DocOrder, type DocReceipt, type DocStatement } from "@zaroda/ui";
+import { DeliveryNoteDocument, InvoiceDocument, ReceiptDocument, StatementDocument, type DocInvoice, type DocDelivery, type DocReceipt, type DocStatement } from "@zaroda/ui";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { ApiError } from "../../../../../../lib/api";
-import { schoolInvoiceDoc, schoolOrderDoc, schoolReceiptDoc, schoolStatement } from "../../../../../../lib/school-api";
+import { schoolDeliveryDoc, schoolInvoiceDoc, schoolReceiptDoc, schoolStatement } from "../../../../../../lib/school-api";
 
 /** A plain white page meant for the printer (or "save as PDF"): the school's own invoice, delivery note, receipt or statement. */
 export default function SchoolPrintPage() {
   const { slug, kind, id } = useParams<{ slug: string; kind: string; id: string }>();
   const [invoice, setInvoice] = useState<DocInvoice | null>(null);
-  const [order, setOrder] = useState<DocOrder | null>(null);
+  const [delivery, setDelivery] = useState<DocDelivery | null>(null);
   const [receipt, setReceipt] = useState<DocReceipt | null>(null);
   const [statement, setStatement] = useState<DocStatement | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -30,7 +30,7 @@ export default function SchoolPrintPage() {
       kind === "invoice"
         ? schoolInvoiceDoc(token, id).then(setInvoice)
         : kind === "delivery-note"
-          ? schoolOrderDoc(token, id).then(setOrder)
+          ? schoolDeliveryDoc(token, id).then(setDelivery)
           : kind === "receipt"
             ? schoolReceiptDoc(token, id).then(setReceipt)
             : schoolStatement(token).then(setStatement);
@@ -48,7 +48,7 @@ export default function SchoolPrintPage() {
         </div>
         {error && <p className="text-red-700">{error}</p>}
         {invoice && <InvoiceDocument invoice={invoice} />}
-        {order && <DeliveryNoteDocument order={order} />}
+        {delivery && <DeliveryNoteDocument delivery={delivery} />}
         {receipt && <ReceiptDocument receipt={receipt} />}
         {statement && <StatementDocument statement={statement} />}
       </div>

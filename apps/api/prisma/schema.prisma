@@ -63,6 +63,7 @@ model Organization {
   supplierSchools           SupplierSchool[]
   schoolOrders              SchoolOrder[]
   supplierInvoices          SupplierInvoice[]
+  schoolDeliveries          SchoolDelivery[]
   supplierPayments          SupplierPayment[]
   documentCounters          DocumentCounter[]
   branches                  Branch[]
@@ -1090,6 +1091,7 @@ enum PaymentMethod {
   WALLET
   ROOM_CHARGE // put on a checked-in hotel guest's folio (the sale is recorded; the guest pays at check-out)
   MPESA_RECEIPT // paid by M-Pesa to the business's own till/paybill, receipt code typed in (taken on trust, like card)
+  ACCOUNT // goods delivered on credit and invoiced (a school supplier's sale): the money comes later, as a receipt on the school's account
 }
 
 model SalePayment {
@@ -3828,7 +3830,8 @@ enum SchoolStatus {
 enum SchoolOrderStatus {
   SUBMITTED // the school has sent it; the supplier has not answered yet
   CONFIRMED // the supplier has confirmed it (maybe with changed quantities) and will deliver
-  DELIVERED // delivered: stock went down, a delivery note and an invoice exist
+  PARTIALLY_DELIVERED // some goods have gone out (each delivery has its own delivery note and invoice); a balance is still to come
+  DELIVERED // everything confirmed has been delivered (or the supplier closed the balance)
   CANCELLED
 }
 
@@ -3923,6 +3926,9 @@ model SchoolOrder {
   receivedByName   String?
   deliveryNotes    String?
   deliveredById    String?
+  /// Set when the supplier closed the order with some of it never delivered (the balance is dropped).
+  balanceClosedAt  DateTime?
+  balanceClosedNote String?
   cancelledAt      DateTime?
   cancelledBy      String? // SCHOOL | SUPPLIER
   cancelReason     String?
@@ -3932,7 +3938,8 @@ model SchoolOrder {
   organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   school       SupplierSchool    @relation(fields: [schoolId], references: [id])
   lines        SchoolOrderLine[]
-  invoice      SupplierInvoice?
+  deliveries   SchoolDelivery[]
+  invoices     SupplierInvoice[]
 
   @@index([organizationId, status])
   @@index([schoolId])
@@ -3951,20 +3958,70 @@ model SchoolOrderLine {
   taxRate           Decimal @default(0) @db.Decimal(6, 4)
   quantityOrdered   Decimal @db.Decimal(14, 3)
   quantityConfirmed Decimal? @db.Decimal(14, 3)
+  /// Everything delivered so far, over all the deliveries of the order.
   quantityDelivered Decimal? @db.Decimal(14, 3)
 
-  order   SchoolOrder    @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  variant ProductVariant @relation(fields: [variantId], references: [id])
+  order           SchoolOrder          @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  variant         ProductVariant       @relation(fields: [variantId], references: [id])
+  deliveryLines   SchoolDeliveryLine[]
 
   @@index([orderId])
   @@map("school_order_lines")
+}
+
+/// One drop of goods to a school: its own delivery note and its own invoice. An order may have several (the rest of it follows later).
+model SchoolDelivery {
+  id                 String    @id @default(uuid())
+  organizationId     String
+  orderId            String
+  /// 1, 2, 3... within the order.
+  sequence           Int
+  /// "DN-2026-0001"
+  deliveryNoteNumber String    @unique
+  deliveredAt        DateTime
+  branchId           String?
+  receivedByName     String
+  notes              String?
+  deliveredById      String?
+  /// The school confirming in its portal that the goods arrived.
+  schoolConfirmedAt  DateTime?
+  schoolConfirmedBy  String?
+  schoolConfirmNote  String?
+  createdAt          DateTime  @default(now())
+
+  organization Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  order        SchoolOrder          @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  lines        SchoolDeliveryLine[]
+  invoice      SupplierInvoice?
+
+  @@unique([orderId, sequence])
+  @@index([organizationId])
+  @@map("school_deliveries")
+}
+
+model SchoolDeliveryLine {
+  id          String  @id @default(uuid())
+  deliveryId  String
+  orderLineId String
+  quantity    Decimal @db.Decimal(14, 3)
+
+  delivery  SchoolDelivery  @relation(fields: [deliveryId], references: [id], onDelete: Cascade)
+  orderLine SchoolOrderLine @relation(fields: [orderLineId], references: [id])
+
+  @@index([deliveryId])
+  @@index([orderLineId])
+  @@map("school_delivery_lines")
 }
 
 model SupplierInvoice {
   id             String                @id @default(uuid())
   organizationId String
   schoolId       String
-  orderId        String?               @unique
+  orderId        String?
+  /// The delivery this invoice is for (one invoice per delivery).
+  deliveryId     String?               @unique
+  /// The ordinary sale this invoice was also recorded as, so it appears in Sales and the reports.
+  saleId         String?               @unique
   /// "INV-2026-0001"
   invoiceNumber  String                @unique
   issueDate      DateTime              @db.Date
@@ -3984,11 +4041,13 @@ model SupplierInvoice {
   organization Organization                @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   school       SupplierSchool              @relation(fields: [schoolId], references: [id])
   order        SchoolOrder?                @relation(fields: [orderId], references: [id])
+  delivery     SchoolDelivery?             @relation(fields: [deliveryId], references: [id])
   lines        SupplierInvoiceLine[]
   allocations  SupplierPaymentAllocation[]
 
   @@index([organizationId, status])
   @@index([schoolId])
+  @@index([orderId])
   @@map("supplier_invoices")
 }
 
