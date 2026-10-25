@@ -842,6 +842,35 @@ export class SchoolOrdersService {
     };
   }
 
+  /**
+   * What is in stock at one branch for each line of an order, so the supplier sees what can go out now and what is short
+   * before pressing Deliver (a delivery cannot take more than is in stock).
+   */
+  async stockFor(id: string, branchId: string) {
+    return this.tenantPrisma.run(async (tx) => {
+      const order = await tx.schoolOrder.findUnique({
+        where: { id },
+        include: { lines: true },
+      });
+      if (!order) throw new NotFoundException('Order not found');
+      const items = await tx.inventoryItem.findMany({
+        where: {
+          branchId,
+          variantId: { in: order.lines.map((l) => l.variantId) },
+        },
+        select: { variantId: true, quantity: true },
+      });
+      const have = new Map(items.map((i) => [i.variantId, Number(i.quantity)]));
+      return {
+        branchId,
+        lines: order.lines.map((l) => ({
+          lineId: l.id,
+          available: Math.max(0, have.get(l.variantId) ?? 0),
+        })),
+      };
+    });
+  }
+
   /** Orders waiting for the supplier to confirm - for the dashboard and alerts. */
   async pendingCount(): Promise<number> {
     return this.tenantPrisma.run((tx) =>

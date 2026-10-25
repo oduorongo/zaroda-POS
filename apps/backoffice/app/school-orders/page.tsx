@@ -59,6 +59,8 @@ interface Branch {
   name: string;
 }
 
+/** What the supplier is being asked to send on a line right now: what was asked (new order), what was agreed (confirmed) or what is left (partly delivered). */
+const wanted = (o: Order, l: Line) => (o.status === "SUBMITTED" ? l.quantityOrdered : o.status === "CONFIRMED" ? (l.quantityConfirmed ?? l.quantityOrdered) : l.balance);
 const kes = (n: number) => `KES ${n.toLocaleString("en-KE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const field = "mt-1 w-full rounded-md border border-border bg-surface p-2 text-sm";
 const STATUS_LABEL: Record<Order["status"], string> = { SUBMITTED: "Waiting for you", CONFIRMED: "Confirmed", PARTIALLY_DELIVERED: "Balance to deliver", DELIVERED: "Delivered", CANCELLED: "Cancelled" };
@@ -90,6 +92,8 @@ export default function SchoolOrdersPage() {
   const [branchId, setBranchId] = useState("");
   const [receivedBy, setReceivedBy] = useState("");
   const [reason, setReason] = useState("");
+  // What is in stock at the chosen branch for each line of the open order (line id -> quantity), once known
+  const [stock, setStock] = useState<Record<string, number> | null>(null);
 
   const canEdit = session?.role === "OWNER" || session?.role === "MANAGER";
 
@@ -125,6 +129,28 @@ export default function SchoolOrdersPage() {
   useEffect(() => {
     if (session) void load();
   }, [session, load]);
+
+  useEffect(() => {
+    const o = orders?.find((x) => x.id === openId);
+    if (!o || !branchId || o.status === "DELIVERED" || o.status === "CANCELLED") {
+      setStock(null);
+      return;
+    }
+    let live = true;
+    apiGet<{ lines: { lineId: string; available: number }[] }>(`/school-supplier/orders/${o.id}/stock?branchId=${branchId}`)
+      .then((r) => {
+        if (!live) return;
+        const have = Object.fromEntries(r.lines.map((l) => [l.lineId, l.available]));
+        setStock(have);
+        // a delivery can only carry what is in stock: start from that, so there is nothing to fix before pressing Deliver
+        if (o.status === "CONFIRMED" || o.status === "PARTIALLY_DELIVERED")
+          setQtys(Object.fromEntries(o.lines.map((l) => [l.id, String(Math.min(wanted(o, l), have[l.id] ?? 0))])));
+      })
+      .catch(() => live && setStock(null));
+    return () => {
+      live = false;
+    };
+  }, [openId, branchId, orders]);
 
   function open(o: Order) {
     if (openId === o.id) {
@@ -220,6 +246,8 @@ export default function SchoolOrdersPage() {
                         {o.status !== "SUBMITTED" && <th className="py-1 text-right">Confirmed</th>}
                         {o.deliveries.length > 0 && <th className="py-1 text-right">Delivered</th>}
                         {o.hasBalance && <th className="py-1 text-right">Balance</th>}
+                        {stock && (o.status === "SUBMITTED" || o.status === "CONFIRMED" || o.status === "PARTIALLY_DELIVERED") && <th className="py-1 text-right">In stock</th>}
+                        {stock && (o.status === "SUBMITTED" || o.status === "CONFIRMED" || o.status === "PARTIALLY_DELIVERED") && <th className="py-1 text-right">Short by</th>}
                         {(o.status === "SUBMITTED" || o.status === "CONFIRMED" || o.status === "PARTIALLY_DELIVERED") && canEdit && <th className="py-1 text-right">{o.status === "SUBMITTED" ? "You supply" : "Deliver now"}</th>}
                       </tr>
                     </thead>
@@ -232,6 +260,12 @@ export default function SchoolOrdersPage() {
                           {o.status !== "SUBMITTED" && <td className="py-1 text-right">{l.quantityConfirmed ?? "-"}</td>}
                           {o.deliveries.length > 0 && <td className="py-1 text-right">{l.quantityDelivered}</td>}
                           {o.hasBalance && <td className="py-1 text-right font-semibold">{l.balance > 0 ? l.balance : "-"}</td>}
+                          {stock && (o.status === "SUBMITTED" || o.status === "CONFIRMED" || o.status === "PARTIALLY_DELIVERED") && (
+                            <>
+                              <td className="py-1 text-right">{stock[l.id] ?? 0}</td>
+                              <td className={`py-1 text-right font-semibold ${wanted(o, l) > (stock[l.id] ?? 0) ? "text-red-400" : "text-secondary-500"}`}>{wanted(o, l) > (stock[l.id] ?? 0) ? Math.round((wanted(o, l) - (stock[l.id] ?? 0)) * 1000) / 1000 : "-"}</td>
+                            </>
+                          )}
                           {(o.status === "SUBMITTED" || o.status === "CONFIRMED" || o.status === "PARTIALLY_DELIVERED") && canEdit && (
                             <td className="py-1 text-right">
                               <input
@@ -249,6 +283,14 @@ export default function SchoolOrdersPage() {
                       ))}
                     </tbody>
                   </table>
+                  {stock && (o.status === "SUBMITTED" || o.status === "CONFIRMED" || o.status === "PARTIALLY_DELIVERED") && o.lines.some((l) => wanted(o, l) > (stock[l.id] ?? 0)) && (
+                    <p className="rounded-md bg-amber-950 p-2 text-xs text-amber-200">
+                      {o.lines.filter((l) => wanted(o, l) > (stock[l.id] ?? 0)).length} of {o.lines.length} items are short of stock{branches.length > 1 ? ` at ${branches.find((b) => b.id === branchId)?.name ?? "this branch"}` : ""}.{" "}
+                      {o.status === "SUBMITTED"
+                        ? "You can confirm less than was asked, or receive more stock first."
+                        : "\"Deliver now\" starts from what you have in stock. The rest stays on the order as the balance, to deliver once stock arrives."}
+                    </p>
+                  )}
                   <p className="text-right text-xs text-secondary-500">
                     Before VAT {kes(o.subtotal)} · VAT {kes(o.taxAmount)} · <span className="font-semibold text-foreground">Total {kes(o.total)}</span>
                   </p>
@@ -286,7 +328,7 @@ export default function SchoolOrdersPage() {
                         </label>
                       </div>
                       <p className="text-xs text-secondary-500">Each delivery takes the goods out of stock, makes its own delivery note and invoice, and is recorded as a sale. To send only part now, lower the numbers in &quot;Deliver now&quot;: what is left stays on the order as the balance, to deliver later.</p>
-                      <button disabled={busy || !branchId || receivedBy.trim().length < 2} onClick={() => void act(`/school-supplier/orders/${o.id}/deliver`, { branchId, receivedByName: receivedBy.trim(), lines: lineBody(o) }, `Delivered. Delivery note and invoice made for ${o.orderNumber}. If anything was left out it stays as the balance.`)} className="rounded-md bg-green-700 px-4 py-2 font-semibold text-white hover:bg-green-800 disabled:opacity-50">
+                      <button disabled={busy || !branchId || receivedBy.trim().length < 2 || !o.lines.some((l) => Number(qtys[l.id] ?? 0) > 0)} onClick={() => void act(`/school-supplier/orders/${o.id}/deliver`, { branchId, receivedByName: receivedBy.trim(), lines: lineBody(o) }, `Delivered. Delivery note and invoice made for ${o.orderNumber}. If anything was left out it stays as the balance.`)} className="rounded-md bg-green-700 px-4 py-2 font-semibold text-white hover:bg-green-800 disabled:opacity-50">
                         Deliver and make invoice
                       </button>
                     </div>
