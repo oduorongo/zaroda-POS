@@ -271,6 +271,50 @@ export class DeliverOrderDto {
   notes?: string;
 }
 
+/** One line of an invoice being credited. */
+export class CreditLineDto {
+  @IsUUID()
+  invoiceLineId!: string;
+
+  /** How many of that line to credit. */
+  @IsNumber({ maxDecimalPlaces: 3 })
+  @Min(0.001)
+  @Max(1_000_000)
+  quantity!: number;
+
+  /** How many of those came back into stock (leave out when none did). */
+  @IsNumber({ maxDecimalPlaces: 3 })
+  @Min(0)
+  @Max(1_000_000)
+  @IsOptional()
+  restock?: number;
+}
+
+export class CreateCreditNoteDto {
+  @IsUUID()
+  invoiceId!: string;
+
+  @IsIn(['RETURNED', 'DAMAGED', 'SHORT_DELIVERY', 'PRICE_ERROR', 'OTHER'])
+  reason!: 'RETURNED' | 'DAMAGED' | 'SHORT_DELIVERY' | 'PRICE_ERROR' | 'OTHER';
+
+  @IsString()
+  @IsOptional()
+  @MaxLength(300)
+  note?: string;
+
+  /** The branch the returned goods go back into (needed when any are put back in stock). */
+  @IsUUID()
+  @IsOptional()
+  branchId?: string;
+
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(200)
+  @ValidateNested({ each: true })
+  @Type(() => CreditLineDto)
+  lines!: CreditLineDto[];
+}
+
 /** Closing an order that was delivered in part, giving up the rest. */
 export class CloseBalanceDto {
   @IsString()

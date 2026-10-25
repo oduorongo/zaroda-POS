@@ -8,6 +8,7 @@ import {
   SubmitSchoolOrderDto,
 } from '../dto/school-supplier.dto';
 import { SchoolBillingService } from '../school-billing.service';
+import { SchoolCreditNotesService } from '../school-credit-notes.service';
 import { SchoolOrdersService } from '../school-orders.service';
 import { SchoolsService } from '../schools.service';
 import { SchoolIdentity } from './school-auth';
@@ -23,6 +24,7 @@ export class SchoolPortalService {
     private readonly tenantPrisma: TenantScopedPrismaService,
     private readonly orders: SchoolOrdersService,
     private readonly billing: SchoolBillingService,
+    private readonly credits: SchoolCreditNotesService,
     private readonly schools: SchoolsService,
   ) {}
 
@@ -138,6 +140,15 @@ export class SchoolPortalService {
   }
   getInvoice(who: SchoolIdentity, id: string) {
     return this.asSchool(who, () => this.billing.getInvoice(id, who.schoolId));
+  }
+  listCreditNotes(who: SchoolIdentity) {
+    return this.asSchool(who, () => this.credits.list(who.schoolId));
+  }
+  getCreditNote(who: SchoolIdentity, id: string) {
+    return this.asSchool(who, async () => ({
+      ...(await this.credits.get(id, who.schoolId)),
+      business: await this.billing.letterhead(),
+    }));
   }
   listReceipts(who: SchoolIdentity) {
     return this.asSchool(who, () => this.billing.listPayments(who.schoolId));

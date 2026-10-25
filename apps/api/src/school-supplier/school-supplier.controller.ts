@@ -16,6 +16,7 @@ import {
   BouncePaymentDto,
   CancelOrderDto,
   CloseBalanceDto,
+  CreateCreditNoteDto,
   ConfirmOrderDto,
   CreateSchoolDto,
   DeliverOrderDto,
@@ -29,6 +30,7 @@ import {
 } from './dto/school-supplier.dto';
 import { PriceListService } from './price-list.service';
 import { SchoolBillingService } from './school-billing.service';
+import { SchoolCreditNotesService } from './school-credit-notes.service';
 import { SchoolOrdersService } from './school-orders.service';
 import { SchoolsService } from './schools.service';
 
@@ -40,6 +42,7 @@ export class SchoolSupplierController {
     private readonly priceList: PriceListService,
     private readonly orders: SchoolOrdersService,
     private readonly billing: SchoolBillingService,
+    private readonly credits: SchoolCreditNotesService,
   ) {}
 
   // ── Schools ──
@@ -195,6 +198,35 @@ export class SchoolSupplierController {
   async getDelivery(@Param('id', ParseUUIDPipe) id: string) {
     return {
       ...(await this.orders.deliveryNote(id)),
+      business: await this.billing.letterhead(),
+    };
+  }
+
+  // ── Credit notes ──
+  /** What can still be credited on an invoice, line by line. */
+  @Roles(Role.MANAGER, Role.OWNER, Role.AUDITOR)
+  @Get('invoices/:id/creditable')
+  creditable(@Param('id', ParseUUIDPipe) id: string) {
+    return this.credits.creditable(id);
+  }
+
+  @Roles(Role.MANAGER, Role.OWNER)
+  @Post('credit-notes')
+  createCreditNote(@Body() dto: CreateCreditNoteDto) {
+    return this.credits.create(dto);
+  }
+
+  @Roles(Role.MANAGER, Role.OWNER, Role.AUDITOR)
+  @Get('credit-notes')
+  listCreditNotes(@Query() q: ListQueryDto) {
+    return this.credits.list(q.schoolId);
+  }
+
+  @Roles(Role.MANAGER, Role.OWNER, Role.AUDITOR)
+  @Get('credit-notes/:id')
+  async getCreditNote(@Param('id', ParseUUIDPipe) id: string) {
+    return {
+      ...(await this.credits.get(id)),
       business: await this.billing.letterhead(),
     };
   }

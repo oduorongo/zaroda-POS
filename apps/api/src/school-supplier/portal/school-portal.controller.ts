@@ -126,6 +126,19 @@ export class SchoolPortalController {
     return this.portal.getInvoice(who, id);
   }
 
+  @Get('credit-notes')
+  creditNotes(@CurrentSchool() who: SchoolIdentity) {
+    return this.portal.listCreditNotes(who);
+  }
+
+  @Get('credit-notes/:id')
+  creditNote(
+    @CurrentSchool() who: SchoolIdentity,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.portal.getCreditNote(who, id);
+  }
+
   @Get('receipts')
   receipts(@CurrentSchool() who: SchoolIdentity) {
     return this.portal.listReceipts(who);

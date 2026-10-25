@@ -23,8 +23,41 @@ interface Invoice {
   school: { id: string; name: string };
   total: number;
   amountPaid: number;
+  creditAmount: number;
+  creditNotes: { id: string; creditNumber: string; total: number }[];
   balance: number;
 }
+interface CreditLine {
+  invoiceLineId: string;
+  description: string;
+  unitPrice: number;
+  taxRate: number;
+  invoiced: number;
+  credited: number;
+  available: number;
+  canRestock: boolean;
+}
+interface CreditNote {
+  id: string;
+  creditNumber: string;
+  issueDate: string;
+  reasonText: string;
+  school: { id: string; name: string };
+  invoice: { id: string; invoiceNumber: string };
+  total: number;
+  restocked: boolean;
+}
+interface Branch {
+  id: string;
+  name: string;
+}
+const REASONS: [string, string][] = [
+  ["RETURNED", "Goods returned"],
+  ["DAMAGED", "Goods damaged"],
+  ["SHORT_DELIVERY", "Short delivery"],
+  ["PRICE_ERROR", "Price correction"],
+  ["OTHER", "Other"],
+];
 interface Payment {
   id: string;
   receiptNumber: string;
@@ -54,7 +87,7 @@ const METHODS: [string, string][] = [
 const INVOICE_LABEL: Record<Invoice["status"], string> = { ISSUED: "Unpaid", PARTIALLY_PAID: "Part paid", PAID: "Paid", VOID: "Cancelled" };
 const INVOICE_TONE: Record<Invoice["status"], string> = { ISSUED: "bg-amber-900 text-amber-200", PARTIALLY_PAID: "bg-blue-900 text-blue-200", PAID: "bg-green-900 text-green-200", VOID: "bg-secondary-500/20 text-secondary-500" };
 
-type Tab = "owing" | "invoices" | "payments";
+type Tab = "owing" | "invoices" | "payments" | "credits";
 
 /** What schools owe, the invoices, and the money received (cheques, transfers) with its receipts. */
 export default function SchoolMoneyPage() {
@@ -66,6 +99,16 @@ export default function SchoolMoneyPage() {
   const [receivables, setReceivables] = useState<Receivables | null>(null);
   const [invoices, setInvoices] = useState<Invoice[] | null>(null);
   const [payments, setPayments] = useState<Payment[] | null>(null);
+  const [creditNotes, setCreditNotes] = useState<CreditNote[] | null>(null);
+  const [branches, setBranches] = useState<Branch[]>([]);
+
+  // Make a credit note
+  const [creditFor, setCreditFor] = useState<{ invoice: Invoice; lines: CreditLine[]; remaining: number } | null>(null);
+  const [creditQty, setCreditQty] = useState<Record<string, string>>({});
+  const [creditReason, setCreditReason] = useState("RETURNED");
+  const [creditNoteText, setCreditNoteText] = useState("");
+  const [cameBack, setCameBack] = useState(true);
+  const [creditBranch, setCreditBranch] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -85,12 +128,14 @@ export default function SchoolMoneyPage() {
   const load = useCallback(async () => {
     try {
       const q = schoolFilter ? `?schoolId=${schoolFilter}` : "";
-      const [list, rec, inv, pay] = await Promise.all([
+      const [list, rec, inv, pay, cns] = await Promise.all([
         apiGet<SchoolLite[]>("/school-supplier/schools"),
         apiGet<Receivables>("/school-supplier/receivables"),
         apiGet<Invoice[]>(`/school-supplier/invoices${q}`),
         apiGet<Payment[]>(`/school-supplier/payments${q}`),
+        apiGet<CreditNote[]>(`/school-supplier/credit-notes${q}`),
       ]);
+      setCreditNotes(cns);
       setSchools(list);
       setReceivables(rec);
       setInvoices(inv);
@@ -113,6 +158,12 @@ export default function SchoolMoneyPage() {
       return;
     }
     setSessionState(s);
+    void apiGet<Branch[]>("/branches")
+      .then((b) => {
+        setBranches(b);
+        setCreditBranch((cur) => cur || b[0]?.id || "");
+      })
+      .catch(() => undefined);
     const wanted = new URLSearchParams(window.location.search).get("school");
     if (wanted) {
       setSchoolFilter(wanted);
@@ -176,6 +227,49 @@ export default function SchoolMoneyPage() {
       await load();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not cancel it.");
+    }
+  }
+
+  async function openCredit(i: Invoice) {
+    try {
+      const r = await apiGet<{ lines: CreditLine[]; remaining: number }>(`/school-supplier/invoices/${i.id}/creditable`);
+      setCreditFor({ invoice: i, lines: r.lines, remaining: r.remaining });
+      setCreditQty({});
+      setCreditReason("RETURNED");
+      setCreditNoteText("");
+      setCameBack(true);
+      setError(null);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not open that invoice.");
+    }
+  }
+
+  async function makeCredit() {
+    if (!creditFor) return;
+    const chosen = creditFor.lines.filter((l) => Number(creditQty[l.invoiceLineId] ?? 0) > 0);
+    if (chosen.length === 0) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const made = await apiPost<{ id: string; creditNumber: string; total: number }>("/school-supplier/credit-notes", {
+        invoiceId: creditFor.invoice.id,
+        reason: creditReason,
+        note: creditNoteText.trim() || undefined,
+        branchId: cameBack ? creditBranch || undefined : undefined,
+        lines: chosen.map((l) => ({
+          invoiceLineId: l.invoiceLineId,
+          quantity: Number(creditQty[l.invoiceLineId]),
+          restock: cameBack && l.canRestock ? Number(creditQty[l.invoiceLineId]) : 0,
+        })),
+      });
+      setNotice(`Credit note ${made.creditNumber} for ${kes(made.total)} made. The school has been told.`);
+      setCreditFor(null);
+      window.open(`/school-print/credit-note/${made.id}`, "_blank");
+      await load();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not make the credit note.");
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -290,6 +384,7 @@ export default function SchoolMoneyPage() {
                 ["owing", "Who owes"],
                 ["invoices", "Invoices"],
                 ["payments", "Payments received"],
+                ["credits", "Credit notes"],
               ] as [Tab, string][]
             ).map(([key, label]) => (
               <button key={key} onClick={() => setTab(key)} className={`rounded-full border px-3 py-1 text-sm ${tab === key ? "border-primary-600 bg-primary-600 text-white" : "border-border hover:bg-secondary-500/10"}`}>
@@ -355,14 +450,103 @@ export default function SchoolMoneyPage() {
                     </p>
                     <p className="mt-1 flex gap-4 text-xs">
                       <Link href={`/school-print/invoice/${i.id}`} target="_blank" className="text-primary-600 hover:underline">Print</Link>
-                      {canEdit && i.status === "ISSUED" && <button onClick={() => void voidInvoice(i)} className="text-error-600 hover:underline">Cancel invoice</button>}
+                      {canEdit && i.status === "ISSUED" && i.creditAmount === 0 && <button onClick={() => void voidInvoice(i)} className="text-error-600 hover:underline">Cancel invoice</button>}
+                      {canEdit && i.status !== "VOID" && <button onClick={() => void openCredit(i)} className="text-primary-600 hover:underline">Credit note</button>}
                     </p>
                   </div>
                   <div className="text-right">
                     <span className={`rounded px-2 py-0.5 text-xs ${INVOICE_TONE[i.status]}`}>{INVOICE_LABEL[i.status]}</span>
                     <p className="mt-1 font-mono font-semibold">{kes(i.total)}</p>
-                    {i.status !== "VOID" && i.amountPaid > 0 && <p className="text-xs text-secondary-500">paid {kes(i.amountPaid)} · owes {kes(i.balance)}</p>}
+                    {i.status !== "VOID" && (i.amountPaid > 0 || i.creditAmount > 0) && <p className="text-xs text-secondary-500">{i.amountPaid > 0 ? `paid ${kes(i.amountPaid)} · ` : ""}{i.creditAmount > 0 ? `credited ${kes(i.creditAmount)} · ` : ""}owes {kes(i.balance)}</p>}
                   </div>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+
+        {creditFor && (
+          <section className="space-y-3 rounded-lg border border-primary-600 bg-surface p-4 text-sm">
+            <h2 className="font-semibold">Credit note on {creditFor.invoice.invoiceNumber} - {creditFor.invoice.school.name}</h2>
+            <p className="text-xs text-secondary-500">Enter how many of each item to credit. It takes that off what the school owes. The invoice still stands at {kes(creditFor.remaining)}.</p>
+            <table className="w-full">
+              <thead>
+                <tr className="text-left text-xs uppercase text-secondary-500">
+                  <th className="py-1">Item</th>
+                  <th className="py-1 text-right">Invoiced</th>
+                  <th className="py-1 text-right">Already credited</th>
+                  <th className="py-1 text-right">Credit now</th>
+                </tr>
+              </thead>
+              <tbody>
+                {creditFor.lines.map((l) => (
+                  <tr key={l.invoiceLineId} className="border-t border-border">
+                    <td className="py-1">{l.description}</td>
+                    <td className="py-1 text-right">{l.invoiced}</td>
+                    <td className="py-1 text-right">{l.credited || "-"}</td>
+                    <td className="py-1 text-right">
+                      <input type="number" min={0} max={l.available} step="any" disabled={l.available <= 0} value={creditQty[l.invoiceLineId] ?? ""} onChange={(e) => setCreditQty((q) => ({ ...q, [l.invoiceLineId]: e.target.value }))} className="w-24 rounded-md border border-border bg-surface p-1 text-right" />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label>
+                Reason
+                <select value={creditReason} onChange={(e) => setCreditReason(e.target.value)} className={field}>
+                  {REASONS.map(([k, l]) => (
+                    <option key={k} value={k}>{l}</option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Note <span className="text-secondary-500">(optional)</span>
+                <input maxLength={300} value={creditNoteText} onChange={(e) => setCreditNoteText(e.target.value)} className={field} />
+              </label>
+            </div>
+            <label className="flex items-center gap-2">
+              <input type="checkbox" checked={cameBack} onChange={(e) => setCameBack(e.target.checked)} />
+              The goods came back to us - put them back in stock
+            </label>
+            {cameBack && branches.length > 1 && (
+              <label className="block">
+                Back into which branch?
+                <select value={creditBranch} onChange={(e) => setCreditBranch(e.target.value)} className={field}>
+                  {branches.map((b) => (
+                    <option key={b.id} value={b.id}>{b.name}</option>
+                  ))}
+                </select>
+              </label>
+            )}
+            <div className="flex gap-2">
+              <button disabled={busy || !creditFor.lines.some((l) => Number(creditQty[l.invoiceLineId] ?? 0) > 0) || (cameBack && !creditBranch)} onClick={() => void makeCredit()} className="rounded-md bg-primary-600 px-4 py-2 font-semibold text-white hover:bg-primary-700 disabled:opacity-50">
+                {busy ? "Saving..." : "Make credit note"}
+              </button>
+              <button onClick={() => setCreditFor(null)} className="rounded-md border border-border px-4 py-2 hover:bg-secondary-500/10">Cancel</button>
+            </div>
+          </section>
+        )}
+
+        {tab === "credits" && (
+          <section>
+            {creditNotes && creditNotes.length === 0 && <p className="rounded-lg border border-border bg-surface p-4 text-sm text-secondary-500">No credit notes yet. To credit goods a school sent back, open Invoices and press &quot;Credit note&quot; on the invoice.</p>}
+            <ul className="divide-y divide-border rounded-lg border border-border bg-surface">
+              {creditNotes?.map((c) => (
+                <li key={c.id} className="flex flex-wrap items-start justify-between gap-2 p-3 text-sm">
+                  <div>
+                    <p className="font-semibold">
+                      {c.school.name} <span className="font-mono text-xs text-secondary-500">{c.creditNumber}</span>
+                    </p>
+                    <p className="text-xs text-secondary-500">
+                      {c.issueDate} · against {c.invoice.invoiceNumber} · {c.reasonText}
+                      {c.restocked ? " · goods back in stock" : ""}
+                    </p>
+                    <p className="mt-1 text-xs">
+                      <Link href={`/school-print/credit-note/${c.id}`} target="_blank" className="text-primary-600 hover:underline">Print</Link>
+                    </p>
+                  </div>
+                  <p className="font-mono font-semibold">{kes(c.total)}</p>
                 </li>
               ))}
             </ul>

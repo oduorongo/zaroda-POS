@@ -98,7 +98,7 @@ export class ProfitService {
           ? Promise.resolve([])
           : tx.supplierInvoice.findMany({
               where: { status: { not: SupplierInvoiceStatus.VOID }, saleId: null, issueDate: { gte: new Date(`${query.from}T00:00:00.000Z`), lte: new Date(`${query.to}T00:00:00.000Z`) } },
-              select: { issueDate: true, total: true, taxAmount: true, lines: { select: { quantity: true, unitCost: true } } },
+              select: { issueDate: true, total: true, taxAmount: true, creditAmount: true, lines: { select: { quantity: true, unitCost: true } } },
             }),
       ]);
       // Stock buying: shown beside the profit, NOT taken off it (the cost of stock reaches profit when it is sold).
@@ -157,8 +157,11 @@ export class ProfitService {
       }
       add(invoice.issueDate.toISOString().slice(0, 10), (t) => {
         t.saleCount += 1;
-        t.sales += Number(invoice.total);
-        t.tax += Number(invoice.taxAmount);
+        // credit notes take their amount (and the VAT in it) off
+        const credited = Number(invoice.creditAmount ?? 0);
+        const share = Number(invoice.total) > 0 ? credited / Number(invoice.total) : 0;
+        t.sales += Number(invoice.total) - credited;
+        t.tax += Number(invoice.taxAmount) * (1 - share);
         t.costOfGoods += cost;
       });
     }
