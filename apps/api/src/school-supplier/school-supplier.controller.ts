@@ -132,6 +132,16 @@ export class SchoolSupplierController {
     return { count: await this.orders.pendingCount() };
   }
 
+  /** What is in stock at a branch for each line of an order. */
+  @Roles(Role.MANAGER, Role.OWNER, Role.AUDITOR)
+  @Get('orders/:id/stock')
+  orderStock(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query('branchId', ParseUUIDPipe) branchId: string,
+  ) {
+    return this.orders.stockFor(id, branchId);
+  }
+
   @Roles(Role.MANAGER, Role.OWNER, Role.AUDITOR)
   @Get('orders/:id')
   async getOrder(@Param('id', ParseUUIDPipe) id: string) {
