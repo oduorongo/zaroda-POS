@@ -285,6 +285,92 @@ export class SchoolOrdersService {
     return view;
   }
 
+  /**
+   * Makes an order from an accepted quotation, inside the caller's transaction: the lines and prices are the quotation's
+   * (not today's price list), so what the school was quoted is what it is charged.
+   */
+  async createFromQuoteInTx(
+    tx: TenantTx,
+    organizationId: string,
+    quote: {
+      schoolId: string;
+      lines: {
+        variantId: string;
+        productName: string;
+        variantSku: string;
+        quantity: unknown;
+        unitPrice: unknown;
+        taxRate: unknown;
+      }[];
+    },
+    extras: { lpoNumber?: string; deliveryAddress?: string; notes?: string },
+  ) {
+    const school = await tx.supplierSchool.findUnique({
+      where: { id: quote.schoolId },
+    });
+    if (!school || school.status !== SchoolStatus.ACTIVE)
+      throw new BadRequestException(
+        'This school account is not active. Please contact the supplier.',
+      );
+    const priced = quote.lines.map((l) => ({
+      variantId: l.variantId,
+      productName: l.productName,
+      variantSku: l.variantSku,
+      unitPrice: Number(l.unitPrice),
+      taxRate: Number(l.taxRate),
+      quantity: Number(l.quantity),
+    }));
+    const total = documentTotals(priced).total;
+    const balance = (await this.ledger.balances(tx, [quote.schoolId])).get(
+      quote.schoolId,
+    );
+    const over = exceedsCreditLimit(
+      school.creditLimit === null ? null : Number(school.creditLimit),
+      balance?.owed ?? 0,
+      total,
+    );
+    const orderNumber = await this.numbers.next(tx, organizationId, 'SO');
+    return tx.schoolOrder.create({
+      data: {
+        organizationId,
+        schoolId: quote.schoolId,
+        orderNumber,
+        lpoNumber: extras.lpoNumber?.trim() || null,
+        notes: extras.notes?.trim() || null,
+        deliveryAddress: extras.deliveryAddress?.trim() || school.address,
+        overCreditLimit: over,
+        lines: {
+          create: priced.map((p) => ({
+            variantId: p.variantId,
+            productName: p.productName,
+            variantSku: p.variantSku,
+            unitPrice: p.unitPrice,
+            taxRate: p.taxRate,
+            quantityOrdered: p.quantity,
+          })),
+        },
+      },
+      include,
+    });
+  }
+
+  /** Tells the supplier's own people that a new order is waiting (used for orders that arrive through a quotation). */
+  async announceNewOrder(order: OrderWithLines, quoteNumber?: string | null) {
+    const view = toOrderView(order);
+    await this.tellStaff(
+      `New school order ${order.orderNumber} from ${order.school.name}`,
+      `${order.school.name} has accepted ${quoteNumber ? `quotation ${quoteNumber}` : 'a quotation'}, which is now order ${order.orderNumber}${order.lpoNumber ? ` (LPO ${order.lpoNumber})` : ''} for KES ${view.total.toFixed(2)}${order.overCreditLimit ? ' - this takes them over their credit limit' : ''}. Open School orders to confirm it.`,
+      detailTable(
+        ['Item', 'Qty', 'Amount'],
+        view.lines.map((l) => [
+          l.title,
+          String(l.quantityOrdered),
+          (l.unitPrice * l.quantityOrdered).toFixed(2),
+        ]),
+      ),
+    );
+  }
+
   /** The school withdraws an order that the supplier has not yet confirmed. */
   async cancelBySchool(schoolId: string, orderId: string, reason?: string) {
     const order = await this.tenantPrisma.run(async (tx) => {

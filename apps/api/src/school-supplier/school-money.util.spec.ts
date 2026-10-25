@@ -186,3 +186,15 @@ describe('document numbers', () => {
     expect(documentNumber('RC', 2026, 12345)).toBe('RC-2026-12345');
   });
 });
+
+describe('allocateOldestFirst on the same day', () => {
+  it('pays invoices of one day in the order they are given (oldest invoice number first), not by id', () => {
+    const open = [
+      { id: 'zzz', balance: 100, issueDate: '2026-10-01' },
+      { id: 'aaa', balance: 100, issueDate: '2026-10-01' },
+    ];
+    expect(allocateOldestFirst(100, open).allocations).toEqual([
+      { invoiceId: 'zzz', amount: 100 },
+    ]);
+  });
+});

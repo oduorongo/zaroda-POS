@@ -6,7 +6,10 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { ApiError } from "../lib/api";
 import { kes } from "../lib/format";
 import {
+  schoolAcceptQuote,
   schoolCancelOrder,
+  schoolDeclineQuote,
+  schoolQuotes,
   schoolCreditNotes,
   schoolConfirmReceived,
   schoolInvoices,
@@ -21,6 +24,7 @@ import {
   type PriceItem,
   type SchoolCreditNote,
   type SchoolInvoice,
+  type SchoolQuote,
   type SchoolMe,
   type SchoolOrder,
   type SchoolReceipt,
@@ -158,12 +162,13 @@ function SignIn({ slug, supplierName, onSignedIn }: { slug: string; supplierName
   );
 }
 
-type Tab = "order" | "orders" | "invoices" | "account";
+type Tab = "order" | "quotes" | "orders" | "invoices" | "account";
 
 function Portal({ slug, token, onSignOut }: { slug: string; token: string; onSignOut: () => void }) {
   const [tab, setTab] = useState<Tab>("order");
   const [me, setMe] = useState<SchoolMe | null>(null);
   const [orders, setOrders] = useState<SchoolOrder[] | null>(null);
+  const [quotes, setQuotes] = useState<SchoolQuote[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const guard = useCallback(
@@ -176,9 +181,10 @@ function Portal({ slug, token, onSignOut }: { slug: string; token: string; onSig
 
   const refresh = useCallback(async () => {
     try {
-      const [m, o] = await Promise.all([schoolMe(token), schoolOrders(token)]);
+      const [m, o, q] = await Promise.all([schoolMe(token), schoolOrders(token), schoolQuotes(token).catch(() => [] as SchoolQuote[])]);
       setMe(m);
       setOrders(o);
+      setQuotes(q);
       setError(null);
     } catch (err) {
       guard(err, "Could not load your account.");
@@ -190,6 +196,7 @@ function Portal({ slug, token, onSignOut }: { slug: string; token: string; onSig
   }, [refresh]);
 
   const waiting = orders?.filter((o) => o.status === "SUBMITTED" || o.status === "CONFIRMED").length ?? 0;
+  const openQuotes = quotes?.filter((q) => q.status === "ISSUED").length ?? 0;
 
   return (
     <div className="mx-auto max-w-3xl space-y-4">
@@ -213,6 +220,7 @@ function Portal({ slug, token, onSignOut }: { slug: string; token: string; onSig
         {(
           [
             ["order", "New order"],
+            ["quotes", `Quotations${openQuotes ? ` (${openQuotes})` : ""}`],
             ["orders", `My orders${waiting ? ` (${waiting})` : ""}`],
             ["invoices", "Invoices"],
             ["account", "Statement & receipts"],
@@ -236,6 +244,19 @@ function Portal({ slug, token, onSignOut }: { slug: string; token: string; onSig
           }}
         />
       )}
+      {tab === "quotes" && (
+        <Quotes
+          token={token}
+          slug={slug}
+          quotes={quotes}
+          guard={guard}
+          onChanged={refresh}
+          onOrdered={async () => {
+            await refresh();
+            setTab("orders");
+          }}
+        />
+      )}
       {tab === "orders" && <Orders token={token} slug={slug} orders={orders} guard={guard} onChanged={refresh} />}
       {tab === "invoices" && <Invoices token={token} slug={slug} guard={guard} />}
       {tab === "account" && <Account token={token} slug={slug} guard={guard} />}
@@ -244,6 +265,117 @@ function Portal({ slug, token, onSignOut }: { slug: string; token: string; onSig
 }
 
 type Guard = (err: unknown, fallback: string) => void;
+
+const QUOTE_STATUS: Record<SchoolQuote["status"], [string, string]> = {
+  DRAFT: ["Draft", "bg-secondary-500/10 text-secondary-600"],
+  ISSUED: ["Open - waiting for your answer", "bg-warning-50 text-warning-900"],
+  ACCEPTED: ["Accepted - now an order", "bg-success-50 text-success-900"],
+  DECLINED: ["Declined", "bg-secondary-500/10 text-secondary-600"],
+  EXPIRED: ["Ran out", "bg-secondary-500/10 text-secondary-600"],
+  SUPERSEDED: ["Replaced by a newer quotation", "bg-secondary-500/10 text-secondary-600"],
+};
+
+/** Quotations the supplier has sent: accept one and it becomes your order at the quoted prices. */
+function Quotes({ token, slug, quotes, guard, onChanged, onOrdered }: { token: string; slug: string; quotes: SchoolQuote[] | null; guard: Guard; onChanged: () => Promise<void>; onOrdered: () => Promise<void> }) {
+  const [openId, setOpenId] = useState<string | null>(null);
+  const [lpo, setLpo] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function accept(q: SchoolQuote) {
+    setBusy(true);
+    setError(null);
+    try {
+      await schoolAcceptQuote(token, q.id, { lpoNumber: lpo.trim() || undefined });
+      setLpo("");
+      await onOrdered();
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 401) guard(err, "");
+      else setError(err instanceof ApiError ? err.message : "Could not accept it.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function decline(q: SchoolQuote) {
+    const reason = window.prompt("Why are you declining? (optional)") ?? undefined;
+    if (reason === undefined) return;
+    try {
+      await schoolDeclineQuote(token, q.id, reason.trim() || undefined);
+      await onChanged();
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 401) guard(err, "");
+      else setError(err instanceof ApiError ? err.message : "Could not decline it.");
+    }
+  }
+
+  if (!quotes) return <p className="py-6 text-center text-secondary-500">Loading...</p>;
+  if (quotes.length === 0) return <p className="rounded-lg border border-border bg-surface p-4 text-sm text-secondary-500">No quotations yet. When your supplier sends you a quotation it appears here, and you can accept it to place the order.</p>;
+  return (
+    <div className="space-y-3">
+      {error && <p className="rounded-md bg-error-50 p-3 text-sm text-error-900">{error}</p>}
+      <ul className="space-y-3">
+        {quotes.map((q) => (
+          <li key={q.id} className="rounded-lg border border-border bg-surface">
+            <button onClick={() => setOpenId(openId === q.id ? null : q.id)} className="flex w-full flex-wrap items-start justify-between gap-2 p-3 text-left">
+              <div>
+                <p className="font-semibold">{q.quoteNumber}</p>
+                <p className="text-xs text-secondary-500">
+                  {q.issueDate}
+                  {q.validUntil ? ` · open until ${q.validUntil}` : ""}
+                </p>
+              </div>
+              <div className="text-right">
+                <span className={`rounded px-2 py-0.5 text-xs ${QUOTE_STATUS[q.status][1]}`}>{QUOTE_STATUS[q.status][0]}</span>
+                <p className="mt-1 font-semibold">{kes(q.total)}</p>
+              </div>
+            </button>
+            {openId === q.id && (
+              <div className="space-y-3 border-t border-border p-3 text-sm">
+                <table className="w-full">
+                  <thead>
+                    <tr className="text-left text-xs uppercase text-secondary-500">
+                      <th className="py-1">Item</th>
+                      <th className="py-1 text-right">Qty</th>
+                      <th className="py-1 text-right">Price</th>
+                      <th className="py-1 text-right">Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {q.lines.map((l) => (
+                      <tr key={l.id} className="border-t border-border">
+                        <td className="py-1">{l.description}</td>
+                        <td className="py-1 text-right">{l.quantity}</td>
+                        <td className="py-1 text-right">{l.unitPrice.toFixed(2)}</td>
+                        <td className="py-1 text-right">{(l.lineTotal + l.taxAmount).toFixed(2)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <p className="text-right text-xs text-secondary-500">Before VAT {kes(q.subtotal)} · VAT {kes(q.taxAmount)} · <span className="font-semibold text-foreground">Total {kes(q.total)}</span></p>
+                {q.terms && <p className="whitespace-pre-line text-secondary-600">{q.terms}</p>}
+                {q.decisionNote && <p className="text-secondary-600">Note: {q.decisionNote}</p>}
+                {q.order && <p className="text-secondary-600">This became order {q.order.orderNumber}.</p>}
+                <div className="flex flex-wrap items-center gap-3">
+                  <Link href={`/schools/${slug}/print/quote/${q.id}`} target="_blank" className="text-primary-600 hover:underline">Print</Link>
+                  {q.status === "ISSUED" && (
+                    <>
+                      <input value={lpo} onChange={(e) => setLpo(e.target.value)} maxLength={60} placeholder="Your LPO number (if you have one)" className="rounded-md border border-border bg-surface p-1.5" />
+                      <button disabled={busy} onClick={() => void accept(q)} className={`${primary}`}>
+                        {busy ? "Placing..." : "Accept and place the order"}
+                      </button>
+                      <button onClick={() => void decline(q)} className="text-error-600 hover:underline">Decline</button>
+                    </>
+                  )}
+                </div>
+              </div>
+            )}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
 
 function NewOrder({ token, guard, onPlaced }: { token: string; guard: Guard; onPlaced: () => Promise<void> }) {
   const [items, setItems] = useState<PriceItem[] | null>(null);

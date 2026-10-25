@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   Param,
@@ -14,8 +15,11 @@ import { Role } from '@prisma/client';
 import { Roles } from '../auth/roles.decorator';
 import {
   BouncePaymentDto,
+  AcceptQuoteDto,
   CancelOrderDto,
   CloseBalanceDto,
+  DeclineQuoteDto,
+  SaveQuoteDto,
   CreateCreditNoteDto,
   ConfirmOrderDto,
   CreateSchoolDto,
@@ -32,6 +36,7 @@ import { PriceListService } from './price-list.service';
 import { SchoolBillingService } from './school-billing.service';
 import { SchoolCreditNotesService } from './school-credit-notes.service';
 import { SchoolOrdersService } from './school-orders.service';
+import { SchoolQuotesService } from './school-quotes.service';
 import { SchoolsService } from './schools.service';
 
 /** The supplier's side: owners and managers do the work, auditors can look. */
@@ -43,6 +48,7 @@ export class SchoolSupplierController {
     private readonly orders: SchoolOrdersService,
     private readonly billing: SchoolBillingService,
     private readonly credits: SchoolCreditNotesService,
+    private readonly quotes: SchoolQuotesService,
   ) {}
 
   // ── Schools ──
@@ -200,6 +206,79 @@ export class SchoolSupplierController {
       ...(await this.orders.deliveryNote(id)),
       business: await this.billing.letterhead(),
     };
+  }
+
+  // ── Quotations ──
+  @Roles(Role.MANAGER, Role.OWNER, Role.AUDITOR)
+  @Get('quotes')
+  listQuotes(@Query() q: ListQueryDto) {
+    return this.quotes.list(q.status, q.schoolId);
+  }
+
+  @Roles(Role.MANAGER, Role.OWNER, Role.AUDITOR)
+  @Get('quotes/:id')
+  async getQuote(@Param('id', ParseUUIDPipe) id: string) {
+    return {
+      ...(await this.quotes.get(id)),
+      business: await this.billing.letterhead(),
+    };
+  }
+
+  @Roles(Role.MANAGER, Role.OWNER)
+  @Post('quotes')
+  createQuote(@Body() dto: SaveQuoteDto) {
+    return this.quotes.create(dto);
+  }
+
+  /** Replaces a draft quotation. */
+  @Roles(Role.MANAGER, Role.OWNER)
+  @Put('quotes/:id')
+  updateQuote(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: SaveQuoteDto,
+  ) {
+    return this.quotes.update(id, dto);
+  }
+
+  @Roles(Role.MANAGER, Role.OWNER)
+  @Delete('quotes/:id')
+  deleteQuote(@Param('id', ParseUUIDPipe) id: string) {
+    return this.quotes.remove(id);
+  }
+
+  @Roles(Role.MANAGER, Role.OWNER)
+  @Post('quotes/:id/issue')
+  @HttpCode(200)
+  issueQuote(@Param('id', ParseUUIDPipe) id: string) {
+    return this.quotes.issue(id);
+  }
+
+  /** Records that the school accepted (by phone, by LPO...): makes the order. */
+  @Roles(Role.MANAGER, Role.OWNER)
+  @Post('quotes/:id/accept')
+  @HttpCode(200)
+  acceptQuote(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: AcceptQuoteDto,
+  ) {
+    return this.quotes.accept(id, 'SUPPLIER', dto);
+  }
+
+  @Roles(Role.MANAGER, Role.OWNER)
+  @Post('quotes/:id/decline')
+  @HttpCode(200)
+  declineQuote(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: DeclineQuoteDto,
+  ) {
+    return this.quotes.decline(id, 'SUPPLIER', dto);
+  }
+
+  @Roles(Role.MANAGER, Role.OWNER)
+  @Post('quotes/:id/revise')
+  @HttpCode(200)
+  reviseQuote(@Param('id', ParseUUIDPipe) id: string) {
+    return this.quotes.revise(id);
   }
 
   // ── Credit notes ──

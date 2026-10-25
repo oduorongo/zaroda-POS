@@ -74,8 +74,8 @@ export function allocateOldestFirst(
   let left = toCents(paymentAmount);
   const allocations: Allocation[] = [];
   for (const inv of [...open].sort(
-    (a, b) =>
-      a.issueDate.localeCompare(b.issueDate) || a.id.localeCompare(b.id),
+    // by date only: the sort is stable, so invoices of the same day keep the order they were given in (oldest invoice number first)
+    (a, b) => a.issueDate.localeCompare(b.issueDate),
   )) {
     if (left <= 0) break;
     const balance = toCents(inv.balance);

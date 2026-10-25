@@ -72,6 +72,21 @@ export interface DocCreditNote {
   business: DocBusiness;
 }
 
+/** A quotation to a school. */
+export interface DocQuote {
+  quoteNumber: string | null;
+  status: string;
+  school: DocSchool;
+  issueDate: string | null;
+  validUntil: string | null;
+  terms: string | null;
+  lines: { id: string; description: string; quantity: number; unitPrice: number; taxRate: number; lineTotal: number; taxAmount: number }[];
+  subtotal: number;
+  taxAmount: number;
+  total: number;
+  business: DocBusiness;
+}
+
 export interface DocReceipt {
   receiptNumber: string;
   status: string;
@@ -335,6 +350,61 @@ export function CreditNoteDocument({ creditNote }: { creditNote: DocCreditNote }
       {creditNote.note && <p className="mt-3 text-sm text-gray-700">Note: {creditNote.note}</p>}
       <p className="mt-3 text-sm text-gray-700">This amount has been taken off what you owe on invoice {creditNote.invoice.invoiceNumber}.{creditNote.restocked ? " The goods returned have been received back." : ""}</p>
       <Footer note={creditNote.business.invoiceFooter} />
+    </div>
+  );
+}
+
+export function QuoteDocument({ quote }: { quote: DocQuote }) {
+  return (
+    <div className="rounded border border-gray-400 p-6">
+      <Letterhead business={quote.business} title="Quotation" number={quote.quoteNumber ?? undefined} />
+      {!quote.quoteNumber && <p className="my-2 rounded bg-amber-100 p-2 text-sm font-bold text-amber-800">DRAFT - not yet issued</p>}
+      {quote.status === "EXPIRED" && <p className="my-2 rounded bg-red-100 p-2 text-sm font-bold text-red-800">EXPIRED</p>}
+      {quote.status === "SUPERSEDED" && <p className="my-2 rounded bg-red-100 p-2 text-sm font-bold text-red-800">REPLACED BY A NEWER QUOTATION</p>}
+      <Parties
+        school={quote.school}
+        rows={[
+          ["Date", quote.issueDate],
+          ["Valid until", quote.validUntil],
+        ]}
+      />
+      <table className="mt-4 w-full text-sm">
+        <thead>
+          <tr className="border-b border-gray-400 text-left text-xs uppercase text-gray-600">
+            <th className="py-1">Item</th>
+            <th className="py-1 text-right">Qty</th>
+            <th className="py-1 text-right">Price</th>
+            <th className="py-1 text-right">VAT</th>
+            <th className="py-1 text-right">Amount</th>
+          </tr>
+        </thead>
+        <tbody>
+          {quote.lines.map((l) => (
+            <tr key={l.id} className="border-b border-gray-200">
+              <td className="py-1">{l.description}</td>
+              <td className="py-1 text-right">{qty(l.quantity)}</td>
+              <td className="py-1 text-right">{money(l.unitPrice)}</td>
+              <td className="py-1 text-right">{l.taxAmount ? money(l.taxAmount) : "-"}</td>
+              <td className="py-1 text-right">{money(l.lineTotal + l.taxAmount)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <table className="ml-auto mt-3 text-sm">
+        <tbody>
+          <tr><td className="pr-6 text-gray-600">Subtotal</td><td className="text-right">KES {money(quote.subtotal)}</td></tr>
+          <tr><td className="pr-6 text-gray-600">VAT</td><td className="text-right">KES {money(quote.taxAmount)}</td></tr>
+          <tr className="text-base font-bold"><td className="pr-6">Total</td><td className="text-right">KES {money(quote.total)}</td></tr>
+        </tbody>
+      </table>
+      {quote.terms && (
+        <div className="mt-4 text-sm">
+          <p className="font-semibold">Terms</p>
+          <p className="whitespace-pre-line text-gray-700">{quote.terms}</p>
+        </div>
+      )}
+      <p className="mt-4 text-sm text-gray-700">To accept this quotation, accept it in your ordering portal or send us your LPO quoting the quotation number.</p>
+      <Footer note={quote.business.invoiceFooter} />
     </div>
   );
 }

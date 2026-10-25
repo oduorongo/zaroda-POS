@@ -271,6 +271,72 @@ export class DeliverOrderDto {
   notes?: string;
 }
 
+// ── Quotations ────────────────────────────────────────────────────────────
+
+export class QuoteLineInputDto {
+  @IsUUID()
+  variantId!: string;
+
+  @IsNumber({ maxDecimalPlaces: 3 })
+  @Min(0.001)
+  @Max(1_000_000)
+  quantity!: number;
+
+  /** Left out, the school's price from the price list is used. */
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  @Max(100_000_000)
+  @IsOptional()
+  unitPrice?: number;
+}
+
+export class SaveQuoteDto {
+  @IsUUID()
+  schoolId!: string;
+
+  /** Left out, the quotation is open for 30 days from the day it is issued. */
+  @IsDateString()
+  @IsOptional()
+  validUntil?: string;
+
+  @IsString()
+  @IsOptional()
+  @MaxLength(1000)
+  terms?: string;
+
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(200)
+  @ValidateNested({ each: true })
+  @Type(() => QuoteLineInputDto)
+  lines!: QuoteLineInputDto[];
+}
+
+/** Accepting a quotation: the order it becomes may carry the school's own LPO number. */
+export class AcceptQuoteDto {
+  @IsString()
+  @IsOptional()
+  @MaxLength(60)
+  lpoNumber?: string;
+
+  @IsString()
+  @IsOptional()
+  @MaxLength(300)
+  deliveryAddress?: string;
+
+  @IsString()
+  @IsOptional()
+  @MaxLength(500)
+  notes?: string;
+}
+
+export class DeclineQuoteDto {
+  @IsString()
+  @IsOptional()
+  @MaxLength(300)
+  reason?: string;
+}
+
 /** One line of an invoice being credited. */
 export class CreditLineDto {
   @IsUUID()
