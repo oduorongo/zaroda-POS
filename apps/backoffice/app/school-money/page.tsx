@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { apiGet, apiPost, ApiError } from "../../lib/api";
+import { apiGet, apiPatch, apiPost, ApiError } from "../../lib/api";
 import { getSession, clearSession, isBackofficeRole, type Session } from "../../lib/auth";
 import { Nav } from "../../components/nav";
 import { PageHeader } from "../../components/page-header";
@@ -87,7 +87,35 @@ const METHODS: [string, string][] = [
 const INVOICE_LABEL: Record<Invoice["status"], string> = { ISSUED: "Unpaid", PARTIALLY_PAID: "Part paid", PAID: "Paid", VOID: "Cancelled" };
 const INVOICE_TONE: Record<Invoice["status"], string> = { ISSUED: "bg-amber-900 text-amber-200", PARTIALLY_PAID: "bg-blue-900 text-blue-200", PAID: "bg-green-900 text-green-200", VOID: "bg-secondary-500/20 text-secondary-500" };
 
-type Tab = "owing" | "invoices" | "payments" | "credits";
+interface OpenInvoice {
+  id: string;
+  invoiceNumber: string;
+  issueDate: string;
+  dueDate: string;
+  total: number;
+  balance: number;
+}
+interface Overdue {
+  id: string;
+  invoiceNumber: string;
+  school: { id: string; name: string; contactName: string | null; phone: string };
+  dueDate: string;
+  daysLate: number;
+  balance: number;
+  expectedPaymentDate: string | null;
+  promiseBroken: boolean;
+  disputed: boolean;
+  disputeNote: string | null;
+  note: string | null;
+  responsibleId: string | null;
+}
+interface Staff {
+  id: string;
+  role: string;
+  user: { fullName: string };
+}
+
+type Tab = "owing" | "chasing" | "invoices" | "payments" | "credits";
 
 /** What schools owe, the invoices, and the money received (cheques, transfers) with its receipts. */
 export default function SchoolMoneyPage() {
@@ -100,6 +128,14 @@ export default function SchoolMoneyPage() {
   const [invoices, setInvoices] = useState<Invoice[] | null>(null);
   const [payments, setPayments] = useState<Payment[] | null>(null);
   const [creditNotes, setCreditNotes] = useState<CreditNote[] | null>(null);
+  const [overdue, setOverdue] = useState<{ rows: Overdue[]; totals: { count: number; owed: number; disputed: number; brokenPromises: number } } | null>(null);
+  const [staff, setStaff] = useState<Staff[]>([]);
+  const [chaseId, setChaseId] = useState<string | null>(null);
+  const [chase, setChase] = useState({ expected: "", disputed: false, disputeNote: "", note: "", responsibleId: "" });
+  // Choosing which invoices a payment pays
+  const [openInv, setOpenInv] = useState<OpenInvoice[]>([]);
+  const [choose, setChoose] = useState(false);
+  const [alloc, setAlloc] = useState<Record<string, string>>({});
   const [branches, setBranches] = useState<Branch[]>([]);
 
   // Make a credit note
@@ -128,14 +164,16 @@ export default function SchoolMoneyPage() {
   const load = useCallback(async () => {
     try {
       const q = schoolFilter ? `?schoolId=${schoolFilter}` : "";
-      const [list, rec, inv, pay, cns] = await Promise.all([
+      const [list, rec, inv, pay, cns, od] = await Promise.all([
         apiGet<SchoolLite[]>("/school-supplier/schools"),
         apiGet<Receivables>("/school-supplier/receivables"),
         apiGet<Invoice[]>(`/school-supplier/invoices${q}`),
         apiGet<Payment[]>(`/school-supplier/payments${q}`),
         apiGet<CreditNote[]>(`/school-supplier/credit-notes${q}`),
+        apiGet<NonNullable<typeof overdue>>("/school-supplier/overdue"),
       ]);
       setCreditNotes(cns);
+      setOverdue(od);
       setSchools(list);
       setReceivables(rec);
       setInvoices(inv);
@@ -158,6 +196,7 @@ export default function SchoolMoneyPage() {
       return;
     }
     setSessionState(s);
+    void apiGet<Staff[]>("/org-users").then(setStaff).catch(() => undefined);
     void apiGet<Branch[]>("/branches")
       .then((b) => {
         setBranches(b);
@@ -176,6 +215,35 @@ export default function SchoolMoneyPage() {
     if (session) void load();
   }, [session, load]);
 
+  useEffect(() => {
+    setChoose(false);
+    setAlloc({});
+    if (!showForm || !schoolId) {
+      setOpenInv([]);
+      return;
+    }
+    let live = true;
+    apiGet<OpenInvoice[]>(`/school-supplier/schools/${schoolId}/open-invoices`)
+      .then((r) => live && setOpenInv(r))
+      .catch(() => live && setOpenInv([]));
+    return () => {
+      live = false;
+    };
+  }, [showForm, schoolId]);
+
+  /** Spreads the amount over the invoices oldest first, as the system would by itself - a starting point to change. */
+  function fillOldestFirst() {
+    let left = Math.round(Number(amount || 0) * 100);
+    const next: Record<string, string> = {};
+    for (const i of openInv) {
+      const take = Math.min(left, Math.round(i.balance * 100));
+      if (take > 0) next[i.id] = (take / 100).toFixed(2);
+      left -= take;
+    }
+    setAlloc(next);
+  }
+  const allocTotal = openInv.reduce((sum, i) => sum + Math.round(Number(alloc[i.id] || 0) * 100), 0) / 100;
+
   async function receive(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
@@ -190,6 +258,9 @@ export default function SchoolMoneyPage() {
         bankName: bankName.trim() || undefined,
         chequeDate: chequeDate || undefined,
         receivedOn,
+        allocations: choose
+          ? openInv.filter((i) => Number(alloc[i.id] || 0) > 0).map((i) => ({ invoiceId: i.id, amount: Number(alloc[i.id]) }))
+          : undefined,
       });
       setNotice(`Receipt ${paid.receiptNumber} made.${paid.onAccount > 0 ? ` ${kes(paid.onAccount)} is more than they owed and is kept as credit.` : ""}`);
       setAmount("");
@@ -364,8 +435,47 @@ export default function SchoolMoneyPage() {
                     <input type="date" max={today()} value={receivedOn} onChange={(e) => setReceivedOn(e.target.value)} className={field} />
                   </label>
                 </div>
+                {openInv.length > 0 && (
+                  <div className="space-y-2 rounded-md border border-border p-3">
+                    <label className="flex items-center gap-2 text-sm">
+                      <input type="checkbox" checked={choose} onChange={(e) => { setChoose(e.target.checked); if (e.target.checked) fillOldestFirst(); }} />
+                      I want to choose which invoices this pays
+                    </label>
+                    {choose && (
+                      <>
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="text-left text-xs uppercase text-secondary-500">
+                              <th className="py-1">Invoice</th>
+                              <th className="py-1">Due</th>
+                              <th className="py-1 text-right">Owes</th>
+                              <th className="py-1 text-right">Pay</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {openInv.map((i) => (
+                              <tr key={i.id} className="border-t border-border">
+                                <td className="py-1 font-mono text-xs">{i.invoiceNumber}</td>
+                                <td className={`py-1 text-xs ${i.dueDate < today() ? "text-red-400" : ""}`}>{i.dueDate}</td>
+                                <td className="py-1 text-right">{kes(i.balance)}</td>
+                                <td className="py-1 text-right">
+                                  <input type="number" min={0} max={i.balance} step="0.01" value={alloc[i.id] ?? ""} onChange={(e) => setAlloc((a) => ({ ...a, [i.id]: e.target.value }))} className="w-28 rounded-md border border-border bg-surface p-1 text-right" />
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                        <p className="text-xs text-secondary-500">
+                          Set against invoices: {kes(allocTotal)} of {kes(Number(amount || 0))}.
+                          {allocTotal > Number(amount || 0) ? <span className="ml-1 text-red-400">That is more than the payment.</span> : Number(amount || 0) > allocTotal ? ` The other ${kes(Number(amount || 0) - allocTotal)} is kept as credit.` : ""}
+                          <button type="button" onClick={fillOldestFirst} className="ml-2 text-primary-600 hover:underline">Start again, oldest first</button>
+                        </p>
+                      </>
+                    )}
+                  </div>
+                )}
                 <div className="flex gap-2">
-                  <button type="submit" disabled={busy || !schoolId || !amount} className="rounded-md bg-primary-600 px-4 py-2 text-sm font-semibold text-white hover:bg-primary-700 disabled:opacity-50">
+                  <button type="submit" disabled={busy || !schoolId || !amount || (choose && allocTotal > Number(amount || 0))} className="rounded-md bg-primary-600 px-4 py-2 text-sm font-semibold text-white hover:bg-primary-700 disabled:opacity-50">
                     {busy ? "Saving..." : "Make receipt"}
                   </button>
                   <button type="button" onClick={() => setShowForm(false)} className="rounded-md border border-border px-4 py-2 text-sm hover:bg-secondary-500/10">
@@ -382,6 +492,7 @@ export default function SchoolMoneyPage() {
             {(
               [
                 ["owing", "Who owes"],
+                ["chasing", `Chasing${overdue && overdue.totals.count > 0 ? ` (${overdue.totals.count})` : ""}`],
                 ["invoices", "Invoices"],
                 ["payments", "Payments received"],
                 ["credits", "Credit notes"],
@@ -392,7 +503,7 @@ export default function SchoolMoneyPage() {
               </button>
             ))}
           </div>
-          {tab !== "owing" && (
+          {tab !== "owing" && tab !== "chasing" && (
             <select value={schoolFilter} onChange={(e) => setSchoolFilter(e.target.value)} className="rounded-md border border-border bg-surface p-1.5 text-sm">
               <option value="">All schools</option>
               {schools.map((s) => (
@@ -428,6 +539,117 @@ export default function SchoolMoneyPage() {
                     <Link href={`/school-print/statement/${r.schoolId}`} target="_blank" className="text-primary-600 hover:underline">Statement</Link>
                     <button onClick={() => { setSchoolFilter(r.schoolId); setSchoolId(r.schoolId); setTab("invoices"); }} className="text-primary-600 hover:underline">See invoices</button>
                   </p>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+
+        {tab === "chasing" && (
+          <section className="space-y-3">
+            {overdue && overdue.rows.length === 0 && <p className="rounded-lg border border-border bg-surface p-4 text-sm text-secondary-500">Nothing is late. Well done.</p>}
+            {overdue && overdue.rows.length > 0 && (
+              <p className="text-sm text-secondary-500">
+                {overdue.totals.count} late {overdue.totals.count === 1 ? "invoice" : "invoices"}, {kes(overdue.totals.owed)} in all
+                {overdue.totals.disputed > 0 ? ` · ${kes(overdue.totals.disputed)} disputed` : ""}
+                {overdue.totals.brokenPromises > 0 ? ` · ${overdue.totals.brokenPromises} promised date${overdue.totals.brokenPromises === 1 ? "" : "s"} missed` : ""}. The longest overdue is first.
+              </p>
+            )}
+            <ul className="divide-y divide-border rounded-lg border border-border bg-surface">
+              {overdue?.rows.map((r) => (
+                <li key={r.id} className="space-y-2 p-3 text-sm">
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div>
+                      <p className="font-semibold">
+                        {r.school.name} <span className="font-mono text-xs text-secondary-500">{r.invoiceNumber}</span>
+                      </p>
+                      <p className="text-xs text-secondary-500">
+                        due {r.dueDate} · <span className="text-red-400">{r.daysLate} {r.daysLate === 1 ? "day" : "days"} late</span> · {r.school.contactName ? `${r.school.contactName} ` : ""}{r.school.phone}
+                      </p>
+                      <p className="mt-1 flex flex-wrap gap-2 text-xs">
+                        {r.disputed && <span className="rounded bg-red-950 px-2 py-0.5 text-red-300">Disputed: {r.disputeNote}</span>}
+                        {r.expectedPaymentDate && <span className={`rounded px-2 py-0.5 ${r.promiseBroken ? "bg-red-950 text-red-300" : "bg-blue-900 text-blue-200"}`}>{r.promiseBroken ? "Promised" : "Promises to pay on"} {r.expectedPaymentDate}{r.promiseBroken ? " - missed" : ""}</span>}
+                        {r.responsibleId && <span className="rounded bg-secondary-500/20 px-2 py-0.5">Following up: {staff.find((x) => x.id === r.responsibleId)?.user.fullName ?? "staff"}</span>}
+                      </p>
+                      {r.note && <p className="mt-1 text-xs text-secondary-600">Note: {r.note}</p>}
+                    </div>
+                    <div className="text-right">
+                      <p className="font-mono text-base font-bold">{kes(r.balance)}</p>
+                      <p className="mt-1 flex justify-end gap-3 text-xs">
+                        <Link href={`/school-print/invoice/${r.id}`} target="_blank" className="text-primary-600 hover:underline">Invoice</Link>
+                        {canEdit && (
+                          <button
+                            onClick={() => {
+                              setChaseId(chaseId === r.id ? null : r.id);
+                              setChase({ expected: r.expectedPaymentDate ?? "", disputed: r.disputed, disputeNote: r.disputeNote ?? "", note: r.note ?? "", responsibleId: r.responsibleId ?? "" });
+                            }}
+                            className="text-primary-600 hover:underline"
+                          >
+                            {chaseId === r.id ? "Close" : "Update follow-up"}
+                          </button>
+                        )}
+                      </p>
+                    </div>
+                  </div>
+                  {chaseId === r.id && canEdit && (
+                    <div className="space-y-3 rounded-md border border-border p-3">
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <label>
+                          They promised to pay on
+                          <input type="date" value={chase.expected} onChange={(e) => setChase({ ...chase, expected: e.target.value })} className={field} />
+                        </label>
+                        <label>
+                          Who is following it up?
+                          <select value={chase.responsibleId} onChange={(e) => setChase({ ...chase, responsibleId: e.target.value })} className={field}>
+                            <option value="">Nobody yet</option>
+                            {staff.map((x) => (
+                              <option key={x.id} value={x.id}>{x.user.fullName}</option>
+                            ))}
+                          </select>
+                        </label>
+                      </div>
+                      <label className="flex items-center gap-2">
+                        <input type="checkbox" checked={chase.disputed} onChange={(e) => setChase({ ...chase, disputed: e.target.checked })} />
+                        The school disputes this invoice
+                      </label>
+                      {chase.disputed && (
+                        <label className="block">
+                          What do they say is wrong?
+                          <input maxLength={500} value={chase.disputeNote} onChange={(e) => setChase({ ...chase, disputeNote: e.target.value })} className={field} />
+                        </label>
+                      )}
+                      <label className="block">
+                        Note <span className="text-secondary-500">(e.g. who you spoke to, what they said)</span>
+                        <textarea rows={2} maxLength={500} value={chase.note} onChange={(e) => setChase({ ...chase, note: e.target.value })} className={field} />
+                      </label>
+                      <button
+                        disabled={busy || (chase.disputed && chase.disputeNote.trim().length < 3)}
+                        onClick={async () => {
+                          setBusy(true);
+                          setError(null);
+                          try {
+                            await apiPatch(`/school-supplier/invoices/${r.id}/follow-up`, {
+                              expectedPaymentDate: chase.expected || null,
+                              disputed: chase.disputed,
+                              disputeNote: chase.disputed ? chase.disputeNote.trim() : "",
+                              note: chase.note.trim(),
+                              responsibleId: chase.responsibleId,
+                            });
+                            setNotice("Follow-up saved.");
+                            setChaseId(null);
+                            await load();
+                          } catch (err) {
+                            setError(err instanceof ApiError ? err.message : "Could not save it.");
+                          } finally {
+                            setBusy(false);
+                          }
+                        }}
+                        className="rounded-md bg-primary-600 px-4 py-2 font-semibold text-white hover:bg-primary-700 disabled:opacity-50"
+                      >
+                        Save
+                      </button>
+                    </div>
+                  )}
                 </li>
               ))}
             </ul>

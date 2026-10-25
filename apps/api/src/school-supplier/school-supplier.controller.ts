@@ -19,6 +19,7 @@ import {
   CancelOrderDto,
   CloseBalanceDto,
   DeclineQuoteDto,
+  FollowUpDto,
   SaveQuoteDto,
   CreateCreditNoteDto,
   ConfirmOrderDto,
@@ -34,6 +35,7 @@ import {
 } from './dto/school-supplier.dto';
 import { PriceListService } from './price-list.service';
 import { SchoolBillingService } from './school-billing.service';
+import { SchoolCollectionsService } from './school-collections.service';
 import { SchoolCreditNotesService } from './school-credit-notes.service';
 import { SchoolOrdersService } from './school-orders.service';
 import { SchoolQuotesService } from './school-quotes.service';
@@ -49,6 +51,7 @@ export class SchoolSupplierController {
     private readonly billing: SchoolBillingService,
     private readonly credits: SchoolCreditNotesService,
     private readonly quotes: SchoolQuotesService,
+    private readonly collections: SchoolCollectionsService,
   ) {}
 
   // ── Schools ──
@@ -206,6 +209,30 @@ export class SchoolSupplierController {
       ...(await this.orders.deliveryNote(id)),
       business: await this.billing.letterhead(),
     };
+  }
+
+  // ── Chasing what is owed ──
+  /** Overdue invoices in the order to chase them, with each one's follow-up. */
+  @Roles(Role.MANAGER, Role.OWNER, Role.AUDITOR)
+  @Get('overdue')
+  overdue() {
+    return this.collections.overdue();
+  }
+
+  @Roles(Role.MANAGER, Role.OWNER)
+  @Patch('invoices/:id/follow-up')
+  followUp(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: FollowUpDto,
+  ) {
+    return this.collections.saveFollowUp(id, dto);
+  }
+
+  /** What a school still owes, invoice by invoice, to choose which a payment pays. */
+  @Roles(Role.MANAGER, Role.OWNER, Role.AUDITOR)
+  @Get('schools/:id/open-invoices')
+  openInvoices(@Param('id', ParseUUIDPipe) id: string) {
+    return this.collections.openInvoicesOf(id);
   }
 
   // ── Quotations ──

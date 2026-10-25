@@ -529,6 +529,57 @@ const phoneB = '0722' + String(Math.floor(100000 + Math.random() * 899999));
     check(`${t} has row-level security switched on and forced`, r?.on === true && r?.forced === true, r);
   }
 
+  section('15. Chasing what is owed, and choosing which invoices a payment pays');
+  await receive(pen.id, 100, 10);
+  const deliver15 = async (qty) => {
+    const o = await api('POST', '/school-portal/orders', { token: tokenA, body: { lines: [{ variantId: pen.id, quantity: qty }] } });
+    await api('POST', `/school-supplier/orders/${o.json.id}/confirm`, { token: owner, body: {} });
+    const d = await api('POST', `/school-supplier/orders/${o.json.id}/deliver`, { token: owner, body: { branchId, receivedByName: 'Mr Otieno' } });
+    return d.json.deliveries[0].invoice;
+  };
+  const invD15 = await deliver15(3);
+  const invE15 = await deliver15(2);
+  const invF15 = await deliver15(1);
+  await sql.query('UPDATE supplier_invoices SET "issueDate" = $3::date, "dueDate" = $2::date WHERE id = $1', [invD15.id, nairobi(-12), nairobi(-42)]);
+  await sql.query('UPDATE supplier_invoices SET "issueDate" = $3::date, "dueDate" = $2::date WHERE id = $1', [invE15.id, nairobi(-40), nairobi(-70)]);
+  const ou15 = (await api('GET', '/org-users', { token: owner })).json;
+  const ownerOu15 = ou15.find((u) => u.role === 'OWNER');
+
+  const od = await api('GET', '/school-supplier/overdue', { token: owner });
+  const mine15 = od.json.rows.filter((r) => [invD15.id, invE15.id, invF15.id].includes(r.id));
+  check('the overdue list holds the two late invoices, the longer overdue first, and not the one not yet due', od.status === 200 && mine15.length === 2 && mine15[0].id === invE15.id && mine15[1].id === invD15.id, mine15.map((r) => [r.invoiceNumber, r.daysLate]));
+  check('it says how late each is and what it still owes (60 and 40 shillings of pens at 20)', mine15[0].daysLate === 40 && mine15[1].daysLate === 12 && mine15[0].balance === 40 && mine15[1].balance === 60, mine15);
+  check('it carries the school and a total', Boolean(mine15[0].school.name) && od.json.totals.count >= 2 && od.json.totals.owed >= 100, od.json.totals);
+  check('a school cannot see what is overdue', (await api('GET', '/school-supplier/overdue', { token: tokenA })).status === 401);
+
+  const fu = await api('PATCH', `/school-supplier/invoices/${invD15.id}/follow-up`, { token: owner, body: { expectedPaymentDate: nairobi(-1), note: 'Bursar said cheque is being signed', responsibleId: ownerOu15.id } });
+  check('a follow-up is saved: the date promised, a note and who is chasing', fu.status === 200 && fu.json.expectedPaymentDate === nairobi(-1) && fu.json.note === 'Bursar said cheque is being signed' && fu.json.responsibleId === ownerOu15.id, fu.json);
+  const od2 = (await api('GET', '/school-supplier/overdue', { token: owner })).json.rows.find((r) => r.id === invD15.id);
+  check('a promised date that has gone by is flagged as a broken promise', od2.promiseBroken === true && od2.expectedPaymentDate === nairobi(-1), od2);
+  check('the invoice itself shows the follow-up', (await api('GET', `/school-supplier/invoices/${invD15.id}`, { token: owner })).json.followUpNote === 'Bursar said cheque is being signed');
+  check('a dispute must say what it is about', (await api('PATCH', `/school-supplier/invoices/${invD15.id}/follow-up`, { token: owner, body: { disputed: true } })).status === 400);
+  const disp = await api('PATCH', `/school-supplier/invoices/${invD15.id}/follow-up`, { token: owner, body: { disputed: true, disputeNote: 'They say 1 box was damaged' } });
+  check('a dispute is recorded with its reason, and the earlier note is kept', disp.status === 200 && disp.json.disputed === true && disp.json.disputeNote === 'They say 1 box was damaged' && disp.json.note === 'Bursar said cheque is being signed', disp.json);
+  const od3 = (await api('GET', '/school-supplier/overdue', { token: owner })).json;
+  check('disputed invoices are counted apart in the totals', od3.totals.disputed >= 60 && od3.rows.find((r) => r.id === invD15.id).disputed === true, od3.totals);
+  check('a promise dated before the invoice was issued is refused', (await api('PATCH', `/school-supplier/invoices/${invE15.id}/follow-up`, { token: owner, body: { expectedPaymentDate: '2020-01-01' } })).status === 400);
+  check('someone who is not on the staff cannot be made responsible', (await api('PATCH', `/school-supplier/invoices/${invE15.id}/follow-up`, { token: owner, body: { responsibleId: '00000000-0000-4000-8000-000000000000' } })).status === 400);
+  const cleared = await api('PATCH', `/school-supplier/invoices/${invD15.id}/follow-up`, { token: owner, body: { disputed: false, expectedPaymentDate: null, responsibleId: '' } });
+  check('clearing the dispute, the date and the person works', cleared.status === 200 && cleared.json.disputed === false && cleared.json.disputeNote === null && cleared.json.expectedPaymentDate === null && cleared.json.responsibleId === null, cleared.json);
+  check('a school cannot write follow-ups', (await api('PATCH', `/school-supplier/invoices/${invD15.id}/follow-up`, { token: tokenA, body: { note: 'x' } })).status === 401);
+  check('every follow-up is in the audit log', (await sql.query(`SELECT count(*)::int AS n FROM audit_log WHERE action = 'school.invoice_follow_up' AND "entityId" = $1`, [invD15.id])).rows[0].n >= 3);
+
+  // choosing which invoices a payment pays
+  const open15 = await api('GET', `/school-supplier/schools/${a.json.id}/open-invoices`, { token: owner });
+  check('the invoices a school still owes are listed with their balances, oldest first', open15.status === 200 && [invD15, invE15, invF15].every((i) => open15.json.some((o) => o.id === i.id)) && open15.json.every((o) => o.balance > 0), open15.json.length);
+  check('a school that does not exist is a 404, and a school cannot look', (await api('GET', '/school-supplier/schools/00000000-0000-4000-8000-000000000000/open-invoices', { token: owner })).status === 404 && (await api('GET', `/school-supplier/schools/${a.json.id}/open-invoices`, { token: tokenA })).status === 401);
+  const pickE = await api('POST', '/school-supplier/payments', { token: owner, body: { schoolId: a.json.id, amount: 40, method: 'CASH', allocations: [{ invoiceId: invE15.id, amount: 40 }] } });
+  const eAfter = (await api('GET', `/school-supplier/invoices/${invE15.id}`, { token: owner })).json;
+  const dAfter = (await api('GET', `/school-supplier/invoices/${invD15.id}`, { token: owner })).json;
+  check('a payment set against a chosen invoice pays that one (not the oldest) and leaves the others owing', pickE.status === 201 && eAfter.status === 'PAID' && dAfter.status === 'ISSUED' && dAfter.balance === 60, [eAfter.status, dAfter.status]);
+  check('a paid invoice drops out of the overdue list and cannot be followed up', !(await api('GET', '/school-supplier/overdue', { token: owner })).json.rows.some((r) => r.id === invE15.id) && (await api('PATCH', `/school-supplier/invoices/${invE15.id}/follow-up`, { token: owner, body: { note: 'x' } })).status === 409);
+  check('paying more into an invoice than it owes is refused', (await api('POST', '/school-supplier/payments', { token: owner, body: { schoolId: a.json.id, amount: 100, method: 'CASH', allocations: [{ invoiceId: invD15.id, amount: 100 }] } })).status === 400);
+
   await sql.end();
   console.log(`\n${passed} checks passed${failures.length ? `, ${failures.length} FAILED:\n - ${failures.join('\n - ')}` : ' - all good'}`);
   process.exit(failures.length ? 1 : 0);

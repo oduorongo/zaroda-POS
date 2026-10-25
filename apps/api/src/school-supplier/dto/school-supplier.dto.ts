@@ -271,6 +271,36 @@ export class DeliverOrderDto {
   notes?: string;
 }
 
+// ── Chasing unpaid invoices ───────────────────────────────────────────────
+
+export class FollowUpDto {
+  /** When the school promised to pay. null clears it. */
+  @IsDateString()
+  @IsOptional()
+  expectedPaymentDate?: string | null;
+
+  @IsBoolean()
+  @IsOptional()
+  disputed?: boolean;
+
+  /** What the school disputes. Needed when disputed. */
+  @IsString()
+  @IsOptional()
+  @MaxLength(500)
+  disputeNote?: string | null;
+
+  @IsString()
+  @IsOptional()
+  @MaxLength(500)
+  note?: string | null;
+
+  /** The member of staff chasing it (an OrgUser id). An empty text clears it. */
+  @IsString()
+  @IsOptional()
+  @MaxLength(60)
+  responsibleId?: string | null;
+}
+
 // ── Quotations ────────────────────────────────────────────────────────────
 
 export class QuoteLineInputDto {
