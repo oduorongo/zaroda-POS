@@ -36,6 +36,8 @@ interface Order {
   id: string;
   orderNumber: string;
   lpoNumber: string | null;
+  lpoVerifiedAt: string | null;
+  lpoVerifiedByName: string | null;
   status: "SUBMITTED" | "CONFIRMED" | "PARTIALLY_DELIVERED" | "DELIVERED" | "CANCELLED";
   school: { id: string; name: string; phone: string };
   notes: string | null;
@@ -61,6 +63,12 @@ interface Branch {
 
 /** What the supplier is being asked to send on a line right now: what was asked (new order), what was agreed (confirmed) or what is left (partly delivered). */
 const wanted = (o: Order, l: Line) => (o.status === "SUBMITTED" ? l.quantityOrdered : o.status === "CONFIRMED" ? (l.quantityConfirmed ?? l.quantityOrdered) : l.balance);
+/** How much of a line cannot be supplied from stock. For a new order the stock already promised to other confirmed orders is not counted as available. */
+const shortOf = (o: Order, l: Line, stock: Record<string, number>, reserved: Record<string, number>) => {
+  const onShelf = stock[l.id] ?? 0;
+  const free = o.status === "SUBMITTED" ? Math.max(0, onShelf - (reserved[l.id] ?? 0)) : onShelf;
+  return Math.max(0, Math.round((wanted(o, l) - free) * 1000) / 1000);
+};
 const kes = (n: number) => `KES ${n.toLocaleString("en-KE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const field = "mt-1 w-full rounded-md border border-border bg-surface p-2 text-sm";
 const STATUS_LABEL: Record<Order["status"], string> = { SUBMITTED: "Waiting for you", CONFIRMED: "Confirmed", PARTIALLY_DELIVERED: "Balance to deliver", DELIVERED: "Delivered", CANCELLED: "Cancelled" };
@@ -94,6 +102,8 @@ export default function SchoolOrdersPage() {
   const [reason, setReason] = useState("");
   // What is in stock at the chosen branch for each line of the open order (line id -> quantity), once known
   const [stock, setStock] = useState<Record<string, number> | null>(null);
+  // and how much of it other confirmed orders are still waiting for
+  const [reserved, setReserved] = useState<Record<string, number>>({});
 
   const canEdit = session?.role === "OWNER" || session?.role === "MANAGER";
 
@@ -137,11 +147,12 @@ export default function SchoolOrdersPage() {
       return;
     }
     let live = true;
-    apiGet<{ lines: { lineId: string; available: number }[] }>(`/school-supplier/orders/${o.id}/stock?branchId=${branchId}`)
+    apiGet<{ lines: { lineId: string; available: number; reserved: number }[] }>(`/school-supplier/orders/${o.id}/stock?branchId=${branchId}`)
       .then((r) => {
         if (!live) return;
         const have = Object.fromEntries(r.lines.map((l) => [l.lineId, l.available]));
         setStock(have);
+        setReserved(Object.fromEntries(r.lines.map((l) => [l.lineId, l.reserved])));
         // a delivery can only carry what is in stock: start from that, so there is nothing to fix before pressing Deliver
         if (o.status === "CONFIRMED" || o.status === "PARTIALLY_DELIVERED")
           setQtys(Object.fromEntries(o.lines.map((l) => [l.id, String(Math.min(wanted(o, l), have[l.id] ?? 0))])));
@@ -167,14 +178,14 @@ export default function SchoolOrdersPage() {
 
   const lineBody = (o: Order) => o.lines.map((l) => ({ lineId: l.id, quantity: Number(qtys[l.id] ?? 0) }));
 
-  async function act(path: string, body: unknown, done: string) {
+  async function act(path: string, body: unknown, done: string, closeAfter = true) {
     setBusy(true);
     setError(null);
     setNotice(null);
     try {
       await apiPost(path, body);
       setNotice(done);
-      setOpenId(null);
+      if (closeAfter) setOpenId(null);
       await load();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "That did not work.");
@@ -238,6 +249,19 @@ export default function SchoolOrdersPage() {
                 <div className="space-y-3 border-t border-border p-3 text-sm">
                   {o.notes && <p className="text-secondary-600">School&apos;s note: {o.notes}</p>}
                   {o.deliveryAddress && <p className="text-secondary-600">Deliver to: {o.deliveryAddress}</p>}
+                  {o.lpoNumber && (
+                    <label className="flex flex-wrap items-center gap-2 text-secondary-600">
+                      <input
+                        type="checkbox"
+                        disabled={!canEdit || busy || o.status === "CANCELLED"}
+                        checked={o.lpoVerifiedAt !== null}
+                        onChange={(e) => void act(`/school-supplier/orders/${o.id}/lpo-check`, { checked: e.target.checked }, e.target.checked ? "LPO ticked as received and checked." : "LPO tick taken off.", false)}
+                      />
+                      LPO {o.lpoNumber} received and checked against the school&apos;s signed copy
+                      {o.lpoVerifiedAt && <span className="text-xs text-green-400">- {o.lpoVerifiedByName}, {new Date(o.lpoVerifiedAt).toLocaleDateString("en-KE")}</span>}
+                      {!o.lpoVerifiedAt && (o.status === "CONFIRMED" || o.status === "PARTIALLY_DELIVERED") && <span className="text-xs text-amber-400">- not checked yet</span>}
+                    </label>
+                  )}
                   <table className="w-full">
                     <thead>
                       <tr className="text-left text-xs uppercase text-secondary-500">
@@ -248,6 +272,7 @@ export default function SchoolOrdersPage() {
                         {o.deliveries.length > 0 && <th className="py-1 text-right">Delivered</th>}
                         {o.hasBalance && <th className="py-1 text-right">Balance</th>}
                         {stock && (o.status === "SUBMITTED" || o.status === "CONFIRMED" || o.status === "PARTIALLY_DELIVERED") && <th className="py-1 text-right">In stock</th>}
+                        {stock && o.status === "SUBMITTED" && <th className="py-1 text-right">Promised to others</th>}
                         {stock && (o.status === "SUBMITTED" || o.status === "CONFIRMED" || o.status === "PARTIALLY_DELIVERED") && <th className="py-1 text-right">Short by</th>}
                         {(o.status === "SUBMITTED" || o.status === "CONFIRMED" || o.status === "PARTIALLY_DELIVERED") && canEdit && <th className="py-1 text-right">{o.status === "SUBMITTED" ? "You supply" : "Deliver now"}</th>}
                       </tr>
@@ -264,7 +289,8 @@ export default function SchoolOrdersPage() {
                           {stock && (o.status === "SUBMITTED" || o.status === "CONFIRMED" || o.status === "PARTIALLY_DELIVERED") && (
                             <>
                               <td className="py-1 text-right">{stock[l.id] ?? 0}</td>
-                              <td className={`py-1 text-right font-semibold ${wanted(o, l) > (stock[l.id] ?? 0) ? "text-red-400" : "text-secondary-500"}`}>{wanted(o, l) > (stock[l.id] ?? 0) ? Math.round((wanted(o, l) - (stock[l.id] ?? 0)) * 1000) / 1000 : "-"}</td>
+                              {o.status === "SUBMITTED" && <td className="py-1 text-right text-secondary-500">{(reserved[l.id] ?? 0) > 0 ? reserved[l.id] : "-"}</td>}
+                              <td className={`py-1 text-right font-semibold ${shortOf(o, l, stock, reserved) > 0 ? "text-red-400" : "text-secondary-500"}`}>{shortOf(o, l, stock, reserved) > 0 ? shortOf(o, l, stock, reserved) : "-"}</td>
                             </>
                           )}
                           {(o.status === "SUBMITTED" || o.status === "CONFIRMED" || o.status === "PARTIALLY_DELIVERED") && canEdit && (
@@ -284,11 +310,11 @@ export default function SchoolOrdersPage() {
                       ))}
                     </tbody>
                   </table>
-                  {stock && (o.status === "SUBMITTED" || o.status === "CONFIRMED" || o.status === "PARTIALLY_DELIVERED") && o.lines.some((l) => wanted(o, l) > (stock[l.id] ?? 0)) && (
+                  {stock && (o.status === "SUBMITTED" || o.status === "CONFIRMED" || o.status === "PARTIALLY_DELIVERED") && o.lines.some((l) => shortOf(o, l, stock, reserved) > 0) && (
                     <p className="rounded-md bg-amber-950 p-2 text-xs text-amber-200">
-                      {o.lines.filter((l) => wanted(o, l) > (stock[l.id] ?? 0)).length} of {o.lines.length} items are short of stock{branches.length > 1 ? ` at ${branches.find((b) => b.id === branchId)?.name ?? "this branch"}` : ""}.{" "}
+                      {o.lines.filter((l) => shortOf(o, l, stock, reserved) > 0).length} of {o.lines.length} items are short of stock{branches.length > 1 ? ` at ${branches.find((b) => b.id === branchId)?.name ?? "this branch"}` : ""}.{" "}
                       {o.status === "SUBMITTED"
-                        ? "You can confirm less than was asked, or receive more stock first."
+                        ? "Stock already promised to other confirmed orders is not counted as available. You can confirm less than was asked, or receive more stock first."
                         : "\"Deliver now\" starts from what you have in stock. The rest stays on the order as the balance, to deliver once stock arrives."}
                     </p>
                   )}

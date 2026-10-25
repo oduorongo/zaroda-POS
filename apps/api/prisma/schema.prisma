@@ -3989,6 +3989,9 @@ model SchoolOrder {
   orderNumber      String            @unique
   /// The school's own order number (LPO), if it has one.
   lpoNumber        String?
+  /// The school's LPO was received and checked against its signed copy (who, and when).
+  lpoVerifiedAt    DateTime?
+  lpoVerifiedByName String?
   status           SchoolOrderStatus @default(SUBMITTED)
   notes            String?
   deliveryAddress  String?

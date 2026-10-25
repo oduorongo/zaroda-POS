@@ -580,6 +580,30 @@ const phoneB = '0722' + String(Math.floor(100000 + Math.random() * 899999));
   check('a paid invoice drops out of the overdue list and cannot be followed up', !(await api('GET', '/school-supplier/overdue', { token: owner })).json.rows.some((r) => r.id === invE15.id) && (await api('PATCH', `/school-supplier/invoices/${invE15.id}/follow-up`, { token: owner, body: { note: 'x' } })).status === 409);
   check('paying more into an invoice than it owes is refused', (await api('POST', '/school-supplier/payments', { token: owner, body: { schoolId: a.json.id, amount: 100, method: 'CASH', allocations: [{ invoiceId: invD15.id, amount: 100 }] } })).status === 400);
 
+  section('16. The LPO tick, and stock promised to other orders');
+  const lpoOrder = (await api('POST', '/school-portal/orders', { token: tokenA, body: { lpoNumber: 'LPO-CHK-1', lines: [{ variantId: pen.id, quantity: 5 }] } })).json;
+  const noLpoOrder = (await api('POST', '/school-portal/orders', { token: tokenA, body: { lines: [{ variantId: pen.id, quantity: 5 }] } })).json;
+  check('a new order starts with its LPO not yet checked', lpoOrder.lpoVerifiedAt === null && lpoOrder.lpoVerifiedByName === null);
+  const ticked = await api('POST', `/school-supplier/orders/${lpoOrder.id}/lpo-check`, { token: owner, body: { checked: true } });
+  check('the LPO is ticked as received and checked, with who did it and when', ticked.status === 200 && Boolean(ticked.json.lpoVerifiedAt) && Boolean(ticked.json.lpoVerifiedByName), ticked.json);
+  check('the tick can be taken off again', (await api('POST', `/school-supplier/orders/${lpoOrder.id}/lpo-check`, { token: owner, body: { checked: false } })).json.lpoVerifiedAt === null);
+  check('an order with no LPO number has nothing to check', (await api('POST', `/school-supplier/orders/${noLpoOrder.id}/lpo-check`, { token: owner, body: { checked: true } })).status === 400);
+  check('a school cannot tick its own LPO', (await api('POST', `/school-supplier/orders/${lpoOrder.id}/lpo-check`, { token: tokenA, body: { checked: true } })).status === 401);
+  check('the tick needs yes or no', (await api('POST', `/school-supplier/orders/${lpoOrder.id}/lpo-check`, { token: owner, body: {} })).status === 400);
+  await api('POST', `/school-supplier/orders/${lpoOrder.id}/lpo-check`, { token: owner, body: { checked: true } });
+  check('it is on the order the supplier opens', (await api('GET', `/school-supplier/orders/${lpoOrder.id}`, { token: owner })).json.lpoVerifiedByName !== null);
+
+  // what other confirmed orders are still waiting for
+  await api('POST', `/school-supplier/orders/${lpoOrder.id}/confirm`, { token: owner, body: {} });
+  const stockForNo = await api('GET', `/school-supplier/orders/${noLpoOrder.id}/stock?branchId=${branchId}`, { token: owner });
+  const expectedReserved = Number((await sql.query(`SELECT coalesce(sum(greatest(0, coalesce(l."quantityConfirmed", l."quantityOrdered") - coalesce(l."quantityDelivered", 0))), 0) AS q FROM school_order_lines l JOIN school_orders o ON o.id = l."orderId" WHERE l."variantId" = $1 AND o.id <> $2 AND o.status IN ('CONFIRMED', 'PARTIALLY_DELIVERED')`, [pen.id, noLpoOrder.id])).rows[0].q);
+  const noLine = stockForNo.json.lines[0];
+  check('the stock view says how many of the same product other confirmed orders are still waiting for', stockForNo.status === 200 && noLine.reserved === expectedReserved && expectedReserved >= 5, [noLine, expectedReserved]);
+  const stockForLpo = await api('GET', `/school-supplier/orders/${lpoOrder.id}/stock?branchId=${branchId}`, { token: owner });
+  const expectedOwn = Number((await sql.query(`SELECT coalesce(sum(greatest(0, coalesce(l."quantityConfirmed", l."quantityOrdered") - coalesce(l."quantityDelivered", 0))), 0) AS q FROM school_order_lines l JOIN school_orders o ON o.id = l."orderId" WHERE l."variantId" = $1 AND o.id <> $2 AND o.status IN ('CONFIRMED', 'PARTIALLY_DELIVERED')`, [pen.id, lpoOrder.id])).rows[0].q);
+  check('an order is never counted against itself', stockForLpo.json.lines[0].reserved === expectedOwn && stockForLpo.json.lines[0].reserved === expectedReserved - 5, [stockForLpo.json.lines[0].reserved, expectedOwn, expectedReserved]);
+  check('what is promised never goes below zero and does not change the stock figure', noLine.available === (await stockOf(pen.id)) && noLine.reserved >= 0);
+
   await sql.end();
   console.log(`\n${passed} checks passed${failures.length ? `, ${failures.length} FAILED:\n - ${failures.join('\n - ')}` : ' - all good'}`);
   process.exit(failures.length ? 1 : 0);

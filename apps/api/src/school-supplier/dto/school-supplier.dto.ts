@@ -271,6 +271,12 @@ export class DeliverOrderDto {
   notes?: string;
 }
 
+/** Ticking (or un-ticking) that the school's LPO was received and checked against its signed copy. */
+export class LpoCheckDto {
+  @IsBoolean()
+  checked!: boolean;
+}
+
 // ── Chasing unpaid invoices ───────────────────────────────────────────────
 
 export class FollowUpDto {
