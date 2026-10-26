@@ -228,6 +228,7 @@ export default function SchoolOrdersPage() {
             <Link href="/school-tenders" className="text-primary-600 hover:underline">Tenders</Link>
             <Link href="/school-contracts" className="text-primary-600 hover:underline">Contracts</Link>
             <Link href="/school-money" className="text-primary-600 hover:underline">Invoices &amp; payments</Link>
+            <Link href="/school-cashflow" className="text-primary-600 hover:underline">Cash-flow forecast</Link>
           </div>
         </div>
 

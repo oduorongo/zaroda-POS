@@ -17,6 +17,9 @@ import {
   BouncePaymentDto,
   CertificateDto,
   BadDebtSettingsDto,
+  CashflowItemDto,
+  CashflowQueryDto,
+  CashflowSettingsDto,
   ProvisionPostDto,
   WriteOffDecisionDto,
   WriteOffDto,
@@ -49,6 +52,7 @@ import { SchoolCollectionsService } from './school-collections.service';
 import { SchoolWithholdingService } from './school-withholding.service';
 import { SchoolRetentionService } from './school-retention.service';
 import { SchoolBadDebtsService } from './school-bad-debts.service';
+import { SchoolCashflowService } from './school-cashflow.service';
 import { SchoolCreditNotesService } from './school-credit-notes.service';
 import { SchoolOrdersService } from './school-orders.service';
 import { SchoolQuotesService } from './school-quotes.service';
@@ -68,6 +72,7 @@ export class SchoolSupplierController {
     private readonly withholding: SchoolWithholdingService,
     private readonly retention: SchoolRetentionService,
     private readonly badDebts: SchoolBadDebtsService,
+    private readonly cashflow: SchoolCashflowService,
   ) {}
 
   // ── Schools ──
@@ -352,6 +357,40 @@ export class SchoolSupplierController {
     @Body() dto: WriteOffReverseDto,
   ) {
     return this.badDebts.reverse(id, dto);
+  }
+
+  // ── The 13-week cash-flow forecast ──
+  @Roles(Role.MANAGER, Role.OWNER, Role.AUDITOR)
+  @Get('cashflow')
+  cashflowForecast(@Query() q: CashflowQueryDto) {
+    return this.cashflow.forecast(q);
+  }
+
+  @Roles(Role.MANAGER, Role.OWNER)
+  @Put('cashflow/settings')
+  cashflowSettings(@Body() dto: CashflowSettingsDto) {
+    return this.cashflow.updateSettings(dto);
+  }
+
+  @Roles(Role.MANAGER, Role.OWNER)
+  @Post('cashflow/items')
+  addCashflowItem(@Body() dto: CashflowItemDto) {
+    return this.cashflow.addItem(dto);
+  }
+
+  @Roles(Role.MANAGER, Role.OWNER)
+  @Put('cashflow/items/:id')
+  updateCashflowItem(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: CashflowItemDto,
+  ) {
+    return this.cashflow.updateItem(id, dto);
+  }
+
+  @Roles(Role.MANAGER, Role.OWNER)
+  @Delete('cashflow/items/:id')
+  removeCashflowItem(@Param('id', ParseUUIDPipe) id: string) {
+    return this.cashflow.removeItem(id);
   }
 
   // ── Chasing what is owed ──
