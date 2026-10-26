@@ -20,7 +20,8 @@ import {
   VoidInvoiceDto,
 } from './dto/school-supplier.dto';
 import { DocumentNumbersService } from './document-numbers.service';
-import { invoiceBalance, statusAfterSettlement } from './school-credit.util';
+import { statusAfterSettlement } from './school-credit.util';
+import { invoicePosition } from './school-retention.util';
 import { SchoolLedgerService } from './school-ledger.service';
 import { SchoolNotifierService } from './school-notifier.service';
 import {
@@ -89,6 +90,12 @@ type PaymentFull = Prisma.SupplierPaymentGetPayload<{
 
 function toInvoiceView(i: InvoiceFull) {
   const paid = Number(i.amountPaid);
+  const pos = invoicePosition({
+    total: Number(i.total),
+    paid,
+    credited: Number(i.creditAmount),
+    retentionHeld: Number(i.retentionHeld),
+  });
   return {
     id: i.id,
     invoiceNumber: i.invoiceNumber,
@@ -108,6 +115,14 @@ function toInvoiceView(i: InvoiceFull) {
     amountPaid: paid,
     /** What credit notes have taken off. */
     creditAmount: Number(i.creditAmount),
+    /** Retention: held back by the school until released (owed, not yet due). */
+    retentionHeld: pos.retention,
+    retentionAmount: Number(i.retentionAmount),
+    retentionReleaseDate: day(i.retentionReleaseDate),
+    retentionRequestedAt: i.retentionRequestedAt,
+    retentionDisputed: i.retentionDisputed,
+    retentionDisputeNote: i.retentionDisputeNote,
+    retentionNote: i.retentionNote,
     expectedPaymentDate: day(i.expectedPaymentDate),
     disputed: i.disputed,
     disputeNote: i.disputeNote,
@@ -122,7 +137,7 @@ function toInvoiceView(i: InvoiceFull) {
     balance:
       i.status === SupplierInvoiceStatus.VOID
         ? 0
-        : invoiceBalance(i.total.toString(), i.amountPaid.toString(), i.creditAmount.toString()),
+        : pos.dueNow,
     notes: i.notes,
     voidedAt: i.voidedAt,
     voidReason: i.voidReason,
@@ -454,9 +469,14 @@ export class SchoolBillingService {
       where: { id: invoiceId },
     });
     const paid = fromCents(toCents(inv.amountPaid) + toCents(amount));
-    if (paid < 0 || toCents(paid) > toCents(inv.total) - toCents(inv.creditAmount))
+    // retention held back is not due, so it cannot be paid yet
+    if (
+      paid < 0 ||
+      toCents(paid) >
+        toCents(inv.total) - toCents(inv.creditAmount) - toCents(inv.retentionHeld)
+    )
       throw new BadRequestException(
-        'That would pay more than the invoice still owes',
+        'That would pay more than the invoice has due now',
       );
     await tx.supplierInvoice.update({
       where: { id: invoiceId },

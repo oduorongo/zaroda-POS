@@ -69,6 +69,7 @@ model Organization {
   schoolTenders             SchoolTender[]
   schoolComplianceDocs      SchoolComplianceDoc[]
   schoolContracts           SchoolContract[]
+  supplierRetentionEvents   SupplierRetentionEvent[]
   supplierPayments          SupplierPayment[]
   documentCounters          DocumentCounter[]
   branches                  Branch[]
@@ -4001,6 +4002,9 @@ model SchoolContract {
   endDate        DateTime             @db.Date
   /// The value agreed, VAT included. Variations change what it stands at.
   value          Decimal              @db.Decimal(14, 2)
+  /// A share of each invoice charged to this contract that the school holds back, and how many days after the invoice it is released.
+  retentionPercent     Decimal @default(0) @db.Decimal(5, 2)
+  retentionReleaseDays Int     @default(0)
   notes          String?
   closedAt       DateTime?
   closedNote     String?
@@ -4121,6 +4125,9 @@ model SupplierSchool {
   creditLimit    Decimal?     @db.Decimal(12, 2)
   /// Days after an invoice is issued that it is due.
   creditDays     Int          @default(30)
+  /// A share of each invoice the school holds back until it is released (0 = none), and how many days after the invoice that is. A contract can set its own.
+  retentionPercent     Decimal @default(0) @db.Decimal(5, 2)
+  retentionReleaseDays Int     @default(0)
   status         SchoolStatus @default(ACTIVE)
   pinHash        String?
   pinFailCount   Int          @default(0)
@@ -4273,6 +4280,15 @@ model SupplierInvoice {
   saleId         String?               @unique
   /// The contract it is charged to (taken from the order when the goods were delivered).
   contractId     String?
+  /// Retention: the share of this invoice the school holds back (what was held at the start, and what is still held), when it is
+  /// expected to be released, and the follow-up: a release asked for, a dispute, a note. Held retention is not yet due.
+  retentionAmount      Decimal   @default(0) @db.Decimal(12, 2)
+  retentionHeld        Decimal   @default(0) @db.Decimal(12, 2)
+  retentionReleaseDate DateTime? @db.Date
+  retentionRequestedAt DateTime?
+  retentionDisputed    Boolean   @default(false)
+  retentionDisputeNote String?
+  retentionNote        String?
   /// "INV-2026-0001"
   invoiceNumber  String                @unique
   issueDate      DateTime              @db.Date
@@ -4304,6 +4320,7 @@ model SupplierInvoice {
   order        SchoolOrder?                @relation(fields: [orderId], references: [id])
   delivery     SchoolDelivery?             @relation(fields: [deliveryId], references: [id])
   contract     SchoolContract?             @relation(fields: [contractId], references: [id])
+  retentionEvents SupplierRetentionEvent[]
   lines        SupplierInvoiceLine[]
   allocations  SupplierPaymentAllocation[]
   creditNotes  SupplierCreditNote[]
@@ -4335,6 +4352,33 @@ model SupplierInvoiceLine {
 
   @@index([invoiceId])
   @@map("supplier_invoice_lines")
+}
+
+enum RetentionEventKind {
+  HELD // retention was held back when the invoice was made
+  RELEASE_REQUESTED // the school (or the supplier on its behalf) asked for it to be released... or the supplier asked the school to release it
+  RELEASED // some or all of it became due
+  UPDATED // the expected date, a dispute or a note changed
+}
+
+/// What happened to the retention on an invoice, in order.
+model SupplierRetentionEvent {
+  id             String             @id @default(uuid())
+  organizationId String
+  invoiceId      String
+  kind           RetentionEventKind
+  amount         Decimal?           @db.Decimal(12, 2)
+  note           String?
+  /// Who did it (a name), or the school.
+  byName         String?
+  createdAt      DateTime           @default(now())
+
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  invoice      SupplierInvoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@index([invoiceId])
+  @@index([organizationId])
+  @@map("supplier_retention_events")
 }
 
 /// A credit to a school against one of its invoices: goods sent back, a short delivery, a price correction. It lowers what the

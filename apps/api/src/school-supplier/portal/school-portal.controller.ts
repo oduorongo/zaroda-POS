@@ -15,6 +15,7 @@ import {
   AcceptQuoteDto,
   CancelOrderDto,
   ConfirmReceiptDto,
+  RetentionRequestDto,
   DeclineQuoteDto,
   SchoolLoginDto,
   StatementQueryDto,
@@ -113,6 +114,17 @@ export class SchoolPortalController {
     @Body() dto: ConfirmReceiptDto,
   ) {
     return this.portal.confirmReceived(who, id, dto);
+  }
+
+  /** The school raises the retention held back on an invoice: the supplier is told. */
+  @Post('invoices/:id/retention-request')
+  @HttpCode(200)
+  retentionRequest(
+    @CurrentSchool() who: SchoolIdentity,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: RetentionRequestDto,
+  ) {
+    return this.portal.requestRetention(who, id, dto);
   }
 
   @Get('invoices')

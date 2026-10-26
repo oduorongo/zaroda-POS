@@ -121,7 +121,29 @@ interface Withholding {
   rows: { id: string; receiptNumber: string; school: { id: string; name: string }; receivedOn: string; amount: number; certificateNumber: string | null; certificateReceivedOn: string | null; daysWaiting: number; certificate: "RECEIVED" | "WAITING" | "MISSING" }[];
 }
 
-type Tab = "owing" | "chasing" | "invoices" | "payments" | "credits" | "tax";
+interface RetentionRow {
+  invoiceId: string;
+  invoiceNumber: string;
+  school: { id: string; name: string };
+  contract: { contractNumber: string; title: string } | null;
+  retained: number;
+  held: number;
+  released: number;
+  expectedReleaseDate: string | null;
+  requestedAt: string | null;
+  disputed: boolean;
+  disputeNote: string | null;
+  note: string | null;
+  state: "HELD" | "DUE_FOR_RELEASE" | "DISPUTED" | "RELEASED";
+  daysLate: number;
+}
+interface Retention {
+  totals: { held: number; dueForRelease: number; disputed: number; released: number };
+  bySchool: { schoolId: string; schoolName: string; held: number }[];
+  rows: RetentionRow[];
+}
+
+type Tab = "owing" | "chasing" | "invoices" | "payments" | "credits" | "tax" | "retention";
 
 /** What schools owe, the invoices, and the money received (cheques, transfers) with its receipts. */
 export default function SchoolMoneyPage() {
@@ -137,6 +159,8 @@ export default function SchoolMoneyPage() {
   const [overdue, setOverdue] = useState<{ rows: Overdue[]; totals: { count: number; owed: number; disputed: number; brokenPromises: number } } | null>(null);
   const [staff, setStaff] = useState<Staff[]>([]);
   const [wht, setWht] = useState<Withholding | null>(null);
+  const [ret, setRet] = useState<Retention | null>(null);
+  const [retShowAll, setRetShowAll] = useState(false);
   // the school also withheld tax on this payment
   const [withhold, setWithhold] = useState(false);
   const [whtAmount, setWhtAmount] = useState("");
@@ -175,7 +199,7 @@ export default function SchoolMoneyPage() {
   const load = useCallback(async () => {
     try {
       const q = schoolFilter ? `?schoolId=${schoolFilter}` : "";
-      const [list, rec, inv, pay, cns, od, tax] = await Promise.all([
+      const [list, rec, inv, pay, cns, od, tax, rt] = await Promise.all([
         apiGet<SchoolLite[]>("/school-supplier/schools"),
         apiGet<Receivables>("/school-supplier/receivables"),
         apiGet<Invoice[]>(`/school-supplier/invoices${q}`),
@@ -183,7 +207,9 @@ export default function SchoolMoneyPage() {
         apiGet<CreditNote[]>(`/school-supplier/credit-notes${q}`),
         apiGet<NonNullable<typeof overdue>>("/school-supplier/overdue"),
         apiGet<Withholding>("/school-supplier/withholding"),
+        apiGet<Retention>("/school-supplier/retention"),
       ]);
+      setRet(rt);
       setCreditNotes(cns);
       setOverdue(od);
       setWht(tax);
@@ -561,6 +587,7 @@ export default function SchoolMoneyPage() {
                 ["payments", "Payments received"],
                 ["credits", "Credit notes"],
                 ["tax", "Tax withheld"],
+                ["retention", `Retention${ret && ret.totals.dueForRelease > 0 ? " (!)" : ""}`],
               ] as [Tab, string][]
             ).map(([key, label]) => (
               <button key={key} onClick={() => setTab(key)} className={`rounded-full border px-3 py-1 text-sm ${tab === key ? "border-primary-600 bg-primary-600 text-white" : "border-border hover:bg-secondary-500/10"}`}>
@@ -568,7 +595,7 @@ export default function SchoolMoneyPage() {
               </button>
             ))}
           </div>
-          {tab !== "owing" && tab !== "chasing" && tab !== "tax" && (
+          {tab !== "owing" && tab !== "chasing" && tab !== "tax" && tab !== "retention" && (
             <select value={schoolFilter} onChange={(e) => setSchoolFilter(e.target.value)} className="rounded-md border border-border bg-surface p-1.5 text-sm">
               <option value="">All schools</option>
               {schools.map((s) => (
@@ -874,6 +901,136 @@ export default function SchoolMoneyPage() {
                   <p className="font-mono font-semibold">{kes(r.amount)}</p>
                 </li>
               ))}
+            </ul>
+          </section>
+        )}
+
+        {tab === "retention" && (
+          <section className="space-y-3">
+            {ret && (
+              <div className="grid grid-cols-2 gap-3 text-center sm:grid-cols-4">
+                <div className="rounded-lg border border-border bg-surface p-3">
+                  <p className="text-xs text-secondary-500">Held back by schools</p>
+                  <p className="font-mono text-lg font-bold">{kes(ret.totals.held)}</p>
+                </div>
+                <div className="rounded-lg border border-border bg-surface p-3">
+                  <p className="text-xs text-secondary-500">Ready to ask for</p>
+                  <p className="font-mono text-lg font-bold text-amber-400">{kes(ret.totals.dueForRelease)}</p>
+                </div>
+                <div className="rounded-lg border border-border bg-surface p-3">
+                  <p className="text-xs text-secondary-500">Disputed</p>
+                  <p className="font-mono text-lg font-bold text-red-400">{kes(ret.totals.disputed)}</p>
+                </div>
+                <div className="rounded-lg border border-border bg-surface p-3">
+                  <p className="text-xs text-secondary-500">Released so far</p>
+                  <p className="font-mono text-lg font-bold text-green-400">{kes(ret.totals.released)}</p>
+                </div>
+              </div>
+            )}
+            <p className="text-sm text-secondary-500">Retention is the share of an invoice a school keeps back until a date (for example after a defects period). It is owed to you but not yet due, so it does not count as overdue. When the school releases it, press &quot;Released&quot; and it becomes due to be paid.</p>
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" checked={retShowAll} onChange={(e) => setRetShowAll(e.target.checked)} /> Show released ones too
+            </label>
+            {ret && ret.rows.filter((r) => retShowAll || r.held > 0).length === 0 && <p className="rounded-lg border border-border bg-surface p-4 text-sm text-secondary-500">Nothing is held back. Set a retention percentage on a school or a contract and it will be held from the next delivery.</p>}
+            <ul className="divide-y divide-border rounded-lg border border-border bg-surface">
+              {ret?.rows
+                .filter((r) => retShowAll || r.held > 0)
+                .map((r) => (
+                  <li key={r.invoiceId} className="space-y-1 p-3 text-sm">
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <div>
+                        <p className="font-semibold">
+                          {r.school.name} <span className="font-mono text-xs text-secondary-500">{r.invoiceNumber}</span>
+                          {r.contract && <span className="ml-2 text-xs text-secondary-500">{r.contract.contractNumber}</span>}
+                        </p>
+                        <p className="text-xs text-secondary-500">
+                          {r.expectedReleaseDate ? `Expected ${r.expectedReleaseDate}` : "No release date"}
+                          {r.state === "DUE_FOR_RELEASE" && r.daysLate > 0 ? ` - ${r.daysLate} days past` : ""}
+                          {r.requestedAt ? " · release asked for" : ""}
+                        </p>
+                        <p className="mt-1 text-xs">
+                          {r.state === "HELD" && <span className="rounded bg-secondary-500/20 px-2 py-0.5">Held</span>}
+                          {r.state === "DUE_FOR_RELEASE" && <span className="rounded bg-amber-900 px-2 py-0.5 text-amber-200">Ready to ask for</span>}
+                          {r.state === "DISPUTED" && <span className="rounded bg-red-950 px-2 py-0.5 text-red-300">Disputed: {r.disputeNote}</span>}
+                          {r.state === "RELEASED" && <span className="rounded bg-green-900 px-2 py-0.5 text-green-200">Released</span>}
+                          {r.note && <span className="ml-2 text-secondary-500">{r.note}</span>}
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-mono font-semibold">{kes(r.held)}</p>
+                        <p className="text-xs text-secondary-500">of {kes(r.retained)} held</p>
+                      </div>
+                    </div>
+                    {canEdit && r.held > 0 && (
+                      <p className="flex flex-wrap gap-3 text-xs">
+                        <button
+                          onClick={async () => {
+                            const v = window.prompt(`How much has the school released? (up to ${r.held.toFixed(2)})`, r.held.toFixed(2));
+                            if (!v) return;
+                            try {
+                              await apiPost(`/school-supplier/retention/${r.invoiceId}/release`, { amount: Number(v) });
+                              setNotice("Released: it is now due to be paid.");
+                              await load();
+                            } catch (err) {
+                              setError(err instanceof ApiError ? err.message : "Could not release it.");
+                            }
+                          }}
+                          className="text-primary-600 hover:underline"
+                        >
+                          Released
+                        </button>
+                        <button
+                          onClick={async () => {
+                            try {
+                              await apiPost(`/school-supplier/retention/${r.invoiceId}/requested`, {});
+                              setNotice("Noted that you asked for it.");
+                              await load();
+                            } catch (err) {
+                              setError(err instanceof ApiError ? err.message : "Could not save that.");
+                            }
+                          }}
+                          className="text-primary-600 hover:underline"
+                        >
+                          I asked the school
+                        </button>
+                        <button
+                          onClick={async () => {
+                            const d = window.prompt("New expected release date (YYYY-MM-DD):", r.expectedReleaseDate ?? "");
+                            if (!d) return;
+                            try {
+                              await apiPatch(`/school-supplier/retention/${r.invoiceId}`, { expectedReleaseDate: d });
+                              await load();
+                            } catch (err) {
+                              setError(err instanceof ApiError ? err.message : "Could not change the date.");
+                            }
+                          }}
+                          className="text-primary-600 hover:underline"
+                        >
+                          Change the date
+                        </button>
+                        <button
+                          onClick={async () => {
+                            try {
+                              if (r.disputed) {
+                                await apiPatch(`/school-supplier/retention/${r.invoiceId}`, { disputed: false });
+                              } else {
+                                const n = window.prompt("What is the dispute about?");
+                                if (!n || n.trim().length < 2) return;
+                                await apiPatch(`/school-supplier/retention/${r.invoiceId}`, { disputed: true, disputeNote: n.trim() });
+                              }
+                              await load();
+                            } catch (err) {
+                              setError(err instanceof ApiError ? err.message : "Could not save that.");
+                            }
+                          }}
+                          className="text-primary-600 hover:underline"
+                        >
+                          {r.disputed ? "Clear the dispute" : "Mark as disputed"}
+                        </button>
+                      </p>
+                    )}
+                  </li>
+                ))}
             </ul>
           </section>
         )}

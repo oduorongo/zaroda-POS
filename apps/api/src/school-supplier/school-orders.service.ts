@@ -44,6 +44,7 @@ import {
   lineAmounts,
   todayKey,
 } from './school-money.util';
+import { retentionFor } from './school-retention.util';
 import { recordSchoolSale } from './school-sale';
 
 const include = {
@@ -741,6 +742,21 @@ export class SchoolOrdersService {
           taxRate: Number(d.line.taxRate),
         }),
       }));
+      // retention: the contract's terms if the order is under one that sets any, otherwise the school's usual
+      const contract = current.contractId
+        ? await tx.schoolContract.findUnique({
+            where: { id: current.contractId },
+            select: { retentionPercent: true, retentionReleaseDays: true },
+          })
+        : null;
+      const retentionTerms =
+        contract && Number(contract.retentionPercent) > 0
+          ? contract
+          : current.school;
+      const retained = retentionFor(
+        totals.total,
+        Number(retentionTerms.retentionPercent),
+      );
       const invoice = await tx.supplierInvoice.create({
         data: {
           organizationId,
@@ -748,6 +764,14 @@ export class SchoolOrdersService {
           orderId: id,
           deliveryId: newDeliveryId,
           contractId: current.contractId,
+          retentionAmount: retained,
+          retentionHeld: retained,
+          retentionReleaseDate:
+            retained > 0
+              ? new Date(
+                  `${addDays(today, retentionTerms.retentionReleaseDays)}T00:00:00Z`,
+                )
+              : null,
           invoiceNumber,
           issueDate: new Date(`${today}T00:00:00Z`),
           dueDate: new Date(
@@ -789,6 +813,16 @@ export class SchoolOrdersService {
         where: { id: invoice.id },
         data: { saleId },
       });
+      if (retained > 0)
+        await tx.supplierRetentionEvent.create({
+          data: {
+            organizationId,
+            invoiceId: invoice.id,
+            kind: 'HELD',
+            amount: retained,
+            note: `${Number(retentionTerms.retentionPercent)}% held back`,
+          },
+        });
 
       // What has gone out so far, line by line, and where the order stands now
       const after = current.lines.map((l) => ({
@@ -1096,7 +1130,7 @@ export class SchoolOrdersService {
   }
 
   /** An email to the supplier's own people: the business address, its owners and managers. */
-  private async tellStaff(
+  async tellStaff(
     subject: string,
     message: string,
     detailHtml?: string,

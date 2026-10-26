@@ -6,10 +6,12 @@ import { variantTitle } from '../../catalog/variant-title';
 import {
   AcceptQuoteDto,
   ConfirmReceiptDto,
+  RetentionRequestDto,
   DeclineQuoteDto,
   SubmitSchoolOrderDto,
 } from '../dto/school-supplier.dto';
 import { SchoolBillingService } from '../school-billing.service';
+import { SchoolRetentionService } from '../school-retention.service';
 import { SchoolCreditNotesService } from '../school-credit-notes.service';
 import { SchoolOrdersService } from '../school-orders.service';
 import { SchoolQuotesService } from '../school-quotes.service';
@@ -30,6 +32,7 @@ export class SchoolPortalService {
     private readonly credits: SchoolCreditNotesService,
     private readonly quotes: SchoolQuotesService,
     private readonly schools: SchoolsService,
+    private readonly retention: SchoolRetentionService,
   ) {}
 
   private async asSchool<T>(
@@ -135,6 +138,11 @@ export class SchoolPortalService {
   confirmReceived(who: SchoolIdentity, id: string, dto: ConfirmReceiptDto) {
     return this.asSchool(who, () =>
       this.orders.confirmReceived(who.schoolId, id, dto),
+    );
+  }
+  requestRetention(who: SchoolIdentity, id: string, dto: RetentionRequestDto) {
+    return this.asSchool(who, () =>
+      this.retention.requestBySchool(who.schoolId, id, dto),
     );
   }
   listInvoices(who: SchoolIdentity) {

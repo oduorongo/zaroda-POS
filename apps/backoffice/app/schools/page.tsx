@@ -18,6 +18,8 @@ interface School {
   county: string | null;
   creditLimit: number | null;
   creditDays: number;
+  retentionPercent: number;
+  retentionReleaseDays: number;
   status: "ACTIVE" | "SUSPENDED";
   lastLoginAt: string | null;
   notes: string | null;
@@ -69,6 +71,8 @@ export default function SchoolsPage() {
   const [address, setAddress] = useState("");
   const [creditLimit, setCreditLimit] = useState("");
   const [creditDays, setCreditDays] = useState("30");
+  const [retentionPercent, setRetentionPercent] = useState("0");
+  const [retentionReleaseDays, setRetentionReleaseDays] = useState("0");
 
   // Portal address and business details
   const [slug, setSlug] = useState("");
@@ -125,6 +129,8 @@ export default function SchoolsPage() {
     setAddress("");
     setCreditLimit("");
     setCreditDays("30");
+    setRetentionPercent("0");
+    setRetentionReleaseDays("0");
   }
 
   function startEdit(s: School) {
@@ -136,6 +142,8 @@ export default function SchoolsPage() {
     setAddress(s.address ?? "");
     setCreditLimit(s.creditLimit === null ? "" : String(s.creditLimit));
     setCreditDays(String(s.creditDays));
+    setRetentionPercent(String(s.retentionPercent));
+    setRetentionReleaseDays(String(s.retentionReleaseDays));
     setNotice(null);
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
@@ -154,6 +162,8 @@ export default function SchoolsPage() {
         address: address.trim() || undefined,
         creditLimit: creditLimit === "" ? (editingId ? null : undefined) : Number(creditLimit),
         creditDays: Number(creditDays || 30),
+        retentionPercent: Number(retentionPercent || 0),
+        retentionReleaseDays: Number(retentionReleaseDays || 0),
       };
       if (editingId) {
         await apiPatch(`/school-supplier/schools/${editingId}`, body);
@@ -290,7 +300,16 @@ export default function SchoolsPage() {
                   Days to pay
                   <input type="number" min={0} max={365} value={creditDays} onChange={(e) => setCreditDays(e.target.value)} className={field} />
                 </label>
+                <label className="text-sm">
+                  Retention held back (%)
+                  <input type="number" min={0} max={50} step="0.01" value={retentionPercent} onChange={(e) => setRetentionPercent(e.target.value)} className={field} />
+                </label>
+                <label className="text-sm">
+                  Released after (days)
+                  <input type="number" min={0} max={1825} value={retentionReleaseDays} onChange={(e) => setRetentionReleaseDays(e.target.value)} className={field} />
+                </label>
               </div>
+              <p className="text-xs text-secondary-500">Some schools hold back a share of each invoice until a date. Leave at 0 if this school pays in full. A contract can set its own.</p>
             </div>
             <div className="flex gap-2">
               <button type="submit" disabled={busy || !name || !phone} className="rounded-md bg-primary-600 px-4 py-2 text-sm font-semibold text-white hover:bg-primary-700 disabled:opacity-50">

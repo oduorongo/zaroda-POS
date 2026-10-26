@@ -423,6 +423,8 @@ export class SchoolTendersService {
           startDate: dto.startDate,
           endDate: dto.endDate,
           value,
+          retentionPercent: dto.retentionPercent,
+          retentionReleaseDays: dto.retentionReleaseDays,
           notes: dto.notes,
         },
         t.id,

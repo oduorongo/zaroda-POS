@@ -1343,3 +1343,11 @@ DROP POLICY IF EXISTS tenant_isolation ON school_contract_variations;
 CREATE POLICY tenant_isolation ON school_contract_variations
   USING (EXISTS (SELECT 1 FROM school_contracts p WHERE p.id = school_contract_variations."contractId" AND p."organizationId" = current_setting('app.current_tenant', true)))
   WITH CHECK (EXISTS (SELECT 1 FROM school_contracts p WHERE p.id = school_contract_variations."contractId" AND p."organizationId" = current_setting('app.current_tenant', true)));
+
+-- School supplier: what happened to the retention held on an invoice
+ALTER TABLE supplier_retention_events ENABLE ROW LEVEL SECURITY;
+ALTER TABLE supplier_retention_events FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON supplier_retention_events;
+CREATE POLICY tenant_isolation ON supplier_retention_events
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));

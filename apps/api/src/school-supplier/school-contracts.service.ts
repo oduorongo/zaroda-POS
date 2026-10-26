@@ -135,6 +135,8 @@ export class SchoolContractsService {
             )
           : null,
       originalValue: Number(c.value),
+      retentionPercent: Number(c.retentionPercent),
+      retentionReleaseDays: c.retentionReleaseDays,
       variations: c.variations.map((v) => ({
         id: v.id,
         date: day(v.date)!,
@@ -245,6 +247,8 @@ export class SchoolContractsService {
         startDate: new Date(`${dto.startDate}T00:00:00Z`),
         endDate: new Date(`${dto.endDate}T00:00:00Z`),
         value: dto.value,
+        retentionPercent: dto.retentionPercent ?? 0,
+        retentionReleaseDays: dto.retentionReleaseDays ?? 0,
         notes: dto.notes?.trim() || null,
         createdById: orgUserId,
       },
@@ -286,6 +290,8 @@ export class SchoolContractsService {
             dto.reference === undefined
               ? undefined
               : dto.reference.trim() || null,
+          retentionPercent: dto.retentionPercent,
+          retentionReleaseDays: dto.retentionReleaseDays,
           startDate: new Date(`${start}T00:00:00Z`),
           endDate: new Date(`${end}T00:00:00Z`),
           notes: dto.notes === undefined ? undefined : dto.notes.trim() || null,
