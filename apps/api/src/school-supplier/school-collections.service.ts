@@ -60,6 +60,7 @@ export class SchoolCollectionsService {
           paid: Number(i.amountPaid),
           credited: Number(i.creditAmount),
           retentionHeld: Number(i.retentionHeld),
+          writtenOff: Number(i.writtenOffAmount),
         }).dueNow;
         return {
           id: i.id,

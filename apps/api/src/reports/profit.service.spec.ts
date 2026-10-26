@@ -13,7 +13,7 @@ const sale = (iso: string, total: number, lines: Line[]) => ({
   })),
 });
 
-function setup(data: { sales?: unknown[]; refunds?: unknown[]; wastes?: unknown[]; expenses?: unknown[]; payroll?: unknown[]; schoolInvoices?: unknown[]; bills?: unknown[]; supplierPayments?: unknown[]; owing?: unknown[] } = {}) {
+function setup(data: { sales?: unknown[]; refunds?: unknown[]; wastes?: unknown[]; expenses?: unknown[]; payroll?: unknown[]; schoolInvoices?: unknown[]; writeOffs?: unknown[]; bills?: unknown[]; supplierPayments?: unknown[]; owing?: unknown[] } = {}) {
   const tx = {
     sale: { findMany: jest.fn().mockResolvedValue(data.sales ?? []) },
     refund: { findMany: jest.fn().mockResolvedValue(data.refunds ?? []) },
@@ -21,6 +21,7 @@ function setup(data: { sales?: unknown[]; refunds?: unknown[]; wastes?: unknown[
     expense: { findMany: jest.fn().mockResolvedValue(data.expenses ?? []) },
     payrollRun: { findMany: jest.fn().mockResolvedValue(data.payroll ?? []) },
     supplierInvoice: { findMany: jest.fn().mockResolvedValue(data.schoolInvoices ?? []) },
+    schoolWriteOff: { findMany: jest.fn().mockResolvedValue(data.writeOffs ?? []) },
     supplierBill: { findMany: jest.fn().mockResolvedValueOnce(data.bills ?? []).mockResolvedValueOnce(data.owing ?? []) },
     supplierBillPayment: { findMany: jest.fn().mockResolvedValue(data.supplierPayments ?? []) },
   };
@@ -68,6 +69,7 @@ describe('ProfitService', () => {
       waste: 50,
       expenses: 350,
       payroll: 0,
+      badDebts: 0,
       netProfit: 100, // 500 - 50 - 350
     });
     expect(r.expensesByCategory).toEqual([
@@ -151,6 +153,21 @@ describe('ProfitService', () => {
     const one = await branch.service.profit({ from: '2026-10-21', to: '2026-10-21', branchId: '11111111-1111-1111-1111-111111111111' });
     expect(one.totals.payroll).toBe(0);
     expect(branch.tx.payrollRun.findMany).not.toHaveBeenCalled();
+  });
+
+  it('takes debts written off off the profit on the day they were approved, and gives back any put back, but not for a single branch', async () => {
+    const writeOffs = [
+      { amount: 5000, status: 'APPROVED', decidedAt: new Date('2026-10-21T07:00:00Z'), reversedAt: null },
+      { amount: 1000, status: 'REVERSED', decidedAt: new Date('2026-10-20T07:00:00Z'), reversedAt: new Date('2026-10-21T08:00:00Z') },
+    ];
+    const all = await setup({ writeOffs }).service.profit({ from: '2026-10-21', to: '2026-10-21' });
+    // 5000 written off today; the 1000 was written off yesterday (outside) and put back today
+    expect(all.totals.badDebts).toBe(4000);
+    expect(all.totals.netProfit).toBe(-4000);
+    const branch = setup({ writeOffs });
+    const one = await branch.service.profit({ from: '2026-10-21', to: '2026-10-21', branchId: '11111111-1111-1111-1111-111111111111' });
+    expect(one.totals.badDebts).toBe(0);
+    expect(branch.tx.schoolWriteOff.findMany).not.toHaveBeenCalled();
   });
 
   it('passes the branch filter to sales, waste and expenses', async () => {

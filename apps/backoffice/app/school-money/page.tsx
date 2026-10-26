@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { apiGet, apiPatch, apiPost, ApiError } from "../../lib/api";
+import { apiGet, apiPatch, apiPost, apiPut, ApiError } from "../../lib/api";
 import { getSession, clearSession, isBackofficeRole, type Session } from "../../lib/auth";
 import { Nav } from "../../components/nav";
 import { PageHeader } from "../../components/page-header";
@@ -17,7 +17,7 @@ interface SchoolLite {
 interface Invoice {
   id: string;
   invoiceNumber: string;
-  status: "ISSUED" | "PARTIALLY_PAID" | "PAID" | "VOID";
+  status: "ISSUED" | "PARTIALLY_PAID" | "PAID" | "VOID" | "WRITTEN_OFF";
   issueDate: string;
   dueDate: string;
   school: { id: string; name: string };
@@ -85,8 +85,8 @@ const METHODS: [string, string][] = [
   ["CASH", "Cash"],
   ["WITHHOLDING_TAX", "Tax withheld by the school (no money)"],
 ];
-const INVOICE_LABEL: Record<Invoice["status"], string> = { ISSUED: "Unpaid", PARTIALLY_PAID: "Part paid", PAID: "Paid", VOID: "Cancelled" };
-const INVOICE_TONE: Record<Invoice["status"], string> = { ISSUED: "bg-amber-900 text-amber-200", PARTIALLY_PAID: "bg-blue-900 text-blue-200", PAID: "bg-green-900 text-green-200", VOID: "bg-secondary-500/20 text-secondary-500" };
+const INVOICE_LABEL: Record<Invoice["status"], string> = { ISSUED: "Unpaid", PARTIALLY_PAID: "Part paid", PAID: "Paid", VOID: "Cancelled", WRITTEN_OFF: "Written off" };
+const INVOICE_TONE: Record<Invoice["status"], string> = { ISSUED: "bg-amber-900 text-amber-200", PARTIALLY_PAID: "bg-blue-900 text-blue-200", PAID: "bg-green-900 text-green-200", VOID: "bg-secondary-500/20 text-secondary-500", WRITTEN_OFF: "bg-red-950 text-red-300" };
 
 interface OpenInvoice {
   id: string;
@@ -143,7 +143,27 @@ interface Retention {
   rows: RetentionRow[];
 }
 
-type Tab = "owing" | "chasing" | "invoices" | "payments" | "credits" | "tax" | "retention";
+interface BadDebts {
+  settings: { rates: { D1_30: number; D31_60: number; D61_90: number; D91_180: number; D181_PLUS: number }; approvalThreshold: number };
+  provision: { total: number; overdue: number; byBand: { band: string; label: string; rate: number; amount: number; provision: number }[]; bySchool: { schoolId: string; schoolName: string; overdue: number; provision: number }[] };
+  pendingWriteOffs: number;
+  writtenOffToDate: number;
+  history: { id: string; asOf: string; amount: number; previous: number; overdue: number; note: string | null; byName: string | null }[];
+}
+interface WriteOff {
+  id: string;
+  status: "PENDING" | "APPROVED" | "REJECTED" | "REVERSED";
+  amount: number;
+  reason: string;
+  invoice: { id: string; invoiceNumber: string; total: number };
+  school: { id: string; name: string };
+  requestedByName: string | null;
+  decidedByName: string | null;
+  overrideReason: string | null;
+  reversalReason: string | null;
+}
+
+type Tab = "owing" | "chasing" | "invoices" | "payments" | "credits" | "tax" | "retention" | "baddebts";
 
 /** What schools owe, the invoices, and the money received (cheques, transfers) with its receipts. */
 export default function SchoolMoneyPage() {
@@ -161,6 +181,10 @@ export default function SchoolMoneyPage() {
   const [wht, setWht] = useState<Withholding | null>(null);
   const [ret, setRet] = useState<Retention | null>(null);
   const [retShowAll, setRetShowAll] = useState(false);
+  const [bd, setBd] = useState<BadDebts | null>(null);
+  const [writeOffs, setWriteOffs] = useState<WriteOff[]>([]);
+  const [bdRules, setBdRules] = useState<{ rate1To30: string; rate31To60: string; rate61To90: string; rate91To180: string; rateOver180: string; approvalThreshold: string } | null>(null);
+  const [woForm, setWoForm] = useState<{ invoiceId: string; amount: string; reason: string } | null>(null);
   // the school also withheld tax on this payment
   const [withhold, setWithhold] = useState(false);
   const [whtAmount, setWhtAmount] = useState("");
@@ -199,7 +223,7 @@ export default function SchoolMoneyPage() {
   const load = useCallback(async () => {
     try {
       const q = schoolFilter ? `?schoolId=${schoolFilter}` : "";
-      const [list, rec, inv, pay, cns, od, tax, rt] = await Promise.all([
+      const [list, rec, inv, pay, cns, od, tax, rt, bad, wos] = await Promise.all([
         apiGet<SchoolLite[]>("/school-supplier/schools"),
         apiGet<Receivables>("/school-supplier/receivables"),
         apiGet<Invoice[]>(`/school-supplier/invoices${q}`),
@@ -208,8 +232,12 @@ export default function SchoolMoneyPage() {
         apiGet<NonNullable<typeof overdue>>("/school-supplier/overdue"),
         apiGet<Withholding>("/school-supplier/withholding"),
         apiGet<Retention>("/school-supplier/retention"),
+        apiGet<BadDebts>("/school-supplier/bad-debts"),
+        apiGet<WriteOff[]>("/school-supplier/write-offs"),
       ]);
       setRet(rt);
+      setBd(bad);
+      setWriteOffs(wos);
       setCreditNotes(cns);
       setOverdue(od);
       setWht(tax);
@@ -588,6 +616,7 @@ export default function SchoolMoneyPage() {
                 ["credits", "Credit notes"],
                 ["tax", "Tax withheld"],
                 ["retention", `Retention${ret && ret.totals.dueForRelease > 0 ? " (!)" : ""}`],
+                ["baddebts", `Bad debts${bd && bd.pendingWriteOffs > 0 ? ` (${bd.pendingWriteOffs})` : ""}`],
               ] as [Tab, string][]
             ).map(([key, label]) => (
               <button key={key} onClick={() => setTab(key)} className={`rounded-full border px-3 py-1 text-sm ${tab === key ? "border-primary-600 bg-primary-600 text-white" : "border-border hover:bg-secondary-500/10"}`}>
@@ -595,7 +624,7 @@ export default function SchoolMoneyPage() {
               </button>
             ))}
           </div>
-          {tab !== "owing" && tab !== "chasing" && tab !== "tax" && tab !== "retention" && (
+          {tab !== "owing" && tab !== "chasing" && tab !== "tax" && tab !== "retention" && tab !== "baddebts" && (
             <select value={schoolFilter} onChange={(e) => setSchoolFilter(e.target.value)} className="rounded-md border border-border bg-surface p-1.5 text-sm">
               <option value="">All schools</option>
               {schools.map((s) => (
@@ -1032,6 +1061,312 @@ export default function SchoolMoneyPage() {
                   </li>
                 ))}
             </ul>
+          </section>
+        )}
+
+        {tab === "baddebts" && (
+          <section className="space-y-4">
+            {bd && (
+              <div className="grid grid-cols-2 gap-3 text-center sm:grid-cols-4">
+                <div className="rounded-lg border border-border bg-surface p-3">
+                  <p className="text-xs text-secondary-500">Set aside for bad debts</p>
+                  <p className="font-mono text-lg font-bold">{kes(bd.provision.total)}</p>
+                </div>
+                <div className="rounded-lg border border-border bg-surface p-3">
+                  <p className="text-xs text-secondary-500">Overdue</p>
+                  <p className="font-mono text-lg font-bold text-amber-400">{kes(bd.provision.overdue)}</p>
+                </div>
+                <div className="rounded-lg border border-border bg-surface p-3">
+                  <p className="text-xs text-secondary-500">Written off so far</p>
+                  <p className="font-mono text-lg font-bold text-red-400">{kes(bd.writtenOffToDate)}</p>
+                </div>
+                <div className="rounded-lg border border-border bg-surface p-3">
+                  <p className="text-xs text-secondary-500">Waiting for approval</p>
+                  <p className="font-mono text-lg font-bold">{bd.pendingWriteOffs}</p>
+                </div>
+              </div>
+            )}
+            <p className="text-sm text-secondary-500">The amount set aside is an estimate: a share of what is overdue, bigger the later it is. It is worked out from your invoices as they stand; press &quot;Record it&quot; each month end to keep a history. A write-off takes a debt you will not get back off what the school owes, and shows as a loss in the Profit screen.</p>
+
+            {bd && (
+              <div className="overflow-x-auto rounded-lg border border-border bg-surface">
+                <table className="w-full min-w-[30rem] text-sm">
+                  <thead className="border-b border-border text-left text-xs text-secondary-500">
+                    <tr>
+                      <th className="p-2">How late</th>
+                      <th className="p-2 text-right">Overdue</th>
+                      <th className="p-2 text-right">Set aside</th>
+                      <th className="p-2 text-right">Amount set aside</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {bd.provision.byBand.map((b) => (
+                      <tr key={b.band} className="border-b border-border/60 last:border-0">
+                        <td className="p-2">{b.label}</td>
+                        <td className="p-2 text-right font-mono">{kes(b.amount)}</td>
+                        <td className="p-2 text-right font-mono">{b.rate}%</td>
+                        <td className="p-2 text-right font-mono font-semibold">{kes(b.provision)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {canEdit && (
+              <div className="flex flex-wrap gap-3 text-sm">
+                <button
+                  disabled={busy}
+                  onClick={async () => {
+                    setBusy(true);
+                    try {
+                      await apiPost("/school-supplier/bad-debts/provision", {});
+                      setNotice("Recorded.");
+                      await load();
+                    } catch (err) {
+                      setError(err instanceof ApiError ? err.message : "Could not record it.");
+                    } finally {
+                      setBusy(false);
+                    }
+                  }}
+                  className="rounded-md border border-border px-3 py-1.5 hover:bg-secondary-500/10 disabled:opacity-50"
+                >
+                  Record it
+                </button>
+                {session?.role === "OWNER" && bd && (
+                  <button
+                    onClick={() => setBdRules({ rate1To30: String(bd.settings.rates.D1_30), rate31To60: String(bd.settings.rates.D31_60), rate61To90: String(bd.settings.rates.D61_90), rate91To180: String(bd.settings.rates.D91_180), rateOver180: String(bd.settings.rates.D181_PLUS), approvalThreshold: String(bd.settings.approvalThreshold) })}
+                    className="rounded-md border border-border px-3 py-1.5 hover:bg-secondary-500/10"
+                  >
+                    Change the rates
+                  </button>
+                )}
+                <button onClick={() => setWoForm({ invoiceId: "", amount: "", reason: "" })} className="rounded-md bg-primary-600 px-3 py-1.5 font-semibold text-white hover:bg-primary-700">
+                  Write off a debt
+                </button>
+              </div>
+            )}
+
+            {bdRules && (
+              <div className="space-y-3 rounded-lg border border-border bg-surface p-4 text-sm">
+                <p className="font-semibold">What share of each overdue amount is set aside</p>
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+                  {(
+                    [
+                      ["rate1To30", "1-30 days (%)"],
+                      ["rate31To60", "31-60 days (%)"],
+                      ["rate61To90", "61-90 days (%)"],
+                      ["rate91To180", "91-180 days (%)"],
+                      ["rateOver180", "Over 180 days (%)"],
+                    ] as const
+                  ).map(([k, label]) => (
+                    <label key={k}>
+                      {label}
+                      <input type="number" min={0} max={100} step="0.01" value={bdRules[k]} onChange={(e) => setBdRules({ ...bdRules, [k]: e.target.value })} className="mt-1 w-full rounded-md border border-border bg-background p-2" />
+                    </label>
+                  ))}
+                </div>
+                <label className="block">
+                  A write-off of this much (KES) or more needs a second person to approve it
+                  <input type="number" min={0} step="0.01" value={bdRules.approvalThreshold} onChange={(e) => setBdRules({ ...bdRules, approvalThreshold: e.target.value })} className="mt-1 w-full max-w-xs rounded-md border border-border bg-background p-2" />
+                </label>
+                <div className="flex gap-2">
+                  <button
+                    disabled={busy}
+                    onClick={async () => {
+                      setBusy(true);
+                      try {
+                        await apiPut("/school-supplier/bad-debts/settings", {
+                          rate1To30: Number(bdRules.rate1To30),
+                          rate31To60: Number(bdRules.rate31To60),
+                          rate61To90: Number(bdRules.rate61To90),
+                          rate91To180: Number(bdRules.rate91To180),
+                          rateOver180: Number(bdRules.rateOver180),
+                          approvalThreshold: Number(bdRules.approvalThreshold),
+                        });
+                        setBdRules(null);
+                        setNotice("Saved.");
+                        await load();
+                      } catch (err) {
+                        setError(err instanceof ApiError ? err.message : "Could not save.");
+                      } finally {
+                        setBusy(false);
+                      }
+                    }}
+                    className="rounded-md bg-primary-600 px-4 py-2 font-semibold text-white hover:bg-primary-700 disabled:opacity-50"
+                  >
+                    Save
+                  </button>
+                  <button onClick={() => setBdRules(null)} className="rounded-md border border-border px-4 py-2 hover:bg-secondary-500/10">Cancel</button>
+                </div>
+              </div>
+            )}
+
+            {woForm && (
+              <div className="space-y-3 rounded-lg border border-border bg-surface p-4 text-sm">
+                <p className="font-semibold">Write off a debt</p>
+                <label className="block">
+                  Which invoice?
+                  <select value={woForm.invoiceId} onChange={(e) => setWoForm({ ...woForm, invoiceId: e.target.value })} className="mt-1 w-full rounded-md border border-border bg-background p-2">
+                    <option value="">Choose...</option>
+                    {overdue?.rows.map((r) => (
+                      <option key={r.id} value={r.id}>
+                        {r.school.name} - {r.invoiceNumber} - owes {kes(r.balance)} ({r.daysLate} days late)
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="block">
+                  How much? <span className="text-secondary-500">(blank = all that is owed)</span>
+                  <input type="number" min={0} step="0.01" value={woForm.amount} onChange={(e) => setWoForm({ ...woForm, amount: e.target.value })} className="mt-1 w-full max-w-xs rounded-md border border-border bg-background p-2" />
+                </label>
+                <label className="block">
+                  Why?
+                  <input value={woForm.reason} onChange={(e) => setWoForm({ ...woForm, reason: e.target.value })} className="mt-1 w-full rounded-md border border-border bg-background p-2" />
+                </label>
+                <div className="flex gap-2">
+                  <button
+                    disabled={busy || !woForm.invoiceId || woForm.reason.trim().length < 5}
+                    onClick={async () => {
+                      setBusy(true);
+                      try {
+                        const w = await apiPost<{ status: string }>("/school-supplier/write-offs", {
+                          invoiceId: woForm.invoiceId,
+                          amount: woForm.amount === "" ? undefined : Number(woForm.amount),
+                          reason: woForm.reason.trim(),
+                        });
+                        setWoForm(null);
+                        setNotice(w.status === "PENDING" ? "Asked for. Another person must approve it before it takes effect." : "Written off.");
+                        await load();
+                      } catch (err) {
+                        setError(err instanceof ApiError ? err.message : "Could not write it off.");
+                      } finally {
+                        setBusy(false);
+                      }
+                    }}
+                    className="rounded-md bg-primary-600 px-4 py-2 font-semibold text-white hover:bg-primary-700 disabled:opacity-50"
+                  >
+                    Write it off
+                  </button>
+                  <button onClick={() => setWoForm(null)} className="rounded-md border border-border px-4 py-2 hover:bg-secondary-500/10">Cancel</button>
+                </div>
+              </div>
+            )}
+
+            {writeOffs.length > 0 && (
+              <div>
+                <p className="mb-1 text-xs uppercase text-secondary-500">Write-offs</p>
+                <ul className="divide-y divide-border rounded-lg border border-border bg-surface">
+                  {writeOffs.map((w) => (
+                    <li key={w.id} className="space-y-1 p-3 text-sm">
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <div>
+                          <p className="font-semibold">
+                            {w.school.name} <span className="font-mono text-xs text-secondary-500">{w.invoice.invoiceNumber}</span>
+                          </p>
+                          <p className="text-xs text-secondary-500">
+                            {w.reason} · asked by {w.requestedByName ?? "-"}
+                            {w.decidedByName ? ` · dealt with by ${w.decidedByName}` : ""}
+                          </p>
+                          {w.overrideReason && <p className="text-xs text-amber-300">Approved by the person who asked: {w.overrideReason}</p>}
+                          {w.reversalReason && <p className="text-xs text-secondary-500">Put back: {w.reversalReason}</p>}
+                        </div>
+                        <div className="text-right">
+                          <p className="font-mono font-semibold">{kes(w.amount)}</p>
+                          <p className="text-xs">
+                            {w.status === "PENDING" && <span className="rounded bg-amber-900 px-2 py-0.5 text-amber-200">Waiting for approval</span>}
+                            {w.status === "APPROVED" && <span className="rounded bg-red-950 px-2 py-0.5 text-red-300">Written off</span>}
+                            {w.status === "REJECTED" && <span className="rounded bg-secondary-500/20 px-2 py-0.5">Turned down</span>}
+                            {w.status === "REVERSED" && <span className="rounded bg-green-900 px-2 py-0.5 text-green-200">Put back</span>}
+                          </p>
+                        </div>
+                      </div>
+                      {canEdit && w.status === "PENDING" && (
+                        <p className="flex gap-3 text-xs">
+                          <button
+                            onClick={async () => {
+                              try {
+                                await apiPost(`/school-supplier/write-offs/${w.id}/approve`, {});
+                              } catch (err) {
+                                if (err instanceof ApiError && err.status === 403 && session?.role === "OWNER") {
+                                  const why = window.prompt("You asked for this one yourself. Why can nobody else approve it? (It will be recorded.)");
+                                  if (!why) return;
+                                  try {
+                                    await apiPost(`/school-supplier/write-offs/${w.id}/approve`, { overrideReason: why.trim() });
+                                  } catch (err2) {
+                                    setError(err2 instanceof ApiError ? err2.message : "Could not approve it.");
+                                    return;
+                                  }
+                                } else {
+                                  setError(err instanceof ApiError ? err.message : "Could not approve it.");
+                                  return;
+                                }
+                              }
+                              setNotice("Approved: it is written off.");
+                              await load();
+                            }}
+                            className="text-primary-600 hover:underline"
+                          >
+                            Approve
+                          </button>
+                          <button
+                            onClick={async () => {
+                              try {
+                                await apiPost(`/school-supplier/write-offs/${w.id}/reject`, {});
+                                await load();
+                              } catch (err) {
+                                setError(err instanceof ApiError ? err.message : "Could not turn it down.");
+                              }
+                            }}
+                            className="text-primary-600 hover:underline"
+                          >
+                            Turn down
+                          </button>
+                        </p>
+                      )}
+                      {session?.role === "OWNER" && w.status === "APPROVED" && (
+                        <p className="text-xs">
+                          <button
+                            onClick={async () => {
+                              const why = window.prompt("Why is it being put back? (for example the school paid)");
+                              if (!why || why.trim().length < 5) return;
+                              try {
+                                await apiPost(`/school-supplier/write-offs/${w.id}/reverse`, { reason: why.trim() });
+                                setNotice("Put back: the school owes it again.");
+                                await load();
+                              } catch (err) {
+                                setError(err instanceof ApiError ? err.message : "Could not put it back.");
+                              }
+                            }}
+                            className="text-primary-600 hover:underline"
+                          >
+                            Put it back
+                          </button>
+                        </p>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {bd && bd.history.length > 0 && (
+              <div>
+                <p className="mb-1 text-xs uppercase text-secondary-500">Recorded provisions</p>
+                <ul className="divide-y divide-border rounded-lg border border-border bg-surface text-sm">
+                  {bd.history.map((h) => (
+                    <li key={h.id} className="flex flex-wrap items-center justify-between gap-2 p-2">
+                      <span>
+                        {h.asOf} <span className="text-xs text-secondary-500">{h.byName ?? ""} {h.note ?? ""}</span>
+                      </span>
+                      <span className="font-mono">
+                        {kes(h.amount)} <span className="text-xs text-secondary-500">(was {kes(h.previous)})</span>
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </section>
         )}
 

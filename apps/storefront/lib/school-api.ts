@@ -79,7 +79,7 @@ export interface SchoolOrder {
 export interface SchoolInvoice {
   id: string;
   invoiceNumber: string;
-  status: "ISSUED" | "PARTIALLY_PAID" | "PAID" | "VOID";
+  status: "ISSUED" | "PARTIALLY_PAID" | "PAID" | "VOID" | "WRITTEN_OFF";
   issueDate: string;
   dueDate: string;
   total: number;

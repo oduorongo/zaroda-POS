@@ -70,6 +70,9 @@ model Organization {
   schoolComplianceDocs      SchoolComplianceDoc[]
   schoolContracts           SchoolContract[]
   supplierRetentionEvents   SupplierRetentionEvent[]
+  schoolBadDebtSettings     SchoolBadDebtSettings?
+  schoolWriteOffs           SchoolWriteOff[]
+  schoolProvisionEntries    SchoolProvisionEntry[]
   supplierPayments          SupplierPayment[]
   documentCounters          DocumentCounter[]
   branches                  Branch[]
@@ -3873,6 +3876,7 @@ enum SupplierInvoiceStatus {
   PARTIALLY_PAID
   PAID
   VOID
+  WRITTEN_OFF // what was left was written off as a bad debt
 }
 
 /// Why a school is credited.
@@ -4289,6 +4293,8 @@ model SupplierInvoice {
   retentionDisputed    Boolean   @default(false)
   retentionDisputeNote String?
   retentionNote        String?
+  /// What has been written off as a bad debt (taken off what is owed).
+  writtenOffAmount     Decimal   @default(0) @db.Decimal(12, 2)
   /// "INV-2026-0001"
   invoiceNumber  String                @unique
   issueDate      DateTime              @db.Date
@@ -4321,6 +4327,7 @@ model SupplierInvoice {
   delivery     SchoolDelivery?             @relation(fields: [deliveryId], references: [id])
   contract     SchoolContract?             @relation(fields: [contractId], references: [id])
   retentionEvents SupplierRetentionEvent[]
+  writeOffs       SchoolWriteOff[]
   lines        SupplierInvoiceLine[]
   allocations  SupplierPaymentAllocation[]
   creditNotes  SupplierCreditNote[]
@@ -4352,6 +4359,79 @@ model SupplierInvoiceLine {
 
   @@index([invoiceId])
   @@map("supplier_invoice_lines")
+}
+
+enum WriteOffStatus {
+  PENDING // asked for, waiting for a second person
+  APPROVED // taken off what is owed
+  REJECTED
+  REVERSED // put back: the school paid after all, or it was a mistake
+}
+
+/// The supplier's bad-debt rules: the share of each overdue band set aside, and the size of a write-off that needs a second person.
+model SchoolBadDebtSettings {
+  id                String   @id @default(uuid())
+  organizationId    String   @unique
+  rate1To30         Decimal  @default(1) @db.Decimal(5, 2)
+  rate31To60        Decimal  @default(5) @db.Decimal(5, 2)
+  rate61To90        Decimal  @default(20) @db.Decimal(5, 2)
+  rate91To180       Decimal  @default(50) @db.Decimal(5, 2)
+  rateOver180       Decimal  @default(100) @db.Decimal(5, 2)
+  /// A write-off of this much or more needs a second person to approve it (0 = every one does).
+  approvalThreshold Decimal  @default(50000) @db.Decimal(12, 2)
+  updatedAt         DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("school_bad_debt_settings")
+}
+
+/// A debt written off. Asked for by one person, approved by another (or by an owner on their own, with the reason kept).
+model SchoolWriteOff {
+  id               String         @id @default(uuid())
+  organizationId   String
+  invoiceId        String
+  amount           Decimal        @db.Decimal(12, 2)
+  reason           String
+  status           WriteOffStatus
+  requestedById    String
+  requestedByName  String?
+  requestedAt      DateTime       @default(now())
+  decidedById      String?
+  decidedByName    String?
+  decidedAt        DateTime?
+  decisionNote     String?
+  /// Set when the person who asked also approved it: why nobody else could.
+  overrideReason   String?
+  reversedAt       DateTime?
+  reversedByName   String?
+  reversalReason   String?
+
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  invoice      SupplierInvoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, status])
+  @@index([invoiceId])
+  @@map("school_write_offs")
+}
+
+/// The provision (what is set aside for debts that may not be paid) as it stood when it was recorded.
+model SchoolProvisionEntry {
+  id             String   @id @default(uuid())
+  organizationId String
+  asOf           DateTime @db.Date
+  /// The provision then, what it was before, and the overdue amount it was worked out on.
+  amount         Decimal  @db.Decimal(14, 2)
+  previous       Decimal  @db.Decimal(14, 2)
+  overdue        Decimal  @db.Decimal(14, 2)
+  note           String?
+  byName         String?
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, asOf])
+  @@map("school_provision_entries")
 }
 
 enum RetentionEventKind {

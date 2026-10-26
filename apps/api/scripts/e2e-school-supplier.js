@@ -813,6 +813,94 @@ const phoneB = '0722' + String(Math.floor(100000 + Math.random() * 899999));
   const rls19 = (await sql.query(`SELECT relrowsecurity AS on, relforcerowsecurity AS forced FROM pg_class WHERE relname = 'supplier_retention_events'`)).rows[0];
   check('supplier_retention_events has row-level security switched on and forced', rls19?.on === true && rls19?.forced === true, rls19);
 
+  section('20. Bad debts: the provision, write-offs, a second approver and putting one back');
+  const mgrEmail = `mgr${tag.toLowerCase()}@test.local`;
+  const mgrMake = await api('POST', '/org-users', { token: owner, body: { email: mgrEmail, fullName: 'Second Approver', password: 'password123', role: 'MANAGER', branchId } });
+  check('a manager can be added to be the second approver', mgrMake.status === 201, mgrMake.json);
+  const mgr = (await api('POST', '/auth/login', { body: { email: mgrEmail, password: 'password123' } })).json.accessToken;
+  const rates = { rate1To30: 1, rate31To60: 5, rate61To90: 20, rate91To180: 50, rateOver180: 100, approvalThreshold: 100 };
+  check('a manager cannot change the bad-debt rules', (await api('PUT', '/school-supplier/bad-debts/settings', { token: mgr, body: rates })).status === 403);
+  check('a rate for an older debt below a newer one is refused', (await api('PUT', '/school-supplier/bad-debts/settings', { token: owner, body: { ...rates, rate61To90: 2 } })).status === 400);
+  check('a rate above 100 is refused', (await api('PUT', '/school-supplier/bad-debts/settings', { token: owner, body: { ...rates, rateOver180: 150 } })).status === 400);
+  const setBd = await api('PUT', '/school-supplier/bad-debts/settings', { token: owner, body: rates });
+  check('the owner sets the rates and a threshold of 100 for needing a second person', setBd.status === 200 && setBd.json.settings.approvalThreshold === 100 && setBd.json.settings.rates.D91_180 === 50, setBd.json);
+  check('a school cannot see the bad-debt figures', (await api('GET', '/school-supplier/bad-debts', { token: tokenA })).status === 401);
+
+  const bd0 = (await api('GET', '/school-supplier/bad-debts', { token: owner })).json;
+  const profit0 = (await api('GET', `/reports/profit?from=${nairobi()}&to=${nairobi()}`, { token: owner })).json.totals.badDebts;
+  await receive(pen.id, 100, 10);
+  const invP1 = await deliver15(10); // 200, 20 days late
+  const invP2 = await deliver15(5); // 100, 100 days late
+  const invP3 = await deliver15(2); // 40, not due yet
+  await sql.query('UPDATE supplier_invoices SET "issueDate" = $3::date, "dueDate" = $2::date WHERE id = $1', [invP1.id, nairobi(-20), nairobi(-50)]);
+  await sql.query('UPDATE supplier_invoices SET "issueDate" = $3::date, "dueDate" = $2::date WHERE id = $1', [invP2.id, nairobi(-100), nairobi(-130)]);
+  const bd1 = (await api('GET', '/school-supplier/bad-debts', { token: owner })).json;
+  const band = (b, k) => b.provision.byBand.find((x) => x.band === k);
+  check('the provision grows by 1% of the 200 (20 days late) and 50% of the 100 (100 days late)', Math.abs(band(bd1, 'D1_30').provision - band(bd0, 'D1_30').provision - 2) < 0.01 && Math.abs(band(bd1, 'D91_180').provision - band(bd0, 'D91_180').provision - 50) < 0.01 && Math.abs(bd1.provision.total - bd0.provision.total - 52) < 0.01 && Math.abs(bd1.provision.overdue - bd0.provision.overdue - 300) < 0.01, [bd0.provision.total, bd1.provision.total]);
+  check('the school appears with what it owes late and its share', bd1.provision.bySchool.some((s) => s.schoolId === a.json.id && s.provision >= 52), bd1.provision.bySchool);
+  const post1 = await api('POST', '/school-supplier/bad-debts/provision', { token: owner, body: { note: 'Month end' } });
+  check('the provision can be recorded as it stands', post1.status === 201 && Math.abs(post1.json.amount - bd1.provision.total) < 0.01 && post1.json.note === 'Month end', post1.json);
+  const post2 = await api('POST', '/school-supplier/bad-debts/provision', { token: owner, body: {} });
+  check('the next record remembers the one before it', post2.status === 201 && post2.json.previous === post1.json.amount, post2.json);
+  check('the history lists them', (await api('GET', '/school-supplier/bad-debts', { token: owner })).json.history.length >= 2);
+
+  const wo = (body, token = owner) => api('POST', '/school-supplier/write-offs', { token, body });
+  check('a write-off needs a reason', (await wo({ invoiceId: invP3.id, amount: 10, reason: 'no' })).status === 400);
+  check('a write-off cannot be more than is owed', (await wo({ invoiceId: invP3.id, amount: 999, reason: 'School has closed down' })).status === 400);
+  const smallWo = await wo({ invoiceId: invP3.id, reason: 'School has closed down' });
+  const invP3a = (await api('GET', `/school-supplier/invoices/${invP3.id}`, { token: owner })).json;
+  check('a write-off under the threshold takes effect at once, closing the invoice', smallWo.status === 201 && smallWo.json.status === 'APPROVED' && invP3a.status === 'WRITTEN_OFF' && invP3a.balance === 0 && invP3a.writtenOffAmount === 40, [smallWo.json, invP3a.status]);
+  check('nothing more can be paid on a written-off invoice', (await api('POST', '/school-supplier/payments', { token: owner, body: { schoolId: a.json.id, amount: 5, method: 'CASH', allocations: [{ invoiceId: invP3.id, amount: 5 }] } })).status === 400);
+  check('a written-off invoice is out of the overdue list', !JSON.stringify((await api('GET', '/school-supplier/overdue', { token: owner })).json).includes(invP3.invoiceNumber));
+
+  const big = await wo({ invoiceId: invP2.id, reason: 'School closed, no assets' });
+  check('a write-off at the threshold waits for a second person and leaves the invoice alone', big.status === 201 && big.json.status === 'PENDING' && (await api('GET', `/school-supplier/invoices/${invP2.id}`, { token: owner })).json.balance === 100, big.json);
+  check('another asking for the same invoice cannot go beyond what is owed', (await wo({ invoiceId: invP2.id, amount: 1, reason: 'Again please' })).status === 400);
+  const noOverride = await api('POST', `/school-supplier/write-offs/${big.json.id}/approve`, { token: owner, body: {} });
+  check('the owner cannot approve their own without saying why', noOverride.status === 403, noOverride.json);
+  check('a short reason is not enough either', (await api('POST', `/school-supplier/write-offs/${big.json.id}/approve`, { token: owner, body: { overrideReason: 'ok' } })).status === 403);
+  const self = await api('POST', `/school-supplier/write-offs/${big.json.id}/approve`, { token: owner, body: { overrideReason: 'Sole owner and the school has closed' } });
+  const invP2a = (await api('GET', `/school-supplier/invoices/${invP2.id}`, { token: owner })).json;
+  check('with the reason the owner can approve their own, and it is marked as an override', self.status === 200 && self.json.status === 'APPROVED' && self.json.overrideReason === 'Sole owner and the school has closed' && invP2a.status === 'WRITTEN_OFF' && invP2a.balance === 0, self.json);
+  const aud = (await sql.query(`SELECT count(*)::int AS n FROM audit_log WHERE action = 'school.writeoff_self_approved' AND "entityId" = $1`, [big.json.id])).rows[0].n;
+  check('the override is in the audit log', aud === 1, aud);
+  check('an approved write-off cannot be approved again', (await api('POST', `/school-supplier/write-offs/${big.json.id}/approve`, { token: owner, body: { overrideReason: 'Once more please' } })).status === 409);
+
+  const part = await wo({ invoiceId: invP1.id, amount: 150, reason: 'Agreed to settle for 50' }, mgr);
+  check('a manager asks to write off 150 of the 200', part.status === 201 && part.json.status === 'PENDING' && part.json.requestedByName === 'Second Approver', part.json);
+  check('a manager cannot approve their own', (await api('POST', `/school-supplier/write-offs/${part.json.id}/approve`, { token: mgr, body: { overrideReason: 'I am the only one here' } })).status === 403);
+  const okPart = await api('POST', `/school-supplier/write-offs/${part.json.id}/approve`, { token: owner, body: { note: 'Agreed' } });
+  const invP1a = (await api('GET', `/school-supplier/invoices/${invP1.id}`, { token: owner })).json;
+  check('the owner approves it as the second person: no override, 50 still owed, invoice still open', okPart.status === 200 && okPart.json.overrideReason === null && okPart.json.decidedByName !== 'Second Approver' && invP1a.balance === 50 && invP1a.writtenOffAmount === 150 && invP1a.status !== 'WRITTEN_OFF', [okPart.json, invP1a.balance, invP1a.status]);
+  const payP1 = await api('POST', '/school-supplier/payments', { token: owner, body: { schoolId: a.json.id, amount: 50, method: 'CASH', allocations: [{ invoiceId: invP1.id, amount: 50 }] } });
+  check('the school pays the 50 and the invoice is settled', payP1.status === 201 && (await api('GET', `/school-supplier/invoices/${invP1.id}`, { token: owner })).json.status === 'PAID');
+  check('paying more than the 50 would have been refused', (await api('POST', '/school-supplier/payments', { token: owner, body: { schoolId: a.json.id, amount: 1, method: 'CASH', allocations: [{ invoiceId: invP1.id, amount: 1 }] } })).status === 400);
+
+  const invP4 = await deliver15(5);
+  const rej = await wo({ invoiceId: invP4.id, reason: 'Thinking of giving up' }, mgr);
+  const rejected = await api('POST', `/school-supplier/write-offs/${rej.json.id}/reject`, { token: owner, body: { note: 'Chase it first' } });
+  check('a write-off can be turned down, leaving the invoice as it was', rejected.status === 200 && rejected.json.status === 'REJECTED' && (await api('GET', `/school-supplier/invoices/${invP4.id}`, { token: owner })).json.balance === 100, rejected.json);
+  check('a turned-down write-off cannot then be approved', (await api('POST', `/school-supplier/write-offs/${rej.json.id}/approve`, { token: owner, body: {} })).status === 409);
+
+  check('a manager cannot put a write-off back', (await api('POST', `/school-supplier/write-offs/${big.json.id}/reverse`, { token: mgr, body: { reason: 'The school paid' } })).status === 403);
+  check('putting one back needs a reason', (await api('POST', `/school-supplier/write-offs/${big.json.id}/reverse`, { token: owner, body: { reason: 'no' } })).status === 400);
+  const putBack = await api('POST', `/school-supplier/write-offs/${big.json.id}/reverse`, { token: owner, body: { reason: 'The school found the money' } });
+  const invP2b = (await api('GET', `/school-supplier/invoices/${invP2.id}`, { token: owner })).json;
+  check('putting it back makes the 100 owed again and open for payment', putBack.status === 200 && putBack.json.status === 'REVERSED' && invP2b.balance === 100 && invP2b.writtenOffAmount === 0 && invP2b.status === 'ISSUED', [putBack.json, invP2b.status, invP2b.balance]);
+  check('it cannot be put back twice', (await api('POST', `/school-supplier/write-offs/${big.json.id}/reverse`, { token: owner, body: { reason: 'Once more please' } })).status === 409);
+  check('the school then pays it', (await api('POST', '/school-supplier/payments', { token: owner, body: { schoolId: a.json.id, amount: 100, method: 'CASH', allocations: [{ invoiceId: invP2.id, amount: 100 }] } })).status === 201 && (await api('GET', `/school-supplier/invoices/${invP2.id}`, { token: owner })).json.status === 'PAID');
+
+  const list20 = (await api('GET', '/school-supplier/write-offs', { token: owner })).json;
+  check('the write-offs list shows each with its status and who dealt with it', ['APPROVED', 'REVERSED', 'REJECTED'].every((st) => list20.some((w) => w.status === st)) && (await api('GET', '/school-supplier/write-offs?status=REJECTED', { token: owner })).json.every((w) => w.status === 'REJECTED'));
+  const bd2 = (await api('GET', '/school-supplier/bad-debts', { token: owner })).json;
+  check('the summary counts what has been written off', bd2.writtenOffToDate >= 190 && bd2.pendingWriteOffs === 0, [bd2.writtenOffToDate, bd2.pendingWriteOffs]);
+  const profit1 = (await api('GET', `/reports/profit?from=${nairobi()}&to=${nairobi()}`, { token: owner })).json.totals.badDebts;
+  check('the profit report takes off 40 + 100 + 150, less the 100 put back, so 190 more today', Math.abs(profit1 - profit0 - 190) < 0.01, [profit0, profit1]);
+  for (const t of ['school_bad_debt_settings', 'school_write_offs', 'school_provision_entries']) {
+    const r = (await sql.query(`SELECT relrowsecurity AS on, relforcerowsecurity AS forced FROM pg_class WHERE relname = $1`, [t])).rows[0];
+    check(`${t} has row-level security switched on and forced`, r?.on === true && r?.forced === true, r);
+  }
+
   await sql.end();
   console.log(`\n${passed} checks passed${failures.length ? `, ${failures.length} FAILED:\n - ${failures.join('\n - ')}` : ' - all good'}`);
   process.exit(failures.length ? 1 : 0);

@@ -11,11 +11,16 @@ import {
   Put,
   Query,
 } from '@nestjs/common';
-import { Role } from '@prisma/client';
+import { Role, WriteOffStatus } from '@prisma/client';
 import { Roles } from '../auth/roles.decorator';
 import {
   BouncePaymentDto,
   CertificateDto,
+  BadDebtSettingsDto,
+  ProvisionPostDto,
+  WriteOffDecisionDto,
+  WriteOffDto,
+  WriteOffReverseDto,
   RetentionReleaseDto,
   RetentionRequestDto,
   RetentionUpdateDto,
@@ -43,6 +48,7 @@ import { SchoolBillingService } from './school-billing.service';
 import { SchoolCollectionsService } from './school-collections.service';
 import { SchoolWithholdingService } from './school-withholding.service';
 import { SchoolRetentionService } from './school-retention.service';
+import { SchoolBadDebtsService } from './school-bad-debts.service';
 import { SchoolCreditNotesService } from './school-credit-notes.service';
 import { SchoolOrdersService } from './school-orders.service';
 import { SchoolQuotesService } from './school-quotes.service';
@@ -61,6 +67,7 @@ export class SchoolSupplierController {
     private readonly collections: SchoolCollectionsService,
     private readonly withholding: SchoolWithholdingService,
     private readonly retention: SchoolRetentionService,
+    private readonly badDebts: SchoolBadDebtsService,
   ) {}
 
   // ── Schools ──
@@ -282,6 +289,69 @@ export class SchoolSupplierController {
     @Body() dto: RetentionRequestDto,
   ) {
     return this.retention.markRequested(id, dto);
+  }
+
+  // ── Bad debts: the provision and write-offs ──
+  /** The provision now, the rules, and the history of the provision. */
+  @Roles(Role.MANAGER, Role.OWNER, Role.AUDITOR)
+  @Get('bad-debts')
+  badDebtSummary() {
+    return this.badDebts.summary();
+  }
+
+  @Roles(Role.OWNER)
+  @Put('bad-debts/settings')
+  badDebtSettings(@Body() dto: BadDebtSettingsDto) {
+    return this.badDebts.updateSettings(dto);
+  }
+
+  /** Records the provision as it stands today. */
+  @Roles(Role.MANAGER, Role.OWNER)
+  @Post('bad-debts/provision')
+  postProvision(@Body() dto: ProvisionPostDto) {
+    return this.badDebts.postProvision(dto);
+  }
+
+  @Roles(Role.MANAGER, Role.OWNER, Role.AUDITOR)
+  @Get('write-offs')
+  writeOffs(@Query('status') status?: WriteOffStatus) {
+    return this.badDebts.list(status);
+  }
+
+  @Roles(Role.MANAGER, Role.OWNER)
+  @Post('write-offs')
+  requestWriteOff(@Body() dto: WriteOffDto) {
+    return this.badDebts.request(dto);
+  }
+
+  @Roles(Role.MANAGER, Role.OWNER)
+  @Post('write-offs/:id/approve')
+  @HttpCode(200)
+  approveWriteOff(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: WriteOffDecisionDto,
+  ) {
+    return this.badDebts.approve(id, dto);
+  }
+
+  @Roles(Role.MANAGER, Role.OWNER)
+  @Post('write-offs/:id/reject')
+  @HttpCode(200)
+  rejectWriteOff(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: WriteOffDecisionDto,
+  ) {
+    return this.badDebts.reject(id, dto);
+  }
+
+  @Roles(Role.OWNER)
+  @Post('write-offs/:id/reverse')
+  @HttpCode(200)
+  reverseWriteOff(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: WriteOffReverseDto,
+  ) {
+    return this.badDebts.reverse(id, dto);
   }
 
   // ── Chasing what is owed ──

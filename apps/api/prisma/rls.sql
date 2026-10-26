@@ -1351,3 +1351,25 @@ DROP POLICY IF EXISTS tenant_isolation ON supplier_retention_events;
 CREATE POLICY tenant_isolation ON supplier_retention_events
   USING ("organizationId" = current_setting('app.current_tenant', true))
   WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+-- School supplier: bad-debt rules, write-offs and the recorded provision
+ALTER TABLE school_bad_debt_settings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE school_bad_debt_settings FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON school_bad_debt_settings;
+CREATE POLICY tenant_isolation ON school_bad_debt_settings
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+ALTER TABLE school_write_offs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE school_write_offs FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON school_write_offs;
+CREATE POLICY tenant_isolation ON school_write_offs
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+ALTER TABLE school_provision_entries ENABLE ROW LEVEL SECURITY;
+ALTER TABLE school_provision_entries FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON school_provision_entries;
+CREATE POLICY tenant_isolation ON school_provision_entries
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));

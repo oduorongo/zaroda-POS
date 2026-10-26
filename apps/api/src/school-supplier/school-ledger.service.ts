@@ -59,6 +59,7 @@ export class SchoolLedgerService {
           amountPaid: true,
           creditAmount: true,
           retentionHeld: true,
+          writtenOffAmount: true,
           dueDate: true,
         },
       }),
@@ -111,6 +112,7 @@ export class SchoolLedgerService {
         paid: Number(inv.amountPaid),
         credited: Number(inv.creditAmount),
         retentionHeld: Number(inv.retentionHeld),
+        writtenOff: Number(inv.writtenOffAmount),
       });
       b.retention += toCents(pos.retention);
       // what is due now: the retained part is owed, but not yet
@@ -168,6 +170,7 @@ export class SchoolLedgerService {
           paid: Number(r.amountPaid),
           credited: Number(r.creditAmount),
           retentionHeld: Number(r.retentionHeld),
+          writtenOff: Number(r.writtenOffAmount),
         }).dueNow,
       }))
       .filter((r) => r.balance > 0);

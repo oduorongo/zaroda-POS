@@ -249,7 +249,7 @@ export class SchoolCreditNotesService {
           creditAmount: newCredit,
           status: statusAfterSettlement(
             Number(inv.total),
-            Number(inv.amountPaid),
+            Number(inv.amountPaid) + Number(inv.writtenOffAmount),
             newCredit,
           ),
         },

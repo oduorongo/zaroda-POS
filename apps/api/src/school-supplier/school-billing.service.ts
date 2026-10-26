@@ -95,6 +95,7 @@ function toInvoiceView(i: InvoiceFull) {
     paid,
     credited: Number(i.creditAmount),
     retentionHeld: Number(i.retentionHeld),
+    writtenOff: Number(i.writtenOffAmount),
   });
   return {
     id: i.id,
@@ -117,6 +118,8 @@ function toInvoiceView(i: InvoiceFull) {
     creditAmount: Number(i.creditAmount),
     /** Retention: held back by the school until released (owed, not yet due). */
     retentionHeld: pos.retention,
+    /** What was written off as a bad debt. */
+    writtenOffAmount: Number(i.writtenOffAmount),
     retentionAmount: Number(i.retentionAmount),
     retentionReleaseDate: day(i.retentionReleaseDate),
     retentionRequestedAt: i.retentionRequestedAt,
@@ -473,7 +476,10 @@ export class SchoolBillingService {
     if (
       paid < 0 ||
       toCents(paid) >
-        toCents(inv.total) - toCents(inv.creditAmount) - toCents(inv.retentionHeld)
+        toCents(inv.total) -
+          toCents(inv.creditAmount) -
+          toCents(inv.writtenOffAmount) -
+          toCents(inv.retentionHeld)
     )
       throw new BadRequestException(
         'That would pay more than the invoice has due now',
@@ -487,7 +493,8 @@ export class SchoolBillingService {
             ? inv.status
             : statusAfterSettlement(
                 Number(inv.total),
-                paid,
+                // a part written off settles that much, so the rest being paid settles the invoice
+                paid + Number(inv.writtenOffAmount),
                 Number(inv.creditAmount),
               ),
       },
