@@ -36,6 +36,7 @@ interface Order {
   id: string;
   orderNumber: string;
   lpoNumber: string | null;
+  contract: { id: string; contractNumber: string; title: string } | null;
   lpoVerifiedAt: string | null;
   lpoVerifiedByName: string | null;
   status: "SUBMITTED" | "CONFIRMED" | "PARTIALLY_DELIVERED" | "DELIVERED" | "CANCELLED";
@@ -102,6 +103,8 @@ export default function SchoolOrdersPage() {
   const [reason, setReason] = useState("");
   // What is in stock at the chosen branch for each line of the open order (line id -> quantity), once known
   const [stock, setStock] = useState<Record<string, number> | null>(null);
+  // the running contracts of the open order's school, to choose which one it is supplied under
+  const [contracts, setContracts] = useState<{ id: string; contractNumber: string; title: string }[]>([]);
   // and how much of it other confirmed orders are still waiting for
   const [reserved, setReserved] = useState<Record<string, number>>({});
 
@@ -163,6 +166,21 @@ export default function SchoolOrdersPage() {
     };
   }, [openId, branchId, orders]);
 
+  useEffect(() => {
+    const o = orders?.find((x) => x.id === openId);
+    if (!o || o.status === "DELIVERED" || o.status === "CANCELLED") {
+      setContracts([]);
+      return;
+    }
+    let live = true;
+    apiGet<{ id: string; contractNumber: string; title: string }[]>(`/school-supplier/schools/${o.school.id}/running-contracts`)
+      .then((r) => live && setContracts(r))
+      .catch(() => live && setContracts([]));
+    return () => {
+      live = false;
+    };
+  }, [openId, orders]);
+
   function open(o: Order) {
     if (openId === o.id) {
       setOpenId(null);
@@ -207,6 +225,8 @@ export default function SchoolOrdersPage() {
             <Link href="/schools" className="text-primary-600 hover:underline">Schools</Link>
             <Link href="/school-prices" className="text-primary-600 hover:underline">Price list</Link>
             <Link href="/school-quotes" className="text-primary-600 hover:underline">Quotations</Link>
+            <Link href="/school-tenders" className="text-primary-600 hover:underline">Tenders</Link>
+            <Link href="/school-contracts" className="text-primary-600 hover:underline">Contracts</Link>
             <Link href="/school-money" className="text-primary-600 hover:underline">Invoices &amp; payments</Link>
           </div>
         </div>
@@ -249,6 +269,24 @@ export default function SchoolOrdersPage() {
                 <div className="space-y-3 border-t border-border p-3 text-sm">
                   {o.notes && <p className="text-secondary-600">School&apos;s note: {o.notes}</p>}
                   {o.deliveryAddress && <p className="text-secondary-600">Deliver to: {o.deliveryAddress}</p>}
+                  {(o.contract || contracts.length > 0) && o.status !== "DELIVERED" && o.status !== "CANCELLED" ? (
+                    <label className="flex flex-wrap items-center gap-2 text-secondary-600">
+                      Supplied under contract
+                      <select
+                        disabled={!canEdit || busy}
+                        value={o.contract?.id ?? ""}
+                        onChange={(e) => void act(`/school-supplier/orders/${o.id}/contract`, { contractId: e.target.value || null }, e.target.value ? "Order put under that contract." : "Order taken off its contract.", false)}
+                        className="rounded-md border border-border bg-surface p-1"
+                      >
+                        <option value="">None</option>
+                        {contracts.map((c) => (
+                          <option key={c.id} value={c.id}>{c.contractNumber} - {c.title}</option>
+                        ))}
+                      </select>
+                    </label>
+                  ) : o.contract ? (
+                    <p className="text-secondary-600">Supplied under contract {o.contract.contractNumber} - {o.contract.title}</p>
+                  ) : null}
                   {o.lpoNumber && (
                     <label className="flex flex-wrap items-center gap-2 text-secondary-600">
                       <input

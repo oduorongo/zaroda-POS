@@ -1300,3 +1300,46 @@ DROP POLICY IF EXISTS tenant_isolation ON school_quote_lines;
 CREATE POLICY tenant_isolation ON school_quote_lines
   USING (EXISTS (SELECT 1 FROM school_quotes p WHERE p.id = school_quote_lines."quoteId" AND p."organizationId" = current_setting('app.current_tenant', true)))
   WITH CHECK (EXISTS (SELECT 1 FROM school_quotes p WHERE p.id = school_quote_lines."quoteId" AND p."organizationId" = current_setting('app.current_tenant', true)));
+
+-- School supplier: tenders and contracts
+ALTER TABLE school_tenders ENABLE ROW LEVEL SECURITY;
+ALTER TABLE school_tenders FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON school_tenders;
+CREATE POLICY tenant_isolation ON school_tenders
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+ALTER TABLE school_tender_checks ENABLE ROW LEVEL SECURITY;
+ALTER TABLE school_tender_checks FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON school_tender_checks;
+CREATE POLICY tenant_isolation ON school_tender_checks
+  USING (EXISTS (SELECT 1 FROM school_tenders p WHERE p.id = school_tender_checks."tenderId" AND p."organizationId" = current_setting('app.current_tenant', true)))
+  WITH CHECK (EXISTS (SELECT 1 FROM school_tenders p WHERE p.id = school_tender_checks."tenderId" AND p."organizationId" = current_setting('app.current_tenant', true)));
+
+ALTER TABLE school_tender_lines ENABLE ROW LEVEL SECURITY;
+ALTER TABLE school_tender_lines FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON school_tender_lines;
+CREATE POLICY tenant_isolation ON school_tender_lines
+  USING (EXISTS (SELECT 1 FROM school_tenders p WHERE p.id = school_tender_lines."tenderId" AND p."organizationId" = current_setting('app.current_tenant', true)))
+  WITH CHECK (EXISTS (SELECT 1 FROM school_tenders p WHERE p.id = school_tender_lines."tenderId" AND p."organizationId" = current_setting('app.current_tenant', true)));
+
+ALTER TABLE school_compliance_docs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE school_compliance_docs FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON school_compliance_docs;
+CREATE POLICY tenant_isolation ON school_compliance_docs
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+ALTER TABLE school_contracts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE school_contracts FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON school_contracts;
+CREATE POLICY tenant_isolation ON school_contracts
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+ALTER TABLE school_contract_variations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE school_contract_variations FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON school_contract_variations;
+CREATE POLICY tenant_isolation ON school_contract_variations
+  USING (EXISTS (SELECT 1 FROM school_contracts p WHERE p.id = school_contract_variations."contractId" AND p."organizationId" = current_setting('app.current_tenant', true)))
+  WITH CHECK (EXISTS (SELECT 1 FROM school_contracts p WHERE p.id = school_contract_variations."contractId" AND p."organizationId" = current_setting('app.current_tenant', true)));

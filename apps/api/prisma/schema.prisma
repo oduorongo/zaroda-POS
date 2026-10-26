@@ -66,6 +66,9 @@ model Organization {
   schoolDeliveries          SchoolDelivery[]
   supplierCreditNotes       SupplierCreditNote[]
   schoolQuotes              SchoolQuote[]
+  schoolTenders             SchoolTender[]
+  schoolComplianceDocs      SchoolComplianceDoc[]
+  schoolContracts           SchoolContract[]
   supplierPayments          SupplierPayment[]
   documentCounters          DocumentCounter[]
   branches                  Branch[]
@@ -545,6 +548,7 @@ model ProductVariant {
   goodsReceiptLines      GoodsReceiptLine[]
   etimsItem              EtimsItem?
   schoolQuoteLines       SchoolQuoteLine[]
+  schoolTenderLines      SchoolTenderLine[]
   repackagedFrom         Repackaging[]            @relation("RepackagingFrom")
   repackagedInto         Repackaging[]            @relation("RepackagingTo")
   recipeIngredients      RecipeIngredient[]       @relation("RecipeFor")
@@ -3838,6 +3842,22 @@ enum SchoolOrderStatus {
   CANCELLED
 }
 
+enum SchoolTenderStatus {
+  IDENTIFIED // spotted, not started
+  PREPARING // the bid is being put together
+  SUBMITTED
+  WON // awarded: a contract was made
+  LOST
+  WITHDRAWN
+  CANCELLED // the institution cancelled the tender
+}
+
+enum SchoolContractStatus {
+  ACTIVE
+  COMPLETED
+  TERMINATED
+}
+
 enum SchoolQuoteStatus {
   DRAFT // being written; can still change
   ISSUED // numbered, frozen and sent to the school
@@ -3875,6 +3895,145 @@ enum SupplierPaymentMethod {
 enum SupplierPaymentStatus {
   RECEIVED
   BOUNCED // a cheque that did not clear: what it paid is undone
+}
+
+/// A tender the business is bidding for: the institution inviting it, the closing date, the checklist of what must be ready,
+/// the bid costing, and what happened. A won tender becomes a contract.
+model SchoolTender {
+  id             String             @id @default(uuid())
+  organizationId String
+  /// A school the business already sells to, when the tender is from one (a county office, a ministry, a new school: just a name).
+  schoolId       String?
+  entityName     String
+  /// The institution's own tender reference.
+  tenderNumber   String
+  title          String
+  status         SchoolTenderStatus @default(IDENTIFIED)
+  closingDate    DateTime?          @db.Date
+  submittedOn    DateTime?          @db.Date
+  /// What the bid comes to, VAT included (worked out from the bid lines).
+  bidAmount      Decimal?           @db.Decimal(14, 2)
+  /// A person overrode a block (an expired compliance document, an unticked checklist item) to submit: why.
+  submitOverride String?
+  outcomeNote    String?
+  notes          String?
+  createdById    String?
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  school       SupplierSchool?    @relation(fields: [schoolId], references: [id])
+  checklist    SchoolTenderCheck[]
+  lines        SchoolTenderLine[]
+  contract     SchoolContract?
+
+  @@unique([organizationId, tenderNumber])
+  @@index([organizationId, status])
+  @@map("school_tenders")
+}
+
+model SchoolTenderCheck {
+  id        String       @id @default(uuid())
+  tenderId  String
+  title     String
+  done      Boolean      @default(false)
+  doneAt    DateTime?
+  sortOrder Int          @default(0)
+
+  tender SchoolTender @relation(fields: [tenderId], references: [id], onDelete: Cascade)
+
+  @@index([tenderId])
+  @@map("school_tender_checks")
+}
+
+/// One line of the bid: what is offered, what it costs the business and what it is priced at (before VAT).
+model SchoolTenderLine {
+  id          String   @id @default(uuid())
+  tenderId    String
+  variantId   String?
+  description String
+  quantity    Decimal  @db.Decimal(14, 3)
+  unitCost    Decimal  @default(0) @db.Decimal(12, 2)
+  unitPrice   Decimal  @db.Decimal(12, 2)
+  /// VAT as a fraction (0.16), 0 when exempt.
+  taxRate     Decimal  @default(0) @db.Decimal(6, 4)
+  sortOrder   Int      @default(0)
+
+  tender  SchoolTender    @relation(fields: [tenderId], references: [id], onDelete: Cascade)
+  variant ProductVariant? @relation(fields: [variantId], references: [id])
+
+  @@index([tenderId])
+  @@map("school_tender_lines")
+}
+
+/// A document the business must keep valid to bid (tax compliance certificate, business permit...): a tender cannot be submitted
+/// while one has expired.
+model SchoolComplianceDoc {
+  id             String    @id @default(uuid())
+  organizationId String
+  name           String
+  reference      String?
+  issuedOn       DateTime? @db.Date
+  expiryDate     DateTime? @db.Date
+  notes          String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@map("school_compliance_docs")
+}
+
+/// An agreement to supply a school (usually from a won tender): its value, period, the orders and invoices charged to it.
+model SchoolContract {
+  id             String               @id @default(uuid())
+  organizationId String
+  schoolId       String
+  tenderId       String?              @unique
+  /// "CT-2026-0001"
+  contractNumber String               @unique
+  /// The institution's own contract reference.
+  reference      String?
+  title          String
+  status         SchoolContractStatus @default(ACTIVE)
+  startDate      DateTime             @db.Date
+  endDate        DateTime             @db.Date
+  /// The value agreed, VAT included. Variations change what it stands at.
+  value          Decimal              @db.Decimal(14, 2)
+  notes          String?
+  closedAt       DateTime?
+  closedNote     String?
+  createdById    String?
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+
+  organization Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  school       SupplierSchool            @relation(fields: [schoolId], references: [id])
+  tender       SchoolTender?             @relation(fields: [tenderId], references: [id])
+  variations   SchoolContractVariation[]
+  orders       SchoolOrder[]
+  invoices     SupplierInvoice[]
+
+  @@index([organizationId, status])
+  @@index([schoolId])
+  @@map("school_contracts")
+}
+
+/// A change to a contract's value (more goods asked for, a price change, a reduction), signed.
+model SchoolContractVariation {
+  id         String   @id @default(uuid())
+  contractId String
+  date       DateTime @db.Date
+  amount     Decimal  @db.Decimal(14, 2)
+  reason     String
+  createdById String?
+  createdAt  DateTime @default(now())
+
+  contract SchoolContract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+
+  @@index([contractId])
+  @@map("school_contract_variations")
 }
 
 /// A price quotation to a school. Issued quotations are frozen; when the school accepts, an order is made at the quoted prices.
@@ -3977,6 +4136,8 @@ model SupplierSchool {
   payments     SupplierPayment[]
   creditNotes  SupplierCreditNote[]
   quotes       SchoolQuote[]
+  tenders      SchoolTender[]
+  contracts    SchoolContract[]
 
   @@unique([organizationId, phone])
   @@index([organizationId])
@@ -3994,6 +4155,8 @@ model SchoolOrder {
   /// The school's LPO was received and checked against its signed copy (who, and when).
   lpoVerifiedAt    DateTime?
   lpoVerifiedByName String?
+  /// The contract this order is supplied under (its deliveries and invoices are charged to it).
+  contractId       String?
   status           SchoolOrderStatus @default(SUBMITTED)
   notes            String?
   deliveryAddress  String?
@@ -4024,9 +4187,11 @@ model SchoolOrder {
   deliveries   SchoolDelivery[]
   invoices     SupplierInvoice[]
   quote        SchoolQuote?
+  contract     SchoolContract? @relation(fields: [contractId], references: [id])
 
   @@index([organizationId, status])
   @@index([schoolId])
+  @@index([contractId])
   @@map("school_orders")
 }
 
@@ -4106,6 +4271,8 @@ model SupplierInvoice {
   deliveryId     String?               @unique
   /// The ordinary sale this invoice was also recorded as, so it appears in Sales and the reports.
   saleId         String?               @unique
+  /// The contract it is charged to (taken from the order when the goods were delivered).
+  contractId     String?
   /// "INV-2026-0001"
   invoiceNumber  String                @unique
   issueDate      DateTime              @db.Date
@@ -4136,6 +4303,7 @@ model SupplierInvoice {
   school       SupplierSchool              @relation(fields: [schoolId], references: [id])
   order        SchoolOrder?                @relation(fields: [orderId], references: [id])
   delivery     SchoolDelivery?             @relation(fields: [deliveryId], references: [id])
+  contract     SchoolContract?             @relation(fields: [contractId], references: [id])
   lines        SupplierInvoiceLine[]
   allocations  SupplierPaymentAllocation[]
   creditNotes  SupplierCreditNote[]
@@ -4143,6 +4311,7 @@ model SupplierInvoice {
   @@index([organizationId, status])
   @@index([schoolId])
   @@index([orderId])
+  @@index([contractId])
   @@map("supplier_invoices")
 }
 

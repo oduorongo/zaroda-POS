@@ -27,6 +27,7 @@ export const HISTORY_SOURCES: { delegate: string; field: string }[] = [
   { delegate: 'restaurantTabLine', field: 'variantId' },
   { delegate: 'schoolOrderLine', field: 'variantId' },
   { delegate: 'schoolQuoteLine', field: 'variantId' },
+  { delegate: 'schoolTenderLine', field: 'variantId' },
   { delegate: 'supplierInvoiceLine', field: 'variantId' },
   { delegate: 'hotelRoomType', field: 'variantId' },
 ];

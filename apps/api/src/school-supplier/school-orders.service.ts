@@ -57,6 +57,7 @@ const include = {
       contactName: true,
     },
   },
+  contract: { select: { id: true, contractNumber: true, title: true } },
   deliveries: {
     orderBy: { sequence: 'asc' as const },
     include: {
@@ -118,6 +119,8 @@ export function toOrderView(o: OrderWithLines) {
     id: o.id,
     orderNumber: o.orderNumber,
     lpoNumber: o.lpoNumber,
+    /** The contract it is supplied under, if any. */
+    contract: o.contract,
     lpoVerifiedAt: o.lpoVerifiedAt,
     lpoVerifiedByName: o.lpoVerifiedByName,
     status: o.status,
@@ -185,6 +188,22 @@ export class SchoolOrdersService {
   ) {}
 
   // ── The school's side ──────────────────────────────────────────────────
+
+  /** A school with exactly one running contract has its new orders put under it (the supplier can change it). */
+  private async onlyContract(tx: TenantTx, schoolId: string) {
+    const today = new Date(`${todayKey()}T00:00:00Z`);
+    const running = await tx.schoolContract.findMany({
+      where: {
+        schoolId,
+        status: 'ACTIVE',
+        startDate: { lte: today },
+        endDate: { gte: today },
+      },
+      select: { id: true },
+      take: 2,
+    });
+    return running.length === 1 ? running[0].id : null;
+  }
 
   /** Places an order for a school. Prices come from the price list now and are written down on the order. */
   async submit(schoolId: string, dto: SubmitSchoolOrderDto) {
@@ -257,6 +276,7 @@ export class SchoolOrdersService {
             ? new Date(`${dto.requestedDate}T00:00:00Z`)
             : null,
           overCreditLimit: over,
+          contractId: await this.onlyContract(tx, schoolId),
           lines: {
             create: priced.map((p) => ({
               variantId: p.variantId,
@@ -341,6 +361,7 @@ export class SchoolOrdersService {
         notes: extras.notes?.trim() || null,
         deliveryAddress: extras.deliveryAddress?.trim() || school.address,
         overCreditLimit: over,
+        contractId: await this.onlyContract(tx, quote.schoolId),
         lines: {
           create: priced.map((p) => ({
             variantId: p.variantId,
@@ -726,6 +747,7 @@ export class SchoolOrdersService {
           schoolId: current.schoolId,
           orderId: id,
           deliveryId: newDeliveryId,
+          contractId: current.contractId,
           invoiceNumber,
           issueDate: new Date(`${today}T00:00:00Z`),
           dueDate: new Date(

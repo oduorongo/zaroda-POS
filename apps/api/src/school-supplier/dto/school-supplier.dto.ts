@@ -307,6 +307,260 @@ export class FollowUpDto {
   responsibleId?: string | null;
 }
 
+// ── Tenders and contracts ─────────────────────────────────────────────────
+
+export class SaveTenderDto {
+  /** A school the business already sells to, when the tender is from one. */
+  @IsUUID()
+  @IsOptional()
+  schoolId?: string;
+
+  /** The institution inviting the tender. */
+  @IsString()
+  @MinLength(2)
+  @MaxLength(200)
+  entityName!: string;
+
+  /** The institution's own tender reference. */
+  @IsString()
+  @MinLength(1)
+  @MaxLength(60)
+  tenderNumber!: string;
+
+  @IsString()
+  @MinLength(2)
+  @MaxLength(200)
+  title!: string;
+
+  @IsDateString({ strict: true })
+  @IsOptional()
+  closingDate?: string;
+
+  @IsString()
+  @IsOptional()
+  @MaxLength(1000)
+  notes?: string;
+}
+
+export class TenderLineDto {
+  @IsUUID()
+  @IsOptional()
+  variantId?: string;
+
+  @IsString()
+  @MinLength(1)
+  @MaxLength(200)
+  description!: string;
+
+  @IsNumber({ maxDecimalPlaces: 3 })
+  @Min(0.001)
+  @Max(1_000_000)
+  quantity!: number;
+
+  /** What it costs the business. */
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  @Max(100_000_000)
+  unitCost!: number;
+
+  /** The price offered, before VAT. */
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  @Max(100_000_000)
+  unitPrice!: number;
+
+  /** VAT as a fraction (0.16); 0 when exempt. */
+  @IsNumber({ maxDecimalPlaces: 4 })
+  @Min(0)
+  @Max(1)
+  @IsOptional()
+  taxRate?: number;
+}
+
+export class SaveTenderLinesDto {
+  @IsArray()
+  @ArrayMaxSize(300)
+  @ValidateNested({ each: true })
+  @Type(() => TenderLineDto)
+  lines!: TenderLineDto[];
+}
+
+export class ChecklistItemDto {
+  @IsString()
+  @MinLength(2)
+  @MaxLength(200)
+  title!: string;
+}
+
+export class ChecklistTickDto {
+  @IsBoolean()
+  done!: boolean;
+}
+
+export class SubmitTenderDto {
+  /** Needed to submit in spite of something that blocks it (an expired document, an unticked item): why it is all right. */
+  @IsString()
+  @IsOptional()
+  @MinLength(5)
+  @MaxLength(300)
+  overrideReason?: string;
+}
+
+export class AwardTenderDto {
+  /** The school the contract is with (needed when the tender did not name one). */
+  @IsUUID()
+  @IsOptional()
+  schoolId?: string;
+
+  /** Left out, the bid amount is used. */
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(1)
+  @Max(10_000_000_000)
+  @IsOptional()
+  value?: number;
+
+  @IsDateString({ strict: true })
+  startDate!: string;
+
+  @IsDateString({ strict: true })
+  endDate!: string;
+
+  @IsString()
+  @IsOptional()
+  @MaxLength(60)
+  reference?: string;
+
+  @IsString()
+  @IsOptional()
+  @MaxLength(1000)
+  notes?: string;
+}
+
+export class TenderOutcomeDto {
+  @IsString()
+  @IsOptional()
+  @MaxLength(300)
+  note?: string;
+}
+
+export class ComplianceDocDto {
+  @IsString()
+  @MinLength(2)
+  @MaxLength(120)
+  name!: string;
+
+  @IsString()
+  @IsOptional()
+  @MaxLength(80)
+  reference?: string;
+
+  @IsDateString({ strict: true })
+  @IsOptional()
+  issuedOn?: string;
+
+  @IsDateString({ strict: true })
+  @IsOptional()
+  expiryDate?: string;
+
+  @IsString()
+  @IsOptional()
+  @MaxLength(300)
+  notes?: string;
+}
+
+export class SaveContractDto {
+  @IsUUID()
+  schoolId!: string;
+
+  @IsString()
+  @MinLength(2)
+  @MaxLength(200)
+  title!: string;
+
+  /** The institution's own contract reference. */
+  @IsString()
+  @IsOptional()
+  @MaxLength(60)
+  reference?: string;
+
+  @IsDateString({ strict: true })
+  startDate!: string;
+
+  @IsDateString({ strict: true })
+  endDate!: string;
+
+  /** The value agreed, VAT included. */
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(1)
+  @Max(10_000_000_000)
+  value!: number;
+
+  @IsString()
+  @IsOptional()
+  @MaxLength(1000)
+  notes?: string;
+}
+
+export class UpdateContractDto {
+  @IsString()
+  @MinLength(2)
+  @MaxLength(200)
+  @IsOptional()
+  title?: string;
+
+  @IsString()
+  @IsOptional()
+  @MaxLength(60)
+  reference?: string;
+
+  @IsDateString({ strict: true })
+  @IsOptional()
+  startDate?: string;
+
+  @IsDateString({ strict: true })
+  @IsOptional()
+  endDate?: string;
+
+  @IsString()
+  @IsOptional()
+  @MaxLength(1000)
+  notes?: string;
+}
+
+export class VariationDto {
+  /** A change to the contract value, VAT included: plus for more, minus for less. */
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(-10_000_000_000)
+  @Max(10_000_000_000)
+  amount!: number;
+
+  @IsString()
+  @MinLength(3)
+  @MaxLength(300)
+  reason!: string;
+
+  @IsDateString({ strict: true })
+  @IsOptional()
+  date?: string;
+}
+
+export class CloseContractDto {
+  @IsIn(['COMPLETED', 'TERMINATED'])
+  outcome!: 'COMPLETED' | 'TERMINATED';
+
+  @IsString()
+  @MinLength(3)
+  @MaxLength(300)
+  note!: string;
+}
+
+export class OrderContractDto {
+  /** The contract the order is supplied under; null takes it off. */
+  @IsUUID()
+  @IsOptional()
+  contractId?: string | null;
+}
+
 // ── Quotations ────────────────────────────────────────────────────────────
 
 export class QuoteLineInputDto {
