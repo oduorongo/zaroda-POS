@@ -20,6 +20,7 @@ import {
   CloseBalanceDto,
   DeclineQuoteDto,
   FollowUpDto,
+  LpoCheckDto,
   SaveQuoteDto,
   CreateCreditNoteDto,
   ConfirmOrderDto,
@@ -188,6 +189,17 @@ export class SchoolSupplierController {
     @Body() dto: DeliverOrderDto,
   ) {
     return this.orders.deliver(id, dto);
+  }
+
+  /** Ticks that the school's LPO was received and checked against its signed copy. */
+  @Roles(Role.MANAGER, Role.OWNER)
+  @Post('orders/:id/lpo-check')
+  @HttpCode(200)
+  lpoCheck(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: LpoCheckDto,
+  ) {
+    return this.orders.checkLpo(id, dto.checked);
   }
 
   /** Stop waiting to deliver the rest of a partly delivered order. */

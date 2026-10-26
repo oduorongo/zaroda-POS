@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { amountInWords } from "../lib/amount-in-words";
 
 // The printed paperwork of selling to schools on credit: invoice, delivery note, receipt and statement. One component for
 // both the supplier's back office and the school's own portal, so both sides print exactly the same document.
@@ -220,6 +221,7 @@ export function InvoiceDocument({ invoice }: { invoice: DocInvoice }) {
           <tr className="text-base font-bold"><td className="pr-6">Balance due</td><td className="text-right">KES {money(invoice.balance)}</td></tr>
         </tbody>
       </table>
+      <p className="mt-2 text-right text-xs italic text-gray-600">Invoice total in words: {amountInWords(invoice.total)}</p>
       {(invoice.creditNotes ?? []).length > 0 && (
         <div className="mt-4 text-sm">
           <p className="font-semibold">Credit notes</p>
@@ -347,6 +349,7 @@ export function CreditNoteDocument({ creditNote }: { creditNote: DocCreditNote }
           <tr className="text-base font-bold"><td className="pr-6">Total credited</td><td className="text-right">KES {money(creditNote.total)}</td></tr>
         </tbody>
       </table>
+      <p className="mt-2 text-right text-xs italic text-gray-600">{amountInWords(creditNote.total)}</p>
       {creditNote.note && <p className="mt-3 text-sm text-gray-700">Note: {creditNote.note}</p>}
       <p className="mt-3 text-sm text-gray-700">This amount has been taken off what you owe on invoice {creditNote.invoice.invoiceNumber}.{creditNote.restocked ? " The goods returned have been received back." : ""}</p>
       <Footer note={creditNote.business.invoiceFooter} />
@@ -397,6 +400,7 @@ export function QuoteDocument({ quote }: { quote: DocQuote }) {
           <tr className="text-base font-bold"><td className="pr-6">Total</td><td className="text-right">KES {money(quote.total)}</td></tr>
         </tbody>
       </table>
+      <p className="mt-2 text-right text-xs italic text-gray-600">{amountInWords(quote.total)}</p>
       {quote.terms && (
         <div className="mt-4 text-sm">
           <p className="font-semibold">Terms</p>
@@ -428,6 +432,7 @@ export function ReceiptDocument({ receipt }: { receipt: DocReceipt }) {
             </td>
           </tr>
           <tr><td className="py-1 text-gray-600">Amount</td><td className="py-1 text-lg font-bold">KES {money(receipt.amount)}</td></tr>
+          <tr><td className="py-1 text-gray-600">In words</td><td className="py-1 italic">{amountInWords(receipt.amount)}</td></tr>
         </tbody>
       </table>
       {receipt.allocations.length > 0 && (

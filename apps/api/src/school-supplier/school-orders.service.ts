@@ -118,6 +118,8 @@ export function toOrderView(o: OrderWithLines) {
     id: o.id,
     orderNumber: o.orderNumber,
     lpoNumber: o.lpoNumber,
+    lpoVerifiedAt: o.lpoVerifiedAt,
+    lpoVerifiedByName: o.lpoVerifiedByName,
     status: o.status,
     school: o.school,
     notes: o.notes,
@@ -431,7 +433,9 @@ export class SchoolOrdersService {
       });
       if (!d) throw new NotFoundException('Delivery not found');
       if (d.schoolConfirmedAt)
-        throw new ConflictException('You have already confirmed this delivery.');
+        throw new ConflictException(
+          'You have already confirmed this delivery.',
+        );
       await tx.schoolDelivery.update({
         where: { id: deliveryId },
         data: {
@@ -885,7 +889,10 @@ export class SchoolOrdersService {
     if (!d) throw new NotFoundException('Delivery note not found');
     const o = d.order;
     const qtyIn = (
-      deliveries: { sequence: number; lines: { orderLineId: string; quantity: unknown }[] }[],
+      deliveries: {
+        sequence: number;
+        lines: { orderLineId: string; quantity: unknown }[];
+      }[],
       lineId: string,
     ) =>
       deliveries.reduce(
@@ -947,14 +954,73 @@ export class SchoolOrdersService {
         select: { variantId: true, quantity: true },
       });
       const have = new Map(items.map((i) => [i.variantId, Number(i.quantity)]));
+      // what OTHER confirmed orders are still waiting to be delivered of the same products (promised, but still on the shelf)
+      const others = await tx.schoolOrderLine.findMany({
+        where: {
+          variantId: { in: order.lines.map((l) => l.variantId) },
+          order: {
+            id: { not: id },
+            status: {
+              in: [
+                SchoolOrderStatus.CONFIRMED,
+                SchoolOrderStatus.PARTIALLY_DELIVERED,
+              ],
+            },
+          },
+        },
+        select: {
+          variantId: true,
+          quantityOrdered: true,
+          quantityConfirmed: true,
+          quantityDelivered: true,
+        },
+      });
+      const promised = new Map<string, number>();
+      for (const o of others)
+        promised.set(
+          o.variantId,
+          (promised.get(o.variantId) ?? 0) +
+            balanceOf({
+              agreed: agreedQty(o),
+              delivered: Number(o.quantityDelivered ?? 0),
+            }),
+        );
       return {
         branchId,
         lines: order.lines.map((l) => ({
           lineId: l.id,
           available: Math.max(0, have.get(l.variantId) ?? 0),
+          /** Promised to other confirmed orders and not yet delivered. */
+          reserved: Math.round((promised.get(l.variantId) ?? 0) * 1000) / 1000,
         })),
       };
     });
+  }
+
+  /** Ticks that the school's LPO was received and checked against its signed copy (or takes the tick off). Only for an order that has an LPO number. */
+  async checkLpo(id: string, checked: boolean) {
+    const { orgUserId } = getTenantStore();
+    const row = await this.tenantPrisma.run(async (tx) => {
+      const current = await tx.schoolOrder.findUnique({ where: { id } });
+      if (!current) throw new NotFoundException('Order not found');
+      if (!current.lpoNumber)
+        throw new BadRequestException('This order has no LPO number to check.');
+      const who = checked
+        ? await tx.orgUser.findUnique({
+            where: { id: orgUserId },
+            include: { user: { select: { fullName: true } } },
+          })
+        : null;
+      await tx.schoolOrder.update({
+        where: { id },
+        data: {
+          lpoVerifiedAt: checked ? new Date() : null,
+          lpoVerifiedByName: checked ? (who?.user.fullName ?? 'Staff') : null,
+        },
+      });
+      return tx.schoolOrder.findUniqueOrThrow({ where: { id }, include });
+    });
+    return toOrderView(row);
   }
 
   /** Orders waiting for the supplier to confirm - for the dashboard and alerts. */
