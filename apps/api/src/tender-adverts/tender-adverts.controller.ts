@@ -1,17 +1,23 @@
 import {
+  BadRequestException,
   Body,
   Controller,
+  Delete,
   Get,
+  Headers,
   HttpCode,
+  PayloadTooLargeException,
   Param,
   ParseUUIDPipe,
   Post,
   Put,
   Query,
+  Req,
   UseGuards,
 } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { Role } from '@prisma/client';
+import type { Request } from 'express';
 import { Public } from '../auth/public.decorator';
 import { Roles } from '../auth/roles.decorator';
 import {
@@ -21,6 +27,7 @@ import {
   TenderBuyerLoginDto,
   TenderNoticeDto,
 } from './dto/tender-advert.dto';
+import { MAX_PDF_BYTES, cleanFileName } from './tender-advert.util';
 import { TenderAdvertsService } from './tender-adverts.service';
 import { TenderBoardService } from './tender-board.service';
 import {
@@ -86,6 +93,37 @@ export class TenderBuyerController {
     @Body() dto: SaveTenderAdvertDto,
   ) {
     return this.adverts.update(who.buyerId, id, dto);
+  }
+
+  /** The school's PDF is the request body (Content-Type: application/pdf); its name goes in ?name=. */
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
+  @Post('adverts/:id/pdf')
+  async attachPdf(
+    @CurrentTenderBuyer() who: TenderBuyerIdentity,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query('name') name: string | undefined,
+    @Headers('content-type') contentType: string | undefined,
+    @Req() req: Request,
+  ) {
+    if ((contentType ?? '').split(';')[0].trim().toLowerCase() !== 'application/pdf')
+      throw new BadRequestException('Upload a PDF file');
+    const chunks: Buffer[] = [];
+    let total = 0;
+    for await (const chunk of req as AsyncIterable<Buffer>) {
+      total += chunk.length;
+      if (total > MAX_PDF_BYTES)
+        throw new PayloadTooLargeException('The PDF must be 10MB or smaller');
+      chunks.push(chunk);
+    }
+    return this.adverts.setPdf(who.buyerId, id, cleanFileName(name), Buffer.concat(chunks));
+  }
+
+  @Delete('adverts/:id/pdf')
+  removePdf(
+    @CurrentTenderBuyer() who: TenderBuyerIdentity,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.adverts.removePdf(who.buyerId, id);
   }
 
   @Post('adverts/:id/cancel')

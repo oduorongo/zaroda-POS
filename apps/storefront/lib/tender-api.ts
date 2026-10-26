@@ -46,6 +46,8 @@ export interface TenderAdvert {
   county: string;
   items: AdvertItem[];
   documentsInfo: string | null;
+  pdfUrl: string | null;
+  pdfName: string | null;
   closingDate: string;
   contactName: string;
   contactPhone: string;
@@ -79,4 +81,24 @@ export const tenderMe = (token: string) => call<TenderSchool>("/tender-buyer/me"
 export const tenderAdverts = (token: string) => call<TenderAdvert[]>("/tender-buyer/adverts", { token });
 export const tenderPost = (token: string, body: SaveAdvert) => call<TenderAdvert>("/tender-buyer/adverts", { method: "POST", token, body: JSON.stringify(body) });
 export const tenderUpdate = (token: string, id: string, body: SaveAdvert) => call<TenderAdvert>(`/tender-buyer/adverts/${id}`, { method: "PUT", token, body: JSON.stringify(body) });
+/** The school's own tender document: the file itself is the request body. */
+export async function tenderUploadPdf(token: string, id: string, file: File): Promise<TenderAdvert> {
+  let response: Response;
+  try {
+    response = await fetch(`${API_URL}/tender-buyer/adverts/${id}/pdf?name=${encodeURIComponent(file.name)}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/pdf", Authorization: `Bearer ${token}` },
+      body: file,
+    });
+  } catch {
+    throw new ApiError("Could not reach Zaroda right now - check your connection and try again.", 0);
+  }
+  const json: unknown = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const raw = typeof json === "object" && json && "message" in json ? (json as { message: unknown }).message : null;
+    throw new ApiError(typeof raw === "string" ? raw : `Could not upload the PDF (${response.status})`, response.status);
+  }
+  return json as TenderAdvert;
+}
+export const tenderRemovePdf = (token: string, id: string) => call<TenderAdvert>(`/tender-buyer/adverts/${id}/pdf`, { method: "DELETE", token });
 export const tenderCancel = (token: string, id: string) => call<TenderAdvert>(`/tender-buyer/adverts/${id}/cancel`, { method: "POST", token });

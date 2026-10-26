@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { Prisma, Role, TenderAdvertStatus, TenderBuyerStatus } from '@prisma/client';
 import { brandButton, brandedEmail } from '../common/email/brand-layout';
 import { PrismaService } from '../common/prisma/prisma.service';
+import { ObjectStorageService } from '../common/storage/object-storage.service';
 import { TenantScopedPrismaService } from '../common/prisma/tenant-scoped-prisma.service';
 import { getTenantStore } from '../common/tenant/tenant-context';
 import { ResendEmailProvider } from '../notifications/resend-email.provider';
@@ -25,7 +26,7 @@ type AdvertRow = Prisma.TenderAdvertGetPayload<{
 }>;
 
 /** An advert as a supplier sees it. */
-export function advertForSupplier(a: AdvertRow, today: string) {
+export function advertForSupplier(a: AdvertRow, today: string, pdfUrl: string | null) {
   const closing = day(a.closingDate);
   return {
     id: a.id,
@@ -35,6 +36,8 @@ export function advertForSupplier(a: AdvertRow, today: string) {
     county: a.county,
     items: a.items as unknown as AdvertItem[],
     documentsInfo: a.documentsInfo,
+    pdfUrl,
+    pdfName: a.pdfName,
     closingDate: closing,
     daysLeft: daysBetween(today, closing),
     open: closing >= today,
@@ -61,6 +64,7 @@ export class TenderBoardService {
     private readonly tenantPrisma: TenantScopedPrismaService,
     private readonly email: ResendEmailProvider,
     private readonly config: ConfigService,
+    private readonly storage: ObjectStorageService,
   ) {}
 
   private openWhere(today: string, includeClosed: boolean): Prisma.TenderAdvertWhereInput {
@@ -92,7 +96,7 @@ export class TenderBoardService {
     const stateOf = new Map(notices.map((n) => [n.advertId, n.state]));
     const list = rows
       .map((r) => ({
-        ...advertForSupplier(r, today),
+        ...advertForSupplier(r, today, r.pdfKey ? this.storage.publicUrl(r.pdfKey) : null),
         state: (stateOf.get(r.id) ?? 'NEW') as 'NEW' | 'SEEN' | 'SAVED' | 'DISMISSED',
       }))
       .filter((a) =>

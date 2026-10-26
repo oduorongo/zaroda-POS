@@ -8,6 +8,22 @@ export const MAX_ADVERT_DAYS = 180;
 export const MAX_ADVERTS_PER_DAY = 5;
 export const MAX_ITEMS = 60;
 
+/** The biggest tender document accepted. */
+export const MAX_PDF_BYTES = 10 * 1024 * 1024;
+
+/** A real PDF starts with "%PDF-" (a renamed photo or document does not). */
+export function looksLikePdf(body: Buffer): boolean {
+  return body.length > 8 && body.subarray(0, 1024).toString('latin1').includes('%PDF-');
+}
+
+/** The name to show for an uploaded file: no folders, no odd characters, never empty, ends in .pdf. */
+export function cleanFileName(raw: string | undefined): string {
+  const base = (raw ?? '').split(/[\\/]/).pop() ?? '';
+  const cleaned = base.replace(/[^\w .()-]+/g, '').trim().slice(0, 100);
+  const name = cleaned || 'tender-document';
+  return /\.pdf$/i.test(name) ? name : `${name}.pdf`;
+}
+
 export interface AdvertItem {
   description: string;
   quantity: number | null;

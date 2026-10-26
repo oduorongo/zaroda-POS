@@ -1,4 +1,6 @@
 import {
+  cleanFileName,
+  looksLikePdf,
   cleanItems,
   closingDateProblem,
   isOpenAdvert,
@@ -42,6 +44,26 @@ describe('cleanItems', () => {
       { description: 'Exercise books', quantity: 500, unit: 'pcs' },
       { description: 'Chalk', quantity: null, unit: null },
     ]);
+  });
+});
+
+describe('looksLikePdf', () => {
+  it('accepts a PDF and refuses anything else', () => {
+    expect(looksLikePdf(Buffer.from('%PDF-1.7\n1 0 obj\n<<>>\nendobj'))).toBe(true);
+    expect(looksLikePdf(Buffer.from('<html>not a pdf at all</html>'))).toBe(false);
+    expect(looksLikePdf(Buffer.from('%PDF'))).toBe(false);
+    expect(looksLikePdf(Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0, 0, 0, 0, 0, 0]))).toBe(false);
+  });
+});
+
+describe('cleanFileName', () => {
+  it('keeps a plain name, drops folders and odd characters, and ends in .pdf', () => {
+    expect(cleanFileName('Tender Notice (Term 1).pdf')).toBe('Tender Notice (Term 1).pdf');
+    expect(cleanFileName('C:\\Users\\school\\tender.PDF')).toBe('tender.PDF');
+    expect(cleanFileName('../../etc/passwd')).toBe('passwd.pdf');
+    expect(cleanFileName('bad<script>.pdf')).toBe('badscript.pdf');
+    expect(cleanFileName(undefined)).toBe('tender-document.pdf');
+    expect(cleanFileName('   ')).toBe('tender-document.pdf');
   });
 });
 

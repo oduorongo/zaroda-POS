@@ -3959,6 +3959,9 @@ model TenderAdvert {
   items         Json               @default("[]")
   /// How suppliers get the full tender documents (a link, or "collect at the school office").
   documentsInfo String?
+  /// The school's own tender document (PDF), kept in the shared file store: its key there and the name it had.
+  pdfKey        String?
+  pdfName       String?
   closingDate   DateTime           @db.Date
   contactName   String
   contactPhone  String
