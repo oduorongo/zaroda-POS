@@ -6,14 +6,18 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { TenderAdvertStatus, TenderBuyerStatus } from '@prisma/client';
+import { randomUUID } from 'crypto';
 import { PrismaService } from '../common/prisma/prisma.service';
+import { ObjectStorageService } from '../common/storage/object-storage.service';
 import { normalizeKenyanPhone } from '../online-orders/online-orders.util';
 import { todayKey } from '../school-supplier/school-money.util';
 import { SaveTenderAdvertDto } from './dto/tender-advert.dto';
 import {
   cleanItems,
   closingDateProblem,
+  looksLikePdf,
   MAX_ADVERTS_PER_DAY,
+  MAX_PDF_BYTES,
 } from './tender-advert.util';
 import { TenderBoardService } from './tender-board.service';
 import { TenderBuyerAuthService } from './tender-buyer-auth.service';
@@ -27,6 +31,7 @@ export class TenderAdvertsService {
     private readonly prisma: PrismaService,
     private readonly board: TenderBoardService,
     private readonly auth: TenderBuyerAuthService,
+    private readonly storage: ObjectStorageService,
   ) {}
 
   private async buyer(buyerId: string) {
@@ -47,6 +52,8 @@ export class TenderAdvertsService {
     county: string;
     items: unknown;
     documentsInfo: string | null;
+    pdfKey: string | null;
+    pdfName: string | null;
     closingDate: Date;
     contactName: string;
     contactPhone: string;
@@ -64,6 +71,8 @@ export class TenderAdvertsService {
       county: a.county,
       items: a.items,
       documentsInfo: a.documentsInfo,
+      pdfUrl: a.pdfKey ? this.storage.publicUrl(a.pdfKey) : null,
+      pdfName: a.pdfName,
       closingDate: closing,
       contactName: a.contactName,
       contactPhone: a.contactPhone,
@@ -146,6 +155,43 @@ export class TenderAdvertsService {
       where: { id },
       data: this.data(dto),
     });
+    return this.view(row);
+  }
+
+  /** Attaches the school's own tender document (a PDF); a new one replaces the old. */
+  async setPdf(buyerId: string, id: string, name: string, body: Buffer) {
+    const a = await this.own(buyerId, id);
+    if (a.status !== TenderAdvertStatus.OPEN)
+      throw new ConflictException('Only an open advert can be changed.');
+    if (body.length === 0) throw new BadRequestException('The file is empty');
+    if (body.length > MAX_PDF_BYTES)
+      throw new BadRequestException('The PDF must be 10MB or smaller');
+    if (!looksLikePdf(body))
+      throw new BadRequestException('That file is not a valid PDF');
+    const key = `tender-adverts/${id}/${randomUUID()}.pdf`;
+    await this.storage.upload(key, body, 'application/pdf');
+    try {
+      const row = await this.prisma.tenderAdvert.update({
+        where: { id },
+        data: { pdfKey: key, pdfName: name },
+      });
+      if (a.pdfKey) await this.storage.deleteMany([a.pdfKey]);
+      return this.view(row);
+    } catch (e) {
+      await this.storage.deleteMany([key]);
+      throw e;
+    }
+  }
+
+  async removePdf(buyerId: string, id: string) {
+    const a = await this.own(buyerId, id);
+    if (a.status !== TenderAdvertStatus.OPEN)
+      throw new ConflictException('Only an open advert can be changed.');
+    const row = await this.prisma.tenderAdvert.update({
+      where: { id },
+      data: { pdfKey: null, pdfName: null },
+    });
+    if (a.pdfKey) await this.storage.deleteMany([a.pdfKey]);
     return this.view(row);
   }
 

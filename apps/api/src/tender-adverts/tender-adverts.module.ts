@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
+import { ObjectStorageService } from '../common/storage/object-storage.service';
 import { TenderAdminService } from './tender-admin.service';
 import { TenderAdvertsService } from './tender-adverts.service';
 import {
@@ -42,6 +43,7 @@ import { TenderBuyerAuthService } from './tender-buyer-auth.service';
     TenderBoardService,
     TenderAdminService,
     TenderBuyerJwtStrategy,
+    ObjectStorageService,
   ],
   exports: [TenderAdminService],
 })

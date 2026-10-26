@@ -17,6 +17,8 @@ interface Advert {
   county: string;
   items: { description: string; quantity: number | null; unit: string | null }[];
   documentsInfo: string | null;
+  pdfUrl: string | null;
+  pdfName: string | null;
   closingDate: string;
   daysLeft: number;
   open: boolean;
@@ -171,6 +173,12 @@ export default function SchoolTenderAdvertsPage() {
                         ))}
                       </tbody>
                     </table>
+                  )}
+                  {a.pdfUrl && (
+                    <p>
+                      <a href={a.pdfUrl} target="_blank" rel="noreferrer" className="rounded-md bg-primary-600 px-3 py-1.5 font-semibold text-white hover:bg-primary-700">Open the tender document (PDF)</a>
+                      <span className="ml-2 text-xs text-secondary-500">{a.pdfName}</span>
+                    </p>
                   )}
                   {a.documentsInfo && <p><span className="text-secondary-500">Tender documents: </span>{a.documentsInfo}</p>}
                   <p>

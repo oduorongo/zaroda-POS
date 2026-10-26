@@ -39,7 +39,9 @@ const check = (name, ok, detail) => {
 };
 const section = (t) => console.log(`\n${t}`);
 async function call(method, url, { token, body } = {}) {
-  const response = await fetch(url, { method, headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }, body: body === undefined ? undefined : JSON.stringify(body) });
+  const send = () => fetch(url, { method, headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }, body: body === undefined ? undefined : JSON.stringify(body) });
+  // a connection the server closed after refusing an oversized upload may be reused once: try again
+  const response = await send().catch(() => send());
   return { status: response.status, json: await response.json().catch(() => ({})) };
 }
 const api = (m, p, o) => call(m, API + p, o);
@@ -95,6 +97,22 @@ const phone2 = '0744' + String(Math.floor(100000 + Math.random() * 899999));
   const posted = await api('POST', '/tender-buyer/adverts', { token: school, body: advert });
   check('the advert is posted, with empty items dropped', posted.status === 201 && posted.json.status === 'OPEN' && posted.json.items.length === 2 && posted.json.closingDate === nairobi(14) && posted.json.contactPhone === '254' + phone.slice(1), posted.json);
   check('the school lists its adverts', (await api('GET', '/tender-buyer/adverts', { token: school })).json.some((a) => a.id === posted.json.id));
+  const sendPdf = async (id, contentType, body, token = school) => {
+    try {
+      const r = await fetch(`${API}/tender-buyer/adverts/${id}/pdf?name=${encodeURIComponent('Tender Notice.pdf')}`, { method: 'POST', headers: { 'Content-Type': contentType, Authorization: `Bearer ${token}` }, body });
+      return { status: r.status, json: await r.json().catch(() => ({})) };
+    } catch {
+      // the server stops reading a body that is too big and closes the connection
+      return { status: 0, json: {} };
+    }
+  };
+  check('a file that is not sent as a PDF is refused', (await sendPdf(posted.json.id, 'text/plain', 'hello')).status === 400);
+  check('a file called PDF that is not one is refused', (await sendPdf(posted.json.id, 'application/pdf', 'this is just some text, not a pdf')).status === 400);
+  check('an empty file is refused', (await sendPdf(posted.json.id, 'application/pdf', '')).status === 400);
+  check('a PDF over 10MB is refused', [0, 400, 413].includes((await sendPdf(posted.json.id, 'application/pdf', Buffer.concat([Buffer.from('%PDF-1.4\n'), Buffer.alloc(11 * 1024 * 1024)]))).status));
+  const goodPdf = await sendPdf(posted.json.id, 'application/pdf', Buffer.from('%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\ntrailer\n<< /Root 1 0 R >>\n%%EOF\n'));
+  // a real upload needs the live file store (Vercel Blob); on this computer it answers 502/503 AFTER the file passed every check above
+  check('a real PDF is attached (or, with no working file store on this computer, a storage error after the checks passed)', (goodPdf.status === 201 && Boolean(goodPdf.json.pdfUrl) && goodPdf.json.pdfName === 'Tender Notice.pdf') || [502, 503].includes(goodPdf.status), goodPdf);
 
   section('5. The supplier sees it');
   const sb = (qs = '') => api('GET', `/school-supplier/tender-adverts${qs}`, { token: owner });

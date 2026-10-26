@@ -9,7 +9,9 @@ import {
   tenderMe,
   tenderPost,
   tenderRegister,
+  tenderRemovePdf,
   tenderUpdate,
+  tenderUploadPdf,
   type SaveAdvert,
   type TenderAdvert,
   type TenderSchool,
@@ -164,6 +166,7 @@ function Board({ token, onSignOut }: { token: string; onSignOut: () => void }) {
   const [school, setSchool] = useState<TenderSchool | null>(null);
   const [adverts, setAdverts] = useState<TenderAdvert[] | null>(null);
   const [form, setForm] = useState<(SaveAdvert & { itemsText: string; id?: string }) | null>(null);
+  const [file, setFile] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -201,10 +204,19 @@ function Board({ token, onSignOut }: { token: string; onSignOut: () => void }) {
       contactEmail: form.contactEmail?.trim() || undefined,
     };
     try {
-      if (form.id) await tenderUpdate(token, form.id, body);
-      else await tenderPost(token, body);
+      const saved = form.id ? await tenderUpdate(token, form.id, body) : await tenderPost(token, body);
+      let pdfProblem: string | null = null;
+      if (file) {
+        try {
+          await tenderUploadPdf(token, saved.id, file);
+        } catch (err) {
+          pdfProblem = err instanceof ApiError ? err.message : "the PDF could not be uploaded";
+        }
+      }
       setForm(null);
-      setNotice(form.id ? "Saved." : "Posted. Suppliers can see it now and have been emailed.");
+      setFile(null);
+      if (pdfProblem) setError(`The advert was ${form.id ? "saved" : "posted"}, but the PDF was not attached: ${pdfProblem}. You can attach it again from the list below.`);
+      else setNotice(form.id ? "Saved." : "Posted. Suppliers can see it now and have been emailed.");
       await load();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not save it.");
@@ -242,6 +254,11 @@ function Board({ token, onSignOut }: { token: string; onSignOut: () => void }) {
             <label className="block">Closing date<input required type="date" min={tomorrowPlus(1)} max={tomorrowPlus(180)} value={form.closingDate} onChange={(e) => setForm({ ...form, closingDate: e.target.value })} className={field} /></label>
             <label className="block">County<input required value={form.county} onChange={(e) => setForm({ ...form, county: e.target.value })} className={field} /></label>
           </div>
+          <div className="text-sm">
+            <p>Your tender document <span className="text-secondary-500">(optional PDF, up to 10MB)</span></p>
+            <input type="file" accept="application/pdf,.pdf" onChange={(e) => setFile(e.target.files?.[0] ?? null)} className="mt-1 block w-full text-sm" />
+            {form.id && !file && <p className="mt-1 text-xs text-secondary-500">Choose a file to replace the one already attached.</p>}
+          </div>
           <label className="block">Your tender number <span className="text-secondary-500">(optional)</span><input value={form.reference ?? ""} onChange={(e) => setForm({ ...form, reference: e.target.value })} className={field} /></label>
           <label className="block">How do suppliers get the full tender documents? <span className="text-secondary-500">(optional)</span><input maxLength={500} value={form.documentsInfo ?? ""} onChange={(e) => setForm({ ...form, documentsInfo: e.target.value })} placeholder="Collect from the school office, or a link" className={field} /></label>
           <div className="grid grid-cols-2 gap-3">
@@ -251,7 +268,7 @@ function Board({ token, onSignOut }: { token: string; onSignOut: () => void }) {
           <label className="block">Contact email <span className="text-secondary-500">(optional)</span><input type="email" value={form.contactEmail ?? ""} onChange={(e) => setForm({ ...form, contactEmail: e.target.value })} className={field} /></label>
           <div className="flex gap-2">
             <button type="submit" disabled={busy} className={primary}>{form.id ? "Save" : "Post the advert"}</button>
-            <button type="button" onClick={() => setForm(null)} className="rounded-md border border-border px-4 py-3 hover:bg-secondary-500/10">Cancel</button>
+            <button type="button" onClick={() => { setForm(null); setFile(null); }} className="rounded-md border border-border px-4 py-3 hover:bg-secondary-500/10">Cancel</button>
           </div>
         </form>
       )}
@@ -275,6 +292,26 @@ function Board({ token, onSignOut }: { token: string; onSignOut: () => void }) {
                 </span>
               </div>
               {a.removedReason && <p className="text-xs text-error-900">Reason: {a.removedReason}</p>}
+              {a.pdfUrl && (
+                <p className="text-xs">
+                  <a href={a.pdfUrl} target="_blank" rel="noreferrer" className="text-primary-600 hover:underline">PDF: {a.pdfName ?? "tender document"}</a>
+                  {a.status === "OPEN" && !a.closed && (
+                    <button
+                      onClick={async () => {
+                        try {
+                          await tenderRemovePdf(token, a.id);
+                          await load();
+                        } catch (err) {
+                          setError(err instanceof ApiError ? err.message : "Could not remove the PDF.");
+                        }
+                      }}
+                      className="ml-3 text-error-600 hover:underline"
+                    >
+                      Remove the PDF
+                    </button>
+                  )}
+                </p>
+              )}
               {a.status === "OPEN" && !a.closed && (
                 <p className="flex gap-3 text-xs">
                   <button
