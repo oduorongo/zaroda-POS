@@ -422,7 +422,7 @@ const phoneB = '0722' + String(Math.floor(100000 + Math.random() * 899999));
   // payments now stop at what is really owed
   const owedNow13 = (await api('GET', `/school-supplier/invoices/${invC.id}`, { token: owner })).json.balance;
   check('what the invoice owes now is 795', owedNow13 === 795, owedNow13);
-  const pay13 = await api('POST', '/school-supplier/payments', { token: owner, body: { schoolId: a.json.id, amount: 795, method: 'CASH' } });
+  const pay13 = await api('POST', '/school-supplier/payments', { token: owner, body: { schoolId: a.json.id, amount: 795, method: 'CASH', allocations: [{ invoiceId: invC.id, amount: 795 }] } });
   const paidInv = (await api('GET', `/school-supplier/invoices/${invC.id}`, { token: owner })).json;
   check('paying that settles the invoice: paid 795, credited 305, status paid', pay13.status === 201 && paidInv.status === 'PAID' && paidInv.amountPaid === 795 && paidInv.balance === 0, paidInv);
   const creditBeforeLate = (await api('GET', `/school-supplier/schools/${a.json.id}`, { token: owner })).json.credit;
@@ -455,6 +455,76 @@ const phoneB = '0722' + String(Math.floor(100000 + Math.random() * 899999));
   const afterRace = (await api('GET', `/school-supplier/invoices/${dlv4.invoice.id}`, { token: owner })).json;
   check('two credit notes for the same goods at once: one13 is made, the other refused, nothing credited twice', race13.filter((r) => r.status === 201).length === 1 && afterRace.creditAmount === 200, [race13.map((r) => r.status), afterRace.creditAmount]);
   for (const t of ['supplier_credit_notes', 'supplier_credit_note_lines']) {
+    const r = (await sql.query(`SELECT relrowsecurity AS on, relforcerowsecurity AS forced FROM pg_class WHERE relname = $1`, [t])).rows[0];
+    check(`${t} has row-level security switched on and forced`, r?.on === true && r?.forced === true, r);
+  }
+
+  section('14. Quotations: draft, issue, the school accepts, revise, expire');
+  const qBook = { variantId: book.id, quantity: 30, unitPrice: 40 };
+  const qPen = { variantId: pen.id, quantity: 20 };
+  check('a quotation to a school that does not exist is refused', (await api('POST', '/school-supplier/quotes', { token: owner, body: { schoolId: '00000000-0000-4000-8000-000000000000', lines: [qPen] } })).status === 404);
+  check('a quotation with no items is refused', (await api('POST', '/school-supplier/quotes', { token: owner, body: { schoolId: a.json.id, lines: [] } })).status === 400);
+  check('a product at two prices in one quotation is refused', (await api('POST', '/school-supplier/quotes', { token: owner, body: { schoolId: a.json.id, lines: [{ variantId: book.id, quantity: 1, unitPrice: 40 }, { variantId: book.id, quantity: 1, unitPrice: 42 }] } })).status === 400);
+  check('an unknown product is refused', (await api('POST', '/school-supplier/quotes', { token: owner, body: { schoolId: a.json.id, lines: [{ variantId: '00000000-0000-4000-8000-000000000000', quantity: 1 }] } })).status === 400);
+  check('a school cannot make quotations', (await api('POST', '/school-supplier/quotes', { token: tokenA, body: { schoolId: a.json.id, lines: [qPen] } })).status === 401);
+
+  const q1 = await api('POST', '/school-supplier/quotes', { token: owner, body: { schoolId: a.json.id, validUntil: nairobi(10), terms: 'Delivery within 7 days of the order.', lines: [qBook, qPen, { variantId: pen.id, quantity: 5 }] } });
+  check('a draft quotation is made: books at the quoted 40, pens at the school price 20 (same product listed twice is joined), total 30 x 40 + 25 x 20 = 1700', q1.status === 201 && q1.json.status === 'DRAFT' && q1.json.quoteNumber === null && q1.json.total === 1700 && q1.json.lines.length === 2, q1.json);
+  check('a school cannot see a draft', (await api('GET', '/school-portal/quotes', { token: tokenA })).json.length === 0 && (await api('GET', `/school-portal/quotes/${q1.json.id}`, { token: tokenA })).status === 404);
+  const q1b = await api('PUT', `/school-supplier/quotes/${q1.json.id}`, { token: owner, body: { schoolId: a.json.id, validUntil: nairobi(10), terms: 'Delivery within 7 days of the order.', lines: [qBook, qPen] } });
+  check('a draft can be changed (20 pens now): total 30 x 40 + 20 x 20 = 1600', q1b.status === 200 && q1b.json.total === 1600 && q1b.json.lines.length === 2, q1b.json);
+
+  const issued = await api('POST', `/school-supplier/quotes/${q1.json.id}/issue`, { token: owner });
+  check('issuing gives it a number and freezes it', issued.status === 200 && /^QT-\d{4}-\d{4}$/.test(issued.json.quoteNumber) && issued.json.status === 'ISSUED' && issued.json.issueDate === nairobi() && issued.json.validUntil === nairobi(10), issued.json);
+  check('an issued quotation cannot be changed, deleted or issued again', (await api('PUT', `/school-supplier/quotes/${q1.json.id}`, { token: owner, body: { schoolId: a.json.id, lines: [qPen] } })).status === 409 && (await api('DELETE', `/school-supplier/quotes/${q1.json.id}`, { token: owner })).status === 409 && (await api('POST', `/school-supplier/quotes/${q1.json.id}/issue`, { token: owner })).status === 409);
+  const draftDel = await api('POST', '/school-supplier/quotes', { token: owner, body: { schoolId: a.json.id, lines: [qPen] } });
+  check('a draft can be deleted', (await api('DELETE', `/school-supplier/quotes/${draftDel.json.id}`, { token: owner })).status === 200);
+  check('the school sees the issued quotation with the supplier\'s letterhead; the other school does not', (await api('GET', '/school-portal/quotes', { token: tokenA })).json.some((q) => q.id === q1.json.id) && (await api('GET', `/school-portal/quotes/${q1.json.id}`, { token: tokenA })).json.business?.name === me.name && (await api('GET', `/school-portal/quotes/${q1.json.id}`, { token: tokenB })).status === 404 && (await api('GET', '/school-portal/quotes', { token: tokenB })).json.length === 0);
+  check('another school cannot accept it', (await api('POST', `/school-portal/quotes/${q1.json.id}/accept`, { token: tokenB, body: {} })).status === 404);
+
+  const accepted = await api('POST', `/school-portal/quotes/${q1.json.id}/accept`, { token: tokenA, body: { lpoNumber: 'LPO-Q1', notes: 'Please deliver to the bursar' } });
+  check('the school accepts: the quotation is accepted and an order is made from it', accepted.status === 200 && accepted.json.status === 'ACCEPTED' && accepted.json.decidedBy === 'SCHOOL' && /^SO-\d{4}-\d{4}$/.test(accepted.json.order?.orderNumber), accepted.json);
+  const qOrder = (await api('GET', `/school-supplier/orders/${accepted.json.order.id}`, { token: owner })).json;
+  check('the order carries the quoted prices (books at 40, not the list price 45), the LPO number, and waits for the supplier', qOrder.status === 'SUBMITTED' && qOrder.lpoNumber === 'LPO-Q1' && qOrder.total === 1600 && qOrder.lines.find((l) => l.sku === `EXB-${tag}`).unitPrice === 40, qOrder);
+  check('it cannot be accepted or declined again', (await api('POST', `/school-portal/quotes/${q1.json.id}/accept`, { token: tokenA, body: {} })).status === 409 && (await api('POST', `/school-portal/quotes/${q1.json.id}/decline`, { token: tokenA, body: {} })).status === 409);
+  check('an accepted quotation cannot be revised', (await api('POST', `/school-supplier/quotes/${q1.json.id}/revise`, { token: owner })).status === 409);
+  const confirmedQ = await api('POST', `/school-supplier/orders/${qOrder.id}/confirm`, { token: owner, body: {} });
+  check('the supplier confirms it like any other order, still at 1,600', confirmedQ.status === 200 && confirmedQ.json.total === 1600, confirmedQ.json);
+
+  // a decline, then a revision that replaces it
+  const q2 = (await api('POST', '/school-supplier/quotes', { token: owner, body: { schoolId: a.json.id, lines: [{ variantId: book.id, quantity: 10, unitPrice: 44 }] } })).json;
+  await api('POST', `/school-supplier/quotes/${q2.id}/issue`, { token: owner });
+  const dec = await api('POST', `/school-portal/quotes/${q2.id}/decline`, { token: tokenA, body: { reason: 'Price too high' } });
+  check('the school declines with a reason', dec.status === 200 && dec.json.status === 'DECLINED' && dec.json.decisionNote === 'Price too high' && dec.json.order === null, dec.json);
+  const rev = await api('POST', `/school-supplier/quotes/${q2.id}/revise`, { token: owner });
+  check('a declined quotation can be revised into a new draft that points back to it', rev.status === 200 && rev.json.status === 'DRAFT' && rev.json.revisionOf?.id === q2.id && rev.json.lines.length === 1, rev.json);
+  const rev2 = await api('PUT', `/school-supplier/quotes/${rev.json.id}`, { token: owner, body: { schoolId: a.json.id, validUntil: nairobi(7), lines: [{ variantId: book.id, quantity: 10, unitPrice: 41 }] } });
+  const revIssued = await api('POST', `/school-supplier/quotes/${rev.json.id}/issue`, { token: owner });
+  const q2After = (await api('GET', `/school-supplier/quotes/${q2.id}`, { token: owner })).json;
+  check('issuing the revision replaces the original, which now reads as superseded', rev2.status === 200 && revIssued.json.status === 'ISSUED' && q2After.status === 'SUPERSEDED', [revIssued.json.status, q2After.status]);
+  check('the school no longer sees the replaced one as open, and cannot accept it', (await api('POST', `/school-portal/quotes/${q2.id}/accept`, { token: tokenA, body: {} })).status === 409);
+
+  // the supplier records an acceptance that came by phone or by LPO
+  const q3 = (await api('POST', '/school-supplier/quotes', { token: owner, body: { schoolId: a.json.id, lines: [{ variantId: pen.id, quantity: 8 }] } })).json;
+  await api('POST', `/school-supplier/quotes/${q3.id}/issue`, { token: owner });
+  const byPhone = await api('POST', `/school-supplier/quotes/${q3.id}/accept`, { token: owner, body: { lpoNumber: 'LPO-PHONE' } });
+  check('the supplier can record that the school accepted by phone: the order is made and it says the supplier recorded it', byPhone.status === 200 && byPhone.json.decidedBy === 'SUPPLIER' && byPhone.json.order?.orderNumber, byPhone.json);
+
+  // running out
+  const q4 = (await api('POST', '/school-supplier/quotes', { token: owner, body: { schoolId: a.json.id, validUntil: nairobi(-1), lines: [{ variantId: pen.id, quantity: 2 }] } })).json;
+  check('a quotation that already ran out cannot be issued', (await api('POST', `/school-supplier/quotes/${q4.id}/issue`, { token: owner })).status === 400);
+  const q5 = (await api('POST', '/school-supplier/quotes', { token: owner, body: { schoolId: a.json.id, lines: [{ variantId: pen.id, quantity: 2 }] } })).json;
+  const q5i = (await api('POST', `/school-supplier/quotes/${q5.id}/issue`, { token: owner })).json;
+  check('one with no date is open for 30 days from the day it is issued', q5i.validUntil === nairobi(30), q5i.validUntil);
+  await sql.query('UPDATE school_quotes SET "validUntil" = $2::date WHERE id = $1', [q5.id, nairobi(-2)]);
+  const listed = await api('GET', '/school-supplier/quotes?status=EXPIRED', { token: owner });
+  check('once its date has passed it reads as expired', listed.json.some((q) => q.id === q5.id), listed.json.map?.((q) => q.status));
+  const lateAccept = await api('POST', `/school-portal/quotes/${q5.id}/accept`, { token: tokenA, body: {} });
+  check('an expired quotation cannot be accepted, and says so', lateAccept.status === 409 && /expired/.test(lateAccept.json.message), lateAccept.json);
+  check('an expired quotation can be revised into a fresh draft', (await api('POST', `/school-supplier/quotes/${q5.id}/revise`, { token: owner })).status === 200);
+  check('quotations can be listed by school and by status', (await api('GET', `/school-supplier/quotes?schoolId=${a.json.id}`, { token: owner })).json.length >= 5 && (await api('GET', `/school-supplier/quotes?schoolId=${b.json.id}`, { token: owner })).json.length === 0 && (await api('GET', '/school-supplier/quotes?status=ACCEPTED', { token: owner })).json.every((q) => q.status === 'ACCEPTED'));
+  check('a quotation opens with the business letterhead, ready to print', (await api('GET', `/school-supplier/quotes/${q1.json.id}`, { token: owner })).json.business?.name === me.name);
+  for (const t of ['school_quotes', 'school_quote_lines']) {
     const r = (await sql.query(`SELECT relrowsecurity AS on, relforcerowsecurity AS forced FROM pg_class WHERE relname = $1`, [t])).rows[0];
     check(`${t} has row-level security switched on and forced`, r?.on === true && r?.forced === true, r);
   }

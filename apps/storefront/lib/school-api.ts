@@ -1,5 +1,5 @@
 import { API_URL, ApiError } from "./api";
-import type { DocCreditNote, DocDelivery, DocInvoice, DocReceipt, DocStatement } from "@zaroda/ui";
+import type { DocQuote, DocCreditNote, DocDelivery, DocInvoice, DocReceipt, DocStatement } from "@zaroda/ui";
 
 // A school's own sign-in and ordering, against the supplier's portal. Separate from the shopper calls: a school token is a
 // different kind of token and only works on /school-portal.
@@ -114,6 +114,26 @@ export const schoolSubmitOrder = (token: string, body: { lpoNumber?: string; not
   call<SchoolOrder>("/school-portal/orders", { token, method: "POST", body: JSON.stringify(body) });
 export const schoolOrders = (token: string) => call<SchoolOrder[]>("/school-portal/orders", { token });
 export const schoolCancelOrder = (token: string, id: string, reason: string) => call<SchoolOrder>(`/school-portal/orders/${id}/cancel`, { token, method: "POST", body: JSON.stringify({ reason }) });
+export interface SchoolQuote {
+  id: string;
+  quoteNumber: string | null;
+  status: "DRAFT" | "ISSUED" | "ACCEPTED" | "DECLINED" | "EXPIRED" | "SUPERSEDED";
+  issueDate: string | null;
+  validUntil: string | null;
+  terms: string | null;
+  decisionNote: string | null;
+  order: { id: string; orderNumber: string } | null;
+  lines: { id: string; description: string; quantity: number; unitPrice: number; lineTotal: number; taxAmount: number }[];
+  subtotal: number;
+  taxAmount: number;
+  total: number;
+}
+export const schoolQuotes = (token: string) => call<SchoolQuote[]>("/school-portal/quotes", { token });
+export const schoolQuoteDoc = (token: string, id: string) => call<DocQuote>(`/school-portal/quotes/${id}`, { token });
+export const schoolAcceptQuote = (token: string, id: string, body: { lpoNumber?: string; notes?: string }) =>
+  call<SchoolQuote>(`/school-portal/quotes/${id}/accept`, { token, method: "POST", body: JSON.stringify(body) });
+export const schoolDeclineQuote = (token: string, id: string, reason?: string) =>
+  call<SchoolQuote>(`/school-portal/quotes/${id}/decline`, { token, method: "POST", body: JSON.stringify({ reason }) });
 export const schoolCreditNotes = (token: string) => call<SchoolCreditNote[]>("/school-portal/credit-notes", { token });
 export const schoolCreditNoteDoc = (token: string, id: string) => call<DocCreditNote>(`/school-portal/credit-notes/${id}`, { token });
 export const schoolInvoices = (token: string) => call<SchoolInvoice[]>("/school-portal/invoices", { token });

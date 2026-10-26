@@ -1285,3 +1285,18 @@ DROP POLICY IF EXISTS tenant_isolation ON supplier_credit_note_lines;
 CREATE POLICY tenant_isolation ON supplier_credit_note_lines
   USING (EXISTS (SELECT 1 FROM supplier_credit_notes p WHERE p.id = supplier_credit_note_lines."creditNoteId" AND p."organizationId" = current_setting('app.current_tenant', true)))
   WITH CHECK (EXISTS (SELECT 1 FROM supplier_credit_notes p WHERE p.id = supplier_credit_note_lines."creditNoteId" AND p."organizationId" = current_setting('app.current_tenant', true)));
+
+-- School supplier: quotations to schools
+ALTER TABLE school_quotes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE school_quotes FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON school_quotes;
+CREATE POLICY tenant_isolation ON school_quotes
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+ALTER TABLE school_quote_lines ENABLE ROW LEVEL SECURITY;
+ALTER TABLE school_quote_lines FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON school_quote_lines;
+CREATE POLICY tenant_isolation ON school_quote_lines
+  USING (EXISTS (SELECT 1 FROM school_quotes p WHERE p.id = school_quote_lines."quoteId" AND p."organizationId" = current_setting('app.current_tenant', true)))
+  WITH CHECK (EXISTS (SELECT 1 FROM school_quotes p WHERE p.id = school_quote_lines."quoteId" AND p."organizationId" = current_setting('app.current_tenant', true)));

@@ -4,12 +4,15 @@ import { TenantScopedPrismaService } from '../../common/prisma/tenant-scoped-pri
 import { tenantContext } from '../../common/tenant/tenant-context';
 import { variantTitle } from '../../catalog/variant-title';
 import {
+  AcceptQuoteDto,
   ConfirmReceiptDto,
+  DeclineQuoteDto,
   SubmitSchoolOrderDto,
 } from '../dto/school-supplier.dto';
 import { SchoolBillingService } from '../school-billing.service';
 import { SchoolCreditNotesService } from '../school-credit-notes.service';
 import { SchoolOrdersService } from '../school-orders.service';
+import { SchoolQuotesService } from '../school-quotes.service';
 import { SchoolsService } from '../schools.service';
 import { SchoolIdentity } from './school-auth';
 
@@ -25,6 +28,7 @@ export class SchoolPortalService {
     private readonly orders: SchoolOrdersService,
     private readonly billing: SchoolBillingService,
     private readonly credits: SchoolCreditNotesService,
+    private readonly quotes: SchoolQuotesService,
     private readonly schools: SchoolsService,
   ) {}
 
@@ -140,6 +144,25 @@ export class SchoolPortalService {
   }
   getInvoice(who: SchoolIdentity, id: string) {
     return this.asSchool(who, () => this.billing.getInvoice(id, who.schoolId));
+  }
+  listQuotes(who: SchoolIdentity) {
+    return this.asSchool(who, () => this.quotes.listForSchool(who.schoolId));
+  }
+  getQuote(who: SchoolIdentity, id: string) {
+    return this.asSchool(who, async () => ({
+      ...(await this.quotes.get(id, who.schoolId)),
+      business: await this.billing.letterhead(),
+    }));
+  }
+  acceptQuote(who: SchoolIdentity, id: string, dto: AcceptQuoteDto) {
+    return this.asSchool(who, () =>
+      this.quotes.accept(id, 'SCHOOL', dto, who.schoolId),
+    );
+  }
+  declineQuote(who: SchoolIdentity, id: string, dto: DeclineQuoteDto) {
+    return this.asSchool(who, () =>
+      this.quotes.decline(id, 'SCHOOL', dto, who.schoolId),
+    );
   }
   listCreditNotes(who: SchoolIdentity) {
     return this.asSchool(who, () => this.credits.list(who.schoolId));

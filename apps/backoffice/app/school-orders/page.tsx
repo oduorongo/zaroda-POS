@@ -195,6 +195,7 @@ export default function SchoolOrdersPage() {
           <div className="flex gap-4 text-sm">
             <Link href="/schools" className="text-primary-600 hover:underline">Schools</Link>
             <Link href="/school-prices" className="text-primary-600 hover:underline">Price list</Link>
+            <Link href="/school-quotes" className="text-primary-600 hover:underline">Quotations</Link>
             <Link href="/school-money" className="text-primary-600 hover:underline">Invoices &amp; payments</Link>
           </div>
         </div>

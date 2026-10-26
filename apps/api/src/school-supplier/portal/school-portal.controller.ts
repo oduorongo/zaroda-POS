@@ -12,8 +12,10 @@ import {
 import { Throttle } from '@nestjs/throttler';
 import { Public } from '../../auth/public.decorator';
 import {
+  AcceptQuoteDto,
   CancelOrderDto,
   ConfirmReceiptDto,
+  DeclineQuoteDto,
   SchoolLoginDto,
   StatementQueryDto,
   SubmitSchoolOrderDto,
@@ -124,6 +126,40 @@ export class SchoolPortalController {
     @Param('id', ParseUUIDPipe) id: string,
   ) {
     return this.portal.getInvoice(who, id);
+  }
+
+  @Get('quotes')
+  quotes(@CurrentSchool() who: SchoolIdentity) {
+    return this.portal.listQuotes(who);
+  }
+
+  @Get('quotes/:id')
+  quote(
+    @CurrentSchool() who: SchoolIdentity,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.portal.getQuote(who, id);
+  }
+
+  /** The school accepts a quotation: it becomes an order at the quoted prices. */
+  @Post('quotes/:id/accept')
+  @HttpCode(200)
+  acceptQuote(
+    @CurrentSchool() who: SchoolIdentity,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: AcceptQuoteDto,
+  ) {
+    return this.portal.acceptQuote(who, id, dto);
+  }
+
+  @Post('quotes/:id/decline')
+  @HttpCode(200)
+  declineQuote(
+    @CurrentSchool() who: SchoolIdentity,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: DeclineQuoteDto,
+  ) {
+    return this.portal.declineQuote(who, id, dto);
   }
 
   @Get('credit-notes')
