@@ -373,6 +373,19 @@ export class DeclineQuoteDto {
   reason?: string;
 }
 
+/** Recording the withholding certificate for a payment of tax withheld (the school sends it afterwards). */
+export class CertificateDto {
+  @IsString()
+  @MinLength(2)
+  @MaxLength(60)
+  certificateNumber!: string;
+
+  /** The day the certificate reached us; today if left out. */
+  @IsDateString({ strict: true })
+  @IsOptional()
+  receivedOn?: string;
+}
+
 /** One line of an invoice being credited. */
 export class CreditLineDto {
   @IsUUID()
@@ -459,8 +472,14 @@ export class RecordPaymentDto {
   @Max(1_000_000_000)
   amount!: number;
 
-  @IsIn(['CHEQUE', 'BANK_TRANSFER', 'MPESA', 'CASH'])
-  method!: 'CHEQUE' | 'BANK_TRANSFER' | 'MPESA' | 'CASH';
+  @IsIn(['CHEQUE', 'BANK_TRANSFER', 'MPESA', 'CASH', 'WITHHOLDING_TAX'])
+  method!: 'CHEQUE' | 'BANK_TRANSFER' | 'MPESA' | 'CASH' | 'WITHHOLDING_TAX';
+
+  /** For tax withheld by the school: the certificate number, if it has already come. */
+  @IsString()
+  @IsOptional()
+  @MaxLength(60)
+  certificateNumber?: string;
 
   /** The cheque number, bank reference or M-Pesa code. */
   @IsString()

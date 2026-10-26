@@ -89,6 +89,7 @@ export interface DocQuote {
 }
 
 export interface DocReceipt {
+  certificateNumber?: string | null;
   receiptNumber: string;
   status: string;
   school: DocSchool;
@@ -119,7 +120,7 @@ export interface DocStatement {
 
 const money = (v: number) => v.toLocaleString("en-KE", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const qty = (v: number) => v.toLocaleString("en-KE", { maximumFractionDigits: 3 });
-const METHOD: Record<string, string> = { CHEQUE: "Cheque", BANK_TRANSFER: "Bank transfer", MPESA: "M-Pesa", CASH: "Cash" };
+const METHOD: Record<string, string> = { CHEQUE: "Cheque", BANK_TRANSFER: "Bank transfer", MPESA: "M-Pesa", CASH: "Cash", WITHHOLDING_TAX: "Tax withheld by the school" };
 
 function Letterhead({ business, title, number }: { business: DocBusiness; title: string; number?: string }) {
   return (
@@ -416,7 +417,7 @@ export function QuoteDocument({ quote }: { quote: DocQuote }) {
 export function ReceiptDocument({ receipt }: { receipt: DocReceipt }) {
   return (
     <div className="rounded border border-gray-400 p-6">
-      <Letterhead business={receipt.business} title="Payment receipt" number={receipt.receiptNumber} />
+      <Letterhead business={receipt.business} title={receipt.method === "WITHHOLDING_TAX" ? "Tax withheld - receipt" : "Payment receipt"} number={receipt.receiptNumber} />
       {receipt.status === "BOUNCED" && <p className="my-2 rounded bg-red-100 p-2 text-sm font-bold text-red-800">NOT CLEARED{receipt.bounceReason ? ` - ${receipt.bounceReason}` : ""}</p>}
       <table className="mt-4 w-full text-sm">
         <tbody>
@@ -431,6 +432,7 @@ export function ReceiptDocument({ receipt }: { receipt: DocReceipt }) {
               {receipt.chequeDate ? `, dated ${receipt.chequeDate}` : ""}
             </td>
           </tr>
+          {receipt.method === "WITHHOLDING_TAX" && <tr><td className="py-1 text-gray-600">Withholding certificate</td><td className="py-1">{receipt.certificateNumber ?? "not received yet"}</td></tr>}
           <tr><td className="py-1 text-gray-600">Amount</td><td className="py-1 text-lg font-bold">KES {money(receipt.amount)}</td></tr>
           <tr><td className="py-1 text-gray-600">In words</td><td className="py-1 italic">{amountInWords(receipt.amount)}</td></tr>
         </tbody>

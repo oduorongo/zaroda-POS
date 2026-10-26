@@ -83,6 +83,7 @@ const METHODS: [string, string][] = [
   ["BANK_TRANSFER", "Bank transfer"],
   ["MPESA", "M-Pesa"],
   ["CASH", "Cash"],
+  ["WITHHOLDING_TAX", "Tax withheld by the school (no money)"],
 ];
 const INVOICE_LABEL: Record<Invoice["status"], string> = { ISSUED: "Unpaid", PARTIALLY_PAID: "Part paid", PAID: "Paid", VOID: "Cancelled" };
 const INVOICE_TONE: Record<Invoice["status"], string> = { ISSUED: "bg-amber-900 text-amber-200", PARTIALLY_PAID: "bg-blue-900 text-blue-200", PAID: "bg-green-900 text-green-200", VOID: "bg-secondary-500/20 text-secondary-500" };
@@ -115,7 +116,12 @@ interface Staff {
   user: { fullName: string };
 }
 
-type Tab = "owing" | "chasing" | "invoices" | "payments" | "credits";
+interface Withholding {
+  totals: { withheld: number; withCertificate: number; withoutCertificate: number; bySchool: { schoolId: string; schoolName: string; withheld: number; withoutCertificate: number }[] };
+  rows: { id: string; receiptNumber: string; school: { id: string; name: string }; receivedOn: string; amount: number; certificateNumber: string | null; certificateReceivedOn: string | null; daysWaiting: number; certificate: "RECEIVED" | "WAITING" | "MISSING" }[];
+}
+
+type Tab = "owing" | "chasing" | "invoices" | "payments" | "credits" | "tax";
 
 /** What schools owe, the invoices, and the money received (cheques, transfers) with its receipts. */
 export default function SchoolMoneyPage() {
@@ -130,6 +136,11 @@ export default function SchoolMoneyPage() {
   const [creditNotes, setCreditNotes] = useState<CreditNote[] | null>(null);
   const [overdue, setOverdue] = useState<{ rows: Overdue[]; totals: { count: number; owed: number; disputed: number; brokenPromises: number } } | null>(null);
   const [staff, setStaff] = useState<Staff[]>([]);
+  const [wht, setWht] = useState<Withholding | null>(null);
+  // the school also withheld tax on this payment
+  const [withhold, setWithhold] = useState(false);
+  const [whtAmount, setWhtAmount] = useState("");
+  const [whtCert, setWhtCert] = useState("");
   const [chaseId, setChaseId] = useState<string | null>(null);
   const [chase, setChase] = useState({ expected: "", disputed: false, disputeNote: "", note: "", responsibleId: "" });
   // Choosing which invoices a payment pays
@@ -164,16 +175,18 @@ export default function SchoolMoneyPage() {
   const load = useCallback(async () => {
     try {
       const q = schoolFilter ? `?schoolId=${schoolFilter}` : "";
-      const [list, rec, inv, pay, cns, od] = await Promise.all([
+      const [list, rec, inv, pay, cns, od, tax] = await Promise.all([
         apiGet<SchoolLite[]>("/school-supplier/schools"),
         apiGet<Receivables>("/school-supplier/receivables"),
         apiGet<Invoice[]>(`/school-supplier/invoices${q}`),
         apiGet<Payment[]>(`/school-supplier/payments${q}`),
         apiGet<CreditNote[]>(`/school-supplier/credit-notes${q}`),
         apiGet<NonNullable<typeof overdue>>("/school-supplier/overdue"),
+        apiGet<Withholding>("/school-supplier/withholding"),
       ]);
       setCreditNotes(cns);
       setOverdue(od);
+      setWht(tax);
       setSchools(list);
       setReceivables(rec);
       setInvoices(inv);
@@ -233,7 +246,7 @@ export default function SchoolMoneyPage() {
 
   /** Spreads the amount over the invoices oldest first, as the system would by itself - a starting point to change. */
   function fillOldestFirst() {
-    let left = Math.round(Number(amount || 0) * 100);
+    let left = Math.round(settleTotal * 100);
     const next: Record<string, string> = {};
     for (const i of openInv) {
       const take = Math.min(left, Math.round(i.balance * 100));
@@ -242,6 +255,9 @@ export default function SchoolMoneyPage() {
     }
     setAlloc(next);
   }
+  // what the payment settles in all: the money, plus any tax the school kept back
+  const taxOnly = method === "WITHHOLDING_TAX";
+  const settleTotal = Number(amount || 0) + (withhold && !taxOnly ? Number(whtAmount || 0) : 0);
   const allocTotal = openInv.reduce((sum, i) => sum + Math.round(Number(alloc[i.id] || 0) * 100), 0) / 100;
 
   async function receive(e: React.FormEvent) {
@@ -250,20 +266,47 @@ export default function SchoolMoneyPage() {
     setError(null);
     setNotice(null);
     try {
+      const chosen = choose ? openInv.filter((i) => Number(alloc[i.id] || 0) > 0).map((i) => ({ invoiceId: i.id, amount: Number(alloc[i.id]) })) : undefined;
+      // when the school withheld tax as well, the chosen invoices are paid first with the money and then with the tax
+      let cashAllocs = chosen;
+      let taxAllocs: { invoiceId: string; amount: number }[] | undefined;
+      if (chosen && withhold && !taxOnly) {
+        let left = Math.round(Number(amount) * 100);
+        cashAllocs = [];
+        taxAllocs = [];
+        for (const a of chosen) {
+          const cents = Math.round(a.amount * 100);
+          const take = Math.min(left, cents);
+          if (take > 0) cashAllocs.push({ invoiceId: a.invoiceId, amount: take / 100 });
+          if (cents - take > 0) taxAllocs.push({ invoiceId: a.invoiceId, amount: (cents - take) / 100 });
+          left -= take;
+        }
+      }
       const paid = await apiPost<{ id: string; receiptNumber: string; onAccount: number }>("/school-supplier/payments", {
         schoolId,
         amount: Number(amount),
         method,
-        reference: reference.trim() || undefined,
+        reference: taxOnly ? undefined : reference.trim() || undefined,
+        certificateNumber: taxOnly ? reference.trim() || undefined : undefined,
         bankName: bankName.trim() || undefined,
         chequeDate: chequeDate || undefined,
         receivedOn,
-        allocations: choose
-          ? openInv.filter((i) => Number(alloc[i.id] || 0) > 0).map((i) => ({ invoiceId: i.id, amount: Number(alloc[i.id]) }))
-          : undefined,
+        allocations: cashAllocs,
       });
+      if (withhold && !taxOnly && Number(whtAmount) > 0)
+        await apiPost("/school-supplier/payments", {
+          schoolId,
+          amount: Number(whtAmount),
+          method: "WITHHOLDING_TAX",
+          certificateNumber: whtCert.trim() || undefined,
+          receivedOn,
+          allocations: taxAllocs,
+        });
       setNotice(`Receipt ${paid.receiptNumber} made.${paid.onAccount > 0 ? ` ${kes(paid.onAccount)} is more than they owed and is kept as credit.` : ""}`);
       setAmount("");
+      setWithhold(false);
+      setWhtAmount("");
+      setWhtCert("");
       setReference("");
       setBankName("");
       setChequeDate("");
@@ -403,7 +446,7 @@ export default function SchoolMoneyPage() {
                     </select>
                   </label>
                   <label className="text-sm">
-                    Amount (KES)
+                    {taxOnly ? "Tax withheld (KES)" : "Amount received (KES)"}
                     <input required type="number" inputMode="decimal" min={1} step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} className={field} />
                   </label>
                   <label className="text-sm">
@@ -415,7 +458,7 @@ export default function SchoolMoneyPage() {
                     </select>
                   </label>
                   <label className="text-sm">
-                    {method === "CHEQUE" ? "Cheque number" : method === "MPESA" ? "M-Pesa code" : "Reference"} {method !== "CHEQUE" && <span className="text-secondary-500">(optional)</span>}
+                    {method === "CHEQUE" ? "Cheque number" : method === "MPESA" ? "M-Pesa code" : taxOnly ? "Withholding certificate number" : "Reference"} {method !== "CHEQUE" && <span className="text-secondary-500">(optional)</span>}
                     <input required={method === "CHEQUE"} maxLength={60} value={reference} onChange={(e) => setReference(e.target.value)} className={field} />
                   </label>
                   {(method === "CHEQUE" || method === "BANK_TRANSFER") && (
@@ -435,6 +478,27 @@ export default function SchoolMoneyPage() {
                     <input type="date" max={today()} value={receivedOn} onChange={(e) => setReceivedOn(e.target.value)} className={field} />
                   </label>
                 </div>
+                {!taxOnly && (
+                  <div className="space-y-2 rounded-md border border-border p-3">
+                    <label className="flex items-center gap-2 text-sm">
+                      <input type="checkbox" checked={withhold} onChange={(e) => setWithhold(e.target.checked)} />
+                      The school also kept back withholding tax
+                    </label>
+                    {withhold && (
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <label className="text-sm">
+                          Tax withheld (KES)
+                          <input type="number" inputMode="decimal" min={1} step="0.01" value={whtAmount} onChange={(e) => setWhtAmount(e.target.value)} className={field} />
+                        </label>
+                        <label className="text-sm">
+                          Withholding certificate number <span className="text-secondary-500">(if it has come)</span>
+                          <input maxLength={60} value={whtCert} onChange={(e) => setWhtCert(e.target.value)} className={field} />
+                        </label>
+                        <p className="text-xs text-secondary-500 sm:col-span-2">The money and the tax together settle the invoices. The school sends the certificate afterwards: record it in the Tax withheld tab.</p>
+                      </div>
+                    )}
+                  </div>
+                )}
                 {openInv.length > 0 && (
                   <div className="space-y-2 rounded-md border border-border p-3">
                     <label className="flex items-center gap-2 text-sm">
@@ -466,8 +530,8 @@ export default function SchoolMoneyPage() {
                           </tbody>
                         </table>
                         <p className="text-xs text-secondary-500">
-                          Set against invoices: {kes(allocTotal)} of {kes(Number(amount || 0))}.
-                          {allocTotal > Number(amount || 0) ? <span className="ml-1 text-red-400">That is more than the payment.</span> : Number(amount || 0) > allocTotal ? ` The other ${kes(Number(amount || 0) - allocTotal)} is kept as credit.` : ""}
+                          Set against invoices: {kes(allocTotal)} of {kes(settleTotal)}.
+                          {allocTotal > settleTotal ? <span className="ml-1 text-red-400">That is more than the payment.</span> : settleTotal > allocTotal ? ` The other ${kes(settleTotal - allocTotal)} is kept as credit.` : ""}
                           <button type="button" onClick={fillOldestFirst} className="ml-2 text-primary-600 hover:underline">Start again, oldest first</button>
                         </p>
                       </>
@@ -475,7 +539,7 @@ export default function SchoolMoneyPage() {
                   </div>
                 )}
                 <div className="flex gap-2">
-                  <button type="submit" disabled={busy || !schoolId || !amount || (choose && allocTotal > Number(amount || 0))} className="rounded-md bg-primary-600 px-4 py-2 text-sm font-semibold text-white hover:bg-primary-700 disabled:opacity-50">
+                  <button type="submit" disabled={busy || !schoolId || !amount || (choose && allocTotal > settleTotal) || (withhold && !taxOnly && !(Number(whtAmount) > 0))} className="rounded-md bg-primary-600 px-4 py-2 text-sm font-semibold text-white hover:bg-primary-700 disabled:opacity-50">
                     {busy ? "Saving..." : "Make receipt"}
                   </button>
                   <button type="button" onClick={() => setShowForm(false)} className="rounded-md border border-border px-4 py-2 text-sm hover:bg-secondary-500/10">
@@ -496,6 +560,7 @@ export default function SchoolMoneyPage() {
                 ["invoices", "Invoices"],
                 ["payments", "Payments received"],
                 ["credits", "Credit notes"],
+                ["tax", "Tax withheld"],
               ] as [Tab, string][]
             ).map(([key, label]) => (
               <button key={key} onClick={() => setTab(key)} className={`rounded-full border px-3 py-1 text-sm ${tab === key ? "border-primary-600 bg-primary-600 text-white" : "border-border hover:bg-secondary-500/10"}`}>
@@ -503,7 +568,7 @@ export default function SchoolMoneyPage() {
               </button>
             ))}
           </div>
-          {tab !== "owing" && tab !== "chasing" && (
+          {tab !== "owing" && tab !== "chasing" && tab !== "tax" && (
             <select value={schoolFilter} onChange={(e) => setSchoolFilter(e.target.value)} className="rounded-md border border-border bg-surface p-1.5 text-sm">
               <option value="">All schools</option>
               {schools.map((s) => (
@@ -750,6 +815,69 @@ export default function SchoolMoneyPage() {
           </section>
         )}
 
+        {tab === "tax" && (
+          <section className="space-y-3">
+            {wht && (
+              <div className="grid grid-cols-3 gap-3 text-center">
+                <div className="rounded-lg border border-border bg-surface p-3">
+                  <p className="text-xs text-secondary-500">Withheld by schools</p>
+                  <p className="font-mono text-lg font-bold">{kes(wht.totals.withheld)}</p>
+                </div>
+                <div className="rounded-lg border border-border bg-surface p-3">
+                  <p className="text-xs text-secondary-500">With a certificate</p>
+                  <p className="font-mono text-lg font-bold text-green-400">{kes(wht.totals.withCertificate)}</p>
+                </div>
+                <div className="rounded-lg border border-border bg-surface p-3">
+                  <p className="text-xs text-secondary-500">Waiting for a certificate</p>
+                  <p className="font-mono text-lg font-bold text-red-400">{kes(wht.totals.withoutCertificate)}</p>
+                </div>
+              </div>
+            )}
+            <p className="text-sm text-secondary-500">Tax a school keeps back when it pays is paid to KRA by the school. It sends you a certificate, which you keep to claim the tax against your own income tax. Record each certificate here when it comes.</p>
+            {wht && wht.rows.length === 0 && <p className="rounded-lg border border-border bg-surface p-4 text-sm text-secondary-500">No tax has been withheld yet. When a school pays, tick &quot;the school also kept back withholding tax&quot; on the payment.</p>}
+            <ul className="divide-y divide-border rounded-lg border border-border bg-surface">
+              {wht?.rows.map((r) => (
+                <li key={r.id} className="flex flex-wrap items-start justify-between gap-2 p-3 text-sm">
+                  <div>
+                    <p className="font-semibold">
+                      {r.school.name} <span className="font-mono text-xs text-secondary-500">{r.receiptNumber}</span>
+                    </p>
+                    <p className="text-xs text-secondary-500">Withheld {r.receivedOn}</p>
+                    <p className="mt-1 flex flex-wrap items-center gap-3 text-xs">
+                      {r.certificate === "RECEIVED" ? (
+                        <span className="rounded bg-green-900 px-2 py-0.5 text-green-200">Certificate {r.certificateNumber}</span>
+                      ) : r.certificate === "MISSING" ? (
+                        <span className="rounded bg-red-950 px-2 py-0.5 text-red-300">Certificate missing - {r.daysWaiting} days</span>
+                      ) : (
+                        <span className="rounded bg-amber-900 px-2 py-0.5 text-amber-200">Certificate expected</span>
+                      )}
+                      {canEdit && (
+                        <button
+                          onClick={async () => {
+                            const n = window.prompt("The school's withholding certificate number:", r.certificateNumber ?? "");
+                            if (!n || n.trim().length < 2) return;
+                            try {
+                              await apiPatch(`/school-supplier/payments/${r.id}/certificate`, { certificateNumber: n.trim() });
+                              setNotice("Certificate recorded.");
+                              await load();
+                            } catch (err) {
+                              setError(err instanceof ApiError ? err.message : "Could not record it.");
+                            }
+                          }}
+                          className="text-primary-600 hover:underline"
+                        >
+                          {r.certificate === "RECEIVED" ? "Change the number" : "Certificate received"}
+                        </button>
+                      )}
+                    </p>
+                  </div>
+                  <p className="font-mono font-semibold">{kes(r.amount)}</p>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+
         {tab === "credits" && (
           <section>
             {creditNotes && creditNotes.length === 0 && <p className="rounded-lg border border-border bg-surface p-4 text-sm text-secondary-500">No credit notes yet. To credit goods a school sent back, open Invoices and press &quot;Credit note&quot; on the invoice.</p>}
@@ -792,7 +920,7 @@ export default function SchoolMoneyPage() {
                     {p.status === "BOUNCED" && <p className="text-xs text-red-400">Did not clear: {p.bounceReason}</p>}
                     <p className="mt-1 flex gap-4 text-xs">
                       <Link href={`/school-print/receipt/${p.id}`} target="_blank" className="text-primary-600 hover:underline">Print receipt</Link>
-                      {canEdit && p.status === "RECEIVED" && <button onClick={() => void bounce(p)} className="text-error-600 hover:underline">Did not clear</button>}
+                      {canEdit && p.status === "RECEIVED" && p.method !== "WITHHOLDING_TAX" && <button onClick={() => void bounce(p)} className="text-error-600 hover:underline">Did not clear</button>}
                     </p>
                   </div>
                   <div className="text-right">

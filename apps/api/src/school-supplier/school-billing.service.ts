@@ -162,6 +162,9 @@ function toPaymentView(p: PaymentFull) {
     notes: p.notes,
     bouncedAt: p.bouncedAt,
     bounceReason: p.bounceReason,
+    /** For tax withheld by the school: its certificate. */
+    certificateNumber: p.whtCertificateNumber,
+    certificateReceivedOn: day(p.whtCertificateReceivedOn),
     allocated: fromCents(allocated),
     onAccount:
       p.status === SupplierPaymentStatus.RECEIVED
@@ -319,6 +322,10 @@ export class SchoolBillingService {
         where: { id: dto.schoolId },
       });
       if (!school) throw new NotFoundException('School not found');
+      if (dto.certificateNumber && dto.method !== 'WITHHOLDING_TAX')
+        throw new BadRequestException(
+          'A withholding certificate only goes with tax the school withheld.',
+        );
       if (dto.method === 'CHEQUE' && !dto.reference?.trim())
         throw new BadRequestException('Enter the cheque number');
 
@@ -362,6 +369,14 @@ export class SchoolBillingService {
           receivedOn: new Date(`${dto.receivedOn ?? todayKey()}T00:00:00Z`),
           notes: dto.notes?.trim() || null,
           recordedById: orgUserId,
+          ...(dto.method === 'WITHHOLDING_TAX' && dto.certificateNumber?.trim()
+            ? {
+                whtCertificateNumber: dto.certificateNumber.trim(),
+                whtCertificateReceivedOn: new Date(
+                  `${todayKey()}T00:00:00Z`,
+                ),
+              }
+            : {}),
           allocations: {
             create: allocations.map((a) => ({
               invoiceId: a.invoiceId,
@@ -401,6 +416,10 @@ export class SchoolBillingService {
         include: { allocations: true },
       });
       if (!payment) throw new NotFoundException('Receipt not found');
+      if (payment.method === 'WITHHOLDING_TAX')
+        throw new BadRequestException(
+          'Tax withheld is not a cheque, so it cannot bounce. If it was entered by mistake, ask for it to be corrected.',
+        );
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${'school-pay:' + payment.schoolId}))`;
       const res = await tx.supplierPayment.updateMany({
         where: { id, status: SupplierPaymentStatus.RECEIVED },
