@@ -29,6 +29,8 @@ import { RentalPlatformPaymentsService } from '../rental/rental-platform-payment
 import { RentalListingAdminService } from '../rental/rental-listing-admin.service';
 import { RoomBookingAutoCompleteService } from '../hotel/room-booking-autocomplete.service';
 import { HospitalityAdminService } from '../hotel/hospitality-admin.service';
+import { TenderAdminService } from '../tender-adverts/tender-admin.service';
+import { AdminAdvertRemoveDto, AdminBuyerStatusDto } from '../tender-adverts/dto/tender-advert.dto';
 import { BlockHotelDto, BlockTableOrderingDto } from '../hotel/dto/hotel.dto';
 import { BlockListingDto } from '../rental/dto/rental-listing.dto';
 import { ListPlatformInvoicesQueryDto, RecordPlatformInvoicePaymentDto, WaivePlatformInvoiceDto } from '../rental/dto/rental-platform-invoice.dto';
@@ -65,6 +67,7 @@ export class PlatformAdminController {
     private readonly listingAdmin: RentalListingAdminService,
     private readonly hotelStays: RoomBookingAutoCompleteService,
     private readonly hospitality: HospitalityAdminService,
+    private readonly tenders: TenderAdminService,
   ) {}
 
   @Public()
@@ -580,6 +583,75 @@ export class PlatformAdminController {
       entityType: 'RentalListing',
       entityId: listingId,
       organizationId: id,
+    });
+    return result;
+  }
+
+  // ── Tender adverts: which schools may post, and taking an advert down ──
+
+  @Public()
+  @UseGuards(PlatformAdminAuthGuard)
+  @Get('tender-schools')
+  listTenderSchools() {
+    return this.tenders.listBuyers();
+  }
+
+  @Public()
+  @UseGuards(PlatformAdminAuthGuard)
+  @Post('tender-schools/:id/status')
+  async setTenderSchoolStatus(
+    @Req() req: PlatformAdminRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: AdminBuyerStatusDto,
+  ) {
+    const result = await this.tenders.setBuyerStatus(id, dto.status, dto.note);
+    await this.auditLog.log({
+      platformAdminId: req.user!.platformAdminId,
+      action: dto.status === 'APPROVED' ? 'platform_admin.approved_tender_school' : 'platform_admin.suspended_tender_school',
+      entityType: 'TenderBuyer',
+      entityId: id,
+    });
+    return result;
+  }
+
+  @Public()
+  @UseGuards(PlatformAdminAuthGuard)
+  @Get('tender-adverts')
+  listTenderAdverts() {
+    return this.tenders.listAdverts();
+  }
+
+  @Public()
+  @UseGuards(PlatformAdminAuthGuard)
+  @Post('tender-adverts/:id/remove')
+  async removeTenderAdvert(
+    @Req() req: PlatformAdminRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: AdminAdvertRemoveDto,
+  ) {
+    const result = await this.tenders.removeAdvert(id, dto.reason);
+    await this.auditLog.log({
+      platformAdminId: req.user!.platformAdminId,
+      action: 'platform_admin.took_down_tender_advert',
+      entityType: 'TenderAdvert',
+      entityId: id,
+    });
+    return result;
+  }
+
+  @Public()
+  @UseGuards(PlatformAdminAuthGuard)
+  @Post('tender-adverts/:id/restore')
+  async restoreTenderAdvert(
+    @Req() req: PlatformAdminRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    const result = await this.tenders.restoreAdvert(id);
+    await this.auditLog.log({
+      platformAdminId: req.user!.platformAdminId,
+      action: 'platform_admin.restored_tender_advert',
+      entityType: 'TenderAdvert',
+      entityId: id,
     });
     return result;
   }

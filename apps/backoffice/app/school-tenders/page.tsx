@@ -207,6 +207,7 @@ export default function SchoolTendersPage() {
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h1 className="text-xl font-bold">Tenders</h1>
           <div className="flex gap-4 text-sm">
+            <Link href="/school-tender-adverts" className="text-primary-600 hover:underline">Adverts from schools</Link>
             <Link href="/school-contracts" className="text-primary-600 hover:underline">Contracts</Link>
             <Link href="/school-orders" className="text-primary-600 hover:underline">School orders</Link>
           </div>

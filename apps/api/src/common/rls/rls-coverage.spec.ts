@@ -38,6 +38,9 @@ const INTENTIONALLY_EXCLUDED = new Set([
   // Riders sign in across businesses like buyers - see rls.sql's "riders" comment.
   'riders',
   'rider_otps',
+  // Schools post tender adverts for every supplier to see - see rls.sql's "Tender adverts" comment.
+  'tender_buyers',
+  'tender_adverts',
   // Rental tenants sign in by email across landlords like riders - see rls.sql's "Rental tenant sign-in" comment.
   'rental_tenant_otps',
   // Marketing teams and their members are platform-level (no tenant) - see rls.sql's "marketing teams" comment.

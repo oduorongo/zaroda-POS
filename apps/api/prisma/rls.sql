@@ -1388,3 +1388,18 @@ DROP POLICY IF EXISTS tenant_isolation ON school_cashflow_items;
 CREATE POLICY tenant_isolation ON school_cashflow_items
   USING ("organizationId" = current_setting('app.current_tenant', true))
   WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+-- ── Tender adverts ────────────────────────────────────────────────────────
+-- tender_buyers / tender_adverts: deliberately NO row-level security, same reason as buyers and riders: a school
+-- posts adverts for every school-supplier business to see, so there is no single tenant to scope by. The access
+-- rules live in the services: a school only ever reads or changes its own account and adverts (by the id in its
+-- verified token); suppliers read open adverts only through SchoolTenderBoardService; the platform admin the rest.
+-- Both tables are on rls-coverage.spec.ts's exclusion list.
+--
+-- school_tender_notices: what each supplier did with an advert - its own, like any tenant table.
+ALTER TABLE school_tender_notices ENABLE ROW LEVEL SECURITY;
+ALTER TABLE school_tender_notices FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON school_tender_notices;
+CREATE POLICY tenant_isolation ON school_tender_notices
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
