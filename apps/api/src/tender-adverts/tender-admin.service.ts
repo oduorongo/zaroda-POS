@@ -32,6 +32,7 @@ export class TenderAdminService {
         status: b.status,
         statusNote: b.statusNote,
         adverts: b._count.adverts,
+        viaSupplier: b.supplierSchoolId !== null,
         registeredAt: b.createdAt,
         lastLoginAt: b.lastLoginAt,
       }));

@@ -82,10 +82,10 @@ export const tenderAdverts = (token: string) => call<TenderAdvert[]>("/tender-bu
 export const tenderPost = (token: string, body: SaveAdvert) => call<TenderAdvert>("/tender-buyer/adverts", { method: "POST", token, body: JSON.stringify(body) });
 export const tenderUpdate = (token: string, id: string, body: SaveAdvert) => call<TenderAdvert>(`/tender-buyer/adverts/${id}`, { method: "PUT", token, body: JSON.stringify(body) });
 /** The school's own tender document: the file itself is the request body. */
-export async function tenderUploadPdf(token: string, id: string, file: File): Promise<TenderAdvert> {
+export async function tenderUploadPdf(token: string, id: string, file: File, base = "/tender-buyer"): Promise<TenderAdvert> {
   let response: Response;
   try {
-    response = await fetch(`${API_URL}/tender-buyer/adverts/${id}/pdf?name=${encodeURIComponent(file.name)}`, {
+    response = await fetch(`${API_URL}${base}/adverts/${id}/pdf?name=${encodeURIComponent(file.name)}`, {
       method: "POST",
       headers: { "Content-Type": "application/pdf", Authorization: `Bearer ${token}` },
       body: file,
@@ -102,3 +102,36 @@ export async function tenderUploadPdf(token: string, id: string, file: File): Pr
 }
 export const tenderRemovePdf = (token: string, id: string) => call<TenderAdvert>(`/tender-buyer/adverts/${id}/pdf`, { method: "DELETE", token });
 export const tenderCancel = (token: string, id: string) => call<TenderAdvert>(`/tender-buyer/adverts/${id}/cancel`, { method: "POST", token });
+
+/** The calls a school's tender page makes, so the same page works on the tender sign-in and inside a supplier's school portal. */
+export interface TenderApi {
+  me: (token: string) => Promise<TenderSchool>;
+  adverts: (token: string) => Promise<TenderAdvert[]>;
+  post: (token: string, body: SaveAdvert) => Promise<TenderAdvert>;
+  update: (token: string, id: string, body: SaveAdvert) => Promise<TenderAdvert>;
+  cancel: (token: string, id: string) => Promise<TenderAdvert>;
+  uploadPdf: (token: string, id: string, file: File) => Promise<TenderAdvert>;
+  removePdf: (token: string, id: string) => Promise<TenderAdvert>;
+}
+
+export const directTenderApi: TenderApi = {
+  me: tenderMe,
+  adverts: tenderAdverts,
+  post: tenderPost,
+  update: tenderUpdate,
+  cancel: tenderCancel,
+  uploadPdf: (token, id, file) => tenderUploadPdf(token, id, file),
+  removePdf: tenderRemovePdf,
+};
+
+/** Through the supplier portal: the portal's own token, and the tender account is made on first use. */
+const P = "/school-portal/tender";
+export const portalTenderApi: TenderApi = {
+  me: (token) => call<TenderSchool>(`${P}/account`, { method: "POST", token }),
+  adverts: (token) => call<TenderAdvert[]>(`${P}/adverts`, { token }),
+  post: (token, body) => call<TenderAdvert>(`${P}/adverts`, { method: "POST", token, body: JSON.stringify(body) }),
+  update: (token, id, body) => call<TenderAdvert>(`${P}/adverts/${id}`, { method: "PUT", token, body: JSON.stringify(body) }),
+  cancel: (token, id) => call<TenderAdvert>(`${P}/adverts/${id}/cancel`, { method: "POST", token }),
+  uploadPdf: (token, id, file) => tenderUploadPdf(token, id, file, P),
+  removePdf: (token, id) => call<TenderAdvert>(`${P}/adverts/${id}/pdf`, { method: "DELETE", token }),
+};

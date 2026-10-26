@@ -30,6 +30,8 @@ import {
   type SchoolReceipt,
 } from "../lib/school-api";
 import type { DocStatement } from "@zaroda/ui";
+import { TenderBoard } from "./tender-portal";
+import { portalTenderApi } from "../lib/tender-api";
 
 const tokenKey = (slug: string) => `zaroda_school_token_${slug}`;
 const readToken = (slug: string) => {
@@ -162,7 +164,7 @@ function SignIn({ slug, supplierName, onSignedIn }: { slug: string; supplierName
   );
 }
 
-type Tab = "order" | "quotes" | "orders" | "invoices" | "account";
+type Tab = "order" | "quotes" | "orders" | "invoices" | "account" | "tenders";
 
 function Portal({ slug, token, onSignOut }: { slug: string; token: string; onSignOut: () => void }) {
   const [tab, setTab] = useState<Tab>("order");
@@ -224,6 +226,7 @@ function Portal({ slug, token, onSignOut }: { slug: string; token: string; onSig
             ["orders", `My orders${waiting ? ` (${waiting})` : ""}`],
             ["invoices", "Invoices"],
             ["account", "Statement & receipts"],
+            ["tenders", "Tender adverts"],
           ] as [Tab, string][]
         ).map(([key, label]) => (
           <button key={key} onClick={() => setTab(key)} className={`rounded-full border px-4 py-2 text-sm ${tab === key ? "border-primary-600 bg-primary-600 text-white" : "border-border hover:bg-secondary-500/10"}`}>
@@ -260,6 +263,7 @@ function Portal({ slug, token, onSignOut }: { slug: string; token: string; onSig
       {tab === "orders" && <Orders token={token} slug={slug} orders={orders} guard={guard} onChanged={refresh} />}
       {tab === "invoices" && <Invoices token={token} slug={slug} guard={guard} />}
       {tab === "account" && <Account token={token} slug={slug} guard={guard} />}
+      {tab === "tenders" && <TenderBoard token={token} api={portalTenderApi} />}
     </div>
   );
 }
