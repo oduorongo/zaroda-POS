@@ -3938,6 +3938,10 @@ model TenderBuyer {
   pinLockedUntil DateTime?
   status         TenderBuyerStatus @default(PENDING)
   statusNote     String?
+  /// Set when the account was made from a supplier's school portal (the supplier's school it stands for, and the supplier). Such an
+  /// account never signs in on the tender page: the school posts through its portal sign-in.
+  supplierSchoolId String? @unique
+  supplierOrgId    String?
   lastLoginAt    DateTime?
   createdAt      DateTime          @default(now())
 

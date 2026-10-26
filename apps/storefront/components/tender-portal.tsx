@@ -3,16 +3,12 @@
 import { useCallback, useEffect, useState } from "react";
 import { ApiError } from "../lib/api";
 import {
-  tenderAdverts,
-  tenderCancel,
+  directTenderApi,
   tenderLogin,
   tenderMe,
-  tenderPost,
   tenderRegister,
-  tenderRemovePdf,
-  tenderUpdate,
-  tenderUploadPdf,
   type SaveAdvert,
+  type TenderApi,
   type TenderAdvert,
   type TenderSchool,
 } from "../lib/tender-api";
@@ -70,8 +66,9 @@ export default function TenderPortal() {
       />
     );
   return (
-    <Board
+    <TenderBoard
       token={token}
+      api={directTenderApi}
       onSignOut={() => {
         writeToken(null);
         setToken(null);
@@ -162,7 +159,8 @@ function parseItems(text: string): SaveAdvert["items"] {
     });
 }
 
-function Board({ token, onSignOut }: { token: string; onSignOut: () => void }) {
+/** A school's tender adverts: its account status, a form to post one, and its list. Used on the tender page and inside a supplier's school portal. */
+export function TenderBoard({ token, api, onSignOut }: { token: string; api: TenderApi; onSignOut?: () => void }) {
   const [school, setSchool] = useState<TenderSchool | null>(null);
   const [adverts, setAdverts] = useState<TenderAdvert[] | null>(null);
   const [form, setForm] = useState<(SaveAdvert & { itemsText: string; id?: string }) | null>(null);
@@ -173,14 +171,14 @@ function Board({ token, onSignOut }: { token: string; onSignOut: () => void }) {
 
   const load = useCallback(async () => {
     try {
-      const [s, a] = await Promise.all([tenderMe(token), tenderAdverts(token)]);
+      const [s, a] = await Promise.all([api.me(token), api.adverts(token)]);
       setSchool(s);
       setAdverts(a);
     } catch (err) {
-      if (err instanceof ApiError && err.status === 401) onSignOut();
+      if (err instanceof ApiError && err.status === 401 && onSignOut) onSignOut();
       else setError(err instanceof ApiError ? err.message : "Could not load your adverts.");
     }
-  }, [token, onSignOut]);
+  }, [token, api, onSignOut]);
   useEffect(() => {
     void load();
   }, [load]);
@@ -204,11 +202,11 @@ function Board({ token, onSignOut }: { token: string; onSignOut: () => void }) {
       contactEmail: form.contactEmail?.trim() || undefined,
     };
     try {
-      const saved = form.id ? await tenderUpdate(token, form.id, body) : await tenderPost(token, body);
+      const saved = form.id ? await api.update(token, form.id, body) : await api.post(token, body);
       let pdfProblem: string | null = null;
       if (file) {
         try {
-          await tenderUploadPdf(token, saved.id, file);
+          await api.uploadPdf(token, saved.id, file);
         } catch (err) {
           pdfProblem = err instanceof ApiError ? err.message : "the PDF could not be uploaded";
         }
@@ -235,7 +233,7 @@ function Board({ token, onSignOut }: { token: string; onSignOut: () => void }) {
           <h1 className="text-xl font-bold">{school.name}</h1>
           <p className="text-sm text-secondary-500">Tender adverts for school suppliers</p>
         </div>
-        <button onClick={onSignOut} className="text-sm text-primary-600 hover:underline">Sign out</button>
+        {onSignOut && <button onClick={onSignOut} className="text-sm text-primary-600 hover:underline">Sign out</button>}
       </div>
       {school.status === "PENDING" && <p className="rounded-md bg-warning-50 p-3 text-sm text-warning-900">Your school is waiting to be approved. Zaroda checks every school before it can post. You will be able to post an advert here as soon as it is approved.</p>}
       {school.status === "SUSPENDED" && <p className="rounded-md bg-error-50 p-3 text-sm text-error-900">This account has been suspended{school.statusNote ? `: ${school.statusNote}` : ""}. Please contact Zaroda.</p>}
@@ -299,7 +297,7 @@ function Board({ token, onSignOut }: { token: string; onSignOut: () => void }) {
                     <button
                       onClick={async () => {
                         try {
-                          await tenderRemovePdf(token, a.id);
+                          await api.removePdf(token, a.id);
                           await load();
                         } catch (err) {
                           setError(err instanceof ApiError ? err.message : "Could not remove the PDF.");
@@ -324,7 +322,7 @@ function Board({ token, onSignOut }: { token: string; onSignOut: () => void }) {
                     onClick={async () => {
                       if (!window.confirm("Withdraw this advert? Suppliers will no longer see it.")) return;
                       try {
-                        await tenderCancel(token, a.id);
+                        await api.cancel(token, a.id);
                         await load();
                       } catch (err) {
                         setError(err instanceof ApiError ? err.message : "Could not withdraw it.");

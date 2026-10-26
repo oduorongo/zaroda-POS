@@ -36,9 +36,33 @@ import {
   TenderBuyerIdentity,
 } from './tender-buyer-auth';
 import { TenderBuyerAuthService } from './tender-buyer-auth.service';
+import { TenderPortalBridgeService } from './tender-portal-bridge.service';
+import {
+  CurrentSchool,
+  SchoolAuthGuard,
+  SchoolIdentity,
+} from '../school-supplier/portal/school-auth';
 
 // Same tight shape as rider, shopper and school sign-in.
 const AUTH_THROTTLE = { default: { limit: 5, ttl: 60_000 } };
+
+/** Reads an uploaded PDF from the request body, stopping at 10MB. */
+async function readPdfBody(req: Request): Promise<Buffer> {
+  const chunks: Buffer[] = [];
+  let total = 0;
+  for await (const chunk of req as AsyncIterable<Buffer>) {
+    total += chunk.length;
+    if (total > MAX_PDF_BYTES)
+      throw new PayloadTooLargeException('The PDF must be 10MB or smaller');
+    chunks.push(chunk);
+  }
+  return Buffer.concat(chunks);
+}
+
+function requirePdfType(contentType: string | undefined) {
+  if ((contentType ?? '').split(';')[0].trim().toLowerCase() !== 'application/pdf')
+    throw new BadRequestException('Upload a PDF file');
+}
 
 /** A school registers and signs in. Public. */
 @Controller('tender-buyer-auth')
@@ -105,17 +129,8 @@ export class TenderBuyerController {
     @Headers('content-type') contentType: string | undefined,
     @Req() req: Request,
   ) {
-    if ((contentType ?? '').split(';')[0].trim().toLowerCase() !== 'application/pdf')
-      throw new BadRequestException('Upload a PDF file');
-    const chunks: Buffer[] = [];
-    let total = 0;
-    for await (const chunk of req as AsyncIterable<Buffer>) {
-      total += chunk.length;
-      if (total > MAX_PDF_BYTES)
-        throw new PayloadTooLargeException('The PDF must be 10MB or smaller');
-      chunks.push(chunk);
-    }
-    return this.adverts.setPdf(who.buyerId, id, cleanFileName(name), Buffer.concat(chunks));
+    requirePdfType(contentType);
+    return this.adverts.setPdf(who.buyerId, id, cleanFileName(name), await readPdfBody(req));
   }
 
   @Delete('adverts/:id/pdf')
@@ -133,6 +148,84 @@ export class TenderBuyerController {
     @Param('id', ParseUUIDPipe) id: string,
   ) {
     return this.adverts.cancel(who.buyerId, id);
+  }
+}
+
+/**
+ * The same adverts, posted from a school's supplier's ordering portal (the school's portal token): no second sign-in. The tender
+ * account behind it is made on first use, from what the supplier holds about the school, and is approved like any other.
+ */
+@Controller('school-portal/tender')
+@Public()
+@UseGuards(SchoolAuthGuard)
+export class SchoolTenderPortalController {
+  constructor(
+    private readonly bridge: TenderPortalBridgeService,
+    private readonly adverts: TenderAdvertsService,
+  ) {}
+
+  @Get('account')
+  account(@CurrentSchool() who: SchoolIdentity) {
+    return this.bridge.find(who);
+  }
+
+  @Post('account')
+  @HttpCode(200)
+  ensure(@CurrentSchool() who: SchoolIdentity) {
+    return this.bridge.ensure(who);
+  }
+
+  @Get('adverts')
+  async list(@CurrentSchool() who: SchoolIdentity) {
+    return this.adverts.list(await this.bridge.buyerId(who));
+  }
+
+  @Post('adverts')
+  async create(
+    @CurrentSchool() who: SchoolIdentity,
+    @Body() dto: SaveTenderAdvertDto,
+  ) {
+    return this.adverts.create(await this.bridge.buyerId(who), dto);
+  }
+
+  @Put('adverts/:id')
+  async update(
+    @CurrentSchool() who: SchoolIdentity,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: SaveTenderAdvertDto,
+  ) {
+    return this.adverts.update(await this.bridge.buyerId(who), id, dto);
+  }
+
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
+  @Post('adverts/:id/pdf')
+  async attachPdf(
+    @CurrentSchool() who: SchoolIdentity,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query('name') name: string | undefined,
+    @Headers('content-type') contentType: string | undefined,
+    @Req() req: Request,
+  ) {
+    requirePdfType(contentType);
+    const buyerId = await this.bridge.buyerId(who);
+    return this.adverts.setPdf(buyerId, id, cleanFileName(name), await readPdfBody(req));
+  }
+
+  @Delete('adverts/:id/pdf')
+  async removePdf(
+    @CurrentSchool() who: SchoolIdentity,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.adverts.removePdf(await this.bridge.buyerId(who), id);
+  }
+
+  @Post('adverts/:id/cancel')
+  @HttpCode(200)
+  async cancel(
+    @CurrentSchool() who: SchoolIdentity,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.adverts.cancel(await this.bridge.buyerId(who), id);
   }
 }
 

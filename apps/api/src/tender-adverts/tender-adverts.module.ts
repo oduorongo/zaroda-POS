@@ -7,12 +7,14 @@ import { TenderAdminService } from './tender-admin.service';
 import { TenderAdvertsService } from './tender-adverts.service';
 import {
   SchoolTenderBoardController,
+  SchoolTenderPortalController,
   TenderBuyerAuthController,
   TenderBuyerController,
 } from './tender-adverts.controller';
 import { TenderBoardService } from './tender-board.service';
 import { TenderBuyerJwtStrategy } from './tender-buyer-auth';
 import { TenderBuyerAuthService } from './tender-buyer-auth.service';
+import { TenderPortalBridgeService } from './tender-portal-bridge.service';
 
 /**
  * Tender adverts: schools register, post what they want to buy, and every school-supplier business sees it (with an email alert).
@@ -36,12 +38,14 @@ import { TenderBuyerAuthService } from './tender-buyer-auth.service';
     TenderBuyerAuthController,
     TenderBuyerController,
     SchoolTenderBoardController,
+    SchoolTenderPortalController,
   ],
   providers: [
     TenderBuyerAuthService,
     TenderAdvertsService,
     TenderBoardService,
     TenderAdminService,
+    TenderPortalBridgeService,
     TenderBuyerJwtStrategy,
     ObjectStorageService,
   ],
