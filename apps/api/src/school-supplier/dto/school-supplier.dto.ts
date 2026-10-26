@@ -932,3 +932,82 @@ export class SchoolLoginDto {
   @Matches(/^\d{4,6}$/, { message: 'Your PIN is 4 to 6 digits' })
   pin!: string;
 }
+
+// ── Bad debts ─────────────────────────────────────────────────────────────
+
+export class BadDebtSettingsDto {
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  @Max(100)
+  rate1To30!: number;
+
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  @Max(100)
+  rate31To60!: number;
+
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  @Max(100)
+  rate61To90!: number;
+
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  @Max(100)
+  rate91To180!: number;
+
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  @Max(100)
+  rateOver180!: number;
+
+  /** A write-off of this much or more needs a second person to approve it (0 = every one does). */
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  @Max(1_000_000_000)
+  approvalThreshold!: number;
+}
+
+export class ProvisionPostDto {
+  @IsString()
+  @IsOptional()
+  @MaxLength(300)
+  note?: string;
+}
+
+export class WriteOffDto {
+  @IsUUID()
+  invoiceId!: string;
+
+  /** Left out, everything still owed on the invoice. */
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0.01)
+  @Max(1_000_000_000)
+  @IsOptional()
+  amount?: number;
+
+  @IsString()
+  @MinLength(5)
+  @MaxLength(500)
+  reason!: string;
+}
+
+export class WriteOffDecisionDto {
+  /** Needed when approving a write-off you asked for yourself (owner only). */
+  @IsString()
+  @IsOptional()
+  @MaxLength(500)
+  overrideReason?: string;
+
+  @IsString()
+  @IsOptional()
+  @MaxLength(500)
+  note?: string;
+}
+
+export class WriteOffReverseDto {
+  @IsString()
+  @MinLength(5)
+  @MaxLength(500)
+  reason!: string;
+}

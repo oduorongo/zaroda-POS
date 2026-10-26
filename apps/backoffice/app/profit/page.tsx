@@ -19,6 +19,7 @@ interface Money {
   waste: number;
   expenses: number;
   payroll: number;
+  badDebts: number;
   netProfit: number;
 }
 interface Profit {
@@ -232,6 +233,7 @@ export default function ProfitPage() {
                 <Row label="less waste and spoilage" value={kes(-t.waste)} />
                 <Row label="less expenses you recorded" value={kes(-t.expenses)} />
                 {t.payroll > 0 && <Row label="less salaries paid through Payroll" value={kes(-t.payroll)} />}
+                {t.badDebts !== 0 && <Row label="less debts written off (schools that will not pay)" value={kes(-t.badDebts)} />}
                 <Row label={profit ? "Profit" : "Loss"} value={kes(t.netProfit)} strong />
               </dl>
             </div>
@@ -253,7 +255,7 @@ export default function ProfitPage() {
                       <td className="p-2">{labelFor(p.key, data.groupBy)}</td>
                       <td className="p-2 text-right font-mono">{short(p.netSales)}</td>
                       <td className="p-2 text-right font-mono">{short(p.grossProfit)}</td>
-                      <td className="p-2 text-right font-mono">{short(p.waste + p.expenses + p.payroll)}</td>
+                      <td className="p-2 text-right font-mono">{short(p.waste + p.expenses + p.payroll + p.badDebts)}</td>
                       <td className={`p-2 text-right font-mono font-semibold ${p.netProfit < 0 ? "text-red-600" : p.netProfit > 0 ? "text-green-600" : ""}`}>{short(p.netProfit)}</td>
                     </tr>
                   ))}
@@ -263,7 +265,7 @@ export default function ProfitPage() {
                     <td className="p-2">Total</td>
                     <td className="p-2 text-right font-mono">{short(t.netSales)}</td>
                     <td className="p-2 text-right font-mono">{short(t.grossProfit)}</td>
-                    <td className="p-2 text-right font-mono">{short(t.waste + t.expenses + t.payroll)}</td>
+                    <td className="p-2 text-right font-mono">{short(t.waste + t.expenses + t.payroll + t.badDebts)}</td>
                     <td className={`p-2 text-right font-mono ${t.netProfit < 0 ? "text-red-600" : "text-green-600"}`}>{short(t.netProfit)}</td>
                   </tr>
                 </tfoot>

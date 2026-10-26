@@ -57,7 +57,7 @@ const STATUS: Record<SchoolOrder["status"], [string, string]> = {
   DELIVERED: ["Delivered", "bg-success-50 text-success-900"],
   CANCELLED: ["Cancelled", "bg-secondary-500/10 text-secondary-600"],
 };
-const INVOICE: Record<SchoolInvoice["status"], string> = { ISSUED: "Unpaid", PARTIALLY_PAID: "Part paid", PAID: "Paid", VOID: "Cancelled" };
+const INVOICE: Record<SchoolInvoice["status"], string> = { ISSUED: "Unpaid", PARTIALLY_PAID: "Part paid", PAID: "Paid", VOID: "Cancelled", WRITTEN_OFF: "Closed" };
 const METHOD: Record<string, string> = { CHEQUE: "Cheque", BANK_TRANSFER: "Bank transfer", MPESA: "M-Pesa", CASH: "Cash", WITHHOLDING_TAX: "Tax you withheld" };
 
 /** A school's page on its supplier's ordering link: sign in with phone and PIN, see the price list, order, and follow invoices. */

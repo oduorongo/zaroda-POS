@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
-import { PayrollRunStatus, SaleStatus, SupplierInvoiceStatus } from '@prisma/client';
+import { PayrollRunStatus, SaleStatus, SupplierInvoiceStatus, WriteOffStatus } from '@prisma/client';
 import { TenantScopedPrismaService } from '../common/prisma/tenant-scoped-prisma.service';
 import { EXPENSE_CATEGORIES } from '../expenses/expense-categories';
 import { ProfitQueryDto } from './dto/profit-query.dto';
@@ -20,15 +20,17 @@ interface Totals {
   expenses: number;
   /** Salaries paid through the Payroll screen. */
   payroll: number;
+  /** Debts from schools written off as unrecoverable (less any put back when the school paid after all). */
+  badDebts: number;
 }
 
-const empty = (): Totals => ({ saleCount: 0, sales: 0, tax: 0, refunds: 0, costOfGoods: 0, waste: 0, expenses: 0, payroll: 0 });
+const empty = (): Totals => ({ saleCount: 0, sales: 0, tax: 0, refunds: 0, costOfGoods: 0, waste: 0, expenses: 0, payroll: 0, badDebts: 0 });
 
 /** Derived money lines for a set of totals. */
 function finish(t: Totals) {
   const netSales = t.sales - t.tax - t.refunds;
   const grossProfit = netSales - t.costOfGoods;
-  const netProfit = grossProfit - t.waste - t.expenses - t.payroll;
+  const netProfit = grossProfit - t.waste - t.expenses - t.payroll - t.badDebts;
   return {
     saleCount: t.saleCount,
     sales: round2(t.sales),
@@ -40,6 +42,7 @@ function finish(t: Totals) {
     waste: round2(t.waste),
     expenses: round2(t.expenses),
     payroll: round2(t.payroll),
+    badDebts: round2(t.badDebts),
     netProfit: round2(netProfit),
   };
 }
@@ -68,7 +71,7 @@ export class ProfitService {
     const branchId = query.branchId;
 
     const data = await this.tenantPrisma.run(async (tx) => {
-      const [sales, refunds, wastes, expenses, payrollRuns, schoolInvoices] = await Promise.all([
+      const [sales, refunds, wastes, expenses, payrollRuns, schoolInvoices, writeOffs] = await Promise.all([
         tx.sale.findMany({
           where: { status: SaleStatus.COMPLETED, branchId, createdAt: { gte: start, lt: end } },
           select: {
@@ -100,6 +103,18 @@ export class ProfitService {
               where: { status: { not: SupplierInvoiceStatus.VOID }, saleId: null, issueDate: { gte: new Date(`${query.from}T00:00:00.000Z`), lte: new Date(`${query.to}T00:00:00.000Z`) } },
               select: { issueDate: true, total: true, taxAmount: true, creditAmount: true, lines: { select: { quantity: true, unitCost: true } } },
             }),
+        // Debts written off count on the day they were approved; one put back counts as money recovered on the day it was put back.
+        branchId
+          ? Promise.resolve([])
+          : tx.schoolWriteOff.findMany({
+              where: {
+                OR: [
+                  { status: { in: [WriteOffStatus.APPROVED, WriteOffStatus.REVERSED] }, decidedAt: { gte: start, lt: end } },
+                  { status: WriteOffStatus.REVERSED, reversedAt: { gte: start, lt: end } },
+                ],
+              },
+              select: { amount: true, status: true, decidedAt: true, reversedAt: true },
+            }),
       ]);
       // Stock buying: shown beside the profit, NOT taken off it (the cost of stock reaches profit when it is sold).
       const [billed, paidOut, owing] = branchId
@@ -109,7 +124,7 @@ export class ProfitService {
             tx.supplierBillPayment.findMany({ where: { paidAt: { gte: start, lt: end } }, select: { amount: true } }),
             tx.supplierBill.findMany({ where: { status: { in: ['OPEN', 'PARTLY_PAID'] } }, select: { total: true, creditAmount: true, amountPaid: true } }),
           ]);
-      return { sales, refunds, wastes, expenses, payrollRuns, schoolInvoices, billed, paidOut, owing };
+      return { sales, refunds, wastes, expenses, payrollRuns, schoolInvoices, writeOffs, billed, paidOut, owing };
     });
 
     const buckets = new Map<string, Totals>(listBuckets(query.from, query.to, groupBy).map((key) => [key, empty()]));
@@ -175,6 +190,11 @@ export class ProfitService {
     for (const run of data.payrollRuns) {
       const gross = run.payslips.reduce((sum, p) => sum + Number(p.grossPay), 0);
       if (run.paidAt) add(nairobiDayOf(run.paidAt), (t) => (t.payroll += gross));
+    }
+
+    for (const w of data.writeOffs) {
+      if (w.decidedAt && w.decidedAt >= start && w.decidedAt < end) add(nairobiDayOf(w.decidedAt), (t) => (t.badDebts += Number(w.amount)));
+      if (w.status === WriteOffStatus.REVERSED && w.reversedAt && w.reversedAt >= start && w.reversedAt < end) add(nairobiDayOf(w.reversedAt), (t) => (t.badDebts -= Number(w.amount)));
     }
 
     return {
