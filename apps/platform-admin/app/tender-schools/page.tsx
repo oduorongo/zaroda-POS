@@ -120,7 +120,7 @@ export default function TenderSchoolsPage() {
                 <tbody>
                   {schools.map((s) => (
                     <tr key={s.id} className="border-t border-border">
-                      <td className="p-3 font-medium">{s.name}{s.viaSupplier && <span className="block text-xs font-normal text-secondary-500">via a supplier's school portal</span>}</td>
+                      <td className="p-3 font-medium">{s.name}{s.viaSupplier && <span className="block text-xs font-normal text-secondary-500">via a supplier&apos;s school portal</span>}</td>
                       <td className="p-3">{s.contactName}<br /><span className="text-xs text-secondary-500">{s.phone}{s.email ? ` · ${s.email}` : ""}</span></td>
                       <td className="p-3">{s.county}</td>
                       <td className="p-3">{day(s.registeredAt)}</td>
