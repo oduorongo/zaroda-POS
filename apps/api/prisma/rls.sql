@@ -1373,3 +1373,18 @@ DROP POLICY IF EXISTS tenant_isolation ON school_provision_entries;
 CREATE POLICY tenant_isolation ON school_provision_entries
   USING ("organizationId" = current_setting('app.current_tenant', true))
   WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+-- School supplier: cash-flow forecast settings and planned items
+ALTER TABLE school_cashflow_settings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE school_cashflow_settings FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON school_cashflow_settings;
+CREATE POLICY tenant_isolation ON school_cashflow_settings
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+ALTER TABLE school_cashflow_items ENABLE ROW LEVEL SECURITY;
+ALTER TABLE school_cashflow_items FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON school_cashflow_items;
+CREATE POLICY tenant_isolation ON school_cashflow_items
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));

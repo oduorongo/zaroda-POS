@@ -1011,3 +1011,88 @@ export class WriteOffReverseDto {
   @MaxLength(500)
   reason!: string;
 }
+
+// ── Cash-flow forecast ────────────────────────────────────────────────────
+
+export class CashflowQueryDto {
+  /** The share of what is expected in that actually arrives. */
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  @Max(100)
+  @IsOptional()
+  collectPercent?: number;
+
+  /** Extra days schools take to pay. */
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @Max(180)
+  @IsOptional()
+  delayDays?: number;
+
+  @IsIn(['true', 'false'])
+  @IsOptional()
+  includeRetention?: string;
+
+  @IsIn(['true', 'false'])
+  @IsOptional()
+  includePipeline?: string;
+
+  @IsIn(['true', 'false'])
+  @IsOptional()
+  includeBills?: string;
+
+  @IsIn(['true', 'false'])
+  @IsOptional()
+  includeDisputed?: string;
+}
+
+export class CashflowSettingsDto {
+  /** The cash on hand today (bank, M-Pesa and cash together). */
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(-1_000_000_000)
+  @Max(1_000_000_000_000)
+  openingCash!: number;
+
+  /** The least cash wanted at any time. */
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  @Max(1_000_000_000_000)
+  minimumCash!: number;
+}
+
+export class CashflowItemDto {
+  @IsIn(['IN', 'OUT'])
+  direction!: 'IN' | 'OUT';
+
+  @IsString()
+  @MinLength(2)
+  @MaxLength(120)
+  description!: string;
+
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0.01)
+  @Max(1_000_000_000)
+  amount!: number;
+
+  @IsDateString({ strict: true })
+  date!: string;
+
+  @IsIn(['NONE', 'WEEKLY', 'MONTHLY'])
+  @IsOptional()
+  repeat?: 'NONE' | 'WEEKLY' | 'MONTHLY';
+
+  @IsDateString({ strict: true })
+  @IsOptional()
+  repeatUntil?: string;
+
+  @IsString()
+  @IsOptional()
+  @MaxLength(300)
+  notes?: string;
+
+  @IsBoolean()
+  @IsOptional()
+  active?: boolean;
+}

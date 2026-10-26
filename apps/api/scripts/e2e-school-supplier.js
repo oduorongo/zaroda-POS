@@ -901,6 +901,100 @@ const phoneB = '0722' + String(Math.floor(100000 + Math.random() * 899999));
     check(`${t} has row-level security switched on and forced`, r?.on === true && r?.forced === true, r);
   }
 
+  section('21. The 13-week cash-flow forecast');
+  const cf = (qs = '', token = owner) => api('GET', `/school-supplier/cashflow${qs}`, { token });
+  check('a school cannot see the forecast', (await cf('', tokenA)).status === 401);
+  check('a share collected above 100 is refused', (await cf('?collectPercent=120')).status === 400);
+  check('a negative delay is refused', (await cf('?delayDays=-1')).status === 400);
+  const cfSet = await api('PUT', '/school-supplier/cashflow/settings', { token: owner, body: { openingCash: 10000, minimumCash: 5000 } });
+  check('the cash on hand and the least wanted are saved, dated today', cfSet.status === 200 && cfSet.json.settings.openingCash === 10000 && cfSet.json.settings.minimumCash === 5000 && cfSet.json.settings.openingCashAsOf === nairobi() && !cfSet.json.warnings.some((w) => /Enter the cash/.test(w)), cfSet.json.settings);
+
+  // what is owed: one due in 10 days, one 20 days late, one disputed, one with a promise to pay in 14 days
+  await receive(pen.id, 200, 10);
+  const invC1 = await deliver15(10);
+  const invC2 = await deliver15(5);
+  const invC3 = await deliver15(3);
+  const invC4 = await deliver15(2);
+  await sql.query('UPDATE supplier_invoices SET "issueDate" = $3::date, "dueDate" = $2::date WHERE id = $1', [invC1.id, nairobi(10), nairobi(-20)]);
+  await sql.query('UPDATE supplier_invoices SET "issueDate" = $3::date, "dueDate" = $2::date WHERE id = $1', [invC2.id, nairobi(-20), nairobi(-50)]);
+  await sql.query('UPDATE supplier_invoices SET "issueDate" = $3::date, "dueDate" = $2::date WHERE id = $1', [invC4.id, nairobi(-5), nairobi(-35)]);
+  await api('PATCH', `/school-supplier/invoices/${invC3.id}/follow-up`, { token: owner, body: { disputed: true, disputeNote: 'Says it never received these' } });
+  await api('PATCH', `/school-supplier/invoices/${invC4.id}/follow-up`, { token: owner, body: { expectedPaymentDate: nairobi(14) } });
+  // retention: 20 of a 200 invoice held back, released in 30 days, then paid within the school's 30 days
+  await setRet(10, 30);
+  const invC5 = await deliver15(10);
+  await setRet(0, 0);
+  // a supplier bill coming due in 5 days
+  const sup = (await api('POST', '/suppliers', { token: owner, body: { name: `Paper Mill ${tag}`, paymentTermsDays: 14 } })).json;
+  const bill = await api('POST', '/supplier-bills', { token: owner, body: { supplierId: sup.id, billNumber: `PM-${tag}`, total: 700, dueDate: nairobi(5) } });
+  check('a supplier bill is set up to fall due', bill.status === 201, bill.json);
+  // planned: salaries monthly from day 3, a grant on day 20
+  const salaries = await api('POST', '/school-supplier/cashflow/items', { token: owner, body: { direction: 'OUT', description: `Salaries ${tag}`, amount: 3000, date: nairobi(3), repeat: 'MONTHLY' } });
+  const grant = await api('POST', '/school-supplier/cashflow/items', { token: owner, body: { direction: 'IN', description: `Grant ${tag}`, amount: 5000, date: nairobi(20) } });
+  check('planned money in and out can be added, and can repeat', salaries.status === 201 && salaries.json.repeat === 'MONTHLY' && grant.status === 201 && grant.json.repeat === 'NONE', [salaries.json, grant.json]);
+  check('a stop date needs a repeating item, and cannot be before the start', (await api('POST', '/school-supplier/cashflow/items', { token: owner, body: { direction: 'OUT', description: 'Odd one', amount: 10, date: nairobi(3), repeatUntil: nairobi(30) } })).status === 400 && (await api('POST', '/school-supplier/cashflow/items', { token: owner, body: { direction: 'OUT', description: 'Odd two', amount: 10, date: nairobi(3), repeat: 'WEEKLY', repeatUntil: nairobi(1) } })).status === 400);
+
+  const f1 = (await cf('')).json;
+  const find = (f, side, source, ref) => f.forecast.weeks.flatMap((w) => w[side].map((l) => ({ ...l, week: w.index }))).find((l) => l.source === source && l.ref === ref);
+  const l1 = find(f1, 'inflows', 'INVOICE', invC1.invoiceNumber);
+  check('an invoice due in 10 days is expected in week 2', l1 && l1.amount === 200 && l1.week === 2, l1);
+  const l2 = find(f1, 'inflows', 'INVOICE', invC2.invoiceNumber);
+  check('an overdue invoice is expected in week 1, saying how late it is', l2 && l2.amount === 100 && l2.week === 1 && /20 days overdue/.test(l2.note), l2);
+  const l4 = find(f1, 'inflows', 'INVOICE', invC4.invoiceNumber);
+  check('a promise to pay in 14 days puts the invoice in week 3', l4 && l4.amount === 40 && l4.week === 3 && /promised/.test(l4.note), l4);
+  check('a disputed invoice is left out and listed with the reason', !find(f1, 'inflows', 'INVOICE', invC3.invoiceNumber) && f1.notCounted.some((n) => n.ref === invC3.invoiceNumber && /Disputed/.test(n.reason)), f1.notCounted.filter((n) => n.ref === invC3.invoiceNumber));
+  const l5 = find(f1, 'inflows', 'INVOICE', invC5.invoiceNumber);
+  check('the part of a retained invoice that is due is expected in 30 days (week 5)', l5 && l5.amount === 180 && l5.week === 5, l5);
+  const l5r = find(f1, 'inflows', 'RETENTION', invC5.invoiceNumber);
+  check('the retention is expected 30 days after it is released, so in week 9', l5r && l5r.amount === 20 && l5r.week === 9, l5r);
+  const lb = find(f1, 'outflows', 'BILL', `PM-${tag}`);
+  check('the supplier bill comes out in week 1', lb && lb.amount === 700 && lb.week === 1, lb);
+  const sal = f1.forecast.weeks.flatMap((w) => w.outflows).filter((l) => l.source === 'PLANNED' && l.label === `Salaries ${tag}`);
+  check('the monthly salaries fall three or four times in 13 weeks', sal.length >= 3 && sal.length <= 4 && sal.every((l) => l.amount === 3000), sal.length);
+  const lg = find(f1, 'inflows', 'PLANNED', grant.json.id);
+  check('the grant comes in on week 3', lg && lg.amount === 5000 && lg.week === 3, lg);
+
+  // the arithmetic holds together
+  const ws = f1.forecast.weeks;
+  const sum = (arr) => Math.round(arr.reduce((s, l) => s + l.amount, 0) * 100) / 100;
+  check('13 weeks, the first opening at the cash on hand, each week opening where the last closed', ws.length === 13 && ws[0].opening === 10000 && ws.every((w, i) => i === 0 || w.opening === ws[i - 1].closing), ws.map((w) => [w.opening, w.closing]));
+  check('each week adds up from its own lines', ws.every((w) => Math.abs(w.inflow - sum(w.inflows)) < 0.01 && Math.abs(w.outflow - sum(w.outflows)) < 0.01 && Math.abs(w.closing - (w.opening + w.inflow - w.outflow)) < 0.01));
+  check('the totals add up to the closing cash', Math.abs(f1.forecast.closing - (10000 + f1.forecast.totalIn - f1.forecast.totalOut)) < 0.01 && f1.forecast.lowest.week >= 1);
+
+  // scenarios
+  const f2 = (await cf('?collectPercent=50&delayDays=7')).json;
+  const l1b = find(f2, 'inflows', 'INVOICE', invC1.invoiceNumber);
+  check('if schools pay half and a week late, the invoice due in 10 days is 100 in week 3', l1b && l1b.amount === 100 && l1b.week === 3, l1b);
+  check('planned items and bills are not affected by what schools do', find(f2, 'outflows', 'BILL', `PM-${tag}`)?.amount === 700 && find(f2, 'inflows', 'PLANNED', grant.json.id)?.amount === 5000);
+  const f3 = (await cf('?includeRetention=false&includeBills=false')).json;
+  check('retention and bills can be left out', !find(f3, 'inflows', 'RETENTION', invC5.invoiceNumber) && !find(f3, 'outflows', 'BILL', `PM-${tag}`));
+  const f4 = (await cf('?includeDisputed=true')).json;
+  check('disputed invoices can be counted if you want', Boolean(find(f4, 'inflows', 'INVOICE', invC3.invoiceNumber)));
+  const ord = await api('POST', '/school-portal/orders', { token: tokenA, body: { lines: [{ variantId: pen.id, quantity: 5 }] } });
+  await api('POST', `/school-supplier/orders/${ord.json.id}/confirm`, { token: owner, body: {} });
+  const f5 = (await cf('?includePipeline=true')).json;
+  const lo = find(f5, 'inflows', 'ORDER', ord.json.orderNumber);
+  check('confirmed orders still to deliver can be counted: delivered in 7 days, paid after the school\'s 30', lo && lo.amount >= 100 && lo.week === 6, lo);
+  check('and are not counted unless asked for', !find(f1, 'inflows', 'ORDER', ord.json.orderNumber));
+
+  // minimum cash
+  await api('PUT', '/school-supplier/cashflow/settings', { token: owner, body: { openingCash: 10000, minimumCash: 100000000 } });
+  const f6 = (await cf('')).json;
+  check('with a minimum above the cash, the first week below it is week 1', f6.forecast.firstBelowMinimum === 1 && f6.forecast.weeks[0].belowMinimum === true, f6.forecast.firstBelowMinimum);
+  await api('PUT', '/school-supplier/cashflow/settings', { token: owner, body: { openingCash: 10000, minimumCash: 5000 } });
+
+  // items can be changed, switched off and removed
+  const up = await api('PUT', `/school-supplier/cashflow/items/${grant.json.id}`, { token: owner, body: { direction: 'IN', description: `Grant (changed) ${tag}`, amount: 6000, date: nairobi(20), active: true } });
+  check('a planned item can be changed', up.status === 200 && up.json.amount === 6000, up.json);
+  await api('PUT', `/school-supplier/cashflow/items/${grant.json.id}`, { token: owner, body: { direction: 'IN', description: `Grant (changed) ${tag}`, amount: 6000, date: nairobi(20), active: false } });
+  check('one switched off drops out of the forecast but stays on the list', !find((await cf('')).json, 'inflows', 'PLANNED', grant.json.id) && (await cf('')).json.planned.some((p) => p.id === grant.json.id && p.active === false));
+  check('items can be removed', (await api('DELETE', `/school-supplier/cashflow/items/${grant.json.id}`, { token: owner })).status === 200 && (await api('DELETE', `/school-supplier/cashflow/items/${salaries.json.id}`, { token: owner })).status === 200 && !(await cf('')).json.planned.some((p) => p.id === salaries.json.id));
+  check('a removed item cannot be found again', (await api('DELETE', `/school-supplier/cashflow/items/${grant.json.id}`, { token: owner })).status === 404);
+  for (const t of ['school_cashflow_settings', 'school_cashflow_items']) {
+    const r = (await sql.query(`SELECT relrowsecurity AS on, relforcerowsecurity AS forced FROM pg_class WHERE relname = $1`, [t])).rows[0];
+    check(`${t} has row-level security switched on and forced`, r?.on === true && r?.forced === true, r);
+  }
+
   await sql.end();
   console.log(`\n${passed} checks passed${failures.length ? `, ${failures.length} FAILED:\n - ${failures.join('\n - ')}` : ' - all good'}`);
   process.exit(failures.length ? 1 : 0);

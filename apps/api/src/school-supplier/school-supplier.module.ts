@@ -19,6 +19,7 @@ import { SchoolCollectionsService } from './school-collections.service';
 import { SchoolWithholdingService } from './school-withholding.service';
 import { SchoolRetentionService } from './school-retention.service';
 import { SchoolBadDebtsService } from './school-bad-debts.service';
+import { SchoolCashflowService } from './school-cashflow.service';
 import { SchoolContractsService } from './school-contracts.service';
 import { SchoolCreditNotesService } from './school-credit-notes.service';
 import { SchoolLedgerService } from './school-ledger.service';
@@ -73,6 +74,7 @@ import { SchoolsService } from './schools.service';
     SchoolWithholdingService,
     SchoolRetentionService,
     SchoolBadDebtsService,
+    SchoolCashflowService,
     SchoolQuotesService,
     SchoolAuthService,
     SchoolPortalService,

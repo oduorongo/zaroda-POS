@@ -71,6 +71,8 @@ model Organization {
   schoolContracts           SchoolContract[]
   supplierRetentionEvents   SupplierRetentionEvent[]
   schoolBadDebtSettings     SchoolBadDebtSettings?
+  schoolCashflowSettings    SchoolCashflowSettings?
+  schoolCashflowItems       SchoolCashflowItem[]
   schoolWriteOffs           SchoolWriteOff[]
   schoolProvisionEntries    SchoolProvisionEntry[]
   supplierPayments          SupplierPayment[]
@@ -4359,6 +4361,52 @@ model SupplierInvoiceLine {
 
   @@index([invoiceId])
   @@map("supplier_invoice_lines")
+}
+
+enum CashflowDirection {
+  IN
+  OUT
+}
+
+enum CashflowRepeat {
+  NONE
+  WEEKLY
+  MONTHLY
+}
+
+/// What the cash-flow forecast starts from: the cash on hand (entered, as the system does not see the bank) and the least cash wanted.
+model SchoolCashflowSettings {
+  id              String    @id @default(uuid())
+  organizationId  String    @unique
+  openingCash     Decimal   @default(0) @db.Decimal(14, 2)
+  openingCashAsOf DateTime? @db.Date
+  minimumCash     Decimal   @default(0) @db.Decimal(14, 2)
+  updatedAt       DateTime  @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("school_cashflow_settings")
+}
+
+/// Money the supplier expects to receive or pay that is not on an invoice or bill: salaries, rent, a loan repayment, a grant. Can repeat.
+model SchoolCashflowItem {
+  id             String            @id @default(uuid())
+  organizationId String
+  direction      CashflowDirection
+  description    String
+  amount         Decimal           @db.Decimal(12, 2)
+  date           DateTime          @db.Date
+  repeat         CashflowRepeat    @default(NONE)
+  repeatUntil    DateTime?         @db.Date
+  notes          String?
+  active         Boolean           @default(true)
+  createdByName  String?
+  createdAt      DateTime          @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, active])
+  @@map("school_cashflow_items")
 }
 
 enum WriteOffStatus {
