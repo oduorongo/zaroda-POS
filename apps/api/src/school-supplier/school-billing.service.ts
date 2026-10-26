@@ -20,13 +20,13 @@ import {
   VoidInvoiceDto,
 } from './dto/school-supplier.dto';
 import { DocumentNumbersService } from './document-numbers.service';
+import { invoiceBalance, statusAfterSettlement } from './school-credit.util';
 import { SchoolLedgerService } from './school-ledger.service';
 import { SchoolNotifierService } from './school-notifier.service';
 import {
   allocateOldestFirst,
   allocationProblem,
   fromCents,
-  statusAfterPayment,
   toCents,
   todayKey,
 } from './school-money.util';
@@ -47,6 +47,10 @@ const invoiceInclude = {
   },
   order: { select: { orderNumber: true, lpoNumber: true } },
   delivery: { select: { deliveryNoteNumber: true, sequence: true } },
+  creditNotes: {
+    select: { id: true, creditNumber: true, total: true, issueDate: true },
+    orderBy: { createdAt: 'asc' as const },
+  },
   allocations: {
     include: {
       payment: {
@@ -102,10 +106,18 @@ function toInvoiceView(i: InvoiceFull) {
     taxAmount: Number(i.taxAmount),
     total: Number(i.total),
     amountPaid: paid,
+    /** What credit notes have taken off. */
+    creditAmount: Number(i.creditAmount),
+    creditNotes: i.creditNotes.map((c) => ({
+      id: c.id,
+      creditNumber: c.creditNumber,
+      total: Number(c.total),
+      issueDate: day(c.issueDate),
+    })),
     balance:
       i.status === SupplierInvoiceStatus.VOID
         ? 0
-        : fromCents(toCents(i.total) - toCents(i.amountPaid)),
+        : invoiceBalance(i.total.toString(), i.amountPaid.toString(), i.creditAmount.toString()),
     notes: i.notes,
     voidedAt: i.voidedAt,
     voidReason: i.voidReason,
@@ -231,7 +243,12 @@ export class SchoolBillingService {
   async voidInvoice(id: string, dto: VoidInvoiceDto) {
     return this.tenantPrisma.run(async (tx) => {
       const res = await tx.supplierInvoice.updateMany({
-        where: { id, status: SupplierInvoiceStatus.ISSUED, amountPaid: 0 },
+        where: {
+          id,
+          status: SupplierInvoiceStatus.ISSUED,
+          amountPaid: 0,
+          creditAmount: 0,
+        },
         data: {
           status: SupplierInvoiceStatus.VOID,
           voidedAt: new Date(),
@@ -240,7 +257,7 @@ export class SchoolBillingService {
       });
       if (res.count === 0)
         throw new ConflictException(
-          'Only an invoice with no payments against it can be voided. Bounce or correct the payment first.',
+          'Only an invoice with no payments or credit notes against it can be voided. Bounce or correct the payment first.',
         );
       // the sale it was recorded as is cancelled with it, so Sales and the reports stop counting it
       const voided = await tx.supplierInvoice.findUniqueOrThrow({
@@ -413,9 +430,9 @@ export class SchoolBillingService {
       where: { id: invoiceId },
     });
     const paid = fromCents(toCents(inv.amountPaid) + toCents(amount));
-    if (paid < 0 || toCents(paid) > toCents(inv.total))
+    if (paid < 0 || toCents(paid) > toCents(inv.total) - toCents(inv.creditAmount))
       throw new BadRequestException(
-        'That would pay more than the invoice total',
+        'That would pay more than the invoice still owes',
       );
     await tx.supplierInvoice.update({
       where: { id: invoiceId },
@@ -424,7 +441,11 @@ export class SchoolBillingService {
         status:
           inv.status === SupplierInvoiceStatus.VOID
             ? inv.status
-            : statusAfterPayment(Number(inv.total), paid),
+            : statusAfterSettlement(
+                Number(inv.total),
+                paid,
+                Number(inv.creditAmount),
+              ),
       },
     });
   }

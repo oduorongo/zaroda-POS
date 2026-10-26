@@ -29,6 +29,9 @@ export interface DocInvoice {
   taxAmount: number;
   total: number;
   amountPaid: number;
+  /** What credit notes have taken off, and which. */
+  creditAmount?: number;
+  creditNotes?: { creditNumber: string; total: number; issueDate: string }[];
   balance: number;
   voidReason: string | null;
   lines: { id: string; description: string; quantity: number; unitPrice: number; taxRate: number; lineTotal: number; taxAmount: number }[];
@@ -50,6 +53,22 @@ export interface DocDelivery {
   school: DocSchool;
   lines: { id: string; title: string; sku: string; ordered: number; before: number; now: number; balance: number }[];
   invoice: { invoiceNumber: string } | null;
+  business: DocBusiness;
+}
+
+/** A credit to a school against one of its invoices. */
+export interface DocCreditNote {
+  creditNumber: string;
+  issueDate: string;
+  reasonText: string;
+  note: string | null;
+  school: DocSchool;
+  invoice: { invoiceNumber: string };
+  subtotal: number;
+  taxAmount: number;
+  total: number;
+  restocked: boolean;
+  lines: { id: string; description: string; quantity: number; unitPrice: number; taxRate: number; lineTotal: number; taxAmount: number }[];
   business: DocBusiness;
 }
 
@@ -181,10 +200,22 @@ export function InvoiceDocument({ invoice }: { invoice: DocInvoice }) {
           <tr><td className="pr-6 text-gray-600">Subtotal</td><td className="text-right">KES {money(invoice.subtotal)}</td></tr>
           <tr><td className="pr-6 text-gray-600">VAT</td><td className="text-right">KES {money(invoice.taxAmount)}</td></tr>
           <tr className="font-bold"><td className="pr-6">Total</td><td className="text-right">KES {money(invoice.total)}</td></tr>
+          {(invoice.creditAmount ?? 0) > 0 && <tr><td className="pr-6 text-gray-600">Credit notes</td><td className="text-right">- KES {money(invoice.creditAmount ?? 0)}</td></tr>}
           {invoice.amountPaid > 0 && <tr><td className="pr-6 text-gray-600">Paid so far</td><td className="text-right">KES {money(invoice.amountPaid)}</td></tr>}
           <tr className="text-base font-bold"><td className="pr-6">Balance due</td><td className="text-right">KES {money(invoice.balance)}</td></tr>
         </tbody>
       </table>
+      {(invoice.creditNotes ?? []).length > 0 && (
+        <div className="mt-4 text-sm">
+          <p className="font-semibold">Credit notes</p>
+          {(invoice.creditNotes ?? []).map((c) => (
+            <p key={c.creditNumber} className="flex justify-between border-b border-gray-200 py-1">
+              <span>{c.issueDate} · {c.creditNumber}</span>
+              <span>KES {money(c.total)}</span>
+            </p>
+          ))}
+        </div>
+      )}
       {invoice.payments.length > 0 && (
         <div className="mt-4 text-sm">
           <p className="font-semibold">Payments received</p>
@@ -260,6 +291,54 @@ export function DeliveryNoteDocument({ delivery }: { delivery: DocDelivery }) {
   );
 }
 
+export function CreditNoteDocument({ creditNote }: { creditNote: DocCreditNote }) {
+  return (
+    <div className="rounded border border-gray-400 p-6">
+      <Letterhead business={creditNote.business} title="Credit note" number={creditNote.creditNumber} />
+      <Parties
+        school={creditNote.school}
+        rows={[
+          ["Date", creditNote.issueDate],
+          ["Against invoice", creditNote.invoice.invoiceNumber],
+          ["Reason", creditNote.reasonText],
+        ]}
+      />
+      <table className="mt-4 w-full text-sm">
+        <thead>
+          <tr className="border-b border-gray-400 text-left text-xs uppercase text-gray-600">
+            <th className="py-1">Item</th>
+            <th className="py-1 text-right">Qty</th>
+            <th className="py-1 text-right">Price</th>
+            <th className="py-1 text-right">VAT</th>
+            <th className="py-1 text-right">Amount</th>
+          </tr>
+        </thead>
+        <tbody>
+          {creditNote.lines.map((l) => (
+            <tr key={l.id} className="border-b border-gray-200">
+              <td className="py-1">{l.description}</td>
+              <td className="py-1 text-right">{qty(l.quantity)}</td>
+              <td className="py-1 text-right">{money(l.unitPrice)}</td>
+              <td className="py-1 text-right">{l.taxAmount ? money(l.taxAmount) : "-"}</td>
+              <td className="py-1 text-right">{money(l.lineTotal + l.taxAmount)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <table className="ml-auto mt-3 text-sm">
+        <tbody>
+          <tr><td className="pr-6 text-gray-600">Subtotal</td><td className="text-right">KES {money(creditNote.subtotal)}</td></tr>
+          <tr><td className="pr-6 text-gray-600">VAT</td><td className="text-right">KES {money(creditNote.taxAmount)}</td></tr>
+          <tr className="text-base font-bold"><td className="pr-6">Total credited</td><td className="text-right">KES {money(creditNote.total)}</td></tr>
+        </tbody>
+      </table>
+      {creditNote.note && <p className="mt-3 text-sm text-gray-700">Note: {creditNote.note}</p>}
+      <p className="mt-3 text-sm text-gray-700">This amount has been taken off what you owe on invoice {creditNote.invoice.invoiceNumber}.{creditNote.restocked ? " The goods returned have been received back." : ""}</p>
+      <Footer note={creditNote.business.invoiceFooter} />
+    </div>
+  );
+}
+
 export function ReceiptDocument({ receipt }: { receipt: DocReceipt }) {
   return (
     <div className="rounded border border-gray-400 p-6">
@@ -311,7 +390,7 @@ export function StatementDocument({ statement }: { statement: DocStatement }) {
             <th className="py-1">Date</th>
             <th className="py-1">Details</th>
             <th className="py-1 text-right">Invoiced</th>
-            <th className="py-1 text-right">Paid</th>
+            <th className="py-1 text-right">Paid / credited</th>
             <th className="py-1 text-right">Balance</th>
           </tr>
         </thead>

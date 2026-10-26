@@ -60,7 +60,7 @@ const phoneB = '0722' + String(Math.floor(100000 + Math.random() * 899999));
   const branchId = (await api('GET', '/branches', { token: owner })).json[0].id;
 
   section('1. Protection');
-  for (const t of ['school_portals', 'supplier_schools', 'school_orders', 'school_order_lines', 'school_deliveries', 'school_delivery_lines', 'supplier_invoices', 'supplier_invoice_lines', 'supplier_payments', 'supplier_payment_allocations', 'document_counters']) {
+  for (const t of ['school_portals', 'supplier_schools', 'school_orders', 'school_order_lines', 'school_deliveries', 'school_delivery_lines', 'supplier_credit_notes', 'supplier_credit_note_lines', 'supplier_invoices', 'supplier_invoice_lines', 'supplier_payments', 'supplier_payment_allocations', 'document_counters']) {
     const r = (await sql.query(`SELECT relrowsecurity AS on, relforcerowsecurity AS forced FROM pg_class WHERE relname = $1`, [t])).rows[0];
     check(`${t} has row-level security switched on and forced`, r?.on === true && r?.forced === true, r);
   }
@@ -355,6 +355,106 @@ const phoneB = '0722' + String(Math.floor(100000 + Math.random() * 899999));
   const legacy = (await sql.query("SELECT count(*)::int AS n FROM school_orders o WHERE o.status = 'DELIVERED' AND o.\"organizationId\" = $1 AND NOT EXISTS (SELECT 1 FROM school_deliveries d WHERE d.\"orderId\" = o.id)", [orgId])).rows[0].n;
   check('every delivered order has at least one delivery behind it', legacy === 0, legacy);
   for (const t of ['school_deliveries', 'school_delivery_lines']) {
+    const r = (await sql.query(`SELECT relrowsecurity AS on, relforcerowsecurity AS forced FROM pg_class WHERE relname = $1`, [t])).rows[0];
+    check(`${t} has row-level security switched on and forced`, r?.on === true && r?.forced === true, r);
+  }
+
+  section('13. Credit notes: goods returned, short deliveries and price corrections');
+  await receive(book.id, 300, 30);
+  await receive(pen.id, 200, 10);
+  const mkDelivered = async (lines) => {
+    const o = await api('POST', '/school-portal/orders', { token: tokenA, body: { lines } });
+    await api('POST', `/school-supplier/orders/${o.json.id}/confirm`, { token: owner, body: {} });
+    const d = await api('POST', `/school-supplier/orders/${o.json.id}/deliver`, { token: owner, body: { branchId, receivedByName: 'Mr Otieno' } });
+    return d.json.deliveries[0];
+  };
+  const dlv13 = await mkDelivered([{ variantId: book.id, quantity: 20 }, { variantId: pen.id, quantity: 10 }]);
+  const invC = dlv13.invoice;
+  check('an invoice of 1,100 to credit against (20 books x 45 + 10 pens x 20)', invC.total === 1100, invC);
+  const schoolBefore = (await api('GET', `/school-supplier/schools/${a.json.id}`, { token: owner })).json;
+  const cr013 = await api('GET', `/school-supplier/invoices/${invC.id}/creditable`, { token: owner });
+  const crBook = cr013.json.lines.find((l) => l.description.includes('Exercise book'));
+  const crPen = cr013.json.lines.find((l) => l.description.includes('Blue pen'));
+  check('it says what can still be credited on each line', cr013.status === 200 && cr013.json.remaining === 1100 && crBook.available === 20 && crPen.available === 10 && crPen.canRestock === true, cr013.json);
+
+  check('a school cannot make credit notes', (await api('POST', '/school-supplier/credit-notes', { token: tokenA, body: { invoiceId: invC.id, reason: 'RETURNED', lines: [{ invoiceLineId: crPen.invoiceLineId, quantity: 1 }] } })).status === 401);
+  check('crediting more than was invoiced is refused, saying how many are left', (await api('POST', '/school-supplier/credit-notes', { token: owner, body: { invoiceId: invC.id, reason: 'RETURNED', lines: [{ invoiceLineId: crBook.invoiceLineId, quantity: 21 }] } })).json.message?.includes('only 20 left'));
+  check('goods put back in stock need a branch', (await api('POST', '/school-supplier/credit-notes', { token: owner, body: { invoiceId: invC.id, reason: 'RETURNED', lines: [{ invoiceLineId: crPen.invoiceLineId, quantity: 4, restock: 4 }] } })).status === 400);
+  check('more put back than credited is refused', (await api('POST', '/school-supplier/credit-notes', { token: owner, body: { invoiceId: invC.id, reason: 'RETURNED', branchId, lines: [{ invoiceLineId: crPen.invoiceLineId, quantity: 2, restock: 3 }] } })).status === 400);
+  check('a reason must be one of the listed ones', (await api('POST', '/school-supplier/credit-notes', { token: owner, body: { invoiceId: invC.id, reason: 'BECAUSE', lines: [{ invoiceLineId: crPen.invoiceLineId, quantity: 1 }] } })).status === 400);
+  check('nothing was changed by the refusals', (await sql.query('SELECT count(*)::int AS n FROM supplier_credit_notes WHERE "invoiceId" = $1', [invC.id])).rows[0].n === 0);
+
+  const pensBefore13 = await stockOf(pen.id);
+  const booksBefore13 = await stockOf(book.id);
+  const cn1 = await api('POST', '/school-supplier/credit-notes', { token: owner, body: { invoiceId: invC.id, reason: 'RETURNED', note: 'Wrong colour, sent back', branchId, lines: [{ invoiceLineId: crPen.invoiceLineId, quantity: 4, restock: 4 }] } });
+  check('4 pens come back: a credit note of 80 with its own number', cn1.status === 201 && /^CN-\d{4}-\d{4}$/.test(cn1.json.creditNumber) && cn1.json.total === 80 && cn1.json.restocked === true && cn1.json.invoice.invoiceNumber === invC.invoiceNumber, cn1.json);
+  check('the 4 pens went back into stock', (await stockOf(pen.id)) === pensBefore13 + 4);
+  const movement13 = await sql.query(`SELECT type, "quantityDelta" FROM inventory_transactions WHERE "referenceId" = $1`, [cn1.json.id]);
+  check('and the stock record says they were returned', movement13.rows.length === 1 && movement13.rows[0].type === 'RETURN' && Number(movement13.rows[0].quantityDelta) === 4, movement13.rows);
+  const invAfter1 = (await api('GET', `/school-supplier/invoices/${invC.id}`, { token: owner })).json;
+  check('the invoice owes 80 less: credited 80, owing 1,020, part settled', invAfter1.creditAmount === 80 && invAfter1.balance === 1020 && invAfter1.status === 'PARTIALLY_PAID' && invAfter1.creditNotes.length === 1 && invAfter1.total === 1100, invAfter1);
+  const schoolAfter1 = (await api('GET', `/school-supplier/schools/${a.json.id}`, { token: owner })).json;
+  check('the school owes 80 less', Math.round((schoolBefore.owed - schoolAfter1.owed) * 100) / 100 === 80, [schoolBefore.owed, schoolAfter1.owed]);
+
+  const cn2 = await api('POST', '/school-supplier/credit-notes', { token: owner, body: { invoiceId: invC.id, reason: 'DAMAGED', lines: [{ invoiceLineId: crBook.invoiceLineId, quantity: 5 }] } });
+  check('5 damaged books are credited (225) with nothing put back in stock', cn2.status === 201 && cn2.json.total === 225 && cn2.json.restocked === false && (await stockOf(book.id)) === booksBefore13, cn2.json);
+  const cr113 = await api('GET', `/school-supplier/invoices/${invC.id}/creditable`, { token: owner });
+  check('what is left to credit goes down: 15 books, 6 pens, 795 standing', cr113.json.lines.find((l) => l.description.includes('Exercise book')).available === 15 && cr113.json.lines.find((l) => l.description.includes('Blue pen')).available === 6 && cr113.json.remaining === 795, cr113.json);
+  check('two credit notes never share a number', cn1.json.creditNumber !== cn2.json.creditNumber);
+
+  // the school's account
+  const stmt13 = (await api('GET', `/school-supplier/schools/${a.json.id}/statement`, { token: owner })).json;
+  const stmtCn = stmt13.entries.filter((e) => e.kind === 'CREDIT_NOTE');
+  check('the statement lists the credit notes as credits, with the invoice they are against', stmtCn.length >= 2 && stmtCn.some((e) => e.reference === cn1.json.creditNumber && e.credit === 80 && e.description.includes(invC.invoiceNumber)), stmtCn);
+  const schoolNow13 = (await api('GET', `/school-supplier/schools/${a.json.id}`, { token: owner })).json;
+  check('and the closing balance agrees with what the school owes now (owed less credit)', Math.abs(stmt13.closingBalance - (schoolNow13.owed - schoolNow13.credit)) < 0.01, [stmt13.closingBalance, schoolNow13.owed, schoolNow13.credit]);
+  const myStmt13 = (await api('GET', '/school-portal/statement', { token: tokenA })).json;
+  check('the school sees the same credit notes on its statement', myStmt13.entries.some((e) => e.kind === 'CREDIT_NOTE' && e.reference === cn1.json.creditNumber));
+  check('the school can see and open its credit notes; the other school cannot', (await api('GET', '/school-portal/credit-notes', { token: tokenA })).json.some((c) => c.id === cn1.json.id) && (await api('GET', `/school-portal/credit-notes/${cn1.json.id}`, { token: tokenA })).json.business?.name === me.name && (await api('GET', `/school-portal/credit-notes/${cn1.json.id}`, { token: tokenB })).status === 404 && (await api('GET', '/school-portal/credit-notes', { token: tokenB })).json.length === 0);
+  const one13 = await api('GET', `/school-supplier/credit-notes/${cn1.json.id}`, { token: owner });
+  check('a credit note opens with the business letterhead, ready to print', one13.status === 200 && one13.json.business?.name === me.name && one13.json.lines.length === 1 && one13.json.reasonText === 'Goods returned', one13.json);
+  check('the supplier can list credit notes by school', (await api('GET', `/school-supplier/credit-notes?schoolId=${a.json.id}`, { token: owner })).json.length >= 2 && (await api('GET', `/school-supplier/credit-notes?schoolId=${b.json.id}`, { token: owner })).json.length === 0);
+
+  // the sale the invoice became is refunded by the same amount
+  const refunds13 = await sql.query(`SELECT r.amount::float AS amount FROM refunds r JOIN sales s ON s.id = r."saleId" JOIN supplier_invoices i ON i."saleId" = s.id WHERE i.id = $1 ORDER BY r.amount`, [invC.id]);
+  check('the sale it was recorded as shows refunds of 80 and 225', refunds13.rows.length === 2 && refunds13.rows[0].amount === 80 && refunds13.rows[1].amount === 225, refunds13.rows);
+
+  // payments now stop at what is really owed
+  const owedNow13 = (await api('GET', `/school-supplier/invoices/${invC.id}`, { token: owner })).json.balance;
+  check('what the invoice owes now is 795', owedNow13 === 795, owedNow13);
+  const pay13 = await api('POST', '/school-supplier/payments', { token: owner, body: { schoolId: a.json.id, amount: 795, method: 'CASH' } });
+  const paidInv = (await api('GET', `/school-supplier/invoices/${invC.id}`, { token: owner })).json;
+  check('paying that settles the invoice: paid 795, credited 305, status paid', pay13.status === 201 && paidInv.status === 'PAID' && paidInv.amountPaid === 795 && paidInv.balance === 0, paidInv);
+  const creditBeforeLate = (await api('GET', `/school-supplier/schools/${a.json.id}`, { token: owner })).json.credit;
+  const cn3 = await api('POST', '/school-supplier/credit-notes', { token: owner, body: { invoiceId: invC.id, reason: 'PRICE_ERROR', lines: [{ invoiceLineId: crPen.invoiceLineId, quantity: 6 }] } });
+  const creditAfterLate = (await api('GET', `/school-supplier/schools/${a.json.id}`, { token: owner })).json.credit;
+  check('a credit note on an invoice that is already paid becomes credit on the school\'s account (120)', cn3.status === 201 && cn3.json.total === 120 && Math.round((creditAfterLate - creditBeforeLate) * 100) / 100 === 120, [creditBeforeLate, creditAfterLate]);
+  check('and once everything is credited nothing more can be', (await api('POST', '/school-supplier/credit-notes', { token: owner, body: { invoiceId: invC.id, reason: 'OTHER', lines: [{ invoiceLineId: crPen.invoiceLineId, quantity: 1 }] } })).status === 400);
+  check('the 10 pens: 4 returned + 6 price-corrected leaves none to credit', (await api('GET', `/school-supplier/invoices/${invC.id}/creditable`, { token: owner })).json.lines.find((l) => l.description.includes('Blue pen')).available === 0);
+
+  // an invoice credited in full before anything was paid
+  const dlv2 = await mkDelivered([{ variantId: pen.id, quantity: 10 }]);
+  const cr213 = await api('GET', `/school-supplier/invoices/${dlv2.invoice.id}/creditable`, { token: owner });
+  const full13 = await api('POST', '/school-supplier/credit-notes', { token: owner, body: { invoiceId: dlv2.invoice.id, reason: 'SHORT_DELIVERY', lines: cr213.json.lines.map((l) => ({ invoiceLineId: l.invoiceLineId, quantity: l.available })) } });
+  const fullInv = (await api('GET', `/school-supplier/invoices/${dlv2.invoice.id}`, { token: owner })).json;
+  check('crediting an invoice in full13 leaves nothing owing and the invoice settled', full13.status === 201 && full13.json.total === 200 && fullInv.balance === 0 && fullInv.status === 'PAID' && fullInv.creditAmount === 200, fullInv);
+  check('an invoice with a credit note cannot be cancelled', (await api('POST', `/school-supplier/invoices/${dlv2.invoice.id}/void`, { token: owner, body: { reason: 'oops' } })).status === 409);
+  const refundsFull = await sql.query(`SELECT count(*)::int AS n FROM refunds r JOIN supplier_invoices i ON i."saleId" = r."saleId" WHERE i.id = $1 AND r.amount = 200`, [dlv2.invoice.id]);
+  check('a credit of the whole invoice refunds the whole sale (so KRA gets a credit note by itself)', refundsFull.rows[0].n === 1);
+
+  // a cancelled invoice cannot be credited
+  const dlv3 = await mkDelivered([{ variantId: pen.id, quantity: 2 }]);
+  const cr313 = await api('GET', `/school-supplier/invoices/${dlv3.invoice.id}/creditable`, { token: owner });
+  await api('POST', `/school-supplier/invoices/${dlv3.invoice.id}/void`, { token: owner, body: { reason: 'Raised in error' } });
+  check('a cancelled invoice cannot be credited', (await api('POST', '/school-supplier/credit-notes', { token: owner, body: { invoiceId: dlv3.invoice.id, reason: 'OTHER', lines: [{ invoiceLineId: cr313.json.lines[0].invoiceLineId, quantity: 1 }] } })).status === 409);
+
+  // two credit notes at the same moment cannot take back more than was invoiced
+  const dlv4 = await mkDelivered([{ variantId: pen.id, quantity: 10 }]);
+  const cr413 = await api('GET', `/school-supplier/invoices/${dlv4.invoice.id}/creditable`, { token: owner });
+  const race13 = await Promise.all([1, 2].map(() => api('POST', '/school-supplier/credit-notes', { token: owner, body: { invoiceId: dlv4.invoice.id, reason: 'OTHER', lines: [{ invoiceLineId: cr413.json.lines[0].invoiceLineId, quantity: 10 }] } })));
+  const afterRace = (await api('GET', `/school-supplier/invoices/${dlv4.invoice.id}`, { token: owner })).json;
+  check('two credit notes for the same goods at once: one13 is made, the other refused, nothing credited twice', race13.filter((r) => r.status === 201).length === 1 && afterRace.creditAmount === 200, [race13.map((r) => r.status), afterRace.creditAmount]);
+  for (const t of ['supplier_credit_notes', 'supplier_credit_note_lines']) {
     const r = (await sql.query(`SELECT relrowsecurity AS on, relforcerowsecurity AS forced FROM pg_class WHERE relname = $1`, [t])).rows[0];
     check(`${t} has row-level security switched on and forced`, r?.on === true && r?.forced === true, r);
   }

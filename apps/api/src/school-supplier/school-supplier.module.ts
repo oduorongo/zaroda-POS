@@ -15,6 +15,7 @@ import {
 import { SchoolPortalService } from './portal/school-portal.service';
 import { PriceListService } from './price-list.service';
 import { SchoolBillingService } from './school-billing.service';
+import { SchoolCreditNotesService } from './school-credit-notes.service';
 import { SchoolLedgerService } from './school-ledger.service';
 import { SchoolNotifierService } from './school-notifier.service';
 import { SchoolOrdersService } from './school-orders.service';
@@ -56,6 +57,7 @@ import { SchoolsService } from './schools.service';
     PriceListService,
     SchoolOrdersService,
     SchoolBillingService,
+    SchoolCreditNotesService,
     SchoolAuthService,
     SchoolPortalService,
     SchoolJwtStrategy,
@@ -99,6 +101,11 @@ export class SchoolSupplierModule implements OnModuleInit {
           tableName: 'supplier_invoice_lines',
           description:
             'Items on an invoice, with the cost of the goods for the profit report',
+        },
+        {
+          tableName: 'supplier_credit_notes',
+          description:
+            'Credits to schools for goods returned, short deliveries and price corrections',
         },
         {
           tableName: 'supplier_payments',

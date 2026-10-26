@@ -1,10 +1,11 @@
 "use client";
 
-import { DeliveryNoteDocument, InvoiceDocument, ReceiptDocument, StatementDocument, type DocInvoice, type DocDelivery, type DocReceipt, type DocStatement } from "@zaroda/ui";
+import { CreditNoteDocument, DeliveryNoteDocument, InvoiceDocument, ReceiptDocument, StatementDocument, type DocInvoice, type DocCreditNote,
+  type DocDelivery, type DocReceipt, type DocStatement } from "@zaroda/ui";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { ApiError } from "../../../../../../lib/api";
-import { schoolDeliveryDoc, schoolInvoiceDoc, schoolReceiptDoc, schoolStatement } from "../../../../../../lib/school-api";
+import { schoolCreditNoteDoc, schoolDeliveryDoc, schoolInvoiceDoc, schoolReceiptDoc, schoolStatement } from "../../../../../../lib/school-api";
 
 /** A plain white page meant for the printer (or "save as PDF"): the school's own invoice, delivery note, receipt or statement. */
 export default function SchoolPrintPage() {
@@ -12,6 +13,7 @@ export default function SchoolPrintPage() {
   const [invoice, setInvoice] = useState<DocInvoice | null>(null);
   const [delivery, setDelivery] = useState<DocDelivery | null>(null);
   const [receipt, setReceipt] = useState<DocReceipt | null>(null);
+  const [creditNote, setCreditNote] = useState<DocCreditNote | null>(null);
   const [statement, setStatement] = useState<DocStatement | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -31,7 +33,9 @@ export default function SchoolPrintPage() {
         ? schoolInvoiceDoc(token, id).then(setInvoice)
         : kind === "delivery-note"
           ? schoolDeliveryDoc(token, id).then(setDelivery)
-          : kind === "receipt"
+          : kind === "credit-note"
+            ? schoolCreditNoteDoc(token, id).then(setCreditNote)
+            : kind === "receipt"
             ? schoolReceiptDoc(token, id).then(setReceipt)
             : schoolStatement(token).then(setStatement);
     load.catch((err) => setError(err instanceof ApiError ? err.message : "Could not load this page."));
@@ -49,6 +53,7 @@ export default function SchoolPrintPage() {
         {error && <p className="text-red-700">{error}</p>}
         {invoice && <InvoiceDocument invoice={invoice} />}
         {delivery && <DeliveryNoteDocument delivery={delivery} />}
+        {creditNote && <CreditNoteDocument creditNote={creditNote} />}
         {receipt && <ReceiptDocument receipt={receipt} />}
         {statement && <StatementDocument statement={statement} />}
       </div>

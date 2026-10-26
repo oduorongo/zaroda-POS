@@ -2,10 +2,10 @@ import { Injectable } from '@nestjs/common';
 import { TenantTx } from '../common/prisma/tenant-scoped-prisma.service';
 import { documentNumber, todayKey } from './school-money.util';
 
-export type DocumentKind = 'SO' | 'DN' | 'INV' | 'RC';
+export type DocumentKind = 'SO' | 'DN' | 'INV' | 'RC' | 'CN';
 
 /**
- * Numbers for printed documents: SO-2026-0007 (order), DN- (delivery note), INV- (invoice), RC- (receipt). One running
+ * Numbers for printed documents: SO-2026-0007 (order), DN- (delivery note), INV- (invoice), RC- (receipt), CN- (credit note). One running
  * count per business, per kind and per year, taken inside the caller's transaction with a single INSERT ... ON CONFLICT
  * DO UPDATE, so two people issuing documents at the same moment can never get the same number, and a number is only
  * used if the document is actually saved (the counter rolls back with it).

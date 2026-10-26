@@ -1,5 +1,5 @@
 import { API_URL, ApiError } from "./api";
-import type { DocDelivery, DocInvoice, DocReceipt, DocStatement } from "@zaroda/ui";
+import type { DocCreditNote, DocDelivery, DocInvoice, DocReceipt, DocStatement } from "@zaroda/ui";
 
 // A school's own sign-in and ordering, against the supplier's portal. Separate from the shopper calls: a school token is a
 // different kind of token and only works on /school-portal.
@@ -84,7 +84,16 @@ export interface SchoolInvoice {
   dueDate: string;
   total: number;
   amountPaid: number;
+  creditAmount: number;
   balance: number;
+}
+export interface SchoolCreditNote {
+  id: string;
+  creditNumber: string;
+  issueDate: string;
+  reasonText: string;
+  invoice: { id: string; invoiceNumber: string };
+  total: number;
 }
 export interface SchoolReceipt {
   id: string;
@@ -105,6 +114,8 @@ export const schoolSubmitOrder = (token: string, body: { lpoNumber?: string; not
   call<SchoolOrder>("/school-portal/orders", { token, method: "POST", body: JSON.stringify(body) });
 export const schoolOrders = (token: string) => call<SchoolOrder[]>("/school-portal/orders", { token });
 export const schoolCancelOrder = (token: string, id: string, reason: string) => call<SchoolOrder>(`/school-portal/orders/${id}/cancel`, { token, method: "POST", body: JSON.stringify({ reason }) });
+export const schoolCreditNotes = (token: string) => call<SchoolCreditNote[]>("/school-portal/credit-notes", { token });
+export const schoolCreditNoteDoc = (token: string, id: string) => call<DocCreditNote>(`/school-portal/credit-notes/${id}`, { token });
 export const schoolInvoices = (token: string) => call<SchoolInvoice[]>("/school-portal/invoices", { token });
 export const schoolReceipts = (token: string) => call<SchoolReceipt[]>("/school-portal/receipts", { token });
 export const schoolStatement = (token: string) => call<DocStatement>("/school-portal/statement", { token });

@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { SupplierInvoiceStatus, SupplierPaymentStatus } from '@prisma/client';
 import { TenantTx } from '../common/prisma/tenant-scoped-prisma.service';
+import { invoiceSurplus } from './school-credit.util';
 import {
   AgeBucket,
   ageBucket,
@@ -43,7 +44,7 @@ export class SchoolLedgerService {
     schoolIds?: string[],
   ): Promise<Map<string, SchoolBalance>> {
     const today = todayKey();
-    const [invoices, payments] = await Promise.all([
+    const [invoices, credited, payments] = await Promise.all([
       tx.supplierInvoice.findMany({
         where: {
           status: { in: OPEN },
@@ -53,7 +54,22 @@ export class SchoolLedgerService {
           schoolId: true,
           total: true,
           amountPaid: true,
+          creditAmount: true,
           dueDate: true,
+        },
+      }),
+      // invoices that have been credited: if payments and credit notes together came to more than the invoice, the excess is the school's credit
+      tx.supplierInvoice.findMany({
+        where: {
+          creditAmount: { gt: 0 },
+          status: { not: SupplierInvoiceStatus.VOID },
+          ...(schoolIds ? { schoolId: { in: schoolIds } } : {}),
+        },
+        select: {
+          schoolId: true,
+          total: true,
+          amountPaid: true,
+          creditAmount: true,
         },
       }),
       tx.supplierPayment.findMany({
@@ -85,13 +101,26 @@ export class SchoolLedgerService {
     };
     for (const inv of invoices) {
       const b = get(inv.schoolId);
-      const balance = toCents(inv.total) - toCents(inv.amountPaid);
+      const balance =
+        toCents(inv.total) -
+        toCents(inv.amountPaid) -
+        toCents(inv.creditAmount);
       if (balance <= 0) continue;
       b.owed += balance;
       b.openInvoices += 1;
       const bucket = ageBucket(day(inv.dueDate), today);
       b.ageing[bucket] += balance;
       if (bucket !== 'CURRENT') b.overdue += balance;
+    }
+    for (const inv of credited) {
+      const surplus = toCents(
+        invoiceSurplus(
+          Number(inv.total),
+          Number(inv.amountPaid),
+          Number(inv.creditAmount),
+        ),
+      );
+      if (surplus > 0) get(inv.schoolId).credit += surplus;
     }
     for (const pay of payments) {
       const b = get(pay.schoolId);
@@ -123,7 +152,9 @@ export class SchoolLedgerService {
         issueDate: day(r.issueDate),
         dueDate: day(r.dueDate),
         total: Number(r.total),
-        balance: fromCents(toCents(r.total) - toCents(r.amountPaid)),
+        balance: fromCents(
+          toCents(r.total) - toCents(r.amountPaid) - toCents(r.creditAmount),
+        ),
       }))
       .filter((r) => r.balance > 0);
   }
@@ -134,9 +165,14 @@ export class SchoolLedgerService {
    * never happened as far as the school's account is concerned.
    */
   async statement(tx: TenantTx, schoolId: string, from?: string, to?: string) {
-    const [invoices, payments] = await Promise.all([
+    const [invoices, creditNotes, payments] = await Promise.all([
       tx.supplierInvoice.findMany({
         where: { schoolId, status: { not: SupplierInvoiceStatus.VOID } },
+        orderBy: [{ issueDate: 'asc' }, { createdAt: 'asc' }],
+      }),
+      tx.supplierCreditNote.findMany({
+        where: { schoolId, invoice: { status: { not: SupplierInvoiceStatus.VOID } } },
+        include: { invoice: { select: { invoiceNumber: true } } },
         orderBy: [{ issueDate: 'asc' }, { createdAt: 'asc' }],
       }),
       tx.supplierPayment.findMany({
@@ -146,7 +182,7 @@ export class SchoolLedgerService {
     ]);
     type Entry = {
       date: string;
-      kind: 'INVOICE' | 'PAYMENT';
+      kind: 'INVOICE' | 'PAYMENT' | 'CREDIT_NOTE';
       reference: string;
       description: string;
       debit: number;
@@ -162,6 +198,15 @@ export class SchoolLedgerService {
         debit: Number(i.total),
         credit: 0,
         at: i.createdAt.getTime(),
+      })),
+      ...creditNotes.map((c) => ({
+        date: day(c.issueDate),
+        kind: 'CREDIT_NOTE' as const,
+        reference: c.creditNumber,
+        description: `Credit note against ${c.invoice.invoiceNumber}`,
+        debit: 0,
+        credit: Number(c.total),
+        at: c.createdAt.getTime(),
       })),
       ...payments.map((p) => ({
         date: day(p.receivedOn),

@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { DeliveryNoteDocument, InvoiceDocument, ReceiptDocument, StatementDocument, type DocInvoice, type DocDelivery, type DocReceipt, type DocStatement } from "@zaroda/ui";
+import { CreditNoteDocument, DeliveryNoteDocument, InvoiceDocument, ReceiptDocument, StatementDocument, type DocInvoice, type DocCreditNote,
+  type DocDelivery, type DocReceipt, type DocStatement } from "@zaroda/ui";
 import { apiGet, ApiError } from "../../../../lib/api";
 import { getSession } from "../../../../lib/auth";
 
@@ -14,6 +15,7 @@ export default function SchoolPrintPage() {
   const [invoice, setInvoice] = useState<DocInvoice | null>(null);
   const [delivery, setDelivery] = useState<DocDelivery | null>(null);
   const [receipt, setReceipt] = useState<DocReceipt | null>(null);
+  const [creditNote, setCreditNote] = useState<DocCreditNote | null>(null);
   const [statement, setStatement] = useState<DocStatement | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -32,7 +34,9 @@ export default function SchoolPrintPage() {
         ? apiGet<DocInvoice>(`/school-supplier/invoices/${id}`).then(setInvoice)
         : kind === "delivery-note"
           ? apiGet<DocDelivery>(`/school-supplier/deliveries/${id}`).then(setDelivery)
-          : kind === "receipt"
+          : kind === "credit-note"
+            ? apiGet<DocCreditNote>(`/school-supplier/credit-notes/${id}`).then(setCreditNote)
+            : kind === "receipt"
             ? apiGet<DocReceipt>(`/school-supplier/payments/${id}`).then(setReceipt)
             : apiGet<DocStatement>(`/school-supplier/schools/${id}/statement?${query.toString()}`).then(setStatement);
     load.catch((err) => setError(err instanceof ApiError ? err.message : "Could not load this page."));
@@ -50,6 +54,7 @@ export default function SchoolPrintPage() {
         {error && <p className="text-red-700">{error}</p>}
         {invoice && <InvoiceDocument invoice={invoice} />}
         {delivery && <DeliveryNoteDocument delivery={delivery} />}
+        {creditNote && <CreditNoteDocument creditNote={creditNote} />}
         {receipt && <ReceiptDocument receipt={receipt} />}
         {statement && <StatementDocument statement={statement} />}
       </div>

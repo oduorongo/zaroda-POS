@@ -7,6 +7,7 @@ import { ApiError } from "../lib/api";
 import { kes } from "../lib/format";
 import {
   schoolCancelOrder,
+  schoolCreditNotes,
   schoolConfirmReceived,
   schoolInvoices,
   schoolLogin,
@@ -18,6 +19,7 @@ import {
   schoolStatement,
   schoolSubmitOrder,
   type PriceItem,
+  type SchoolCreditNote,
   type SchoolInvoice,
   type SchoolMe,
   type SchoolOrder,
@@ -482,10 +484,14 @@ function Orders({ token, slug, orders, guard, onChanged }: { token: string; slug
 
 function Invoices({ token, slug, guard }: { token: string; slug: string; guard: Guard }) {
   const [invoices, setInvoices] = useState<SchoolInvoice[] | null>(null);
+  const [credits, setCredits] = useState<SchoolCreditNote[]>([]);
   useEffect(() => {
     schoolInvoices(token)
       .then(setInvoices)
       .catch((err) => guard(err, "Could not load your invoices."));
+    schoolCreditNotes(token)
+      .then(setCredits)
+      .catch(() => setCredits([]));
   }, [token, guard]);
   const today = new Date(Date.now() + 3 * 3600_000).toISOString().slice(0, 10);
 
@@ -506,10 +512,27 @@ function Invoices({ token, slug, guard }: { token: string; slug: string; guard: 
           <div className="text-right">
             <p className="text-xs text-secondary-500">{INVOICE[i.status]}</p>
             <p className="font-semibold">{kes(i.total)}</p>
-            {i.status !== "VOID" && i.balance > 0 && i.amountPaid > 0 && <p className="text-xs text-secondary-500">still owe {kes(i.balance)}</p>}
+            {i.status !== "VOID" && i.creditAmount > 0 && <p className="text-xs text-secondary-500">credited {kes(i.creditAmount)}</p>}
+            {i.status !== "VOID" && i.balance > 0 && (i.amountPaid > 0 || i.creditAmount > 0) && <p className="text-xs text-secondary-500">still owe {kes(i.balance)}</p>}
           </div>
         </li>
       ))}
+      {credits.length > 0 && (
+        <li className="p-3 text-sm">
+          <p className="mb-2 text-xs uppercase text-secondary-500">Credit notes</p>
+          {credits.map((c) => (
+            <p key={c.id} className="flex flex-wrap items-center justify-between gap-2 border-t border-border py-1">
+              <span>
+                {c.creditNumber} · {c.issueDate} · against {c.invoice.invoiceNumber} · {c.reasonText}
+              </span>
+              <span className="flex items-center gap-3">
+                <span className="font-semibold">- {kes(c.total)}</span>
+                <Link href={`/schools/${slug}/print/credit-note/${c.id}`} target="_blank" className="text-xs text-primary-600 hover:underline">Print</Link>
+              </span>
+            </p>
+          ))}
+        </li>
+      )}
     </ul>
   );
 }
