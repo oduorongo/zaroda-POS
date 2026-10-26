@@ -4112,6 +4112,14 @@ model SupplierInvoice {
   /// Taken off what is owed by credit notes (goods returned, a short delivery, a price correction). Owed = total - credits - paid.
   creditAmount   Decimal               @default(0) @db.Decimal(12, 2)
   status         SupplierInvoiceStatus @default(ISSUED)
+  /// Chasing an unpaid invoice: when the school promised to pay, whether it disputes the invoice (and why), who is following it up, and notes.
+  expectedPaymentDate DateTime?         @db.Date
+  disputed       Boolean               @default(false)
+  disputeNote    String?
+  followUpNote   String?
+  /// The member of staff chasing it (an OrgUser id).
+  responsibleId  String?
+  followUpUpdatedAt DateTime?
   notes          String?
   voidedAt       DateTime?
   voidReason     String?

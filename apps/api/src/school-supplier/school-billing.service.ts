@@ -108,6 +108,11 @@ function toInvoiceView(i: InvoiceFull) {
     amountPaid: paid,
     /** What credit notes have taken off. */
     creditAmount: Number(i.creditAmount),
+    expectedPaymentDate: day(i.expectedPaymentDate),
+    disputed: i.disputed,
+    disputeNote: i.disputeNote,
+    followUpNote: i.followUpNote,
+    responsibleId: i.responsibleId,
     creditNotes: i.creditNotes.map((c) => ({
       id: c.id,
       creditNumber: c.creditNumber,

@@ -15,6 +15,7 @@ import {
 import { SchoolPortalService } from './portal/school-portal.service';
 import { PriceListService } from './price-list.service';
 import { SchoolBillingService } from './school-billing.service';
+import { SchoolCollectionsService } from './school-collections.service';
 import { SchoolCreditNotesService } from './school-credit-notes.service';
 import { SchoolLedgerService } from './school-ledger.service';
 import { SchoolNotifierService } from './school-notifier.service';
@@ -59,6 +60,7 @@ import { SchoolsService } from './schools.service';
     SchoolOrdersService,
     SchoolBillingService,
     SchoolCreditNotesService,
+    SchoolCollectionsService,
     SchoolQuotesService,
     SchoolAuthService,
     SchoolPortalService,
