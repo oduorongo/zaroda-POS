@@ -11,6 +11,7 @@ import { OnlineStoreModule } from '../online-store/online-store.module';
 import { RidersModule } from '../riders/riders.module';
 import { RentalModule } from '../rental/rental.module';
 import { HotelModule } from '../hotel/hotel.module';
+import { TenderAdvertsModule } from '../tender-adverts/tender-adverts.module';
 
 @Module({
   imports: [
@@ -23,6 +24,8 @@ import { HotelModule } from '../hotel/hotel.module';
     RentalModule,
     // RoomBookingAutoCompleteService - completing hotel stays nobody checked out can be run by hand.
     HotelModule,
+    // TenderAdminService - approving schools and taking tender adverts down is a platform-admin job.
+    TenderAdvertsModule,
     // A second, independent JwtModule registration (separate from
     // AuthModule's) - its own secret (PLATFORM_ADMIN_JWT_SECRET), its
     // own JwtService instance. Deliberately not sharing JWT_SECRET with

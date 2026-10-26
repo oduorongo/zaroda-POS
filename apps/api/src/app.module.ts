@@ -41,6 +41,7 @@ import { ReservationsModule } from './reservations/reservations.module';
 import { AlertsModule } from './alerts/alerts.module';
 import { ExpensesModule } from './expenses/expenses.module';
 import { SchoolSupplierModule } from './school-supplier/school-supplier.module';
+import { TenderAdvertsModule } from './tender-adverts/tender-adverts.module';
 import { PharmacyModule } from './pharmacy/pharmacy.module';
 import { SalonModule } from './salon/salon.module';
 import { ManufacturingModule } from './manufacturing/manufacturing.module';
@@ -148,6 +149,7 @@ import { DeliveryModule } from './delivery/delivery.module';
     AlertsModule,
     ExpensesModule,
     SchoolSupplierModule,
+    TenderAdvertsModule,
     PharmacyModule,
     SalonModule,
     ManufacturingModule,

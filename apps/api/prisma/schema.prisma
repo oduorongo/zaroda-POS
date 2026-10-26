@@ -73,6 +73,7 @@ model Organization {
   schoolBadDebtSettings     SchoolBadDebtSettings?
   schoolCashflowSettings    SchoolCashflowSettings?
   schoolCashflowItems       SchoolCashflowItem[]
+  schoolTenderNotices       SchoolTenderNotice[]
   schoolWriteOffs           SchoolWriteOff[]
   schoolProvisionEntries    SchoolProvisionEntry[]
   supplierPayments          SupplierPayment[]
@@ -3902,6 +3903,93 @@ enum SupplierPaymentMethod {
 enum SupplierPaymentStatus {
   RECEIVED
   BOUNCED // a cheque that did not clear: what it paid is undone
+}
+
+enum TenderBuyerStatus {
+  PENDING // registered, waiting for the platform owner to check it is a real school
+  APPROVED // may post tender adverts
+  SUSPENDED
+}
+
+enum TenderAdvertStatus {
+  OPEN
+  CANCELLED // the school withdrew it
+  REMOVED // taken down by the platform owner
+}
+
+enum TenderNoticeState {
+  SEEN
+  SAVED
+  DISMISSED
+}
+
+/// A school (or other institution) that posts tender adverts for suppliers to see. Not a customer of any one supplier, so it is not
+/// tenant-scoped (like buyers and riders): it signs in by phone + PIN and can only ever touch its own adverts.
+model TenderBuyer {
+  id             String            @id @default(uuid())
+  name           String
+  contactName    String
+  /// Normalized 2547XXXXXXXX / 2541XXXXXXXX. One account per number.
+  phone          String            @unique
+  email          String?
+  county         String
+  pinHash        String
+  pinFailCount   Int               @default(0)
+  pinLockedUntil DateTime?
+  status         TenderBuyerStatus @default(PENDING)
+  statusNote     String?
+  lastLoginAt    DateTime?
+  createdAt      DateTime          @default(now())
+
+  adverts TenderAdvert[]
+
+  @@map("tender_buyers")
+}
+
+/// A tender advert: what the school wants to buy, by when, and who to contact. Visible to every school-supplier business.
+model TenderAdvert {
+  id            String             @id @default(uuid())
+  buyerId       String
+  /// The school's own tender number, if it has one.
+  reference     String?
+  title         String
+  description   String
+  county        String
+  /// What is wanted: [{ description, quantity, unit }].
+  items         Json               @default("[]")
+  /// How suppliers get the full tender documents (a link, or "collect at the school office").
+  documentsInfo String?
+  closingDate   DateTime           @db.Date
+  contactName   String
+  contactPhone  String
+  contactEmail  String?
+  status        TenderAdvertStatus @default(OPEN)
+  removedReason String?
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+
+  buyer   TenderBuyer          @relation(fields: [buyerId], references: [id], onDelete: Cascade)
+  notices SchoolTenderNotice[]
+
+  @@index([status, closingDate])
+  @@index([buyerId])
+  @@map("tender_adverts")
+}
+
+/// What one supplier has done with an advert (seen, saved for later, dismissed). An advert with no row here is new to that supplier.
+model SchoolTenderNotice {
+  id             String            @id @default(uuid())
+  organizationId String
+  advertId       String
+  state          TenderNoticeState
+  updatedAt      DateTime          @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  advert       TenderAdvert @relation(fields: [advertId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, advertId])
+  @@index([organizationId])
+  @@map("school_tender_notices")
 }
 
 /// A tender the business is bidding for: the institution inviting it, the closing date, the checklist of what must be ready,
