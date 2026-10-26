@@ -15,7 +15,7 @@ import {
   promiseBroken,
 } from './school-collections.util';
 import { SchoolLedgerService } from './school-ledger.service';
-import { invoiceBalance } from './school-credit.util';
+import { invoicePosition } from './school-retention.util';
 import { todayKey } from './school-money.util';
 
 const day = (d: Date | null) => (d ? d.toISOString().slice(0, 10) : null);
@@ -55,11 +55,12 @@ export class SchoolCollectionsService {
     );
     const list = rows
       .map((i) => {
-        const balance = invoiceBalance(
-          i.total.toString(),
-          i.amountPaid.toString(),
-          i.creditAmount.toString(),
-        );
+        const balance = invoicePosition({
+          total: Number(i.total),
+          paid: Number(i.amountPaid),
+          credited: Number(i.creditAmount),
+          retentionHeld: Number(i.retentionHeld),
+        }).dueNow;
         return {
           id: i.id,
           invoiceNumber: i.invoiceNumber,

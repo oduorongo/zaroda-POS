@@ -766,6 +766,53 @@ const phoneB = '0722' + String(Math.floor(100000 + Math.random() * 899999));
     check(`${t} has row-level security switched on and forced`, r?.on === true && r?.forced === true, r);
   }
 
+  section('19. Retention held back by the school');
+  const setRet = (percent, days) => api('PATCH', `/school-supplier/schools/${a.json.id}`, { token: owner, body: { retentionPercent: percent, retentionReleaseDays: days } });
+  const r19 = await setRet(10, 30);
+  check('a school can be given a usual retention of 10% released after 30 days', r19.status === 200 && r19.json.retentionPercent === 10 && r19.json.retentionReleaseDays === 30, r19.json);
+  check('retention above 50% is refused', (await setRet(60, 30)).status === 400);
+  await receive(pen.id, 100, 10);
+  const invR = await deliver15(10);
+  const invR1 = (await api('GET', `/school-supplier/invoices/${invR.id}`, { token: owner })).json;
+  check('delivering makes an invoice of 200 with 20 held back, so only 180 is due', invR1.total === 200 && invR1.retentionAmount === 20 && invR1.retentionHeld === 20 && invR1.balance === 180, invR1);
+  check('the release date is 30 days away', invR1.retentionReleaseDate === nairobi(30), invR1.retentionReleaseDate);
+  check('paying more than is due now is refused (the retention is not due)', (await api('POST', '/school-supplier/payments', { token: owner, body: { schoolId: a.json.id, amount: 181, method: 'CASH', allocations: [{ invoiceId: invR.id, amount: 181 }] } })).status === 400);
+  const payR = await api('POST', '/school-supplier/payments', { token: owner, body: { schoolId: a.json.id, amount: 180, method: 'CASH', allocations: [{ invoiceId: invR.id, amount: 180 }] } });
+  const invR2 = (await api('GET', `/school-supplier/invoices/${invR.id}`, { token: owner })).json;
+  check('paying the 180 leaves nothing due, with the 20 still held', payR.status === 201 && invR2.balance === 0 && invR2.retentionHeld === 20 && invR2.status !== 'PAID', invR2);
+  const ret0 = (await api('GET', '/school-supplier/retention', { token: owner })).json;
+  const rr0 = ret0.rows.find((r) => r.invoiceId === invR.id);
+  check('the retention list shows it as held, with its HELD event', rr0 && rr0.held === 20 && rr0.state === 'HELD' && rr0.events[0].kind === 'HELD' && ret0.totals.held >= 20, rr0);
+  check('what is held is not counted as overdue', !JSON.stringify((await api('GET', '/school-supplier/overdue', { token: owner })).json).includes(invR.invoiceNumber));
+  check('a school cannot see the supplier\'s retention list', (await api('GET', '/school-supplier/retention', { token: tokenA })).status === 401);
+
+  check('a dispute needs its reason', (await api('PATCH', `/school-supplier/retention/${invR.id}`, { token: owner, body: { disputed: true } })).status === 400);
+  const dis = await api('PATCH', `/school-supplier/retention/${invR.id}`, { token: owner, body: { disputed: true, disputeNote: 'Defects list not cleared' } });
+  check('a dispute is recorded and shown', dis.status === 200 && dis.json.state === 'DISPUTED' && dis.json.disputeNote === 'Defects list not cleared', dis.json);
+  const undis = await api('PATCH', `/school-supplier/retention/${invR.id}`, { token: owner, body: { disputed: false, expectedReleaseDate: nairobi(-1) } });
+  check('with the dispute cleared and the date passed, it is due for release and one day late', undis.status === 200 && undis.json.state === 'DUE_FOR_RELEASE' && undis.json.daysLate === 1, undis.json);
+
+  check('another school cannot raise it', (await api('POST', `/school-portal/invoices/${invR.id}/retention-request`, { token: tokenB, body: {} })).status === 404);
+  const req = await api('POST', `/school-portal/invoices/${invR.id}/retention-request`, { token: tokenA, body: { note: 'Please release' } });
+  check('the school can raise it and the supplier sees the request', req.status === 200 && req.json.requestedAt && req.json.events.some((e) => e.kind === 'RELEASE_REQUESTED'), req.json);
+  check('the supplier can record that it asked', (await api('POST', `/school-supplier/retention/${invR.id}/requested`, { token: owner, body: {} })).status === 200);
+
+  check('releasing more than is held is refused', (await api('POST', `/school-supplier/retention/${invR.id}/release`, { token: owner, body: { amount: 50 } })).status === 400);
+  const rel1 = await api('POST', `/school-supplier/retention/${invR.id}/release`, { token: owner, body: { amount: 5 } });
+  const invR3 = (await api('GET', `/school-supplier/invoices/${invR.id}`, { token: owner })).json;
+  check('releasing 5 leaves 15 held and 5 due now', rel1.status === 200 && rel1.json.held === 15 && rel1.json.released === 5 && invR3.balance === 5 && invR3.retentionHeld === 15, invR3);
+  check('the school can then pay the 5', (await api('POST', '/school-supplier/payments', { token: owner, body: { schoolId: a.json.id, amount: 5, method: 'CASH', allocations: [{ invoiceId: invR.id, amount: 5 }] } })).status === 201);
+  const rel2 = await api('POST', `/school-supplier/retention/${invR.id}/release`, { token: owner, body: {} });
+  check('releasing the rest leaves nothing held, with HELD and RELEASED events kept', rel2.status === 200 && rel2.json.held === 0 && rel2.json.state === 'RELEASED' && rel2.json.events.filter((e) => e.kind === 'RELEASED').length === 2, rel2.json);
+  check('the school pays the final 15 and the invoice is paid', (await api('POST', '/school-supplier/payments', { token: owner, body: { schoolId: a.json.id, amount: 15, method: 'CASH', allocations: [{ invoiceId: invR.id, amount: 15 }] } })).status === 201 && (await api('GET', `/school-supplier/invoices/${invR.id}`, { token: owner })).json.status === 'PAID');
+  check('an invoice without retention cannot be released', (await api('POST', `/school-supplier/retention/${invW.id}/release`, { token: owner, body: {} })).status === 404);
+
+  const kR = await api('POST', '/school-supplier/contracts', { token: owner, body: { schoolId: a.json.id, title: `Retention contract ${tag}`, startDate: nairobi(-1), endDate: nairobi(200), value: 100000, retentionPercent: 5, retentionReleaseDays: 90 } });
+  check('a contract can carry its own retention terms', kR.status === 201 && kR.json.retentionPercent === 5 && kR.json.retentionReleaseDays === 90, kR.json);
+  await setRet(0, 0);
+  const rls19 = (await sql.query(`SELECT relrowsecurity AS on, relforcerowsecurity AS forced FROM pg_class WHERE relname = 'supplier_retention_events'`)).rows[0];
+  check('supplier_retention_events has row-level security switched on and forced', rls19?.on === true && rls19?.forced === true, rls19);
+
   await sql.end();
   console.log(`\n${passed} checks passed${failures.length ? `, ${failures.length} FAILED:\n - ${failures.join('\n - ')}` : ' - all good'}`);
   process.exit(failures.length ? 1 : 0);

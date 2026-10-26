@@ -68,6 +68,20 @@ export class CreateSchoolDto {
   @IsOptional()
   creditDays?: number;
 
+  /** A share of each invoice the school holds back until released, in percent (0 = none). */
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  @Max(50)
+  @IsOptional()
+  retentionPercent?: number;
+
+  /** How many days after an invoice the retention is expected to be released. */
+  @IsInt()
+  @Min(0)
+  @Max(1825)
+  @IsOptional()
+  retentionReleaseDays?: number;
+
   @IsString()
   @IsOptional()
   @MaxLength(500)
@@ -118,6 +132,20 @@ export class UpdateSchoolDto {
   @Max(365)
   @IsOptional()
   creditDays?: number;
+
+  /** A share of each invoice the school holds back until released, in percent (0 = none). */
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  @Max(50)
+  @IsOptional()
+  retentionPercent?: number;
+
+  /** How many days after an invoice the retention is expected to be released. */
+  @IsInt()
+  @Min(0)
+  @Max(1825)
+  @IsOptional()
+  retentionReleaseDays?: number;
 
   @IsIn(['ACTIVE', 'SUSPENDED'])
   @IsOptional()
@@ -277,6 +305,50 @@ export class LpoCheckDto {
   checked!: boolean;
 }
 
+// ── Retention ─────────────────────────────────────────────────────────────
+
+export class RetentionReleaseDto {
+  /** How much becomes due now. Left out, everything still held. */
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0.01)
+  @Max(1_000_000_000)
+  @IsOptional()
+  amount?: number;
+
+  @IsString()
+  @IsOptional()
+  @MaxLength(300)
+  note?: string;
+}
+
+export class RetentionUpdateDto {
+  /** When the retention is expected to be released. null clears it. */
+  @IsDateString({ strict: true })
+  @IsOptional()
+  expectedReleaseDate?: string | null;
+
+  @IsBoolean()
+  @IsOptional()
+  disputed?: boolean;
+
+  @IsString()
+  @IsOptional()
+  @MaxLength(500)
+  disputeNote?: string | null;
+
+  @IsString()
+  @IsOptional()
+  @MaxLength(500)
+  note?: string | null;
+}
+
+export class RetentionRequestDto {
+  @IsString()
+  @IsOptional()
+  @MaxLength(300)
+  note?: string;
+}
+
 // ── Chasing unpaid invoices ───────────────────────────────────────────────
 
 export class FollowUpDto {
@@ -419,6 +491,20 @@ export class AwardTenderDto {
   @IsOptional()
   value?: number;
 
+  /** A share of each invoice the school holds back until released, in percent (0 = none). */
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  @Max(50)
+  @IsOptional()
+  retentionPercent?: number;
+
+  /** How many days after an invoice the retention is expected to be released. */
+  @IsInt()
+  @Min(0)
+  @Max(1825)
+  @IsOptional()
+  retentionReleaseDays?: number;
+
   @IsDateString({ strict: true })
   startDate!: string;
 
@@ -495,6 +581,20 @@ export class SaveContractDto {
   @Max(10_000_000_000)
   value!: number;
 
+  /** A share of each invoice the school holds back until released, in percent (0 = none). */
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  @Max(50)
+  @IsOptional()
+  retentionPercent?: number;
+
+  /** How many days after an invoice the retention is expected to be released. */
+  @IsInt()
+  @Min(0)
+  @Max(1825)
+  @IsOptional()
+  retentionReleaseDays?: number;
+
   @IsString()
   @IsOptional()
   @MaxLength(1000)
@@ -512,6 +612,20 @@ export class UpdateContractDto {
   @IsOptional()
   @MaxLength(60)
   reference?: string;
+
+  /** A share of each invoice the school holds back until released, in percent (0 = none). */
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  @Max(50)
+  @IsOptional()
+  retentionPercent?: number;
+
+  /** How many days after an invoice the retention is expected to be released. */
+  @IsInt()
+  @Min(0)
+  @Max(1825)
+  @IsOptional()
+  retentionReleaseDays?: number;
 
   @IsDateString({ strict: true })
   @IsOptional()

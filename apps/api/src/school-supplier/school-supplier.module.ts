@@ -17,6 +17,7 @@ import { PriceListService } from './price-list.service';
 import { SchoolBillingService } from './school-billing.service';
 import { SchoolCollectionsService } from './school-collections.service';
 import { SchoolWithholdingService } from './school-withholding.service';
+import { SchoolRetentionService } from './school-retention.service';
 import { SchoolContractsService } from './school-contracts.service';
 import { SchoolCreditNotesService } from './school-credit-notes.service';
 import { SchoolLedgerService } from './school-ledger.service';
@@ -69,6 +70,7 @@ import { SchoolsService } from './schools.service';
     SchoolTendersService,
     SchoolCollectionsService,
     SchoolWithholdingService,
+    SchoolRetentionService,
     SchoolQuotesService,
     SchoolAuthService,
     SchoolPortalService,

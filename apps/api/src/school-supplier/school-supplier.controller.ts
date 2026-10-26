@@ -16,6 +16,9 @@ import { Roles } from '../auth/roles.decorator';
 import {
   BouncePaymentDto,
   CertificateDto,
+  RetentionReleaseDto,
+  RetentionRequestDto,
+  RetentionUpdateDto,
   AcceptQuoteDto,
   CancelOrderDto,
   CloseBalanceDto,
@@ -39,6 +42,7 @@ import { PriceListService } from './price-list.service';
 import { SchoolBillingService } from './school-billing.service';
 import { SchoolCollectionsService } from './school-collections.service';
 import { SchoolWithholdingService } from './school-withholding.service';
+import { SchoolRetentionService } from './school-retention.service';
 import { SchoolCreditNotesService } from './school-credit-notes.service';
 import { SchoolOrdersService } from './school-orders.service';
 import { SchoolQuotesService } from './school-quotes.service';
@@ -56,6 +60,7 @@ export class SchoolSupplierController {
     private readonly quotes: SchoolQuotesService,
     private readonly collections: SchoolCollectionsService,
     private readonly withholding: SchoolWithholdingService,
+    private readonly retention: SchoolRetentionService,
   ) {}
 
   // ── Schools ──
@@ -241,6 +246,42 @@ export class SchoolSupplierController {
     @Body() dto: CertificateDto,
   ) {
     return this.withholding.setCertificate(id, dto);
+  }
+
+  // ── Retention held back by the schools ──
+  @Roles(Role.MANAGER, Role.OWNER, Role.AUDITOR)
+  @Get('retention')
+  retentionList() {
+    return this.retention.list();
+  }
+
+  @Roles(Role.MANAGER, Role.OWNER)
+  @Post('retention/:id/release')
+  @HttpCode(200)
+  retentionRelease(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: RetentionReleaseDto,
+  ) {
+    return this.retention.release(id, dto);
+  }
+
+  @Roles(Role.MANAGER, Role.OWNER)
+  @Patch('retention/:id')
+  retentionUpdate(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: RetentionUpdateDto,
+  ) {
+    return this.retention.update(id, dto);
+  }
+
+  @Roles(Role.MANAGER, Role.OWNER)
+  @Post('retention/:id/requested')
+  @HttpCode(200)
+  retentionRequested(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: RetentionRequestDto,
+  ) {
+    return this.retention.markRequested(id, dto);
   }
 
   // ── Chasing what is owed ──

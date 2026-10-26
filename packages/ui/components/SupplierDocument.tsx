@@ -34,6 +34,9 @@ export interface DocInvoice {
   creditAmount?: number;
   creditNotes?: { creditNumber: string; total: number; issueDate: string }[];
   balance: number;
+  /** Held back by the school until released: owed, not yet due. */
+  retentionHeld?: number;
+  retentionReleaseDate?: string | null;
   voidReason: string | null;
   lines: { id: string; description: string; quantity: number; unitPrice: number; taxRate: number; lineTotal: number; taxAmount: number }[];
   payments: { receiptNumber: string; receivedOn: string | null; method: string; amount: number }[];
@@ -219,6 +222,7 @@ export function InvoiceDocument({ invoice }: { invoice: DocInvoice }) {
           <tr className="font-bold"><td className="pr-6">Total</td><td className="text-right">KES {money(invoice.total)}</td></tr>
           {(invoice.creditAmount ?? 0) > 0 && <tr><td className="pr-6 text-gray-600">Credit notes</td><td className="text-right">- KES {money(invoice.creditAmount ?? 0)}</td></tr>}
           {invoice.amountPaid > 0 && <tr><td className="pr-6 text-gray-600">Paid so far</td><td className="text-right">KES {money(invoice.amountPaid)}</td></tr>}
+          {(invoice.retentionHeld ?? 0) > 0 && <tr><td className="pr-6 text-gray-600">Retention held back{invoice.retentionReleaseDate ? ` (release ${invoice.retentionReleaseDate})` : ""}</td><td className="text-right">KES {money(invoice.retentionHeld ?? 0)}</td></tr>}
           <tr className="text-base font-bold"><td className="pr-6">Balance due</td><td className="text-right">KES {money(invoice.balance)}</td></tr>
         </tbody>
       </table>

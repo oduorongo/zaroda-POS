@@ -86,6 +86,9 @@ export interface SchoolInvoice {
   amountPaid: number;
   creditAmount: number;
   balance: number;
+  /** Held back until released: owed, not yet due. */
+  retentionHeld?: number;
+  retentionReleaseDate?: string | null;
 }
 export interface SchoolCreditNote {
   id: string;

@@ -646,6 +646,7 @@ function Invoices({ token, slug, guard }: { token: string; slug: string; guard: 
             <p className="font-semibold">{kes(i.total)}</p>
             {i.status !== "VOID" && i.creditAmount > 0 && <p className="text-xs text-secondary-500">credited {kes(i.creditAmount)}</p>}
             {i.status !== "VOID" && i.balance > 0 && (i.amountPaid > 0 || i.creditAmount > 0) && <p className="text-xs text-secondary-500">still owe {kes(i.balance)}</p>}
+            {i.status !== "VOID" && (i.retentionHeld ?? 0) > 0 && <p className="text-xs text-secondary-500">retention held {kes(i.retentionHeld ?? 0)}{i.retentionReleaseDate ? `, due for release ${i.retentionReleaseDate}` : ""}</p>}
           </div>
         </li>
       ))}

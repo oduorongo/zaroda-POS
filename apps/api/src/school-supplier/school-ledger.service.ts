@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { SupplierInvoiceStatus, SupplierPaymentStatus } from '@prisma/client';
 import { TenantTx } from '../common/prisma/tenant-scoped-prisma.service';
 import { invoiceSurplus } from './school-credit.util';
+import { invoicePosition } from './school-retention.util';
 import {
   AgeBucket,
   ageBucket,
@@ -21,6 +22,8 @@ export interface SchoolBalance {
   owed: number;
   /** The part of that which is past its due date. */
   overdue: number;
+  /** Retention the school is holding back: owed, but not yet due. */
+  retention: number;
   /** Money received and not yet used against an invoice. */
   credit: number;
   openInvoices: number;
@@ -55,6 +58,7 @@ export class SchoolLedgerService {
           total: true,
           amountPaid: true,
           creditAmount: true,
+          retentionHeld: true,
           dueDate: true,
         },
       }),
@@ -91,6 +95,7 @@ export class SchoolLedgerService {
         b = {
           owed: 0,
           overdue: 0,
+          retention: 0,
           credit: 0,
           openInvoices: 0,
           ageing: emptyAgeing(),
@@ -101,10 +106,15 @@ export class SchoolLedgerService {
     };
     for (const inv of invoices) {
       const b = get(inv.schoolId);
-      const balance =
-        toCents(inv.total) -
-        toCents(inv.amountPaid) -
-        toCents(inv.creditAmount);
+      const pos = invoicePosition({
+        total: Number(inv.total),
+        paid: Number(inv.amountPaid),
+        credited: Number(inv.creditAmount),
+        retentionHeld: Number(inv.retentionHeld),
+      });
+      b.retention += toCents(pos.retention);
+      // what is due now: the retained part is owed, but not yet
+      const balance = toCents(pos.dueNow);
       if (balance <= 0) continue;
       b.owed += balance;
       b.openInvoices += 1;
@@ -132,6 +142,7 @@ export class SchoolLedgerService {
     for (const b of Array.from(out.values())) {
       b.owed = fromCents(b.owed);
       b.overdue = fromCents(b.overdue);
+      b.retention = fromCents(b.retention);
       b.credit = fromCents(b.credit);
       for (const k of Object.keys(b.ageing) as AgeBucket[])
         b.ageing[k] = fromCents(b.ageing[k]);
@@ -152,9 +163,12 @@ export class SchoolLedgerService {
         issueDate: day(r.issueDate),
         dueDate: day(r.dueDate),
         total: Number(r.total),
-        balance: fromCents(
-          toCents(r.total) - toCents(r.amountPaid) - toCents(r.creditAmount),
-        ),
+        balance: invoicePosition({
+          total: Number(r.total),
+          paid: Number(r.amountPaid),
+          credited: Number(r.creditAmount),
+          retentionHeld: Number(r.retentionHeld),
+        }).dueNow,
       }))
       .filter((r) => r.balance > 0);
   }

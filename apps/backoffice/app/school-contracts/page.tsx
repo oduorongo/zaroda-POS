@@ -13,6 +13,8 @@ interface Contract {
   id: string;
   contractNumber: string;
   reference: string | null;
+  retentionPercent: number;
+  retentionReleaseDays: number;
   title: string;
   status: Status;
   school: { id: string; name: string };
@@ -57,7 +59,7 @@ export default function SchoolContractsPage() {
   const [schools, setSchools] = useState<School[]>([]);
   const [openId, setOpenId] = useState<string | null>(null);
   const [detail, setDetail] = useState<Detail | null>(null);
-  const [form, setForm] = useState<{ schoolId: string; title: string; reference: string; startDate: string; endDate: string; value: string } | null>(null);
+  const [form, setForm] = useState<{ schoolId: string; title: string; reference: string; startDate: string; endDate: string; value: string; retentionPercent: string; retentionReleaseDays: string } | null>(null);
   const [variation, setVariation] = useState({ amount: "", reason: "" });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -144,7 +146,7 @@ export default function SchoolContractsPage() {
         {error && <p className="rounded-md bg-red-950 p-3 text-sm text-red-300">{error}</p>}
         {notice && <p className="rounded-md bg-green-950 p-3 text-sm text-green-300">{notice}</p>}
 
-        {canEdit && !form && <button onClick={() => setForm({ schoolId: "", title: "", reference: "", startDate: today(), endDate: "", value: "" })} className="rounded-md bg-primary-600 px-4 py-2 text-sm font-semibold text-white hover:bg-primary-700">New contract (without a tender)</button>}
+        {canEdit && !form && <button onClick={() => setForm({ schoolId: "", title: "", reference: "", startDate: today(), endDate: "", value: "", retentionPercent: "", retentionReleaseDays: "" })} className="rounded-md bg-primary-600 px-4 py-2 text-sm font-semibold text-white hover:bg-primary-700">New contract (without a tender)</button>}
         {form && (
           <section className="grid gap-3 rounded-lg border border-primary-600 bg-surface p-4 text-sm sm:grid-cols-2">
             <label>School
@@ -158,8 +160,10 @@ export default function SchoolContractsPage() {
             <label>Starts<input type="date" value={form.startDate} onChange={(e) => setForm({ ...form, startDate: e.target.value })} className={field} /></label>
             <label>Ends<input type="date" value={form.endDate} onChange={(e) => setForm({ ...form, endDate: e.target.value })} className={field} /></label>
             <label>Value, VAT included (KES)<input type="number" min={1} step="0.01" value={form.value} onChange={(e) => setForm({ ...form, value: e.target.value })} className={field} /></label>
+            <label>Retention held back (%) <span className="text-secondary-500">(blank = the school&apos;s usual)</span><input type="number" min={0} max={50} step="0.01" value={form.retentionPercent} onChange={(e) => setForm({ ...form, retentionPercent: e.target.value })} className={field} /></label>
+            <label>Released after (days)<input type="number" min={0} max={1825} value={form.retentionReleaseDays} onChange={(e) => setForm({ ...form, retentionReleaseDays: e.target.value })} className={field} /></label>
             <div className="flex items-end gap-2">
-              <button disabled={busy || !form.schoolId || form.title.trim().length < 2 || !form.endDate || !(Number(form.value) > 0)} onClick={() => void run(async () => { await apiPost("/school-supplier/contracts", { schoolId: form.schoolId, title: form.title.trim(), reference: form.reference.trim() || undefined, startDate: form.startDate, endDate: form.endDate, value: Number(form.value) }); setForm(null); }, "Contract made.")} className="rounded-md bg-primary-600 px-4 py-2 font-semibold text-white hover:bg-primary-700 disabled:opacity-50">Make the contract</button>
+              <button disabled={busy || !form.schoolId || form.title.trim().length < 2 || !form.endDate || !(Number(form.value) > 0)} onClick={() => void run(async () => { await apiPost("/school-supplier/contracts", { schoolId: form.schoolId, title: form.title.trim(), reference: form.reference.trim() || undefined, startDate: form.startDate, endDate: form.endDate, value: Number(form.value), retentionPercent: form.retentionPercent === "" ? undefined : Number(form.retentionPercent), retentionReleaseDays: form.retentionReleaseDays === "" ? undefined : Number(form.retentionReleaseDays) }); setForm(null); }, "Contract made.")} className="rounded-md bg-primary-600 px-4 py-2 font-semibold text-white hover:bg-primary-700 disabled:opacity-50">Make the contract</button>
               <button onClick={() => setForm(null)} className="rounded-md border border-border px-4 py-2 hover:bg-secondary-500/10">Cancel</button>
             </div>
           </section>
@@ -182,7 +186,7 @@ export default function SchoolContractsPage() {
                     <p className="font-semibold">{c.title}</p>
                     <p className="text-xs text-secondary-500">
                       {c.school.name} · <span className="font-mono">{c.contractNumber}</span>
-                      {c.reference ? ` · ${c.reference}` : ""} · {c.startDate} to {c.endDate}
+                      {c.reference ? ` · ${c.reference}` : ""} · {c.startDate} to {c.endDate}{c.retentionPercent > 0 ? ` · ${c.retentionPercent}% retention` : ""}
                       {c.daysLeft !== null ? (c.daysLeft < 0 ? " (past its end date)" : c.daysLeft <= 30 ? ` (${c.daysLeft} days left)` : "") : ""}
                     </p>
                   </div>
