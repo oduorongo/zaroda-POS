@@ -212,7 +212,10 @@ export class SchoolLedgerService {
         date: day(p.receivedOn),
         kind: 'PAYMENT' as const,
         reference: p.receiptNumber,
-        description: `Payment by ${p.method === 'CHEQUE' ? 'cheque' : p.method === 'BANK_TRANSFER' ? 'bank transfer' : p.method === 'MPESA' ? 'M-Pesa' : 'cash'}${p.reference ? ` ${p.reference}` : ''}`,
+        description:
+          p.method === 'WITHHOLDING_TAX'
+            ? `Tax withheld by the school${p.whtCertificateNumber ? `, certificate ${p.whtCertificateNumber}` : ''}`
+            : `Payment by ${p.method === 'CHEQUE' ? 'cheque' : p.method === 'BANK_TRANSFER' ? 'bank transfer' : p.method === 'MPESA' ? 'M-Pesa' : 'cash'}${p.reference ? ` ${p.reference}` : ''}`,
         debit: 0,
         credit: Number(p.amount),
         at: p.createdAt.getTime(),

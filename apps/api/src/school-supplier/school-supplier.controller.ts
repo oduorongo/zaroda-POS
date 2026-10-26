@@ -15,6 +15,7 @@ import { Role } from '@prisma/client';
 import { Roles } from '../auth/roles.decorator';
 import {
   BouncePaymentDto,
+  CertificateDto,
   AcceptQuoteDto,
   CancelOrderDto,
   CloseBalanceDto,
@@ -37,6 +38,7 @@ import {
 import { PriceListService } from './price-list.service';
 import { SchoolBillingService } from './school-billing.service';
 import { SchoolCollectionsService } from './school-collections.service';
+import { SchoolWithholdingService } from './school-withholding.service';
 import { SchoolCreditNotesService } from './school-credit-notes.service';
 import { SchoolOrdersService } from './school-orders.service';
 import { SchoolQuotesService } from './school-quotes.service';
@@ -53,6 +55,7 @@ export class SchoolSupplierController {
     private readonly credits: SchoolCreditNotesService,
     private readonly quotes: SchoolQuotesService,
     private readonly collections: SchoolCollectionsService,
+    private readonly withholding: SchoolWithholdingService,
   ) {}
 
   // ── Schools ──
@@ -221,6 +224,23 @@ export class SchoolSupplierController {
       ...(await this.orders.deliveryNote(id)),
       business: await this.billing.letterhead(),
     };
+  }
+
+  // ── Tax the schools withheld ──
+  /** What was withheld, by school, and which certificates are still missing. */
+  @Roles(Role.MANAGER, Role.OWNER, Role.AUDITOR)
+  @Get('withholding')
+  withholdingSummary(@Query('from') from?: string, @Query('to') to?: string) {
+    return this.withholding.summary(from, to);
+  }
+
+  @Roles(Role.MANAGER, Role.OWNER)
+  @Patch('payments/:id/certificate')
+  setCertificate(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: CertificateDto,
+  ) {
+    return this.withholding.setCertificate(id, dto);
   }
 
   // ── Chasing what is owed ──

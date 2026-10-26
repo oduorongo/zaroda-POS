@@ -604,6 +604,46 @@ const phoneB = '0722' + String(Math.floor(100000 + Math.random() * 899999));
   check('an order is never counted against itself', stockForLpo.json.lines[0].reserved === expectedOwn && stockForLpo.json.lines[0].reserved === expectedReserved - 5, [stockForLpo.json.lines[0].reserved, expectedOwn, expectedReserved]);
   check('what is promised never goes below zero and does not change the stock figure', noLine.available === (await stockOf(pen.id)) && noLine.reserved >= 0);
 
+  section('17. Tax withheld by the school, and its certificate');
+  await receive(pen.id, 100, 10);
+  const invW = await deliver15(10);
+  check('an invoice of 200 (10 pens) to settle part in cash and part as tax withheld', invW.total === 200, invW);
+  const cashW = await api('POST', '/school-supplier/payments', { token: owner, body: { schoolId: a.json.id, amount: 194, method: 'CHEQUE', reference: 'CHQ-W1', allocations: [{ invoiceId: invW.id, amount: 194 }] } });
+  check('the school pays 194 by cheque, keeping 6 back as tax', cashW.status === 201 && cashW.json.allocated === 194, cashW.json);
+  check('tax withheld does not need a cheque number or bank', (await api('POST', '/school-supplier/payments', { token: owner, body: { schoolId: a.json.id, amount: 1, method: 'WITHHOLDING_TAX', allocations: [] } })).status === 201);
+  const whtW = await api('POST', '/school-supplier/payments', { token: owner, body: { schoolId: a.json.id, amount: 6, method: 'WITHHOLDING_TAX', allocations: [{ invoiceId: invW.id, amount: 6 }], notes: '3% of 200' } });
+  check('the 6 withheld is recorded as a payment of its own kind and settles the invoice', whtW.status === 201 && whtW.json.method === 'WITHHOLDING_TAX' && whtW.json.certificateNumber === null && /^RC-/.test(whtW.json.receiptNumber), whtW.json);
+  const invWAfter = (await api('GET', `/school-supplier/invoices/${invW.id}`, { token: owner })).json;
+  check('together they pay the invoice in full', invWAfter.status === 'PAID' && invWAfter.amountPaid === 200 && invWAfter.balance === 0, invWAfter);
+  check('the invoice lists both receipts', invWAfter.payments.length === 2 && invWAfter.payments.some((p) => p.method === 'WITHHOLDING_TAX'), invWAfter.payments);
+  check('tax withheld cannot bounce', (await api('POST', `/school-supplier/payments/${whtW.json.id}/bounce`, { token: owner, body: { reason: 'it came back' } })).status === 400);
+  check('a certificate only goes with tax withheld', (await api('POST', '/school-supplier/payments', { token: owner, body: { schoolId: a.json.id, amount: 5, method: 'CASH', certificateNumber: 'X1' } })).status === 400);
+
+  const st17 = (await api('GET', `/school-supplier/schools/${a.json.id}/statement`, { token: owner })).json;
+  check('the statement says the 6 was tax withheld', st17.entries.some((e) => e.reference === whtW.json.receiptNumber && e.credit === 6 && /Tax withheld/.test(e.description)), st17.entries.slice(-3));
+
+  const sum0 = await api('GET', '/school-supplier/withholding', { token: owner });
+  const row0 = sum0.json.rows.find((r) => r.id === whtW.json.id);
+  check('the withholding list shows it waiting for its certificate, with what was withheld in all', sum0.status === 200 && row0.certificate === 'WAITING' && row0.amount === 6 && sum0.json.totals.withheld >= 7 && sum0.json.totals.withoutCertificate >= 7, sum0.json.totals);
+  check('a school cannot see it', (await api('GET', '/school-supplier/withholding', { token: tokenA })).status === 401);
+  const cert = await api('PATCH', `/school-supplier/payments/${whtW.json.id}/certificate`, { token: owner, body: { certificateNumber: 'WHT-2026-0457' } });
+  check('the certificate number is recorded with the day it came', cert.status === 200 && cert.json.certificateNumber === 'WHT-2026-0457' && cert.json.certificateReceivedOn === nairobi(), cert.json);
+  const sum1 = (await api('GET', '/school-supplier/withholding', { token: owner })).json;
+  check('it then counts as covered by a certificate', sum1.rows.find((r) => r.id === whtW.json.id).certificate === 'RECEIVED' && sum1.totals.withCertificate >= 6, sum1.totals);
+  check('the receipt now carries the certificate', (await api('GET', `/school-supplier/payments/${whtW.json.id}`, { token: owner })).json.certificateNumber === 'WHT-2026-0457');
+  check('a certificate cannot be put on a cash payment', (await api('PATCH', `/school-supplier/payments/${cashW.json.id}/certificate`, { token: owner, body: { certificateNumber: 'NOPE-1' } })).status === 400);
+  check('a certificate cannot be dated before the tax was withheld', (await api('PATCH', `/school-supplier/payments/${whtW.json.id}/certificate`, { token: owner, body: { certificateNumber: 'WHT-2026-0457', receivedOn: nairobi(-5) } })).status === 400);
+  check('a certificate needs a number', (await api('PATCH', `/school-supplier/payments/${whtW.json.id}/certificate`, { token: owner, body: {} })).status === 400);
+
+  // one withheld long ago and still no certificate
+  const oldWht = (await api('POST', '/school-supplier/payments', { token: owner, body: { schoolId: a.json.id, amount: 1, method: 'WITHHOLDING_TAX', allocations: [] } })).json;
+  await sql.query('UPDATE supplier_payments SET "receivedOn" = $2::date WHERE id = $1', [oldWht.id, nairobi(-45)]);
+  const sum2 = (await api('GET', '/school-supplier/withholding', { token: owner })).json;
+  check('tax withheld more than 30 days ago with no certificate is flagged missing', sum2.rows.find((r) => r.id === oldWht.id).certificate === 'MISSING' && sum2.rows.find((r) => r.id === oldWht.id).daysWaiting >= 45, sum2.rows.find((r) => r.id === oldWht.id));
+  const ranged = (await api('GET', `/school-supplier/withholding?from=${nairobi(-10)}&to=${nairobi()}`, { token: owner })).json;
+  check('the list can be limited to a period', !ranged.rows.some((r) => r.id === oldWht.id) && ranged.rows.some((r) => r.id === whtW.json.id), ranged.rows.length);
+  check('by school totals add up to the total', Math.abs(sum2.totals.bySchool.reduce((s, x) => s + x.withheld, 0) - sum2.totals.withheld) < 0.01);
+
   await sql.end();
   console.log(`\n${passed} checks passed${failures.length ? `, ${failures.length} FAILED:\n - ${failures.join('\n - ')}` : ' - all good'}`);
   process.exit(failures.length ? 1 : 0);

@@ -3868,6 +3868,8 @@ enum SupplierPaymentMethod {
   BANK_TRANSFER
   MPESA
   CASH
+  /// Not money: tax the school kept back and pays to KRA on the supplier's behalf. It settles the invoice like a payment and is backed by a withholding certificate.
+  WITHHOLDING_TAX
 }
 
 enum SupplierPaymentStatus {
@@ -4237,6 +4239,9 @@ model SupplierPayment {
   bounceReason   String?
   notes          String?
   recordedById   String?
+  /// For tax withheld by the school: the certificate it issues (number, and the day it reached us). Missing until we have it.
+  whtCertificateNumber     String?
+  whtCertificateReceivedOn DateTime? @db.Date
   createdAt      DateTime              @default(now())
 
   organization Organization                @relation(fields: [organizationId], references: [id], onDelete: Cascade)
