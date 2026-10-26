@@ -17,11 +17,14 @@ import { PriceListService } from './price-list.service';
 import { SchoolBillingService } from './school-billing.service';
 import { SchoolCollectionsService } from './school-collections.service';
 import { SchoolWithholdingService } from './school-withholding.service';
+import { SchoolContractsService } from './school-contracts.service';
 import { SchoolCreditNotesService } from './school-credit-notes.service';
 import { SchoolLedgerService } from './school-ledger.service';
 import { SchoolNotifierService } from './school-notifier.service';
 import { SchoolOrdersService } from './school-orders.service';
 import { SchoolQuotesService } from './school-quotes.service';
+import { SchoolTendersController } from './school-tenders.controller';
+import { SchoolTendersService } from './school-tenders.service';
 import { SchoolSupplierController } from './school-supplier.controller';
 import { SchoolsService } from './schools.service';
 
@@ -49,6 +52,7 @@ import { SchoolsService } from './schools.service';
   ],
   controllers: [
     SchoolSupplierController,
+    SchoolTendersController,
     SchoolAuthController,
     SchoolPortalController,
   ],
@@ -61,6 +65,8 @@ import { SchoolsService } from './schools.service';
     SchoolOrdersService,
     SchoolBillingService,
     SchoolCreditNotesService,
+    SchoolContractsService,
+    SchoolTendersService,
     SchoolCollectionsService,
     SchoolWithholdingService,
     SchoolQuotesService,
@@ -107,6 +113,16 @@ export class SchoolSupplierModule implements OnModuleInit {
           tableName: 'supplier_invoice_lines',
           description:
             'Items on an invoice, with the cost of the goods for the profit report',
+        },
+        {
+          tableName: 'school_tenders',
+          description:
+            'Tenders the business bids for, with checklist, bid costing and the outcome',
+        },
+        {
+          tableName: 'school_contracts',
+          description:
+            'Contracts to supply a school: value, variations, and the orders and invoices charged to them',
         },
         {
           tableName: 'school_quotes',

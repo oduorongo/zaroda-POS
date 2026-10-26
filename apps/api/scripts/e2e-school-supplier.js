@@ -644,6 +644,128 @@ const phoneB = '0722' + String(Math.floor(100000 + Math.random() * 899999));
   check('the list can be limited to a period', !ranged.rows.some((r) => r.id === oldWht.id) && ranged.rows.some((r) => r.id === whtW.json.id), ranged.rows.length);
   check('by school totals add up to the total', Math.abs(sum2.totals.bySchool.reduce((s, x) => s + x.withheld, 0) - sum2.totals.withheld) < 0.01);
 
+  section('18. Tenders, compliance documents and contracts');
+  await sql.query('DELETE FROM school_compliance_docs WHERE "organizationId" = $1', [orgId]);
+  await receive(pen.id, 200, 10);
+  const tNo = `TND-${tag}`;
+  check('a school cannot see or make tenders', (await api('GET', '/school-supplier/tenders', { token: tokenA })).status === 401 && (await api('POST', '/school-supplier/tenders', { token: tokenA, body: { entityName: 'X', tenderNumber: 'Y', title: 'Z' } })).status === 401);
+
+  // compliance documents
+  const docOld = await api('POST', '/school-supplier/compliance', { token: owner, body: { name: `Tax compliance certificate ${tag}`, reference: 'TCC-1', issuedOn: nairobi(-400), expiryDate: nairobi(-3) } });
+  check('a compliance document that has run out is listed as expired', docOld.status === 201 && docOld.json.state === 'EXPIRED', docOld.json);
+  const docOk = await api('POST', '/school-supplier/compliance', { token: owner, body: { name: `Business permit ${tag}`, expiryDate: nairobi(200) } });
+  check('one with a long time left is fine; one due in under 30 days is "expiring"', docOk.json.state === 'OK' && (await api('POST', '/school-supplier/compliance', { token: owner, body: { name: `Insurance ${tag}`, expiryDate: nairobi(10) } })).json.state === 'EXPIRING');
+  check('a document cannot expire before it was issued', (await api('POST', '/school-supplier/compliance', { token: owner, body: { name: 'Bad doc', issuedOn: nairobi(), expiryDate: nairobi(-1) } })).status === 400);
+
+  // a tender
+  const tender = await api('POST', '/school-supplier/tenders', { token: owner, body: { entityName: 'County Education Office', tenderNumber: tNo, title: 'Supply of stationery 2027', closingDate: nairobi(20), notes: 'Lot 2' } });
+  check('a tender is registered with the standard checklist', tender.status === 201 && tender.json.status === 'IDENTIFIED' && tender.json.checklist.length === 7 && tender.json.checklist.every((c) => c.done === false), tender.json);
+  check('the same tender number cannot be registered twice', (await api('POST', '/school-supplier/tenders', { token: owner, body: { entityName: 'Another', tenderNumber: tNo, title: 'x y' } })).status === 409);
+  const tid = tender.json.id;
+  const upd = await api('PUT', `/school-supplier/tenders/${tid}`, { token: owner, body: { entityName: 'County Education Office', tenderNumber: tNo, title: 'Supply of stationery 2027 (Lot 2)', closingDate: nairobi(20) } });
+  check('its details can be changed', upd.status === 200 && upd.json.title.includes('Lot 2'), upd.json);
+
+  // the bid
+  const bid = await api('PUT', `/school-supplier/tenders/${tid}/lines`, { token: owner, body: { lines: [{ variantId: book.id, description: 'Exercise book 96pg', quantity: 1000, unitCost: 30, unitPrice: 45 }, { variantId: pen.id, description: 'Blue pen', quantity: 500, unitCost: 10, unitPrice: 20 }, { description: 'Delivery to 12 schools', quantity: 1, unitCost: 4000, unitPrice: 5000, taxRate: 0 }] } });
+  check('the bid is costed: cost 39,000, priced 60,000, margin 21,000 (35%)', bid.status === 200 && bid.json.bid.cost === 39000 && bid.json.bid.subtotal === 60000 && bid.json.bid.margin === 21000 && bid.json.bid.marginPercent === 35, bid.json.bid);
+  check('VAT is taken from the product unless a rate is given: total is the price plus VAT', bid.json.bid.total === bid.json.bid.subtotal + bid.json.bid.taxAmount, bid.json.bid);
+  check('a product that does not exist cannot be on the bid', (await api('PUT', `/school-supplier/tenders/${tid}/lines`, { token: owner, body: { lines: [{ variantId: '00000000-0000-4000-8000-000000000000', description: 'x', quantity: 1, unitCost: 1, unitPrice: 2 }] } })).status === 400);
+  const bidTotal = bid.json.bid.total;
+
+  // the checklist
+  const started = await api('POST', `/school-supplier/tenders/${tid}/start`, { token: owner });
+  check('work starts: the tender is being prepared', started.status === 200 && started.json.status === 'PREPARING');
+  const added = await api('POST', `/school-supplier/tenders/${tid}/checklist`, { token: owner, body: { title: 'Sample products delivered' } });
+  check('an item can be added to the checklist', added.status === 201 && added.json.checklist.length === 8, added.status);
+  const ready0 = await api('GET', `/school-supplier/tenders/${tid}/readiness`, { token: owner });
+  check('it is not ready: the unticked items and the expired certificate are named', ready0.json.blockers.length >= 2 && ready0.json.blockers.some((b) => b.includes('Not ready on the checklist')) && ready0.json.blockers.some((b) => b.includes(`Tax compliance certificate ${tag}`)), ready0.json);
+  const refuse = await api('POST', `/school-supplier/tenders/${tid}/submit`, { token: owner, body: {} });
+  check('submitting is refused, saying why and that the owner can override', refuse.status === 400 && /override|anyway|reason/i.test(refuse.json.message), refuse.json);
+  check('an override reason that is too short is refused', (await api('POST', `/school-supplier/tenders/${tid}/submit`, { token: owner, body: { overrideReason: 'ok' } })).status === 400);
+  for (const c of added.json.checklist) await api('PATCH', `/school-supplier/tenders/${tid}/checklist/${c.id}`, { token: owner, body: { done: true } });
+  const ready1 = await api('GET', `/school-supplier/tenders/${tid}/readiness`, { token: owner });
+  check('with every item ticked what is left in the way is the expired certificate and the insurance that runs out before the tender closes', ready1.json.blockers.length === 2 && ready1.json.blockers.some((b) => b.includes('expired')) && ready1.json.blockers.some((b) => b.includes('before the tender closes')), ready1.json.blockers);
+  const sub = await api('POST', `/school-supplier/tenders/${tid}/submit`, { token: owner, body: { overrideReason: 'The new certificate was applied for and is due this week' } });
+  check('the owner submits anyway with a reason, and the reason is kept', sub.status === 200 && sub.json.status === 'SUBMITTED' && sub.json.submittedOn === nairobi() && sub.json.submitOverride.includes('applied for'), sub.json);
+  check('the override is in the audit log', (await sql.query(`SELECT count(*)::int AS n FROM audit_log WHERE action = 'school.tender_submitted_override' AND "entityId" = $1`, [tid])).rows[0].n === 1);
+  check('a submitted tender cannot be changed or deleted', (await api('PUT', `/school-supplier/tenders/${tid}`, { token: owner, body: { entityName: 'x y', tenderNumber: tNo, title: 'changed' } })).status === 409 && (await api('DELETE', `/school-supplier/tenders/${tid}`, { token: owner })).status === 409 && (await api('PUT', `/school-supplier/tenders/${tid}/lines`, { token: owner, body: { lines: [] } })).status === 409);
+
+  // a tender that has closed cannot be submitted
+  const late = (await api('POST', '/school-supplier/tenders', { token: owner, body: { entityName: 'Old Office', tenderNumber: `${tNo}-L`, title: 'Late one', closingDate: nairobi(5) } })).json;
+  await sql.query('UPDATE school_tenders SET "closingDate" = $2::date WHERE id = $1', [late.id, nairobi(-1)]);
+  check('a tender past its closing date cannot be submitted, even by the owner', (await api('POST', `/school-supplier/tenders/${late.id}/submit`, { token: owner, body: { overrideReason: 'Please let it through' } })).status === 400);
+  check('an unsubmitted tender can be withdrawn, and then it is finished', (await api('POST', `/school-supplier/tenders/${late.id}/withdraw`, { token: owner, body: { note: 'Missed the deadline' } })).json.status === 'WITHDRAWN' && (await api('POST', `/school-supplier/tenders/${late.id}/lost`, { token: owner, body: {} })).status === 409);
+
+  // winning
+  const noSchool = await api('POST', `/school-supplier/tenders/${tid}/award`, { token: owner, body: { startDate: nairobi(), endDate: nairobi(365) } });
+  check('winning needs a school for the contract when the tender named none', noSchool.status === 400 && /school/i.test(noSchool.json.message), noSchool.json);
+  check('a contract cannot end before it starts', (await api('POST', `/school-supplier/tenders/${tid}/award`, { token: owner, body: { schoolId: a.json.id, startDate: nairobi(10), endDate: nairobi(1) } })).status === 400);
+  const won = await api('POST', `/school-supplier/tenders/${tid}/award`, { token: owner, body: { schoolId: a.json.id, startDate: nairobi(-1), endDate: nairobi(365) } });
+  check('winning makes a contract numbered CT-, at the bid amount, and marks the tender won', won.status === 200 && won.json.tender.status === 'WON' && /^CT-\d{4}-\d{4}$/.test(won.json.contractNumber) && won.json.tender.contract?.contractNumber === won.json.contractNumber, won.json);
+  check('it cannot be awarded twice', (await api('POST', `/school-supplier/tenders/${tid}/award`, { token: owner, body: { schoolId: a.json.id, startDate: nairobi(), endDate: nairobi(30) } })).status === 409);
+  const cid = won.json.contractId;
+  const c0 = (await api('GET', `/school-supplier/contracts/${cid}`, { token: owner })).json;
+  check('the contract is worth the bid, with its tender, nothing invoiced yet', c0.value === bidTotal && c0.originalValue === bidTotal && c0.tender?.tenderNumber === tNo && c0.netInvoiced === 0 && c0.remaining === bidTotal && c0.status === 'ACTIVE' && c0.daysLeft >= 364, c0);
+
+  // orders under the contract
+  const orderUnder = async (qty, over = {}) => {
+    const o = await api('POST', '/school-portal/orders', { token: tokenA, body: { lines: [{ variantId: pen.id, quantity: qty }] } });
+    await api('POST', `/school-supplier/orders/${o.json.id}/confirm`, { token: owner, body: {} });
+    return o.json;
+  };
+  const oc1 = await orderUnder(10);
+  check('the school\'s order goes under its only running contract by itself', oc1.contract?.id === cid && oc1.contract.contractNumber === won.json.contractNumber, oc1.contract);
+  const dl = await api('POST', `/school-supplier/orders/${oc1.id}/deliver`, { token: owner, body: { branchId, receivedByName: 'Mr Otieno' } });
+  const invUnder = dl.json.deliveries[0].invoice;
+  const c1 = (await api('GET', `/school-supplier/contracts/${cid}`, { token: owner })).json;
+  check('delivering invoices it against the contract: 200 used, the rest left, 200 owed', invUnder.total === 200 && c1.netInvoiced === 200 && c1.remaining === bidTotal - 200 && c1.owed === 200 && c1.invoices.length === 1 && c1.orders.length === 1, c1);
+  check('the contract shows the profit on it: sales 200 less cost 100 = 100 (50%)', c1.profit === 100 && c1.profitPercent === 50, [c1.profit, c1.profitPercent]);
+  const cnC = await api('POST', '/school-supplier/credit-notes', { token: owner, body: { invoiceId: invUnder.id, reason: 'RETURNED', lines: [{ invoiceLineId: (await api('GET', `/school-supplier/invoices/${invUnder.id}/creditable`, { token: owner })).json.lines[0].invoiceLineId, quantity: 4 }] } });
+  const c2 = (await api('GET', `/school-supplier/contracts/${cid}`, { token: owner })).json;
+  check('a credit note against that invoice comes off what the contract has used (80)', cnC.status === 201 && c2.netInvoiced === 120 && c2.remaining === bidTotal - 120, [c2.netInvoiced, c2.remaining]);
+  const cpay = await api('POST', '/school-supplier/payments', { token: owner, body: { schoolId: a.json.id, amount: 120, method: 'CASH', allocations: [{ invoiceId: invUnder.id, amount: 120 }] } });
+  check('payments show against the contract: nothing owed once the 120 is paid', cpay.status === 201 && (await api('GET', `/school-supplier/contracts/${cid}`, { token: owner })).json.owed === 0);
+
+  // variations
+  const v1 = await api('POST', `/school-supplier/contracts/${cid}/variations`, { token: owner, body: { amount: 10000, reason: 'Extra 12 schools added' } });
+  check('a variation adds to the value and is listed with its reason', v1.status === 201 && v1.json.value === bidTotal + 10000 && v1.json.variations.length === 1 && v1.json.variations[0].reason === 'Extra 12 schools added', v1.json.value);
+  check('a variation that takes the value to nothing is refused', (await api('POST', `/school-supplier/contracts/${cid}/variations`, { token: owner, body: { amount: -(bidTotal + 10000), reason: 'cancel everything' } })).status === 400);
+  check('a variation of nothing, or with no reason, is refused', (await api('POST', `/school-supplier/contracts/${cid}/variations`, { token: owner, body: { amount: 0, reason: 'nothing at all' } })).status === 400 && (await api('POST', `/school-supplier/contracts/${cid}/variations`, { token: owner, body: { amount: 5 } })).status === 400);
+
+  // moving orders between contracts
+  const small = await api('POST', '/school-supplier/contracts', { token: owner, body: { schoolId: a.json.id, title: 'Small top-up contract', startDate: nairobi(-1), endDate: nairobi(30), value: 100 } });
+  check('a second contract is made directly, with no tender', small.status === 201 && small.json.status === 'ACTIVE' && small.json.tender === null && /^CT-/.test(small.json.contractNumber), small.json);
+  const oc2 = await orderUnder(2);
+  check('with two running contracts a new order is not put under either by itself', oc2.contract === null, oc2.contract);
+  const lk = await api('POST', `/school-supplier/orders/${oc2.id}/contract`, { token: owner, body: { contractId: small.json.id } });
+  check('the supplier puts it under the small one', lk.status === 200 && (await api('GET', `/school-supplier/orders/${oc2.id}`, { token: owner })).json.contract?.id === small.json.id);
+  check('a contract with another school is refused', (await api('POST', `/school-supplier/orders/${oc2.id}/contract`, { token: owner, body: { contractId: (await api('POST', '/school-supplier/contracts', { token: owner, body: { schoolId: b.json.id, title: 'Other school', startDate: nairobi(), endDate: nairobi(10), value: 500 } })).json.id } })).status === 400);
+  check('it can be taken off again, and put back', (await api('POST', `/school-supplier/orders/${oc2.id}/contract`, { token: owner, body: { contractId: null } })).status === 200 && (await api('POST', `/school-supplier/orders/${oc2.id}/contract`, { token: owner, body: { contractId: small.json.id } })).status === 200);
+  const oc3 = await orderUnder(10);
+  await api('POST', `/school-supplier/orders/${oc3.id}/contract`, { token: owner, body: { contractId: small.json.id } });
+  await api('POST', `/school-supplier/orders/${oc2.id}/deliver`, { token: owner, body: { branchId, receivedByName: 'Mr Otieno' } });
+  await api('POST', `/school-supplier/orders/${oc3.id}/deliver`, { token: owner, body: { branchId, receivedByName: 'Mr Otieno' } });
+  const cs = (await api('GET', `/school-supplier/contracts/${small.json.id}`, { token: owner })).json;
+  check('invoicing beyond the contract value is allowed but shown: 240 invoiced on a 100 contract is 140 over', cs.netInvoiced === 240 && cs.overrun === 140 && cs.remaining === 0, [cs.netInvoiced, cs.overrun]);
+
+  // closing
+  const contractClosed18 = await api('POST', `/school-supplier/contracts/${small.json.id}/close`, { token: owner, body: { outcome: 'COMPLETED', note: 'All delivered' } });
+  check('a contract can be closed as completed, with a note', contractClosed18.status === 200 && contractClosed18.json.status === 'COMPLETED' && contractClosed18.json.closedNote === 'All delivered' && contractClosed18.json.daysLeft === null, contractClosed18.json);
+  check('a closed contract cannot be varied, changed, closed again or have orders put under it', (await api('POST', `/school-supplier/contracts/${small.json.id}/variations`, { token: owner, body: { amount: 10, reason: 'too late now' } })).status === 409 && (await api('PATCH', `/school-supplier/contracts/${small.json.id}`, { token: owner, body: { title: 'New name' } })).status === 409 && (await api('POST', `/school-supplier/contracts/${small.json.id}/close`, { token: owner, body: { outcome: 'TERMINATED', note: 'again' } })).status === 409 && (await api('POST', `/school-supplier/orders/${(await orderUnder(1)).id}/contract`, { token: owner, body: { contractId: small.json.id } })).status === 409);
+  check('contracts can be listed by status and school', (await api('GET', '/school-supplier/contracts?status=ACTIVE', { token: owner })).json.every((c) => c.status === 'ACTIVE') && (await api('GET', `/school-supplier/contracts?schoolId=${a.json.id}`, { token: owner })).json.length >= 2);
+  check('a school\'s running contracts can be listed for choosing one on an order', (await api('GET', `/school-supplier/schools/${a.json.id}/running-contracts`, { token: owner })).json.some((c) => c.id === cid));
+
+  // a lost tender
+  const t2 = (await api('POST', '/school-supplier/tenders', { token: owner, body: { entityName: 'Ministry', tenderNumber: `${tNo}-2`, title: 'Another bid' } })).json;
+  check('a tender cannot be marked lost before it was submitted', (await api('POST', `/school-supplier/tenders/${t2.id}/lost`, { token: owner, body: {} })).status === 409);
+  check('tenders can be listed by status', (await api('GET', '/school-supplier/tenders?status=WON', { token: owner })).json.some((t) => t.id === tid) && (await api('GET', '/school-supplier/tenders', { token: owner })).json.length >= 3);
+  const doc = (await api('GET', '/school-supplier/compliance', { token: owner })).json;
+  check('compliance documents can be changed and removed', (await api('PUT', `/school-supplier/compliance/${docOld.json.id}`, { token: owner, body: { name: `Tax compliance certificate ${tag}`, reference: 'TCC-2', expiryDate: nairobi(300) } })).json.state === 'OK' && (await api('DELETE', `/school-supplier/compliance/${docOk.json.id}`, { token: owner })).status === 200 && doc.length >= 3);
+  for (const t of ['school_tenders', 'school_tender_checks', 'school_tender_lines', 'school_compliance_docs', 'school_contracts', 'school_contract_variations']) {
+    const r = (await sql.query(`SELECT relrowsecurity AS on, relforcerowsecurity AS forced FROM pg_class WHERE relname = $1`, [t])).rows[0];
+    check(`${t} has row-level security switched on and forced`, r?.on === true && r?.forced === true, r);
+  }
+
   await sql.end();
   console.log(`\n${passed} checks passed${failures.length ? `, ${failures.length} FAILED:\n - ${failures.join('\n - ')}` : ' - all good'}`);
   process.exit(failures.length ? 1 : 0);
