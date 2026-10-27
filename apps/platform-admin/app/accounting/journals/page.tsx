@@ -12,7 +12,7 @@ interface ListRow {
   kind: Kind;
   memo: string;
   source: string | null;
-  amount: number;
+  lines: { code: string; name: string; debit: number; credit: number }[];
   reversedBy: { id: string; number: number } | null;
   reverses: string | null;
 }
@@ -336,29 +336,49 @@ export default function JournalsPage() {
                 <tr>
                   <th className="p-2">No.</th>
                   <th className="p-2">Date</th>
-                  <th className="p-2">What</th>
-                  <th className="p-2">Kind</th>
-                  <th className="p-2 text-right">Amount</th>
+                  <th className="p-2">Account</th>
+                  <th className="p-2 text-right">Debit</th>
+                  <th className="p-2 text-right">Credit</th>
                 </tr>
               </thead>
-              <tbody>
-                {list.rows.map((r) => (
-                  <tr key={r.id} onClick={() => void show(r.id)} className="cursor-pointer border-b border-border/60 last:border-0 hover:bg-secondary-500/10">
-                    <td className="p-2 font-mono">{r.number}</td>
-                    <td className="p-2 whitespace-nowrap">{niceDay(r.date)}</td>
-                    <td className={`p-2 ${r.reversedBy ? "text-secondary-500 line-through" : ""}`}>{r.memo}</td>
-                    <td className="p-2 text-xs">{r.source ?? KIND_LABELS[r.kind]}{r.kind === "REVERSAL" ? " (reversal)" : ""}</td>
-                    <td className="p-2 text-right font-mono">{kes(r.amount)}</td>
+              {list.rows.map((r) => (
+                // one block per entry: what it was, then its lines, debits first and credits indented
+                <tbody key={r.id} onClick={() => void show(r.id)} className="cursor-pointer border-b border-border last:border-0 hover:bg-secondary-500/10">
+                  <tr>
+                    <td className="p-2 pb-1 align-top font-mono">{r.number}</td>
+                    <td className="p-2 pb-1 align-top whitespace-nowrap">{niceDay(r.date)}</td>
+                    <td className="p-2 pb-1" colSpan={3}>
+                      <span className={`font-medium ${r.reversedBy ? "text-secondary-500 line-through" : ""}`}>{r.memo}</span>
+                      <span className="ml-2 text-xs text-secondary-500">
+                        {r.source ?? KIND_LABELS[r.kind]}
+                        {r.kind === "REVERSAL" ? " (reversal)" : ""}
+                      </span>
+                    </td>
                   </tr>
-                ))}
-                {list.rows.length === 0 && (
+                  {r.lines.map((l, i) => (
+                    <tr key={i} className="text-secondary-700">
+                      <td colSpan={2} />
+                      <td className={`px-2 py-0.5 ${l.credit > 0 ? "pl-8" : ""}`}>
+                        {l.code} {l.name}
+                      </td>
+                      <td className="px-2 py-0.5 text-right font-mono">{l.debit ? kes(l.debit) : ""}</td>
+                      <td className="px-2 py-0.5 text-right font-mono">{l.credit ? kes(l.credit) : ""}</td>
+                    </tr>
+                  ))}
+                  <tr>
+                    <td colSpan={5} className="pb-1" />
+                  </tr>
+                </tbody>
+              ))}
+              {list.rows.length === 0 && (
+                <tbody>
                   <tr>
                     <td className="p-4 text-center text-secondary-500" colSpan={5}>
                       No entries yet.
                     </td>
                   </tr>
-                )}
-              </tbody>
+                </tbody>
+              )}
             </table>
           </div>
         )}

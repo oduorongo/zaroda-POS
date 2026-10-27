@@ -450,7 +450,7 @@ export class PlatformLedgerService {
           orderBy: [{ entryDate: 'desc' }, { number: 'desc' }],
           skip: (page - 1) * PAGE,
           take: PAGE,
-          include: { lines: { select: { debit: true } }, reversedBy: { select: { id: true, number: true } } },
+          include: { lines: { select: { debit: true, credit: true, account: { select: { code: true, name: true } } } }, reversedBy: { select: { id: true, number: true } } },
         }),
       ]);
       return {
@@ -465,6 +465,7 @@ export class PlatformLedgerService {
           memo: e.memo,
           source: e.sourceType ? (PLATFORM_SOURCE_LABELS[e.sourceType] ?? e.sourceType) : null,
           amount: money(e.lines.reduce((s, l) => s + cents(l.debit), 0)),
+          lines: e.lines.map((l) => ({ code: l.account.code, name: l.account.name, debit: Number(l.debit), credit: Number(l.credit) })).sort((a, b) => (b.debit > 0 ? 1 : 0) - (a.debit > 0 ? 1 : 0) || a.code.localeCompare(b.code, undefined, { numeric: true })),
           reversedBy: e.reversedBy,
           reverses: e.reversesId,
         })),
