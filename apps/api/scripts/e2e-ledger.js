@@ -136,7 +136,8 @@ const near = (a, b) => Math.abs(Number(a) - Number(b)) < 0.005;
   const line = (e, k) => e.lines.find((l) => l.code === key(k).code) ?? { debit: 0, credit: 0 };
   check('the cash sale: cash 116 in, sales 100 and VAT 16 out', line(e1, 'CASH').debit === 116 && line(e1, 'SALES').credit === 100 && line(e1, 'VAT_OUTPUT').credit === 16, e1.lines);
   check('and the cost of what was sold (60) moves out of stock', line(e1, 'COGS').debit === 60 && line(e1, 'INVENTORY').credit === 60, e1.lines);
-  check('it is dated the day of the sale, from the sale', e1.date === nairobi() && e1.kind === 'AUTO' && e1.source === 'Sale', e1);
+  check('the journal list shows the sale at what the customer paid (116), not with its cost added (176)', (await entryFor('SALE', s1.json.id))[0].amount === 116, await entryFor('SALE', s1.json.id));
+  check('it is dated the day of the sale, from the sale',e1.date === nairobi() && e1.kind === 'AUTO' && e1.source === 'Sale', e1);
   const e2 = (await h('GET', `/accounting/journals/${(await entryFor('SALE', s2.json.id))[0].id}`)).json;
   check('the split sale: 100 cash and 132 waiting from the card company', line(e2, 'CASH').debit === 100 && line(e2, 'CARD_CLEARING').debit === 132 && line(e2, 'SALES').credit === 200 && line(e2, 'COGS').debit === 120, e2.lines);
 

@@ -9,6 +9,15 @@ import { manualProblem, PAYABLE_ACCOUNTS, payOffDraft, postingDate } from './led
 import { AccountInfo, balanceSheet, profitAndLoss, Sums, trialBalance, withRunningBalance } from './ledger-reports.util';
 
 const PAGE = 50;
+
+/**
+ * What an entry is worth on the list: its debits, leaving out the cost of goods moving out of stock (a sale of 6,240 whose goods
+ * cost 2,585 shows as 6,240, not 8,825). A reversal shows the same figure as the entry it undoes.
+ */
+function entryAmount(lines: { debit: unknown; credit: unknown; account: { systemKey: string | null } }[]) {
+  const costMoved = lines.filter((l) => l.account.systemKey === 'COGS').reduce((t, l) => t + cents(l.debit) + cents(l.credit), 0);
+  return lines.reduce((t, l) => t + cents(l.debit), 0) - costMoved;
+}
 const money = (cents: number) => Math.round(cents) / 100;
 const cents = (v: unknown) => Math.round(Number(v ?? 0) * 100);
 
@@ -185,7 +194,7 @@ export class AccountingService {
           orderBy: [{ entryDate: 'desc' }, { number: 'desc' }],
           skip: (page - 1) * PAGE,
           take: PAGE,
-          include: { lines: { select: { debit: true } }, reversedBy: { select: { id: true, number: true } } },
+          include: { lines: { select: { debit: true, credit: true, account: { select: { systemKey: true } } } }, reversedBy: { select: { id: true, number: true } } },
         }),
       ]);
       return {
@@ -199,7 +208,7 @@ export class AccountingService {
           kind: e.kind,
           memo: e.memo,
           source: e.sourceType ? (SOURCE_LABELS[e.sourceType] ?? e.sourceType) : null,
-          amount: money(e.lines.reduce((s, l) => s + cents(l.debit), 0)),
+          amount: money(entryAmount(e.lines)),
           reversedBy: e.reversedBy,
           reverses: e.reversesId,
         })),
