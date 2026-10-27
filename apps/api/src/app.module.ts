@@ -40,6 +40,7 @@ import { HotelModule } from './hotel/hotel.module';
 import { ReservationsModule } from './reservations/reservations.module';
 import { AlertsModule } from './alerts/alerts.module';
 import { ExpensesModule } from './expenses/expenses.module';
+import { AccountingModule } from './accounting/accounting.module';
 import { SchoolSupplierModule } from './school-supplier/school-supplier.module';
 import { TenderAdvertsModule } from './tender-adverts/tender-adverts.module';
 import { PharmacyModule } from './pharmacy/pharmacy.module';
@@ -148,6 +149,7 @@ import { DeliveryModule } from './delivery/delivery.module';
     ReservationsModule,
     AlertsModule,
     ExpensesModule,
+    AccountingModule,
     SchoolSupplierModule,
     TenderAdvertsModule,
     PharmacyModule,

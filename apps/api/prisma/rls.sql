@@ -1433,3 +1433,39 @@ DROP POLICY IF EXISTS tenant_isolation ON etims_imports;
 CREATE POLICY tenant_isolation ON etims_imports
   USING ("organizationId" = current_setting('app.current_tenant', true))
   WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+-- Accounting: chart of accounts, journals, ledger settings and postings
+ALTER TABLE ledger_accounts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE ledger_accounts FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON ledger_accounts;
+CREATE POLICY tenant_isolation ON ledger_accounts
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+ALTER TABLE ledger_settings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE ledger_settings FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON ledger_settings;
+CREATE POLICY tenant_isolation ON ledger_settings
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+ALTER TABLE journal_entries ENABLE ROW LEVEL SECURITY;
+ALTER TABLE journal_entries FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON journal_entries;
+CREATE POLICY tenant_isolation ON journal_entries
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+ALTER TABLE journal_lines ENABLE ROW LEVEL SECURITY;
+ALTER TABLE journal_lines FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON journal_lines;
+CREATE POLICY tenant_isolation ON journal_lines
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+ALTER TABLE ledger_postings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE ledger_postings FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON ledger_postings;
+CREATE POLICY tenant_isolation ON ledger_postings
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
