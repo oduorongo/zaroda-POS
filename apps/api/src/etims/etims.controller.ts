@@ -26,11 +26,15 @@ import { DocumentListQueryDto } from './dto/etims-documents.dto';
 import { EtimsCodesService } from './etims-codes.service';
 import { EtimsDocumentsService } from './etims-documents.service';
 import { EtimsItemsService } from './etims-items.service';
+import { EtimsReceiptsService } from './etims-receipts.service';
+import { EtimsReportsService } from './etims-reports.service';
 import { EtimsSettingsService } from './etims-settings.service';
 
 // eTIMS is the business's tax setup, so it is for owners and managers; an auditor can look.
 const WRITERS = [Role.MANAGER, Role.OWNER];
 const READERS = [Role.MANAGER, Role.OWNER, Role.AUDITOR];
+// the till staff may print a sale's receipt and look at the X report
+const TILL_AND_READERS = [Role.CASHIER, Role.SUPERVISOR, ...READERS];
 
 @Controller('etims')
 export class EtimsController {
@@ -39,6 +43,8 @@ export class EtimsController {
     private readonly codes: EtimsCodesService,
     private readonly items: EtimsItemsService,
     private readonly documents: EtimsDocumentsService,
+    private readonly receipts: EtimsReceiptsService,
+    private readonly reports: EtimsReportsService,
   ) {}
 
   @Roles(...READERS)
@@ -136,6 +142,61 @@ export class EtimsController {
   @Get('documents/by-sale/:saleId')
   documentsForSale(@Param('saleId', ParseUUIDPipe) saleId: string) {
     return this.documents.forSale(saleId);
+  }
+
+  // ── KRA receipts and the X / Z / PLU reports (TIS specification) ──
+  /** The KRA receipt of a sale (and of its credit note), once KRA has signed it. ?copy=true prints it as a COPY, which is counted. */
+  @Roles(...TILL_AND_READERS)
+  @Get('receipts/by-sale/:saleId')
+  receiptForSale(
+    @Param('saleId', ParseUUIDPipe) saleId: string,
+    @Query('copy') copy?: string,
+  ) {
+    return this.receipts.forSale(saleId, copy === 'true');
+  }
+
+  @Roles(...TILL_AND_READERS)
+  @Get('reports/x')
+  xReport(@Query('branchId', ParseUUIDPipe) branchId: string) {
+    return this.reports.x(branchId);
+  }
+
+  /** Closes the period and keeps the report. Owners and managers only. */
+  @Roles(...WRITERS)
+  @Post('reports/z')
+  zReport(@Query('branchId', ParseUUIDPipe) branchId: string) {
+    return this.reports.z(branchId);
+  }
+
+  @Roles(...READERS)
+  @Get('reports/z')
+  zReports(@Query('branchId', ParseUUIDPipe) branchId: string) {
+    return this.reports.listZ(branchId);
+  }
+
+  @Roles(...READERS)
+  @Get('reports/z/:id')
+  zReportById(@Param('id', ParseUUIDPipe) id: string) {
+    return this.reports.getZ(id);
+  }
+
+  @Roles(...READERS)
+  @Get('reports/plu')
+  pluReport(
+    @Query('branchId', ParseUUIDPipe) branchId: string,
+    @Query('from') from: string,
+    @Query('to') to: string,
+  ) {
+    return this.reports.plu(branchId, from, to);
+  }
+
+  @Roles(...READERS)
+  @Get('reports/closing-stock')
+  closingStock(
+    @Query('branchId', ParseUUIDPipe) branchId: string,
+    @Query('date') date: string,
+  ) {
+    return this.reports.closingStock(branchId, date);
   }
 
   /** Send what is waiting now instead of at the next timed pass. */

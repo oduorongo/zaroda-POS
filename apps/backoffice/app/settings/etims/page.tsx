@@ -111,6 +111,7 @@ export default function EtimsSettingsPage() {
           <div className="flex gap-2">
             <Link href="/settings/etims/items" className={ghost}>Products and KRA</Link>
             <Link href="/settings/etims/documents" className={ghost}>Sales sent to KRA</Link>
+            <Link href="/settings/etims/reports" className={ghost}>X, Z and item reports</Link>
             <Link href="/settings/tax" className={ghost}>Tax settings</Link>
           </div>
         </div>

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import Link from "next/link";
 import { apiGet, apiPost, ApiError } from "../../../lib/api";
 import { getSession, clearSession, isBackofficeRole, type Session } from "../../../lib/auth";
 import { Nav } from "../../../components/nav";
@@ -194,6 +195,12 @@ export default function SaleDetailPage() {
                           : `${d.lastError ?? "has to be done by hand on the KRA portal"}`}
                   </p>
                 ))}
+                {kra.some((d) => d.status === "SENT") && (
+                  <p className="mt-2 flex gap-4 text-sm">
+                    <Link href={`/sales/${params.id}/kra-receipt`} className="text-primary-600 hover:underline">KRA receipt</Link>
+                    <Link href={`/sales/${params.id}/kra-receipt?copy=1`} className="text-primary-600 hover:underline">Print a copy</Link>
+                  </p>
+                )}
               </section>
             )}
 
