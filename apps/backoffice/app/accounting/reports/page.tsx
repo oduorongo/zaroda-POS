@@ -2,10 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { apiGet, ApiError } from "../../../lib/api";
-import { downloadCsv } from "../../../lib/csv-download";
-import { Nav } from "../../../components/nav";
-import { PageHeader } from "../../../components/page-header";
-import { AccountingTabs, inputClass, kes, monthStart, niceDay, quietButtonClass, todayKey, useBackofficeSession } from "../shared";
+import { API, downloadCsv, loadBranches, AccountingTabs, inputClass, kes, monthStart, niceDay, quietButtonClass, todayKey, useBooksSession, Shell } from "../shared";
 
 interface Row {
   accountId: string;
@@ -60,7 +57,7 @@ const csv = (rows: (string | number)[][]) => rows.map((r) => r.map(cell).join(",
 
 /** The three standard statements, straight from the books. */
 export default function StatementsPage() {
-  const session = useBackofficeSession();
+  const session = useBooksSession();
   const [tab, setTab] = useState<Tab>("pl");
   const [from, setFrom] = useState(monthStart());
   const [to, setTo] = useState(todayKey());
@@ -73,7 +70,7 @@ export default function StatementsPage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (session) void apiGet<Branch[]>("/branches").then(setBranches).catch(() => undefined);
+    if (session) void loadBranches().then(setBranches).catch(() => undefined);
   }, [session]);
 
   const load = useCallback(async () => {
@@ -81,9 +78,9 @@ export default function StatementsPage() {
       if (tab === "pl") {
         const q = new URLSearchParams({ from, to });
         if (branchId) q.set("branchId", branchId);
-        setPl(await apiGet<ProfitLoss>(`/accounting/reports/profit-loss?${q.toString()}`));
-      } else if (tab === "bs") setBs(await apiGet<BalanceSheet>(`/accounting/reports/balance-sheet?asOf=${asOf}`));
-      else setTb(await apiGet<TrialBalance>(`/accounting/reports/trial-balance?asOf=${asOf}`));
+        setPl(await apiGet<ProfitLoss>(`${API}/reports/profit-loss?${q.toString()}`));
+      } else if (tab === "bs") setBs(await apiGet<BalanceSheet>(`${API}/reports/balance-sheet?asOf=${asOf}`));
+      else setTb(await apiGet<TrialBalance>(`${API}/reports/trial-balance?asOf=${asOf}`));
       setError(null);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not load the statement.");
@@ -130,9 +127,7 @@ export default function StatementsPage() {
   if (!session) return null;
 
   return (
-    <div className="min-h-screen bg-background text-foreground">
-      <Nav session={session} />
-      <PageHeader />
+    <Shell session={session}>
       <main className="mx-auto max-w-4xl space-y-6 p-6">
         <h1 className="text-xl font-bold">Statements</h1>
         <AccountingTabs />
@@ -258,7 +253,7 @@ export default function StatementsPage() {
         )}
         <p className="text-xs text-secondary-500">Amounts in KES. Click an account in the chart of accounts to see every entry on it.</p>
       </main>
-    </div>
+    </Shell>
   );
 }
 

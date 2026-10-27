@@ -313,7 +313,13 @@ How much of the deposit are you handing back (KES)? Enter 0 for none.`,
       setError("Enter the deposit refund as a number, like 5000 (or 0 for none).");
       return;
     }
-    void submit(() => apiPatch(`/rental/leases/${lease.id}/end`, refund > 0 ? { depositRefunded: refund } : {}), () => {});
+    let depositRefundMethod: "CASH" | "BANK" | "MPESA" = "CASH";
+    if (refund > 0) {
+      const how = window.prompt("How did you hand it back? Type 1 for cash, 2 for bank, 3 for M-Pesa.", "1");
+      if (how === null) return;
+      depositRefundMethod = how.trim() === "2" ? "BANK" : how.trim() === "3" ? "MPESA" : "CASH";
+    }
+    void submit(() => apiPatch(`/rental/leases/${lease.id}/end`, refund > 0 ? { depositRefunded: refund, depositRefundMethod } : {}), () => {});
   };
 
   if (!session) return null;

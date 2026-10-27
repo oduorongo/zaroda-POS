@@ -2,9 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { apiGet, apiPatch, apiPost, ApiError } from "../../../lib/api";
-import { Nav } from "../../../components/nav";
-import { PageHeader } from "../../../components/page-header";
-import { Account, AccountingTabs, buttonClass, canWrite, inputClass, kes, monthStart, niceDay, quietButtonClass, todayKey, TYPE_LABELS, useBackofficeSession } from "../shared";
+import { API, Account, AccountingTabs, buttonClass, canWrite, inputClass, kes, monthStart, niceDay, quietButtonClass, todayKey, TYPE_LABELS, useBooksSession, Shell } from "../shared";
 
 interface Ledger {
   account: { id: string; code: string; name: string; type: Account["type"] };
@@ -20,7 +18,7 @@ const TYPES = Object.keys(TYPE_LABELS) as Account["type"][];
 
 /** The chart of accounts with each account's balance; open one to see every entry on it. */
 export default function AccountsPage() {
-  const session = useBackofficeSession();
+  const session = useBooksSession();
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -37,7 +35,7 @@ export default function AccountsPage() {
 
   const load = useCallback(async () => {
     try {
-      setAccounts(await apiGet<Account[]>("/accounting/accounts"));
+      setAccounts(await apiGet<Account[]>(`${API}/accounts`));
       setError(null);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not load the accounts.");
@@ -50,7 +48,7 @@ export default function AccountsPage() {
 
   async function openLedger(id: string, f = from, t = to) {
     try {
-      setLedger(await apiGet<Ledger>(`/accounting/accounts/${id}/ledger?from=${f}&to=${t}`));
+      setLedger(await apiGet<Ledger>(`${API}/accounts/${id}/ledger?from=${f}&to=${t}`));
       setError(null);
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (err) {
@@ -76,9 +74,7 @@ export default function AccountsPage() {
   const writer = canWrite(session);
 
   return (
-    <div className="min-h-screen bg-background text-foreground">
-      <Nav session={session} />
-      <PageHeader />
+    <Shell session={session}>
       <main className="mx-auto max-w-5xl space-y-6 p-6">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h1 className="text-xl font-bold">Chart of accounts</h1>
@@ -121,7 +117,7 @@ export default function AccountsPage() {
                 disabled={busy || !code || name.trim().length < 2}
                 onClick={() =>
                   void run(async () => {
-                    await apiPost("/accounting/accounts", { code, name, type });
+                    await apiPost(`${API}/accounts`, { code, name, type });
                     setAdding(false);
                     setCode("");
                     setName("");
@@ -227,7 +223,7 @@ export default function AccountsPage() {
                               disabled={busy || editName.trim().length < 2}
                               onClick={() =>
                                 void run(async () => {
-                                  await apiPatch(`/accounting/accounts/${a.id}`, { name: editName });
+                                  await apiPatch(`${API}/accounts/${a.id}`, { name: editName });
                                   setEditing(null);
                                 }, "Renamed.")
                               }
@@ -262,7 +258,7 @@ export default function AccountsPage() {
                           {!a.system && (
                             <button
                               disabled={busy}
-                              onClick={() => void run(() => apiPatch(`/accounting/accounts/${a.id}`, { active: !a.active }), a.active ? "Switched off." : "Switched on.")}
+                              onClick={() => void run(() => apiPatch(`${API}/accounts/${a.id}`, { active: !a.active }), a.active ? "Switched off." : "Switched on.")}
                               className="ml-3 text-primary-600 hover:underline"
                             >
                               {a.active ? "Switch off" : "Switch on"}
@@ -279,6 +275,6 @@ export default function AccountsPage() {
         })}
         <p className="text-xs text-secondary-500">Balances are to today, each in its usual direction (a minus means the account is the other way round).</p>
       </main>
-    </div>
+    </Shell>
   );
 }

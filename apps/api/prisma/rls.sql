@@ -1469,3 +1469,40 @@ DROP POLICY IF EXISTS tenant_isolation ON ledger_postings;
 CREATE POLICY tenant_isolation ON ledger_postings
   USING ("organizationId" = current_setting('app.current_tenant', true))
   WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+-- ZARODA's own books (platform_ledger_* / platform_journal_*): no organizationId. Readable and writable only when NO tenant is set
+-- (the platform admin and the platform posting pass), so no tenant-facing request can ever see ZARODA's accounts.
+ALTER TABLE platform_ledger_accounts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE platform_ledger_accounts FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON platform_ledger_accounts;
+CREATE POLICY tenant_isolation ON platform_ledger_accounts
+  USING (NULLIF(current_setting('app.current_tenant', true), '') IS NULL)
+  WITH CHECK (NULLIF(current_setting('app.current_tenant', true), '') IS NULL);
+
+ALTER TABLE platform_ledger_settings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE platform_ledger_settings FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON platform_ledger_settings;
+CREATE POLICY tenant_isolation ON platform_ledger_settings
+  USING (NULLIF(current_setting('app.current_tenant', true), '') IS NULL)
+  WITH CHECK (NULLIF(current_setting('app.current_tenant', true), '') IS NULL);
+
+ALTER TABLE platform_journal_entries ENABLE ROW LEVEL SECURITY;
+ALTER TABLE platform_journal_entries FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON platform_journal_entries;
+CREATE POLICY tenant_isolation ON platform_journal_entries
+  USING (NULLIF(current_setting('app.current_tenant', true), '') IS NULL)
+  WITH CHECK (NULLIF(current_setting('app.current_tenant', true), '') IS NULL);
+
+ALTER TABLE platform_journal_lines ENABLE ROW LEVEL SECURITY;
+ALTER TABLE platform_journal_lines FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON platform_journal_lines;
+CREATE POLICY tenant_isolation ON platform_journal_lines
+  USING (NULLIF(current_setting('app.current_tenant', true), '') IS NULL)
+  WITH CHECK (NULLIF(current_setting('app.current_tenant', true), '') IS NULL);
+
+ALTER TABLE platform_ledger_postings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE platform_ledger_postings FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON platform_ledger_postings;
+CREATE POLICY tenant_isolation ON platform_ledger_postings
+  USING (NULLIF(current_setting('app.current_tenant', true), '') IS NULL)
+  WITH CHECK (NULLIF(current_setting('app.current_tenant', true), '') IS NULL);

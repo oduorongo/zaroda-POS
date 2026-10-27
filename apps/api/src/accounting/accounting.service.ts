@@ -2,10 +2,10 @@ import { BadRequestException, ConflictException, ForbiddenException, Injectable,
 import { JournalKind, Prisma, Role } from '@prisma/client';
 import { TenantScopedPrismaService, TenantTx } from '../common/prisma/tenant-scoped-prisma.service';
 import { getTenantStore } from '../common/tenant/tenant-context';
-import { AsOfQueryDto, CreateAccountDto, CreateJournalDto, JournalListQueryDto, LedgerSettingsDto, RangeQueryDto, ReverseJournalDto, UpdateAccountDto } from './dto/accounting.dto';
+import { AsOfQueryDto, CreateAccountDto, CreateJournalDto, JournalListQueryDto, LedgerSettingsDto, PayOffDto, RangeQueryDto, ReverseJournalDto, UpdateAccountDto } from './dto/accounting.dto';
 import { dateOf, dayOf, LedgerBooksService, todayKey } from './ledger-books.service';
 import { LedgerPosterService } from './ledger-poster.service';
-import { manualProblem, postingDate } from './ledger-posting.util';
+import { manualProblem, PAYABLE_ACCOUNTS, payOffDraft, postingDate } from './ledger-posting.util';
 import { AccountInfo, balanceSheet, profitAndLoss, Sums, trialBalance, withRunningBalance } from './ledger-reports.util';
 
 const PAGE = 50;
@@ -34,6 +34,16 @@ export const SOURCE_LABELS: Record<string, string> = {
   LAYAWAY_DONE: 'Layaway collected',
   FOLIO_MONEY: 'Hotel guest payment',
   HOTEL_CANCEL_FEE: 'Cancellation fee kept',
+  TIP: 'Tip and service charge',
+  STOCK_COUNT: 'Stock count',
+  LEASE_END: 'Lease ended (deposit)',
+  ZARODA_SUBSCRIPTION: 'ZARODA subscription',
+  ZARODA_INVOICE: 'ZARODA invoice',
+  ZARODA_INVOICE_PAID: 'ZARODA invoice paid',
+  ZARODA_RENTAL_INVOICE: 'ZARODA rental plan invoice',
+  ZARODA_RENTAL_INVOICE_PAID: 'ZARODA rental plan invoice paid',
+  ZARODA_ADVERT: 'House advert fee',
+  PAY_OFF: 'Paid what was owed',
 };
 
 /**
@@ -270,6 +280,33 @@ export class AccountingService {
       return r.id;
     });
     return this.journal(newId);
+  }
+
+  // ── paying what is owed ─────────────────────────────────────────────────
+
+  /** What the business owes to KRA, NSSF, SHIF and its staff (tips), as the books stand today. */
+  async owed() {
+    return this.tenantPrisma.run(async (tx) => {
+      await this.books.settings(tx);
+      const ids = await this.books.accountIds(tx);
+      const sums = await this.sums(tx, { to: todayKey() });
+      return Object.entries(PAYABLE_ACCOUNTS).map(([key, label]) => {
+        const s = sums.get(ids.get(key) ?? '') ?? { debit: 0, credit: 0 };
+        return { account: key, label, owed: money(s.credit - s.debit) };
+      });
+    });
+  }
+
+  /** Records a payment of something owed (VAT, PAYE, tips handed to staff...): it comes off what is owed and out of the money account. */
+  async payOff(dto: PayOffDto) {
+    if (dto.date > todayKey()) throw new BadRequestException('A payment cannot be dated in the future.');
+    const id = await this.tenantPrisma.run(async (tx) => {
+      await this.books.lock(tx);
+      const d = payOffDraft({ date: dto.date, account: dto.account, amountCents: cents(dto.amount), paidFrom: dto.paidFrom, reference: dto.reference?.trim() || null });
+      const entry = await this.books.write(tx, { date: d.date, kind: JournalKind.MANUAL, memo: d.memo, sourceType: 'PAY_OFF', lines: d.lines, by: await this.me(tx) });
+      return entry.id;
+    });
+    return this.journal(id);
   }
 
   // ── reports ─────────────────────────────────────────────────────────────

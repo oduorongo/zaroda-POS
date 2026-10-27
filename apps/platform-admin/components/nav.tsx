@@ -18,6 +18,7 @@ const LINKS = [
   { href: "/riders", label: "Riders" },
   { href: "/teams", label: "Teams" },
   { href: "/analytics", label: "Analytics" },
+  { href: "/accounting", label: "Accounts" },
 ];
 
 // The same navy top ribbon as the back office and Zaroda Events (the menu wraps onto a second row on a

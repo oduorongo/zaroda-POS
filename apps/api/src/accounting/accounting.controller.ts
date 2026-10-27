@@ -8,6 +8,7 @@ import {
   CreateJournalDto,
   JournalListQueryDto,
   LedgerSettingsDto,
+  PayOffDto,
   RangeQueryDto,
   ReverseJournalDto,
   UpdateAccountDto,
@@ -37,6 +38,18 @@ export class AccountingController {
   @Post('post-now')
   postNow() {
     return this.accounting.postNow();
+  }
+
+  @Roles(...READERS)
+  @Get('owed')
+  owed() {
+    return this.accounting.owed();
+  }
+
+  @Roles(...WRITERS)
+  @Post('pay-off')
+  payOff(@Body() dto: PayOffDto) {
+    return this.accounting.payOff(dto);
   }
 
   @Roles(...READERS)

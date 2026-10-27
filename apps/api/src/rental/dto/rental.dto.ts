@@ -242,6 +242,11 @@ export class EndLeaseDto {
   @Min(0)
   @IsOptional()
   depositRefunded?: number;
+
+  // How the deposit was handed back (for the books). Cash when not said.
+  @IsIn(['CASH', 'BANK', 'MPESA'])
+  @IsOptional()
+  depositRefundMethod?: 'CASH' | 'BANK' | 'MPESA';
 }
 
 export const PAYMENT_METHODS = ['CASH', 'BANK', 'MPESA', 'OTHER'] as const;
