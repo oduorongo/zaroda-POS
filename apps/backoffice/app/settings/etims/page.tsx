@@ -112,6 +112,7 @@ export default function EtimsSettingsPage() {
             <Link href="/settings/etims/items" className={ghost}>Products and KRA</Link>
             <Link href="/settings/etims/documents" className={ghost}>Sales sent to KRA</Link>
             <Link href="/settings/etims/reports" className={ghost}>X, Z and item reports</Link>
+            <Link href="/settings/etims/kra" className={ghost}>From KRA (notices, imports)</Link>
             <Link href="/settings/tax" className={ghost}>Tax settings</Link>
           </div>
         </div>

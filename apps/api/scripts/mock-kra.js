@@ -173,6 +173,18 @@ let itemClasses = baseClasses.map((c) => ({
   changed: T0,
 }));
 
+// taxpayers KRA knows (PIN lookup), notices, customers saved, imports declared by customs
+const taxpayers = new Map([
+  ['P051234567X', { tin: 'P051234567X', taxprNm: 'BUYER LIMITED', taxprSttsCd: 'A', prvncNm: 'NAIROBI CITY', dstrtNm: 'WESTLANDS', sctrNm: 'WON', locDesc: 'Westlands Towers' }],
+  ['A000000001B', { tin: 'A000000001B', taxprNm: 'DORMANT TRADER', taxprSttsCd: 'D', prvncNm: 'MOMBASA', dstrtNm: 'MVITA', sctrNm: 'MSA', locDesc: 'Old Town' }],
+]);
+const notices = [
+  { noticeNo: 41, title: 'Planned maintenance', cont: 'eTIMS will be down on Sunday from 1am to 3am.', dtlUrl: 'https://etims.kra.go.ke/notice/41', regrNm: 'Administrator', regDt: '20261001090000' },
+];
+const customers = new Map();
+const imports = [];
+const importDecisions = [];
+
 function reply(res, body) {
   const out = JSON.stringify(body);
   res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -360,6 +372,66 @@ const handlers = {
     }
     return answer('000', 'It is succeeded', { clsList: [...byCls.values()] });
   },
+  selectCustomer(b) {
+    const bad = checkDevice(b);
+    if (bad) return bad;
+    if (!PIN.test(b.custmTin || '')) return answer('910', 'Request parameter error');
+    const t = taxpayers.get(b.custmTin);
+    if (!t) return answer('001', 'There is no search result');
+    return answer('000', 'It is succeeded', { custList: [t] });
+  },
+  selectBhfList(b) {
+    const bad = checkDevice(b);
+    if (bad) return bad;
+    if (!/^\d{14}$/.test(b.lastReqDt || '')) return answer('910', 'Request parameter error');
+    const ids = [...installed.keys()].filter((k) => k.startsWith(b.tin + '|')).map((k) => k.split('|')[1]);
+    return answer('000', 'It is succeeded', {
+      bhfList: [...new Set(['00', ...ids])].sort().map((id) => ({
+        tin: b.tin, bhfId: id, bhfNm: id === '00' ? 'Headquarter' : 'Branch ' + id, bhfSttsCd: '01',
+        prvncNm: 'NAIROBI CITY', dstrtNm: 'WESTLANDS', sctrNm: 'WON', locDesc: 'Westlands Towers',
+        mgrNm: 'Manager ' + id, mgrTelNo: '0789001130', mgrEmail: 'manager@test.com', hqYn: id === '00' ? 'Y' : 'N',
+      })),
+    });
+  },
+  selectNoticeList(b) {
+    const bad = checkDevice(b);
+    if (bad) return bad;
+    if (!/^\d{14}$/.test(b.lastReqDt || '')) return answer('910', 'Request parameter error');
+    const list = notices.filter((n) => n.regDt > b.lastReqDt);
+    if (list.length === 0) return answer('001', 'There is no search result');
+    return answer('000', 'It is succeeded', { noticeList: list });
+  },
+  saveBhfCustomer(b) {
+    const bad = checkDevice(b);
+    if (bad) return bad;
+    const need = ['custNo', 'custTin', 'custNm', 'useYn', 'regrId', 'regrNm', 'modrId', 'modrNm'];
+    if (need.some((k) => !b[k])) return answer('910', 'Request parameter error');
+    if (!/^\d{9}$/.test(b.custNo) || !PIN.test(b.custTin) || b.custNm.length > 60) return answer('910', 'Request parameter error');
+    customers.set(b.tin + '|' + b.custNo, { ...b, cmcKey: undefined });
+    return answer('000', 'It is succeeded');
+  },
+  selectImportItemList(b) {
+    const bad = checkDevice(b);
+    if (bad) return bad;
+    if (!/^\d{14}$/.test(b.lastReqDt || '')) return answer('910', 'Request parameter error');
+    const list = imports.filter((i) => i.tin === b.tin && i.changed > b.lastReqDt);
+    if (list.length === 0) return answer('001', 'There is no search result');
+    return answer('000', 'It is succeeded', { itemList: list.map(({ tin: _t, changed: _c, ...r }) => r) });
+  },
+  updateImportItem(b) {
+    const bad = checkDevice(b);
+    if (bad) return bad;
+    const need = ['taskCd', 'dclDe', 'imptItemSttsCd', 'modrId', 'modrNm'];
+    if (need.some((k) => !b[k]) || typeof b.itemSeq !== 'number') return answer('910', 'Request parameter error');
+    if (!['1', '2', '3', '4'].includes(b.imptItemSttsCd)) return answer('910', 'Request parameter error');
+    const imp = imports.find((i) => i.tin === b.tin && i.taskCd === b.taskCd && i.dclDe.trim() === b.dclDe && i.itemSeq === b.itemSeq);
+    if (!imp) return answer('910', 'The imported item is not found');
+    if (b.imptItemSttsCd === '3' && (!b.itemCd || !b.itemClsCd || !items.has(b.tin + '|' + b.itemCd))) return answer('910', 'The item is not registered');
+    imp.imptItemsttsCd = b.imptItemSttsCd;
+    imp.changed = kraNow();
+    importDecisions.push({ ...b, cmcKey: undefined });
+    return answer('000', 'It is succeeded');
+  },
   selectItemClsList(b) {
     const bad = checkDevice(b);
     if (bad) return bad;
@@ -451,6 +523,25 @@ const server = http.createServer((req, res) => {
         items.clear();
         return reply(res, { ok: true });
       }
+      if (what === 'add-import') {
+        const tin = url.searchParams.get('tin');
+        const seq = imports.length + 1;
+        const row = {
+          tin, changed: kraNow(), taskCd: 'T' + (2239000 + seq), dclDe: '20261020', itemSeq: 1, dclNo: 'C' + seq + '-2026-NBO',
+          hsCd: '20055900000', itemNm: url.searchParams.get('name') || 'BAKED BEANS', imptItemsttsCd: '2', orgnNatCd: 'BR', exptNatCd: 'BR',
+          pkg: 10, pkgUnitCd: 'CT', qty: 240, qtyUnitCd: 'U', totWt: 120.5, netWt: 118, spplrNm: 'ODERICH CONSERVA', agntNm: 'BN METRO Ltd',
+          invcFcurAmt: 1200, invcFcurCd: 'USD', invcFcurExcrt: 129.5,
+        };
+        imports.push(row);
+        return reply(res, { ok: true, taskCd: row.taskCd });
+      }
+      if (what === 'add-notice') {
+        const no = notices.length + 41;
+        notices.push({ noticeNo: no, title: 'New notice ' + no, cont: 'Something new from KRA.', dtlUrl: null, regrNm: 'Administrator', regDt: kraNow() });
+        return reply(res, { ok: true, noticeNo: no });
+      }
+      if (what === 'customers') return reply(res, [...customers.values()]);
+      if (what === 'import-decisions') return reply(res, importDecisions);
       if (what === 'items') return reply(res, [...items.values()]);
       if (what === 'sales') return reply(res, [...sales.values()]);
       if (what === 'stock-io') return reply(res, [...stockMoves.values()]);

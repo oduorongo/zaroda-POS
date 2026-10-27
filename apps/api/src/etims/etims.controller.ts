@@ -26,6 +26,8 @@ import { DocumentListQueryDto } from './dto/etims-documents.dto';
 import { EtimsCodesService } from './etims-codes.service';
 import { EtimsDocumentsService } from './etims-documents.service';
 import { EtimsItemsService } from './etims-items.service';
+import { EtimsExtrasService } from './etims-extras.service';
+import { ImportDecisionDto } from './dto/etims-extras.dto';
 import { EtimsReceiptsService } from './etims-receipts.service';
 import { EtimsReportsService } from './etims-reports.service';
 import { EtimsSettingsService } from './etims-settings.service';
@@ -45,6 +47,7 @@ export class EtimsController {
     private readonly documents: EtimsDocumentsService,
     private readonly receipts: EtimsReceiptsService,
     private readonly reports: EtimsReportsService,
+    private readonly extras: EtimsExtrasService,
   ) {}
 
   @Roles(...READERS)
@@ -197,6 +200,71 @@ export class EtimsController {
     @Query('date') date: string,
   ) {
     return this.reports.closingStock(branchId, date);
+  }
+
+  // ── PIN lookup, KRA branches, notices, imported items, customers (OSCU spec 3.3.2 - 3.3.5) ──
+  /** What KRA knows about a PIN. The till may check a customer's PIN too. */
+  @Roles(...TILL_AND_READERS)
+  @Get('pin/:pin')
+  lookupPin(@Param('pin') pin: string) {
+    return this.extras.lookupPin(pin);
+  }
+
+  @Roles(...READERS)
+  @Get('kra-branches')
+  kraBranches() {
+    return this.extras.branches();
+  }
+
+  @Roles(...READERS)
+  @Get('notices')
+  notices() {
+    return this.extras.notices();
+  }
+
+  @Roles(...WRITERS)
+  @Post('notices/sync')
+  @HttpCode(200)
+  syncNotices() {
+    return this.extras.syncNotices();
+  }
+
+  @Roles(...READERS)
+  @Post('notices/:id/read')
+  @HttpCode(200)
+  readNotice(@Param('id', ParseUUIDPipe) id: string) {
+    return this.extras.markNoticeRead(id);
+  }
+
+  @Roles(...READERS)
+  @Get('imports')
+  imports() {
+    return this.extras.imports();
+  }
+
+  @Roles(...WRITERS)
+  @Post('imports/sync')
+  @HttpCode(200)
+  syncImports() {
+    return this.extras.syncImports();
+  }
+
+  @Roles(...WRITERS)
+  @Post('imports/:id/decision')
+  @HttpCode(200)
+  decideImport(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: ImportDecisionDto,
+  ) {
+    return this.extras.decideImport(id, dto.decision, dto.variantId, dto.remark);
+  }
+
+  /** Sends customers with a KRA PIN now, instead of waiting for the timed pass. */
+  @Roles(...WRITERS)
+  @Post('customers/sync')
+  @HttpCode(200)
+  syncCustomers() {
+    return this.extras.syncCustomers();
   }
 
   /** Send what is waiting now instead of at the next timed pass. */

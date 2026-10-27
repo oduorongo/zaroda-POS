@@ -154,6 +154,21 @@ export default function CustomersPage() {
                       >
                         {c.kraPin ? "change" : "add"}
                       </button>
+                      {c.kraPin && (
+                        <button
+                          className="ml-2 text-primary-600 hover:underline"
+                          onClick={async () => {
+                            try {
+                              const r = await apiGet<{ found: boolean; name?: string | null; status?: string | null; message?: string }>("/etims/pin/" + c.kraPin);
+                              window.alert(r.found ? (r.name ?? "") + " - " + (r.status ?? "") : (r.message ?? "KRA has no taxpayer with that PIN."));
+                            } catch (err) {
+                              window.alert(err instanceof ApiError ? err.message : "Could not check the PIN with KRA.");
+                            }
+                          }}
+                        >
+                          check at KRA
+                        </button>
+                      )}
                     </TableCell>
                     <TableCell>
                       <Badge variant={c.loyaltyPoints > 0 ? "success" : "neutral"}>{c.loyaltyPoints} pts</Badge>

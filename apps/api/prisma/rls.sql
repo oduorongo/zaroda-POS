@@ -1418,3 +1418,18 @@ DROP POLICY IF EXISTS tenant_isolation ON etims_receipt_prints;
 CREATE POLICY tenant_isolation ON etims_receipt_prints
   USING ("organizationId" = current_setting('app.current_tenant', true))
   WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+-- eTIMS: KRA notices and imported items
+ALTER TABLE etims_notices ENABLE ROW LEVEL SECURITY;
+ALTER TABLE etims_notices FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON etims_notices;
+CREATE POLICY tenant_isolation ON etims_notices
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+ALTER TABLE etims_imports ENABLE ROW LEVEL SECURITY;
+ALTER TABLE etims_imports FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON etims_imports;
+CREATE POLICY tenant_isolation ON etims_imports
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
