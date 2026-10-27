@@ -96,6 +96,7 @@ const PIN = `A${rand(9)}Z`;
   await sql.query('DELETE FROM etims_codes');
   await sql.query('DELETE FROM etims_item_classes');
   await sql.query('DELETE FROM etims_documents WHERE "organizationId" = $1', [org.id]);
+  await sql.query('DELETE FROM etims_receipt_prints WHERE "organizationId" = $1', [org.id]);
   await sql.query('DELETE FROM etims_items WHERE "organizationId" = $1', [org.id]);
   await sql.query('DELETE FROM etims_devices WHERE "organizationId" = $1', [
     org.id,
@@ -595,6 +596,7 @@ const PIN = `A${rand(9)}Z`;
   check('the next try carries on from the stock step and the sale is NOT sent again', r3c.json.sent === 1 && d3c.status === 'SENT' && d3c.invcNo === d3.invcNo && (await kra('GET', '/_test/sales')).json.filter((x) => x.invcNo === d3.invcNo).length === 1, d3c);
 
   // KRA refuses a sale
+  await sql.query("UPDATE customers SET phone = '0799' || substr(id::text, 1, 6) WHERE phone = '0700123456'");
   const cust = (await h('POST', '/customers', { name: 'REJECTSALE Customer', phone: '0700123456' })).json;
   const s4 = await sell([[sa, 1]], 116, { customerId: cust.id });
   const r4 = await run();
@@ -624,6 +626,45 @@ const PIN = `A${rand(9)}Z`;
   const part = (await sql.query("SELECT * FROM etims_documents WHERE \"saleId\" = $1 AND kind = 'CREDIT_NOTE'", [s5.json.id])).rows[0];
   check('a part refund cannot be sent by itself: it is marked for doing by hand, with the reason', part?.status === 'MANUAL' && /whole sale|by hand/.test(part.lastError) && rp.json.sent === 0, part);
   check('a part refund cannot be retried from here', (await h('POST', `/etims/documents/${part.id}/retry`, {})).status === 400);
+
+  // KRA-format receipts and the X / Z / PLU reports
+  const rc = await h('GET', `/etims/receipts/by-sale/${s1.json.id}`);
+  const rs = rc.json.sale?.receipt;
+  const rcr = rc.json.credit?.receipt;
+  check('a signed sale has a KRA receipt with the invoice title, totals and the SCU information KRA returned', rc.status === 200 && rs?.title === 'TAX INVOICE' && rs.totals.total === 482 && rs.totals.vat === 32 && rs.scu.cuInvoiceNo === `KRACU013000001/${d1.curRcptNo}` && rs.scu.internalData.replace(/-/g, '') === d1.intrlData && rs.scu.signature.replace(/-/g, '') === d1.rcptSign && rs.copyNotice === null, rc.json.sale);
+  check('the receipt shows a tax table (exempt and 16%), the item count and how it was paid', rs.itemsNumber === 2 && rs.taxTable.some((t) => t.letter === 'A' && t.taxable === 250) && rs.taxTable.some((t) => t.letter === 'B' && t.tax === 32) && rs.payment.label === 'CASH', rs.taxTable);
+  check('the QR text is date#time#CU number#receipt number#internal data#signature', typeof rs.scu.qr === 'string' && rs.scu.qr.split('#').length === 6 && rs.scu.qr.split('#')[3] === String(d1.curRcptNo) && rs.scu.qr.endsWith(d1.rcptSign), rs.scu.qr);
+  check('its refund has a CREDIT NOTE receipt pointing at the original, with negative amounts', rcr?.title === 'CREDIT NOTE' && rcr.originalCuInvoiceNo === rs.scu.cuInvoiceNo && rcr.totals.total === -482 && rcr.totals.vat === -32 && /NC$/.test(rcr.scu.cuInvoiceNo) && /ORIGINAL SALES RECEIPT/.test(rcr.creditNote), rcr);
+  check('a sale that was never sent has no receipt and says so', (await h('GET', `/etims/receipts/by-sale/${earlier.json.id}`)).json.sale.receipt === null);
+  check('a till cashier may print a receipt', (await h('GET', `/etims/receipts/by-sale/${s1.json.id}`, undefined, cashier)).status === 200);
+  const printsBefore = (await sql.query('SELECT count(*)::int AS n FROM etims_receipt_prints WHERE "organizationId" = $1', [org.id])).rows[0].n;
+  const cp = await h('GET', `/etims/receipts/by-sale/${s1.json.id}?copy=true`);
+  check('printed again it is marked COPY, THIS IS NOT AN OFFICIAL RECEIPT, and the copies are counted (sale and credit note)', cp.json.sale.receipt.copyNotice?.label === 'COPY' && /NOT AN OFFICIAL RECEIPT/.test(cp.json.sale.receipt.copyNotice.note) && (await sql.query('SELECT count(*)::int AS n FROM etims_receipt_prints WHERE "organizationId" = $1', [org.id])).rows[0].n === printsBefore + 2);
+
+  const xr = await h('GET', `/etims/reports/x?branchId=${branchId}`);
+  const xt = xr.json.totals;
+  check('the X report counts what KRA signed since the last Z: sales, the credit note, the tax split and the payments', xr.status === 200 && xr.json.type === 'X' && xt.sales.count >= 4 && xt.creditNotes.count === 1 && xt.creditNotes.total === 482 && xt.taxByRate.some((t) => t.letter === 'B' && t.sales.tax > 0) && xt.paymentsSales.some((p) => p.code === '01'), xt);
+  check('it counts the copies printed, the part refund left for the portal, and says training and proforma were none', xt.copies.sale.count >= 1 && xt.manualCreditNotes >= 1 && xt.training.count === 0 && xt.proforma.count === 0, [xt.copies, xt.manualCreditNotes]);
+  check('a cashier may read the X report but not close the day with a Z', (await h('GET', `/etims/reports/x?branchId=${branchId}`, undefined, cashier)).status === 200 && (await h('POST', `/etims/reports/z?branchId=${branchId}`, {}, cashier)).status === 403);
+  const z1 = await h('POST', `/etims/reports/z?branchId=${branchId}`, {});
+  check('the owner closes the day with a Z report, numbered, that holds the same figures', z1.status === 201 && z1.json.type === 'Z' && z1.json.number >= 1 && z1.json.totals.sales.count === xt.sales.count && z1.json.totals.sales.total === xt.sales.total, z1.json);
+  const xAfter = (await h('GET', `/etims/reports/x?branchId=${branchId}`)).json;
+  check('after the Z the next X starts empty', xAfter.documents === 0 && xAfter.totals.sales.count === 0 && xAfter.sinceLastZ.number === z1.json.number, xAfter);
+  check('a second Z with nothing new is refused', (await h('POST', `/etims/reports/z?branchId=${branchId}`, {})).status === 409);
+  const zl = await h('GET', `/etims/reports/z?branchId=${branchId}`);
+  check('past Z reports are kept and can be opened again', zl.json[0].number === z1.json.number && (await h('GET', `/etims/reports/z/${z1.json.id}`)).json.totals.sales.total === xt.sales.total);
+  const today0 = new Date(Date.now() + 3 * 3600_000).toISOString().slice(0, 10);
+  const plu = await h('GET', `/etims/reports/plu?branchId=${branchId}&from=${today0}&to=${today0}`);
+  const pa = plu.json.rows.find((r) => r.name.startsWith('SaleA'));
+  const pc = plu.json.rows.find((r) => r.name.startsWith('SaleC'));
+  check('the PLU report lists each item with quantity and takings, credit notes taken off, and stock left', plu.status === 200 && pa?.quantity === 4 && pa.amount === 464 && pc?.quantity === 1 && pc.amount === 46.4 && pa.tax === '16%' && typeof pa.remaining === 'number', [pa, pc]);
+  check('the PLU report needs sensible dates', (await h('GET', `/etims/reports/plu?branchId=${branchId}&from=${today0}&to=2000-01-01`)).status === 400 && (await h('GET', `/etims/reports/plu?branchId=${branchId}&from=nope&to=${today0}`)).status === 400);
+  const cs = await h('GET', `/etims/reports/closing-stock?branchId=${branchId}&date=${today0}`);
+  check('closing stock on a date lists the items with what was on hand then', cs.status === 200 && cs.json.rows.some((r) => r.name.startsWith('SaleA')) && (await h('GET', `/etims/reports/closing-stock?branchId=${branchId}&date=2020-01-01`)).json.rows.every((r) => r.quantity !== 0));
+  for (const t of ['etims_z_reports', 'etims_receipt_prints']) {
+    const r = (await sql.query('SELECT relrowsecurity AS on, relforcerowsecurity AS forced FROM pg_class WHERE relname = $1', [t])).rows[0];
+    check(`${t} has row-level security switched on and forced`, r?.on === true && r?.forced === true, r);
+  }
 
   // the screens' data
   const lst = await h('GET', '/etims/documents');

@@ -1403,3 +1403,18 @@ DROP POLICY IF EXISTS tenant_isolation ON school_tender_notices;
 CREATE POLICY tenant_isolation ON school_tender_notices
   USING ("organizationId" = current_setting('app.current_tenant', true))
   WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+-- eTIMS: Z reports and the count of receipt copies
+ALTER TABLE etims_z_reports ENABLE ROW LEVEL SECURITY;
+ALTER TABLE etims_z_reports FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON etims_z_reports;
+CREATE POLICY tenant_isolation ON etims_z_reports
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+ALTER TABLE etims_receipt_prints ENABLE ROW LEVEL SECURITY;
+ALTER TABLE etims_receipt_prints FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON etims_receipt_prints;
+CREATE POLICY tenant_isolation ON etims_receipt_prints
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));

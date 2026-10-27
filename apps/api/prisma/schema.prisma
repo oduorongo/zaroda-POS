@@ -74,6 +74,8 @@ model Organization {
   schoolCashflowSettings    SchoolCashflowSettings?
   schoolCashflowItems       SchoolCashflowItem[]
   schoolTenderNotices       SchoolTenderNotice[]
+  etimsZReports             EtimsZReport[]
+  etimsReceiptPrints        EtimsReceiptPrint[]
   schoolWriteOffs           SchoolWriteOff[]
   schoolProvisionEntries    SchoolProvisionEntry[]
   supplierPayments          SupplierPayment[]
@@ -5056,6 +5058,8 @@ model EtimsDocument {
   intrlData      String?
   rcptSign       String?
   sdcDateTime    String?
+  /// The Z report that closed this document's day (null until one is made): a document is in exactly one Z report.
+  zReportId      String?
   /// The sale as it was sent (without the key), so a credit note can repeat its lines and the screen can show what KRA was told.
   payload        Json?
   attempts       Int            @default(0)
@@ -5070,5 +5074,43 @@ model EtimsDocument {
   @@unique([organizationId, sourceKey])
   @@index([organizationId, status, createdAt])
   @@index([saleId])
+  @@index([branchId, zReportId])
   @@map("etims_documents")
+}
+
+/// A Z report: the summary of everything KRA signed on one branch since the previous Z report. Kept as made (it is an accounting record).
+model EtimsZReport {
+  id            String   @id @default(uuid())
+  organizationId String
+  branchId      String
+  /// 1, 2, 3... per branch, with no gaps.
+  number        Int
+  fromAt        DateTime
+  toAt          DateTime
+  totals        Json
+  createdByName String?
+  createdAt     DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([branchId, number])
+  @@index([organizationId, branchId, createdAt])
+  @@map("etims_z_reports")
+}
+
+/// A receipt printed again as a COPY (the daily reports count them).
+model EtimsReceiptPrint {
+  id             String   @id @default(uuid())
+  organizationId String
+  branchId       String
+  saleId         String
+  /// SALE or CREDIT: which of the sale's two receipts was copied.
+  kind           String
+  createdByName  String?
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, branchId, createdAt])
+  @@map("etims_receipt_prints")
 }
