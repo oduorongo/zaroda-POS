@@ -24,8 +24,15 @@ import {
   rentPaymentDraft,
   reversed,
   saleDraft,
+  leaseEndDraft,
   saleTaxCents,
   schoolReceiptDraft,
+  stockCountDraft,
+  tipDraft,
+  zarodaAdvertDraft,
+  zarodaInvoiceDraft,
+  zarodaPaymentDraft,
+  zarodaSubscriptionDraft,
   toCents,
   wasteDraft,
   writeOffDraft,
@@ -388,6 +395,135 @@ export class LedgerPosterService {
         const b = await tx.roomBooking.findUnique({ where: { id }, select: { bookingNumber: true, guestName: true, cancelFeeKept: true, cancelledAt: true, status: true } });
         if (!b || !b.cancelledAt || !b.cancelFeeKept || (b.status !== 'CANCELLED' && b.status !== 'NO_SHOW')) return null;
         return cancelFeeDraft({ date: nairobiDayOf(b.cancelledAt), reference: `${b.bookingNumber}, ${b.guestName}`, feeCents: toCents(b.cancelFeeKept) });
+      },
+    },
+    {
+      type: 'TIP',
+      candidates: async (tx, c) => [
+        ...(await ids(
+          tx,
+          Prisma.sql`SELECT t.id FROM restaurant_sale_tips t JOIN sales s ON s.id = t."saleId" WHERE s.status::text = 'COMPLETED' AND t."createdAt" >= ${c.since} AND (t."tipAmount" > 0 OR t."serviceChargeAmount" > 0) AND ${unposted('TIP')} ORDER BY t."createdAt" LIMIT ${BATCH}`,
+        )),
+        ...(await ids(tx, Prisma.sql`SELECT t.id FROM ledger_postings p JOIN restaurant_sale_tips t ON t.id = p."sourceId" JOIN sales s ON s.id = t."saleId" WHERE p."sourceType" = 'TIP' AND p."entryId" IS NOT NULL AND s.status::text = 'VOIDED' LIMIT ${BATCH}`)),
+      ],
+      draft: async (tx, id) => {
+        const t = await tx.restaurantSaleTip.findUnique({ where: { id }, include: { sale: { include: { payments: { select: { method: true, amount: true } } } } } });
+        if (!t || t.sale.status !== 'COMPLETED') return null;
+        const main = [...t.sale.payments].sort((a, b) => Number(b.amount) - Number(a.amount))[0]?.method ?? 'CASH';
+        return tipDraft({ date: nairobiDayOf(t.createdAt), branchId: t.sale.branchId, reference: short(t.saleId), tipCents: toCents(t.tipAmount), serviceCents: toCents(t.serviceChargeAmount), mainMethod: main });
+      },
+    },
+    {
+      type: 'STOCK_COUNT',
+      candidates: (tx, c) =>
+        ids(tx, Prisma.sql`SELECT t.id FROM stock_takes t WHERE t.status::text = 'COMPLETED' AND t."completedAt" >= ${c.since} AND ${unposted('STOCK_COUNT')} ORDER BY t."completedAt" LIMIT ${BATCH}`),
+      draft: async (tx, id) => {
+        const s = await tx.stockTake.findUnique({ where: { id }, include: { branch: { select: { name: true } }, lines: { include: { variant: { select: { cost: true } } } } } });
+        if (!s || s.status !== 'COMPLETED' || !s.completedAt) return null;
+        let short_ = 0;
+        let over = 0;
+        for (const l of s.lines) {
+          if (l.countedQuantity === null || l.variance === null || l.variant.cost === null) continue;
+          const value = Math.round(Number(l.variance) * Number(l.variant.cost) * 100);
+          if (value < 0) short_ += -value;
+          else over += value;
+        }
+        return stockCountDraft({ date: nairobiDayOf(s.completedAt), branchId: s.branchId, reference: s.branch.name, shortCents: short_, overCents: over });
+      },
+    },
+    {
+      type: 'LEASE_END',
+      candidates: (tx, c) =>
+        ids(tx, Prisma.sql`SELECT t.id FROM rental_leases t WHERE t.status::text = 'ENDED' AND t."endedAt" >= ${c.sinceDay} AND ${unposted('LEASE_END')} ORDER BY t."endedAt" LIMIT ${BATCH}`),
+      draft: async (tx, id) => {
+        const l = await tx.rentalLease.findUnique({ where: { id }, include: { unit: { select: { label: true } }, tenant: { select: { name: true } } } });
+        if (!l || l.status !== 'ENDED' || !l.endedAt) return null;
+        const paid = await tx.rentalInvoice.aggregate({ where: { leaseId: id, kind: 'DEPOSIT' }, _sum: { amountPaid: true } });
+        return leaseEndDraft({
+          date: dateKey(l.endedAt),
+          reference: `${l.unit.label}, ${l.tenant.name}`,
+          paidCents: toCents(paid._sum.amountPaid),
+          refundedCents: toCents(l.depositRefunded),
+          method: l.depositRefundMethod,
+        });
+      },
+    },
+    {
+      type: 'ZARODA_SUBSCRIPTION',
+      candidates: (tx, c) =>
+        ids(tx, Prisma.sql`SELECT t.id FROM subscription_payments t WHERE t."paidAt" >= ${c.since} AND ${unposted('ZARODA_SUBSCRIPTION')} ORDER BY t."paidAt" LIMIT ${BATCH}`),
+      draft: async (tx, id) => {
+        const p = await tx.subscriptionPayment.findUnique({ where: { id } });
+        if (!p) return null;
+        return zarodaSubscriptionDraft({ date: nairobiDayOf(p.paidAt), amountCents: toCents(p.amount), method: p.method });
+      },
+    },
+    {
+      type: 'ZARODA_INVOICE',
+      candidates: async (tx, c) => [
+        ...(await ids(tx, Prisma.sql`SELECT t.id FROM commission_invoices t WHERE t.status::text IN ('ISSUED', 'PAID') AND t."issuedAt" >= ${c.since} AND ${unposted('ZARODA_INVOICE')} ORDER BY t."issuedAt" LIMIT ${BATCH}`)),
+        ...(await ids(tx, postedWhere('ZARODA_INVOICE', 'commission_invoices', Prisma.sql`t.status::text = 'WAIVED'`))),
+      ],
+      draft: async (tx, id) => {
+        const i = await tx.commissionInvoice.findUnique({ where: { id } });
+        if (!i || i.status === 'WAIVED') return null;
+        const fee = i.kind === 'DAILY_FEE';
+        return zarodaInvoiceDraft({
+          date: nairobiDayOf(i.issuedAt),
+          reference: i.invoiceNumber,
+          amountCents: i.amountDue > 0 ? i.amountDue * 100 : toCents(i.commissionTotal),
+          passOn: fee,
+          label: fee ? 'shopper convenience fees collected for ZARODA' : `commission for ${i.periodMonth}`,
+        });
+      },
+    },
+    {
+      type: 'ZARODA_INVOICE_PAID',
+      candidates: (tx, c) =>
+        ids(tx, Prisma.sql`SELECT t.id FROM commission_invoices t WHERE t.status::text = 'PAID' AND t."paidAt" >= ${c.since} AND ${unposted('ZARODA_INVOICE_PAID')} ORDER BY t."paidAt" LIMIT ${BATCH}`),
+      draft: async (tx, id) => {
+        const i = await tx.commissionInvoice.findUnique({ where: { id } });
+        if (!i || i.status !== 'PAID' || !i.paidAt) return null;
+        return zarodaPaymentDraft({ date: nairobiDayOf(i.paidAt), reference: i.invoiceNumber, amountCents: i.amountDue > 0 ? i.amountDue * 100 : toCents(i.commissionTotal), method: i.paymentMethod });
+      },
+    },
+    {
+      type: 'ZARODA_RENTAL_INVOICE',
+      candidates: async (tx, c) => [
+        ...(await ids(tx, Prisma.sql`SELECT t.id FROM rental_platform_invoices t WHERE t.status::text IN ('ISSUED', 'PAID') AND t."issuedAt" >= ${c.since} AND ${unposted('ZARODA_RENTAL_INVOICE')} ORDER BY t."issuedAt" LIMIT ${BATCH}`)),
+        ...(await ids(tx, postedWhere('ZARODA_RENTAL_INVOICE', 'rental_platform_invoices', Prisma.sql`t.status::text = 'WAIVED'`))),
+      ],
+      draft: async (tx, id) => {
+        const i = await tx.rentalPlatformInvoice.findUnique({ where: { id } });
+        if (!i || i.status === 'WAIVED') return null;
+        return zarodaInvoiceDraft({
+          date: nairobiDayOf(i.issuedAt),
+          reference: i.invoiceNumber,
+          amountCents: i.amountDue * 100,
+          passOn: false,
+          label: i.kind === 'COLLECTION_FEE' ? `rent collection fee for ${i.invoiceMonth}` : `rental plan for ${i.invoiceMonth}`,
+        });
+      },
+    },
+    {
+      type: 'ZARODA_RENTAL_INVOICE_PAID',
+      candidates: (tx, c) =>
+        ids(tx, Prisma.sql`SELECT t.id FROM rental_platform_invoices t WHERE t.status::text = 'PAID' AND t."paidAt" >= ${c.since} AND ${unposted('ZARODA_RENTAL_INVOICE_PAID')} ORDER BY t."paidAt" LIMIT ${BATCH}`),
+      draft: async (tx, id) => {
+        const i = await tx.rentalPlatformInvoice.findUnique({ where: { id } });
+        if (!i || i.status !== 'PAID' || !i.paidAt) return null;
+        return zarodaPaymentDraft({ date: nairobiDayOf(i.paidAt), reference: i.invoiceNumber, amountCents: i.amountDue * 100, method: i.paymentMethod });
+      },
+    },
+    {
+      type: 'ZARODA_ADVERT',
+      candidates: (tx, c) =>
+        ids(tx, Prisma.sql`SELECT t.id FROM rental_listing_payments t WHERE t.status = 'PAID' AND t."paidAt" >= ${c.since} AND ${unposted('ZARODA_ADVERT')} ORDER BY t."paidAt" LIMIT ${BATCH}`),
+      draft: async (tx, id) => {
+        const p = await tx.rentalListingPayment.findUnique({ where: { id } });
+        if (!p || p.status !== 'PAID' || !p.paidAt) return null;
+        const n = Math.max(1, p.listingIds.length);
+        return zarodaAdvertDraft({ date: nairobiDayOf(p.paidAt), reference: `${n} advert${n === 1 ? '' : 's'}${p.paymentReference ? `, ${p.paymentReference}` : ''}`, amountCents: p.amount * 100 });
       },
     },
   ];

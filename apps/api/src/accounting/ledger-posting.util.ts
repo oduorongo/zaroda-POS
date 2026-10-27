@@ -5,7 +5,8 @@ import { createHash } from 'crypto';
 import { AccountKey, expenseAccount } from './ledger-chart';
 
 export interface DraftLine {
-  account: AccountKey;
+  /** A system account key: one of the business chart's (AccountKey) or, in ZARODA's own books, the platform chart's. */
+  account: string;
   debit: number; // cents
   credit: number; // cents
 }
@@ -25,7 +26,7 @@ export const toCents = (v: unknown): number => Math.round(Number(v ?? 0) * 100);
  * dropped, and a stable order (so the same posting always has the same fingerprint).
  */
 export function tidy(lines: DraftLine[]): DraftLine[] {
-  const net = new Map<AccountKey, number>();
+  const net = new Map<string, number>();
   for (const l of lines) net.set(l.account, (net.get(l.account) ?? 0) + l.debit - l.credit);
   return [...net.entries()]
     .filter(([, n]) => n !== 0)
@@ -261,6 +262,81 @@ export function folioMoneyDraft(f: { date: string; reference: string; amountCent
 /** A cancelled or no-show booking where the hotel kept a fee out of what the guest paid: that part is now the hotel's income. */
 export function cancelFeeDraft(c: { date: string; reference: string; feeCents: number }): Draft {
   return { date: c.date, memo: `Cancellation fee kept (${c.reference})`, lines: tidy([dr('GUEST_AR', c.feeCents), cr('OTHER_INCOME', c.feeCents)]) };
+}
+
+/**
+ * A tip and service charge paid on top of a restaurant bill (they are not in the sale's total). The money came in the way the bill
+ * was mostly paid; the tip is held for the staff until it is handed over, the service charge is the restaurant's income.
+ */
+export function tipDraft(t: { date: string; branchId?: string | null; reference: string; tipCents: number; serviceCents: number; mainMethod: string }): Draft {
+  return {
+    date: t.date,
+    branchId: t.branchId,
+    memo: `Tip and service charge on sale ${t.reference}`,
+    lines: tidy([dr(saleMethodAccount(t.mainMethod), t.tipCents + t.serviceCents), cr('TIPS_PAYABLE', t.tipCents), cr('SERVICE_CHARGE', t.serviceCents)]),
+  };
+}
+
+/** A completed stock count: what was missing comes out of stock as a cost; what was found over goes back in and reduces it. */
+export function stockCountDraft(s: { date: string; branchId?: string | null; reference: string; shortCents: number; overCents: number }): Draft {
+  return {
+    date: s.date,
+    branchId: s.branchId,
+    memo: `Stock count ${s.reference}`,
+    lines: tidy([dr('STOCK_COUNT', s.shortCents), cr('INVENTORY', s.shortCents), dr('INVENTORY', s.overCents), cr('STOCK_COUNT', s.overCents)]),
+  };
+}
+
+/** A lease ended: the deposit the tenant paid is no longer held; what was handed back left the money account, the rest was kept. */
+export function leaseEndDraft(l: { date: string; reference: string; paidCents: number; refundedCents: number; method: string | null }): Draft {
+  const refunded = Math.min(l.refundedCents, l.paidCents);
+  return {
+    date: l.date,
+    memo: `Lease ended: deposit (${l.reference})`,
+    lines: tidy([dr('TENANT_DEPOSITS', l.paidCents), cr(moneyAccount(l.method), refunded), cr('DEPOSITS_KEPT', l.paidCents - refunded)]),
+  };
+}
+
+/** The business paid ZARODA its subscription. */
+export function zarodaSubscriptionDraft(z: { date: string; amountCents: number; method: string | null }): Draft {
+  return { date: z.date, memo: 'ZARODA subscription', lines: tidy([dr('ZARODA_FEES', z.amountCents), cr(moneyAccount(z.method), z.amountCents)]) };
+}
+
+/**
+ * An invoice from ZARODA. A commission or plan fee is the business's cost. Shopper convenience fees are not: the shoppers paid them
+ * on top of their orders (that money is not in the sales), and the shop only passes them on.
+ */
+export function zarodaInvoiceDraft(z: { date: string; reference: string; amountCents: number; passOn: boolean; label: string }): Draft {
+  return {
+    date: z.date,
+    memo: `ZARODA invoice ${z.reference}: ${z.label}`,
+    lines: tidy([dr(z.passOn ? 'MPESA' : 'ZARODA_FEES', z.amountCents), cr('AP_ZARODA', z.amountCents)]),
+  };
+}
+
+export function zarodaPaymentDraft(z: { date: string; reference: string; amountCents: number; method: string | null }): Draft {
+  return { date: z.date, memo: `Paid ZARODA invoice ${z.reference}`, lines: tidy([dr('AP_ZARODA', z.amountCents), cr(moneyAccount(z.method ?? 'MPESA'), z.amountCents)]) };
+}
+
+/** A house advert paid to ZARODA by M-Pesa. */
+export function zarodaAdvertDraft(z: { date: string; reference: string; amountCents: number }): Draft {
+  return { date: z.date, memo: `House advert fee (${z.reference})`, lines: tidy([dr('ZARODA_FEES', z.amountCents), cr('MPESA', z.amountCents)]) };
+}
+
+/** What a business can pay off with "Pay what you owe", and what each is called. */
+export const PAYABLE_ACCOUNTS: Record<string, string> = {
+  VAT_OUTPUT: 'VAT to KRA',
+  PAYE: 'PAYE to KRA',
+  NSSF: 'NSSF',
+  SHIF: 'SHIF',
+  HOUSING_LEVY: 'Housing levy',
+  TIPS_PAYABLE: 'Tips handed to staff',
+};
+
+/** Paying off something owed (VAT, PAYE, tips to staff...) from cash, M-Pesa or the bank. */
+export function payOffDraft(p: { date: string; account: string; amountCents: number; paidFrom: string; reference?: string | null }): Draft {
+  const label = PAYABLE_ACCOUNTS[p.account] ?? p.account;
+  return { date: p.date, memo: `Paid: ${label}${p.reference ? ` (${p.reference})` : ''}`, lines: tidy([dr(p.account as AccountKey, p.amountCents), cr(moneyAccount(p.paidFrom), p.amountCents)]) };
 }
 
 /** A manual journal's problem, or null: at least two lines, each one side only, and balanced. */

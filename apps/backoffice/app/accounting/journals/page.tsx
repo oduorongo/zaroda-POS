@@ -2,9 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { apiGet, apiPost, ApiError } from "../../../lib/api";
-import { Nav } from "../../../components/nav";
-import { PageHeader } from "../../../components/page-header";
-import { Account, AccountingTabs, buttonClass, canWrite, inputClass, kes, niceDay, quietButtonClass, todayKey, useBackofficeSession } from "../shared";
+import { API, Account, AccountingTabs, buttonClass, canWrite, inputClass, kes, niceDay, quietButtonClass, todayKey, useBooksSession, Shell } from "../shared";
 
 type Kind = "AUTO" | "MANUAL" | "OPENING" | "REVERSAL";
 interface ListRow {
@@ -50,7 +48,7 @@ const toCents = (s: string) => Math.round((Number(s) || 0) * 100);
 
 /** Every entry in the books, newest first, and the journals the business enters itself. */
 export default function JournalsPage() {
-  const session = useBackofficeSession();
+  const session = useBooksSession();
   const [list, setList] = useState<List | null>(null);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [page, setPage] = useState(1);
@@ -75,7 +73,7 @@ export default function JournalsPage() {
       if (from) q.set("from", from);
       if (to) q.set("to", to);
       if (search.trim()) q.set("search", search.trim());
-      setList(await apiGet<List>(`/accounting/journals?${q.toString()}`));
+      setList(await apiGet<List>(`${API}/journals?${q.toString()}`));
       setError(null);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not load the journals.");
@@ -86,12 +84,12 @@ export default function JournalsPage() {
     if (session) void load();
   }, [session, load]);
   useEffect(() => {
-    if (session) void apiGet<Account[]>("/accounting/accounts").then(setAccounts).catch(() => undefined);
+    if (session) void apiGet<Account[]>(`${API}/accounts`).then(setAccounts).catch(() => undefined);
   }, [session]);
 
   async function show(id: string) {
     try {
-      setOpen(await apiGet<Detail>(`/accounting/journals/${id}`));
+      setOpen(await apiGet<Detail>(`${API}/journals/${id}`));
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not open the journal.");
     }
@@ -102,7 +100,7 @@ export default function JournalsPage() {
     if (reason === null) return;
     setBusy(true);
     try {
-      const r = await apiPost<Detail>(`/accounting/journals/${e.id}/reverse`, { reason: reason || undefined });
+      const r = await apiPost<Detail>(`${API}/journals/${e.id}/reverse`, { reason: reason || undefined });
       setNotice(`Journal ${e.number} is reversed by journal ${r.number}.`);
       setOpen(r);
       await load();
@@ -125,7 +123,7 @@ export default function JournalsPage() {
     setBusy(true);
     setNotice(null);
     try {
-      const r = await apiPost<Detail>("/accounting/journals", {
+      const r = await apiPost<Detail>(`${API}/journals`, {
         date,
         memo,
         kind: opening ? "OPENING" : "MANUAL",
@@ -153,9 +151,7 @@ export default function JournalsPage() {
   const pages = list ? Math.max(1, Math.ceil(list.total / list.pageSize)) : 1;
 
   return (
-    <div className="min-h-screen bg-background text-foreground">
-      <Nav session={session} />
-      <PageHeader />
+    <Shell session={session}>
       <main className="mx-auto max-w-5xl space-y-6 p-6">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h1 className="text-xl font-bold">Journals</h1>
@@ -380,6 +376,6 @@ export default function JournalsPage() {
           </div>
         )}
       </main>
-    </div>
+    </Shell>
   );
 }

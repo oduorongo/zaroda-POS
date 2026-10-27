@@ -3452,6 +3452,7 @@ model RentalLease {
   depositAmount   Decimal           @default(0) @db.Decimal(12, 2)
   dueDay          Int               @default(1) // day of the month rent falls due, 1-28
   depositRefunded Decimal           @default(0) @db.Decimal(12, 2) // handed back to the tenant when the lease ended
+  depositRefundMethod String? // how it was handed back: CASH, BANK or MPESA (for the books)
   status          RentalLeaseStatus @default(ACTIVE)
   createdAt       DateTime          @default(now())
   updatedAt       DateTime          @updatedAt
@@ -5315,4 +5316,89 @@ model LedgerPosting {
 
   @@unique([organizationId, sourceType, sourceId])
   @@map("ledger_postings")
+}
+
+// ZARODA's own books (the platform's, not any business's): subscriptions, commission and convenience-fee invoices, rental plan
+// invoices, advert fees and sales-agent payouts are posted to them automatically; platform admins add their own journals.
+// Platform-level tables like plans and sales_payouts: no organizationId and no row-level security (never tenant-facing).
+
+model PlatformLedgerAccount {
+  id          String            @id @default(uuid())
+  code        String            @unique
+  name        String
+  type        LedgerAccountType
+  systemKey   String?           @unique
+  description String?
+  active      Boolean           @default(true)
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  lines PlatformJournalLine[]
+
+  @@map("platform_ledger_accounts")
+}
+
+model PlatformLedgerSettings {
+  id           String    @id @default("default")
+  startDate    DateTime  @db.Date
+  lockDate     DateTime? @db.Date
+  lastPassAt   DateTime?
+  lastPassNote String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@map("platform_ledger_settings")
+}
+
+model PlatformJournalEntry {
+  id             String      @id @default(uuid())
+  number         Int         @unique
+  entryDate      DateTime    @db.Date
+  kind           JournalKind
+  memo           String
+  sourceType     String?
+  sourceId       String?
+  /// The business it concerns, when there is one (an invoice, a subscription).
+  organizationId String?
+  reversesId     String?     @unique
+  createdById    String?
+  createdByName  String?
+  createdAt      DateTime    @default(now())
+
+  reverses   PlatformJournalEntry? @relation("PlatformJournalReversal", fields: [reversesId], references: [id])
+  reversedBy PlatformJournalEntry? @relation("PlatformJournalReversal")
+  lines      PlatformJournalLine[]
+
+  @@index([entryDate])
+  @@index([sourceType, sourceId])
+  @@map("platform_journal_entries")
+}
+
+model PlatformJournalLine {
+  id        String  @id @default(uuid())
+  entryId   String
+  accountId String
+  debit     Decimal @default(0) @db.Decimal(14, 2)
+  credit    Decimal @default(0) @db.Decimal(14, 2)
+  memo      String?
+
+  entry   PlatformJournalEntry  @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  account PlatformLedgerAccount @relation(fields: [accountId], references: [id])
+
+  @@index([accountId])
+  @@index([entryId])
+  @@map("platform_journal_lines")
+}
+
+model PlatformLedgerPosting {
+  id          String   @id @default(uuid())
+  sourceType  String
+  sourceId    String
+  fingerprint String
+  entryId     String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([sourceType, sourceId])
+  @@map("platform_ledger_postings")
 }

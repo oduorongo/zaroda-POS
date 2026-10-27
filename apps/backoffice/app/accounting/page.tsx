@@ -3,9 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { apiGet, apiPatch, apiPost, ApiError } from "../../lib/api";
-import { Nav } from "../../components/nav";
-import { PageHeader } from "../../components/page-header";
-import { AccountingTabs, buttonClass, canWrite, inputClass, kes, niceDay, quietButtonClass, todayKey, useBackofficeSession } from "./shared";
+import { API, AccountingTabs, buttonClass, canWrite, inputClass, kes, niceDay, quietButtonClass, todayKey, useBooksSession, Shell } from "./shared";
 
 interface Overview {
   startDate: string;
@@ -37,7 +35,7 @@ interface ProfitLoss {
 
 /** The books at a glance: where they stand, when they were last posted, and their settings. */
 export default function AccountingPage() {
-  const session = useBackofficeSession();
+  const session = useBooksSession();
   const [data, setData] = useState<Overview | null>(null);
   const [bs, setBs] = useState<BalanceSheet | null>(null);
   const [pl, setPl] = useState<ProfitLoss | null>(null);
@@ -50,14 +48,14 @@ export default function AccountingPage() {
 
   const load = useCallback(async () => {
     try {
-      const o = await apiGet<Overview>("/accounting/overview");
+      const o = await apiGet<Overview>(`${API}/overview`);
       setData(o);
       setStartDate(o.startDate);
       setLockDate(o.lockDate ?? "");
       setPayrollPaidFrom(o.payrollPaidFrom);
       const [b, p] = await Promise.all([
-        apiGet<BalanceSheet>("/accounting/reports/balance-sheet"),
-        apiGet<ProfitLoss>(`/accounting/reports/profit-loss?from=${todayKey().slice(0, 7)}-01&to=${todayKey()}`),
+        apiGet<BalanceSheet>(`${API}/reports/balance-sheet`),
+        apiGet<ProfitLoss>(`${API}/reports/profit-loss?from=${todayKey().slice(0, 7)}-01&to=${todayKey()}`),
       ]);
       setBs(b);
       setPl(p);
@@ -75,7 +73,7 @@ export default function AccountingPage() {
     setBusy(true);
     setNotice(null);
     try {
-      const r = await apiPost<PassResult>("/accounting/post-now", {});
+      const r = await apiPost<PassResult>(`${API}/post-now`, {});
       const changed = r.posted + r.reposted + r.reversed;
       setNotice(
         changed === 0 && r.failed === 0
@@ -94,7 +92,7 @@ export default function AccountingPage() {
     setBusy(true);
     setNotice(null);
     try {
-      await apiPatch("/accounting/settings", body);
+      await apiPatch(`${API}/settings`, body);
       setNotice(done);
       await load();
     } catch (err) {
@@ -109,9 +107,7 @@ export default function AccountingPage() {
   const owner = session.role === "OWNER";
 
   return (
-    <div className="min-h-screen bg-background text-foreground">
-      <Nav session={session} />
-      <PageHeader />
+    <Shell session={session}>
       <main className="mx-auto max-w-4xl space-y-6 p-6">
         <h1 className="text-xl font-bold">Accounts (books)</h1>
         <AccountingTabs />
@@ -132,10 +128,11 @@ export default function AccountingPage() {
             <div className="space-y-2 rounded-lg border border-border bg-surface p-4 text-sm">
               <h2 className="font-semibold">How the books are kept</h2>
               <p className="text-secondary-600">
-                Every sale, refund, expense, supplier bill and payment, payroll run, school receipt, rent charge and payment, hotel guest
-                payment, layaway and waste entry is posted to the books for you every few minutes, as double entries. You only enter
+                Every sale, refund, tip, expense, supplier bill and payment, payroll run, school receipt, rent charge and payment, deposit
+                handed back, hotel guest payment, layaway, waste, stock count and ZARODA charge is posted to the books for you every few
+                minutes, as double entries. Moving stock between your branches needs no entry: it is still your stock. You only enter
                 journals for things the system cannot see: the balances you started with, money the owner puts in or takes out, loans,
-                equipment, and corrections.
+                equipment, and corrections. Record paying KRA, NSSF, SHIF or handing tips to staff under &quot;What you owe&quot;.
               </p>
               <ul className="space-y-1">
                 <li>
@@ -162,6 +159,8 @@ export default function AccountingPage() {
                 <span className="block text-secondary-600">Every entry, and your own (opening balances, owner&apos;s money, corrections).</span>
               </Link>
             </div>
+
+            <OwedBox writer={writer} onPaid={(m) => { setNotice(m); void load(); }} onError={setError} />
 
             {writer && (
               <div className="space-y-4 rounded-lg border border-border bg-surface p-4 text-sm">
@@ -233,6 +232,111 @@ export default function AccountingPage() {
           </>
         )}
       </main>
+    </Shell>
+  );
+}
+
+interface Owed {
+  account: string;
+  label: string;
+  owed: number;
+}
+
+/** What the business owes KRA, NSSF, SHIF and its staff (tips), and a form to record paying it. */
+function OwedBox({ writer, onPaid, onError }: { writer: boolean; onPaid: (message: string) => void; onError: (message: string) => void }) {
+  const [owed, setOwed] = useState<Owed[]>([]);
+  const [paying, setPaying] = useState<Owed | null>(null);
+  const [amount, setAmount] = useState("");
+  const [date, setDate] = useState(todayKey());
+  const [paidFrom, setPaidFrom] = useState("BANK");
+  const [reference, setReference] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const load = useCallback(() => {
+    void apiGet<Owed[]>(`${API}/owed`).then(setOwed).catch(() => undefined);
+  }, []);
+  useEffect(load, [load]);
+
+  async function pay() {
+    if (!paying) return;
+    setBusy(true);
+    try {
+      await apiPost(`${API}/pay-off`, { account: paying.account, amount: Number(amount), date, paidFrom, reference: reference.trim() || undefined });
+      onPaid(`Recorded: ${paying.label}, KES ${kes(Number(amount))}.`);
+      setPaying(null);
+      setAmount("");
+      setReference("");
+      load();
+    } catch (err) {
+      onError(err instanceof ApiError ? err.message : "Could not record the payment.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="space-y-2 rounded-lg border border-border bg-surface p-4 text-sm">
+      <h2 className="font-semibold">What you owe</h2>
+      <p className="text-xs text-secondary-500">
+        Tax and deductions collected for KRA, NSSF and SHIF, and tips held for your staff. When you pay one, record it here so the books
+        show it as paid.
+      </p>
+      <ul className="divide-y divide-border/60">
+        {owed.map((o) => (
+          <li key={o.account} className="flex flex-wrap items-center justify-between gap-2 py-1.5">
+            <span>{o.label}</span>
+            <span className="flex items-center gap-3">
+              <span className={`font-mono ${o.owed < 0 ? "text-secondary-500" : ""}`}>KES {kes(o.owed)}</span>
+              {writer && (
+                <button
+                  onClick={() => {
+                    setPaying(o);
+                    setAmount(o.owed > 0 ? String(o.owed) : "");
+                  }}
+                  className="text-xs text-primary-600 hover:underline"
+                >
+                  Record a payment
+                </button>
+              )}
+            </span>
+          </li>
+        ))}
+      </ul>
+      {paying && (
+        <div className="space-y-2 rounded-md border border-primary-600/40 p-3">
+          <p className="font-medium">Paid: {paying.label}</p>
+          <div className="grid gap-2 sm:grid-cols-4">
+            <label>
+              Amount (KES)
+              <input inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} className={inputClass} />
+            </label>
+            <label>
+              Date paid
+              <input type="date" max={todayKey()} value={date} onChange={(e) => setDate(e.target.value)} className={inputClass} />
+            </label>
+            <label>
+              Paid from
+              <select value={paidFrom} onChange={(e) => setPaidFrom(e.target.value)} className={inputClass}>
+                <option value="BANK">Bank</option>
+                <option value="MPESA">M-Pesa</option>
+                <option value="CASH">Cash</option>
+              </select>
+            </label>
+            <label>
+              Slip or code (optional)
+              <input value={reference} onChange={(e) => setReference(e.target.value)} maxLength={80} className={inputClass} />
+            </label>
+          </div>
+          <div className="flex gap-2">
+            <button onClick={() => void pay()} disabled={busy || !(Number(amount) > 0)} className={buttonClass}>
+              Save
+            </button>
+            <button onClick={() => setPaying(null)} className={quietButtonClass}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

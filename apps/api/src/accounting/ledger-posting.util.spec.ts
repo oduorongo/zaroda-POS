@@ -22,6 +22,14 @@ import {
   reversed,
   saleDraft,
   schoolReceiptDraft,
+  stockCountDraft,
+  leaseEndDraft,
+  payOffDraft,
+  tipDraft,
+  zarodaAdvertDraft,
+  zarodaInvoiceDraft,
+  zarodaPaymentDraft,
+  zarodaSubscriptionDraft,
   tidy,
   toCents,
   wasteDraft,
@@ -196,6 +204,42 @@ describe('other sources', () => {
     const d = cancelFeeDraft({ date: 'd', reference: 'ZB-1', feeCents: 500 });
     expect(amount(d, 'GUEST_AR')).toBe(500);
     expect(amount(d, 'OTHER_INCOME')).toBe(-500);
+  });
+  it('a tip is held for staff, a service charge is income, both came in with the bill', () => {
+    const d = tipDraft({ date: 'd', reference: 'x', tipCents: 200, serviceCents: 500, mainMethod: 'MPESA' });
+    expect(isBalanced(d.lines)).toBe(true);
+    expect(amount(d, 'MPESA')).toBe(700);
+    expect(amount(d, 'TIPS_PAYABLE')).toBe(-200);
+    expect(amount(d, 'SERVICE_CHARGE')).toBe(-500);
+  });
+  it('a stock count: missing stock is a cost, stock found over reduces it', () => {
+    const d = stockCountDraft({ date: 'd', reference: 'x', shortCents: 900, overCents: 300 });
+    expect(amount(d, 'STOCK_COUNT')).toBe(600);
+    expect(amount(d, 'INVENTORY')).toBe(-600);
+    expect(stockCountDraft({ date: 'd', reference: 'x', shortCents: 0, overCents: 0 }).lines).toEqual([]);
+  });
+  it('a lease ending releases the deposit: some handed back, the rest kept', () => {
+    const d = leaseEndDraft({ date: 'd', reference: 'x', paidCents: 10000, refundedCents: 7000, method: 'BANK' });
+    expect(isBalanced(d.lines)).toBe(true);
+    expect(amount(d, 'TENANT_DEPOSITS')).toBe(10000);
+    expect(amount(d, 'BANK')).toBe(-7000);
+    expect(amount(d, 'DEPOSITS_KEPT')).toBe(-3000);
+  });
+  it("ZARODA's charges: a fee is a cost; convenience fees are only passed on", () => {
+    expect(amount(zarodaSubscriptionDraft({ date: 'd', amountCents: 150000, method: 'MPESA' }), 'ZARODA_FEES')).toBe(150000);
+    expect(amount(zarodaInvoiceDraft({ date: 'd', reference: 'C1', amountCents: 500, passOn: false, label: 'x' }), 'ZARODA_FEES')).toBe(500);
+    const fee = zarodaInvoiceDraft({ date: 'd', reference: 'F1', amountCents: 300, passOn: true, label: 'x' });
+    expect(amount(fee, 'ZARODA_FEES')).toBe(0);
+    expect(amount(fee, 'MPESA')).toBe(300);
+    expect(amount(fee, 'AP_ZARODA')).toBe(-300);
+    expect(amount(zarodaPaymentDraft({ date: 'd', reference: 'C1', amountCents: 500, method: null }), 'MPESA')).toBe(-500);
+    expect(amount(zarodaAdvertDraft({ date: 'd', reference: 'A', amountCents: 10000 }), 'ZARODA_FEES')).toBe(10000);
+  });
+  it('paying off VAT or tips takes it off what is owed', () => {
+    const d = payOffDraft({ date: 'd', account: 'VAT_OUTPUT', amountCents: 5000, paidFrom: 'BANK', reference: 'KRA-1' });
+    expect(amount(d, 'VAT_OUTPUT')).toBe(5000);
+    expect(amount(d, 'BANK')).toBe(-5000);
+    expect(d.memo).toContain('KRA-1');
   });
   it('maps every way of paying to a money account', () => {
     expect(moneyAccount('TUMA')).toBe('MPESA');

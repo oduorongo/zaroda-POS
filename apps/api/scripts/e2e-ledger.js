@@ -253,6 +253,118 @@ const near = (a, b) => Math.abs(Number(a) - Number(b)) < 0.005;
   const list = (await h('GET', '/accounting/journals?page=1')).json;
   check('the journal list is newest first, 50 to a page, with a total', list.rows.length <= 50 && list.total > before && list.rows[0].date >= list.rows[list.rows.length - 1].date, { total: list.total });
 
+  section('10. Tips, a stock count and paying what is owed');
+  await sql.query('INSERT INTO restaurant_sale_tips (id, "saleId", "tipAmount", "serviceChargeAmount") VALUES ($1, $2, 50, 20)', [randomUUID(), s2.json.id]);
+  const stId = randomUUID();
+  await sql.query(`INSERT INTO stock_takes (id, "organizationId", "branchId", status, "startedById", "completedAt") VALUES ($1, $2, $3, 'COMPLETED', $4, now())`, [stId, org.id, branchId, ownerOrgUserId]);
+  await sql.query('INSERT INTO stock_take_lines (id, "stockTakeId", "variantId", "systemQuantity", "countedQuantity", variance) VALUES ($1, $2, $3, 10, 8, -2)', [randomUUID(), stId, v.id]);
+  const pass10 = (await h('POST', '/accounting/post-now', {})).json;
+  check('the next pass posts the tip and the stock count', pass10.posted === 2 && pass10.failed === 0, pass10);
+  const tipE = (await h('GET', `/accounting/journals?sourceType=TIP`)).json.rows.find((r) => /sale/.test(r.memo) && r.amount === 70);
+  const tipD = tipE && (await h('GET', `/accounting/journals/${tipE.id}`)).json;
+  check('the tip (50) is held for staff, the service charge (20) is income, both came in by card', tipD && line(tipD, 'CARD_CLEARING').debit === 70 && line(tipD, 'TIPS_PAYABLE').credit === 50 && line(tipD, 'SERVICE_CHARGE').credit === 20, tipD?.lines);
+  const stE = (await entryFor('STOCK_COUNT', stId))[0];
+  const stD = stE && (await h('GET', `/accounting/journals/${stE.id}`)).json;
+  check('two missing at a cost of 60 each: 120 out of stock as a count difference', stD && line(stD, 'STOCK_COUNT').debit === 120 && line(stD, 'INVENTORY').credit === 120, stD?.lines);
+
+  const owed = (await h('GET', '/accounting/owed')).json;
+  const vatOwed = owed.find((o) => o.account === 'VAT_OUTPUT');
+  const tipsOwed = owed.find((o) => o.account === 'TIPS_PAYABLE');
+  check('what is owed lists VAT, PAYE, NSSF, SHIF, housing levy and tips', owed.length === 6 && vatOwed && tipsOwed?.owed >= 50, owed);
+  const paidTips = await h('POST', '/accounting/pay-off', { account: 'TIPS_PAYABLE', amount: 50, date: nairobi(), paidFrom: 'CASH' });
+  check('handing the tips to staff is recorded', paidTips.status === 201 && line(paidTips.json, 'TIPS_PAYABLE').debit === 50 && line(paidTips.json, 'CASH').credit === 50, paidTips.json);
+  const paidVat = await h('POST', '/accounting/pay-off', { account: 'VAT_OUTPUT', amount: 16, date: nairobi(), paidFrom: 'BANK', reference: `KRA-${tag}` });
+  check('paying VAT to KRA is recorded with the slip number', paidVat.status === 201 && paidVat.json.memo.includes(`KRA-${tag}`), paidVat.json);
+  const owed2 = (await h('GET', '/accounting/owed')).json;
+  check('and what is owed goes down by exactly that', near(owed2.find((o) => o.account === 'VAT_OUTPUT').owed, vatOwed.owed - 16) && near(owed2.find((o) => o.account === 'TIPS_PAYABLE').owed, tipsOwed.owed - 50), owed2);
+  check('paying something that is not owed money is refused', (await h('POST', '/accounting/pay-off', { account: 'SALES', amount: 5, date: nairobi(), paidFrom: 'CASH' })).status === 400);
+  check('a cashier cannot record a payment to KRA', (await h('POST', '/accounting/pay-off', { account: 'VAT_OUTPUT', amount: 5, date: nairobi(), paidFrom: 'CASH' }, cashier)).status === 403);
+
+  section("11. What ZARODA charges, in the business's books");
+  const admin = (await call('POST', '/platform-admin/auth/login', { body: { email: 'admin@test.local', password: 'test-admin-password' } })).json.accessToken;
+  check('platform admin can sign in', Boolean(admin));
+  await h('POST', '/platform-admin/plans', { tier: 'BASIC', name: 'Basic', priceKes: 1500, maxDevices: 2, maxBranches: 1 }, admin);
+  const planId = (await sql.query("SELECT id FROM plans WHERE tier = 'BASIC'")).rows[0].id;
+  await sql.query('INSERT INTO subscriptions (id, "organizationId", "planId", "currentPeriodEnd", "updatedAt") VALUES ($1, $2, $3, now(), now()) ON CONFLICT ("organizationId") DO NOTHING', [randomUUID(), org.id, planId]);
+  const sub = await h('POST', `/platform-admin/organizations/${org.id}/payments`, { amount: 1500, method: 'MPESA', reference: `SUB-${tag}` }, admin);
+  check('ZARODA records the business paying its subscription', sub.status === 201 || sub.status === 200, sub.json);
+  const feeId = randomUUID();
+  const commId = randomUUID();
+  const invoiceRow = (id, number, kind, amount) =>
+    sql.query(
+      `INSERT INTO commission_invoices (id, "organizationId", "invoiceNumber", kind, "periodMonth", "periodStart", "periodEnd", "orderCount", "salesTotal", "commissionTotal", "amountDue", status, "dueDate", "updatedAt")
+       VALUES ($1, $2, $3, $4, $5, now(), now(), 1, 1000, $6::numeric, $7::int, 'ISSUED', now() + interval '3 days', now())`,
+      [id, org.id, number, kind, `T${tag}${kind}`.slice(0, 20), amount, amount],
+    );
+  await invoiceRow(feeId, `FEE-${tag}`, 'DAILY_FEE', 30);
+  await invoiceRow(commId, `COM-${tag}`, 'MONTHLY', 40);
+  const pass11 = (await h('POST', '/accounting/post-now', {})).json;
+  check('the subscription and both invoices are posted', pass11.posted === 3 && pass11.failed === 0, pass11);
+  const subE = (await h('GET', '/accounting/journals?sourceType=ZARODA_SUBSCRIPTION')).json.rows[0];
+  const subD = subE && (await h('GET', `/accounting/journals/${subE.id}`)).json;
+  check('the subscription is a cost, paid by M-Pesa', subD && line(subD, 'ZARODA_FEES').debit === 1500 && line(subD, 'MPESA').credit === 1500, subD?.lines);
+  const feeD = (await h('GET', `/accounting/journals/${(await entryFor('ZARODA_INVOICE', feeId))[0].id}`)).json;
+  check('convenience fees are owed to ZARODA but are not a cost (the shoppers paid them)', line(feeD, 'AP_ZARODA').credit === 30 && line(feeD, 'MPESA').debit === 30 && line(feeD, 'ZARODA_FEES').debit === 0, feeD.lines);
+  const comD = (await h('GET', `/accounting/journals/${(await entryFor('ZARODA_INVOICE', commId))[0].id}`)).json;
+  check('commission is a cost, owed to ZARODA until paid', line(comD, 'ZARODA_FEES').debit === 40 && line(comD, 'AP_ZARODA').credit === 40, comD.lines);
+  await sql.query(`UPDATE commission_invoices SET status = 'PAID', "paidAt" = now(), "paymentMethod" = 'BANK' WHERE id = $1`, [feeId]);
+  await sql.query(`UPDATE commission_invoices SET status = 'WAIVED', "waivedReason" = 'test' WHERE id = $1`, [commId]);
+  const pass12 = (await h('POST', '/accounting/post-now', {})).json;
+  check('paying one and waiving the other: a payment posted, the waived one reversed', pass12.posted === 1 && pass12.reversed === 1 && pass12.failed === 0, pass12);
+  const feePaid = (await h('GET', `/accounting/journals/${(await entryFor('ZARODA_INVOICE_PAID', feeId))[0].id}`)).json;
+  check('the payment clears what was owed to ZARODA, from the bank', line(feePaid, 'AP_ZARODA').debit === 30 && line(feePaid, 'BANK').credit === 30, feePaid.lines);
+
+  section("12. ZARODA's own books");
+  for (const t of ['platform_ledger_accounts', 'platform_ledger_settings', 'platform_journal_entries', 'platform_journal_lines', 'platform_ledger_postings']) {
+    const r = (await sql.query('SELECT relrowsecurity AS on, relforcerowsecurity AS forced FROM pg_class WHERE relname = $1', [t])).rows[0];
+    check(`${t} has row-level security switched on and forced`, r?.on === true && r?.forced === true, r);
+  }
+  await sql.query('DELETE FROM platform_journal_lines');
+  await sql.query('UPDATE platform_journal_entries SET "reversesId" = NULL');
+  for (const t of ['platform_journal_entries', 'platform_ledger_postings', 'platform_ledger_accounts', 'platform_ledger_settings']) await sql.query(`DELETE FROM ${t}`);
+  const pa = (m, path, body) => call(m, `/platform-admin/accounting${path}`, { token: admin, body });
+  check("ZARODA's books need a platform admin's sign-in", (await call('GET', '/platform-admin/accounting/overview')).status === 401);
+  check("a business owner cannot open ZARODA's books", (await call('GET', '/platform-admin/accounting/overview', { token: owner })).status === 401);
+  const pov = await pa('GET', '/overview');
+  check("ZARODA's books open, starting today, with their own chart", pov.status === 200 && pov.json.startDate === nairobi() && pov.json.entries === 0 && pov.json.accounts >= 24, pov.json);
+  check('the start can be moved back before anything is posted', (await pa('PATCH', '/settings', { startDate: start })).status === 200);
+  const pp1 = (await pa('POST', '/post-now', {})).json;
+  check('the first pass posts what every business was charged and paid', pp1.posted >= 3 && pp1.failed === 0, pp1);
+  const ppostings = (await sql.query(`SELECT "sourceType", count(*)::int n FROM platform_ledger_postings GROUP BY 1`)).rows;
+  const has = (t) => ppostings.some((r) => r.sourceType === t);
+  check('including the subscription, the fee invoice and its payment, and the waived invoice (nothing standing for it)', has('P_SUBSCRIPTION') && has('P_COMMISSION_INVOICE') && has('P_COMMISSION_PAID'), ppostings);
+  const waived = (await sql.query(`SELECT "entryId" FROM platform_ledger_postings WHERE "sourceId" = $1`, [commId])).rows;
+  check('a waived invoice is never income', waived.length === 0 || waived[0].entryId === null, waived);
+  const pp2 = (await pa('POST', '/post-now', {})).json;
+  check('posting again changes nothing', pp2.posted === 0 && pp2.reposted === 0 && pp2.reversed === 0 && pp2.failed === 0, pp2);
+  const paccounts = (await pa('GET', '/accounts')).json;
+  const pkey = (k) => paccounts.find((a) => a.systemKey === k);
+  check('the convenience fee is ZARODA income, and the bank has it', pkey('CONVENIENCE_FEE_INCOME').balance >= 30 && pkey('BANK').balance >= 30, [pkey('CONVENIENCE_FEE_INCOME'), pkey('BANK')]);
+  check('subscriptions are income', pkey('SUBSCRIPTION_INCOME').balance >= 1500, pkey('SUBSCRIPTION_INCOME'));
+  const hosting = await pa('POST', '/journals', {
+    date: nairobi(),
+    memo: `Hosting bill ${tag}`,
+    lines: [
+      { accountId: pkey('HOSTING').id, debit: 2500, credit: 0 },
+      { accountId: pkey('BANK').id, debit: 0, credit: 2500 },
+    ],
+  });
+  check('a platform admin records a cost (hosting) as a journal, with their name', hosting.status === 201 && hosting.json.lines.length === 2 && Boolean(hosting.json.createdByName), hosting.json);
+  const audited = (await sql.query(`SELECT 1 FROM platform_audit_log WHERE action = 'platform_admin.accounting.journal_created' AND "entityId" = $1`, [hosting.json.id])).rowCount;
+  check('and it is in the platform audit log', audited === 1);
+  check("an unbalanced journal is refused in ZARODA's books too", (await pa('POST', '/journals', { date: nairobi(), memo: 'bad', lines: [{ accountId: pkey('HOSTING').id, debit: 5, credit: 0 }, { accountId: pkey('BANK').id, debit: 0, credit: 4 }] })).status === 400);
+  const ptb = (await pa('GET', '/reports/trial-balance')).json;
+  check("ZARODA's trial balance balances", ptb.balanced === true && ptb.debit > 0, { d: ptb.debit, c: ptb.credit });
+  const pbs = (await pa('GET', '/reports/balance-sheet')).json;
+  check("ZARODA's balance sheet balances", pbs.balanced === true, pbs);
+  const ppl = (await pa('GET', `/reports/profit-loss?from=${start}&to=${nairobi()}`)).json;
+  check("ZARODA's profit and loss: hosting is a cost, the fees are income", ppl.expenses.some((r) => r.code === pkey('HOSTING').code && r.amount >= 2500) && ppl.totalIncome >= 1530, ppl);
+  const autoP = (await pa('GET', '/journals?kind=AUTO')).json.rows[0];
+  check('an automatic ZARODA entry cannot be reversed by hand', (await pa('POST', `/journals/${autoP.id}/reverse`, {})).status === 400);
+  check('a manual one can', (await pa('POST', `/journals/${hosting.json.id}/reverse`, { reason: 'test' })).status === 201);
+  check("no ZARODA account shows up in a business's books", !(await h('GET', '/accounting/accounts')).json.some((a) => a.systemKey === 'SUBSCRIPTION_INCOME'));
+
+  await sql.query(`DELETE FROM commission_invoices WHERE id = ANY($1)`, [[feeId, commId]]);
   await sql.query(`DELETE FROM expenses WHERE "organizationId" = $1 AND description LIKE $2`, [org.id, `%${tag}%`]);
   await sql.end();
   console.log(`\n${passed} checks passed${failures.length ? `, ${failures.length} FAILED:\n - ${failures.join('\n - ')}` : ' - all good'}`);

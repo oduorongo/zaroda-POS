@@ -390,7 +390,7 @@ export class RentalService {
       }
       const ended = await tx.rentalLease.update({
         where: { id },
-        data: { status: 'ENDED', endedAt, depositRefunded: dto.depositRefunded ?? 0 },
+        data: { status: 'ENDED', endedAt, depositRefunded: dto.depositRefunded ?? 0, depositRefundMethod: dto.depositRefunded ? (dto.depositRefundMethod ?? 'CASH') : null },
       });
       await tx.rentalUnit.update({
         where: { id: lease.unitId },

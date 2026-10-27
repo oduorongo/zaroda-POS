@@ -4,6 +4,7 @@ import { Role } from '@prisma/client';
 import { PrismaService } from '../common/prisma/prisma.service';
 import { tenantContext } from '../common/tenant/tenant-context';
 import { LedgerPosterService } from './ledger-poster.service';
+import { PlatformLedgerService } from './platform-ledger.service';
 
 const FIRST_RUN_DELAY_MS = 120_000;
 const INTERVAL_MS = 5 * 60_000;
@@ -24,6 +25,7 @@ export class LedgerSchedulerService implements OnModuleInit, OnModuleDestroy {
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
     private readonly poster: LedgerPosterService,
+    private readonly platformLedger: PlatformLedgerService,
   ) {}
 
   onModuleInit() {
@@ -55,6 +57,13 @@ export class LedgerSchedulerService implements OnModuleInit, OnModuleDestroy {
         } catch (e) {
           this.logger.error({ err: e, organizationId }, 'Posting to the books failed for a business');
         }
+      }
+      // then ZARODA's own books, from what every business was charged and paid
+      try {
+        const r = await this.platformLedger.runPass();
+        if (r.posted || r.reposted || r.reversed || r.failed) this.logger.log(r, 'Posted to ZARODA books');
+      } catch (e) {
+        this.logger.error({ err: e }, 'Posting to ZARODA books failed');
       }
     } catch (e) {
       this.logger.error({ err: e }, 'Posting to the books failed');

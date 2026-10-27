@@ -1,9 +1,30 @@
 "use client";
 
-import { useEffect, useState } from "react";
+// The pieces the books screens share. The platform admin has a copy of the statement, journal and chart screens for ZARODA's own
+// books (apps/platform-admin/app/accounting); only this file differs between the two apps, so keep the screens using it.
+import { type ReactNode, useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+import { apiGet } from "../../lib/api";
 import { getSession, clearSession, isBackofficeRole, type Session } from "../../lib/auth";
+import { Nav } from "../../components/nav";
+import { PageHeader } from "../../components/page-header";
+export { downloadCsv } from "../../lib/csv-download";
+
+/** Where this app's books are on the API. */
+export const API = "/accounting";
+
+export const loadBranches = () => apiGet<{ id: string; name: string }[]>("/branches");
+
+export function Shell({ session, children }: { session: Session; children: ReactNode }) {
+  return (
+    <div className="min-h-screen bg-background text-foreground">
+      <Nav session={session} />
+      <PageHeader />
+      {children}
+    </div>
+  );
+}
 
 export interface Account {
   id: string;
@@ -33,7 +54,7 @@ export const niceDay = (day: string | null) =>
   day ? new Date(`${day}T00:00:00Z`).toLocaleDateString("en-KE", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }) : "-";
 
 /** The signed-in back-office user, or a redirect to sign in. */
-export function useBackofficeSession(): Session | null {
+export function useBooksSession(): Session | null {
   const router = useRouter();
   const [session, setSession] = useState<Session | null>(null);
   useEffect(() => {

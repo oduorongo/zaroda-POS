@@ -137,6 +137,29 @@ export class LedgerSettingsDto {
   payrollPaidFrom?: string;
 }
 
+export class PayOffDto {
+  /** VAT_OUTPUT, PAYE, NSSF, SHIF, HOUSING_LEVY or TIPS_PAYABLE. */
+  @IsIn(['VAT_OUTPUT', 'PAYE', 'NSSF', 'SHIF', 'HOUSING_LEVY', 'TIPS_PAYABLE'], { message: 'Choose what you paid' })
+  account!: string;
+
+  @IsNumber({ maxDecimalPlaces: 2 }, { message: 'Enter the amount in shillings' })
+  @Min(1)
+  @Max(10_000_000_000)
+  amount!: number;
+
+  @IsDateString({ strict: true }, { message: 'Choose the date it was paid' })
+  date!: string;
+
+  @IsIn(['CASH', 'MPESA', 'BANK'], { message: 'Choose where it was paid from' })
+  paidFrom!: string;
+
+  /** The KRA payment slip number, M-Pesa code... */
+  @IsString()
+  @IsOptional()
+  @MaxLength(80)
+  reference?: string;
+}
+
 export class RangeQueryDto {
   @IsDateString({ strict: true })
   @IsOptional()
