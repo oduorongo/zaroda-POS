@@ -194,7 +194,7 @@ export class AccountingService {
           orderBy: [{ entryDate: 'desc' }, { number: 'desc' }],
           skip: (page - 1) * PAGE,
           take: PAGE,
-          include: { lines: { select: { debit: true, credit: true, account: { select: { systemKey: true } } } }, reversedBy: { select: { id: true, number: true } } },
+          include: { lines: { select: { debit: true, credit: true, account: { select: { systemKey: true, code: true, name: true } } } }, reversedBy: { select: { id: true, number: true } } },
         }),
       ]);
       return {
@@ -209,6 +209,7 @@ export class AccountingService {
           memo: e.memo,
           source: e.sourceType ? (SOURCE_LABELS[e.sourceType] ?? e.sourceType) : null,
           amount: money(entryAmount(e.lines)),
+          lines: e.lines.map((l) => ({ code: l.account.code, name: l.account.name, debit: Number(l.debit), credit: Number(l.credit) })).sort((a, b) => (b.debit > 0 ? 1 : 0) - (a.debit > 0 ? 1 : 0) || a.code.localeCompare(b.code, undefined, { numeric: true })),
           reversedBy: e.reversedBy,
           reverses: e.reversesId,
         })),
