@@ -7,6 +7,7 @@ import { TaxLetter } from './etims-sales.util';
 
 /** What the sale document kept of what was sent to KRA (see EtimsDocumentsService). */
 interface Stored {
+  customerPin?: string | null;
   lines: ReceiptLineIn[];
   rates: Partial<Record<TaxLetter, number>>;
   business: { name: string; address: string | null };
@@ -92,7 +93,7 @@ export class EtimsReceiptsService {
                 null,
               pin: setting?.tin ?? org?.kraPin ?? null,
             },
-            buyerPin: null,
+            buyerPin: stored.customerPin ?? null,
             lines: stored.lines,
             rates: stored.rates,
             payment: { label },

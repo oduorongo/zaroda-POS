@@ -1009,6 +1009,8 @@ model Customer {
   // file), but unique per-org so lookup-by-phone at the register is
   // unambiguous within a tenant.
   phone          String?
+  /// The customer's KRA PIN, when it is a business that wants it on its tax invoice (sent to KRA with the sale and printed on the receipt).
+  kraPin         String?
   loyaltyPoints  Int      @default(0)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt

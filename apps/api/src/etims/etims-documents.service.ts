@@ -49,6 +49,7 @@ interface StoredPayload {
   pmtTyCd: string;
   customerName: string | null;
   customerPhone: string | null;
+  customerPin?: string | null;
   rates: Partial<Record<TaxLetter, number>>;
   business: { name: string; address: string | null };
   registrant: Registrant;
@@ -284,6 +285,7 @@ export class EtimsDocumentsService {
         at,
         customerName: p.customerName,
         customerPhone: p.customerPhone,
+        customerPin: p.customerPin ?? null,
         pmtTyCd: p.pmtTyCd,
         lines: p.lines,
         totals: taxTotals(p.lines, p.rates),
@@ -549,6 +551,7 @@ export class EtimsDocumentsService {
           ),
           customerName: sale.customer?.name ?? null,
           customerPhone: sale.customer?.phone ?? null,
+          customerPin: sale.customer?.kraPin ?? null,
           rates,
           business: {
             name: branch?.organization.name ?? 'Shop',

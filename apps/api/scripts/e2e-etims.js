@@ -641,6 +641,19 @@ const PIN = `A${rand(9)}Z`;
   const cp = await h('GET', `/etims/receipts/by-sale/${s1.json.id}?copy=true`);
   check('printed again it is marked COPY, THIS IS NOT AN OFFICIAL RECEIPT, and the copies are counted (sale and credit note)', cp.json.sale.receipt.copyNotice?.label === 'COPY' && /NOT AN OFFICIAL RECEIPT/.test(cp.json.sale.receipt.copyNotice.note) && (await sql.query('SELECT count(*)::int AS n FROM etims_receipt_prints WHERE "organizationId" = $1', [org.id])).rows[0].n === printsBefore + 2);
 
+  // a business customer's KRA PIN goes to KRA and onto the receipt
+  check('a customer\'s KRA PIN must be a letter, nine digits and a letter', (await h('POST', '/customers', { name: `Bad PIN Ltd ${tag}`, kraPin: 'NOTAPIN' })).status === 400);
+  const bizCust = await h('POST', '/customers', { name: `Buyer Ltd ${tag}`, phone: `07${String(Math.floor(10000000 + Math.random() * 89999999))}`, kraPin: 'p051234567x' });
+  check('a customer is saved with a KRA PIN, in capitals', bizCust.status === 201 && bizCust.json.kraPin === 'P051234567X', bizCust.json);
+  const sPin = await sell([[sa, 1]], 116, { customerId: bizCust.json.id });
+  await run();
+  const kPin = (await kra('GET', '/_test/sales')).json.find((x) => x.trdInvcNo === sPin.json.id);
+  check('KRA is sent the buyer PIN with the sale', kPin?.custTin === 'P051234567X', kPin);
+  const rPin = await h('GET', `/etims/receipts/by-sale/${sPin.json.id}`);
+  check('the receipt shows the buyer PIN', rPin.json.sale.receipt?.buyerPin === 'P051234567X', rPin.json.sale);
+  const clr = await h('PATCH', `/customers/${bizCust.json.id}`, { kraPin: null });
+  check('a PIN can be cleared or changed on the customer later', clr.status === 200 && clr.json.kraPin === null);
+
   const xr = await h('GET', `/etims/reports/x?branchId=${branchId}`);
   const xt = xr.json.totals;
   check('the X report counts what KRA signed since the last Z: sales, the credit note, the tax split and the payments', xr.status === 200 && xr.json.type === 'X' && xt.sales.count >= 4 && xt.creditNotes.count === 1 && xt.creditNotes.total === 482 && xt.taxByRate.some((t) => t.letter === 'B' && t.sales.tax > 0) && xt.paymentsSales.some((p) => p.code === '01'), xt);
@@ -657,7 +670,7 @@ const PIN = `A${rand(9)}Z`;
   const plu = await h('GET', `/etims/reports/plu?branchId=${branchId}&from=${today0}&to=${today0}`);
   const pa = plu.json.rows.find((r) => r.name.startsWith('SaleA'));
   const pc = plu.json.rows.find((r) => r.name.startsWith('SaleC'));
-  check('the PLU report lists each item with quantity and takings, credit notes taken off, and stock left', plu.status === 200 && pa?.quantity === 4 && pa.amount === 464 && pc?.quantity === 1 && pc.amount === 46.4 && pa.tax === '16%' && typeof pa.remaining === 'number', [pa, pc]);
+  check('the PLU report lists each item with quantity and takings, credit notes taken off, and stock left', plu.status === 200 && pa?.quantity === 5 && pa.amount === 580 && pc?.quantity === 1 && pc.amount === 46.4 && pa.tax === '16%' && typeof pa.remaining === 'number', [pa, pc]);
   check('the PLU report needs sensible dates', (await h('GET', `/etims/reports/plu?branchId=${branchId}&from=${today0}&to=2000-01-01`)).status === 400 && (await h('GET', `/etims/reports/plu?branchId=${branchId}&from=nope&to=${today0}`)).status === 400);
   const cs = await h('GET', `/etims/reports/closing-stock?branchId=${branchId}&date=${today0}`);
   check('closing stock on a date lists the items with what was on hand then', cs.status === 200 && cs.json.rows.some((r) => r.name.startsWith('SaleA')) && (await h('GET', `/etims/reports/closing-stock?branchId=${branchId}&date=2020-01-01`)).json.rows.every((r) => r.quantity !== 0));

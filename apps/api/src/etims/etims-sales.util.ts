@@ -257,6 +257,8 @@ export interface SalesBodyInput {
   at: Date;
   customerName: string | null;
   customerPhone: string | null;
+  /** The buyer's KRA PIN, when the customer has one on file. */
+  customerPin?: string | null;
   pmtTyCd: string;
   lines: KraLine[];
   totals: TaxTotals;
@@ -275,7 +277,7 @@ export function buildSalesBody(i: SalesBodyInput): Record<string, unknown> {
     trdInvcNo: i.trdInvcNo.slice(0, 50),
     invcNo: i.invcNo,
     orgInvcNo: i.orgInvcNo,
-    custTin: null,
+    custTin: i.customerPin ?? null,
     custNm: i.customerName ? i.customerName.slice(0, 60) : null,
     salesTyCd: 'N',
     rcptTyCd: i.credit ? 'R' : 'S',

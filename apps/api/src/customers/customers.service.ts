@@ -9,7 +9,7 @@ import {
   TenantTx,
 } from '../common/prisma/tenant-scoped-prisma.service';
 import { getTenantStore } from '../common/tenant/tenant-context';
-import { CreateCustomerDto } from './dto/create-customer.dto';
+import { CreateCustomerDto, UpdateCustomerDto } from './dto/create-customer.dto';
 
 @Injectable()
 export class CustomersService {
@@ -20,7 +20,7 @@ export class CustomersService {
     try {
       return await this.tenantPrisma.run((tx) =>
         tx.customer.create({
-          data: { organizationId, name: dto.name, phone: dto.phone },
+          data: { organizationId, name: dto.name, phone: dto.phone, kraPin: dto.kraPin },
         }),
       );
     } catch (e) {
@@ -34,6 +34,22 @@ export class CustomersService {
       }
       throw e;
     }
+  }
+
+  /** Changes a customer's name or KRA PIN. */
+  async update(id: string, dto: UpdateCustomerDto) {
+    return this.tenantPrisma.run(async (tx) => {
+      const found = await tx.customer.findUnique({ where: { id } });
+      if (!found) throw new NotFoundException('Customer not found');
+      return tx.customer.update({
+        where: { id },
+        data: {
+          name: dto.name,
+          // an empty PIN clears it
+          kraPin: dto.kraPin === undefined ? undefined : dto.kraPin || null,
+        },
+      });
+    });
   }
 
   findAll(filters: { search?: string }) {
