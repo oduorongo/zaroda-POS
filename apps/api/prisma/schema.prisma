@@ -78,6 +78,11 @@ model Organization {
   etimsReceiptPrints        EtimsReceiptPrint[]
   etimsNotices              EtimsNotice[]
   etimsImports              EtimsImport[]
+  ledgerAccounts            LedgerAccount[]
+  ledgerSettings            LedgerSettings?
+  journalEntries            JournalEntry[]
+  journalLines              JournalLine[]
+  ledgerPostings            LedgerPosting[]
   schoolWriteOffs           SchoolWriteOff[]
   schoolProvisionEntries    SchoolProvisionEntry[]
   supplierPayments          SupplierPayment[]
@@ -5185,4 +5190,129 @@ model EtimsReceiptPrint {
 
   @@index([organizationId, branchId, createdAt])
   @@map("etims_receipt_prints")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Accounting: a double-entry general ledger for every kind of business. Sales, refunds, expenses, supplier bills, payroll, school
+// receipts, rent, waste... are posted to it automatically by a background pass; the business adds its own journals (opening
+// balances, corrections, owner's money). A period can be closed so nothing is posted into it any more.
+
+enum LedgerAccountType {
+  ASSET
+  LIABILITY
+  EQUITY
+  INCOME
+  EXPENSE
+}
+
+enum JournalKind {
+  AUTO // posted from something that happened in the business (a sale, a bill...)
+  MANUAL // a journal the business entered
+  OPENING // the balances the business started its books with
+  REVERSAL // undoes another entry (a sale voided, an expense changed, a cheque bounced, a journal reversed)
+}
+
+model LedgerAccount {
+  id             String            @id @default(uuid())
+  organizationId String
+  code           String
+  name           String
+  type           LedgerAccountType
+  /// Set on the accounts the system posts to automatically ("CASH", "SALES"...); those cannot be removed or change type.
+  systemKey      String?
+  description    String?
+  active         Boolean           @default(true)
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  lines        JournalLine[]
+
+  @@unique([organizationId, code])
+  @@unique([organizationId, systemKey])
+  @@map("ledger_accounts")
+}
+
+/// One row per business: from which day things are posted automatically, the last closed day, and where payroll is paid from.
+model LedgerSettings {
+  organizationId  String    @id
+  startDate       DateTime  @db.Date
+  /// Nothing can be posted on or before this day; a late change is posted on the next open day.
+  lockDate        DateTime? @db.Date
+  /// CASH, MPESA or BANK.
+  payrollPaidFrom String    @default("BANK")
+  lastPassAt      DateTime?
+  lastPassNote    String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("ledger_settings")
+}
+
+model JournalEntry {
+  id             String      @id @default(uuid())
+  organizationId String
+  /// 1, 2, 3... per business, in the order entries were made.
+  number         Int
+  entryDate      DateTime    @db.Date
+  kind           JournalKind
+  memo           String
+  /// What it was posted from ("SALE" and the sale's id...), for automatic entries and their reversals.
+  sourceType     String?
+  sourceId       String?
+  branchId       String?
+  /// The entry this one undoes.
+  reversesId     String?     @unique
+  createdById    String?
+  createdByName  String?
+  createdAt      DateTime    @default(now())
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  reverses     JournalEntry? @relation("JournalReversal", fields: [reversesId], references: [id])
+  reversedBy   JournalEntry? @relation("JournalReversal")
+  lines        JournalLine[]
+
+  @@unique([organizationId, number])
+  @@index([organizationId, entryDate])
+  @@index([organizationId, sourceType, sourceId])
+  @@map("journal_entries")
+}
+
+model JournalLine {
+  id             String  @id @default(uuid())
+  organizationId String
+  entryId        String
+  accountId      String
+  debit          Decimal @default(0) @db.Decimal(14, 2)
+  credit         Decimal @default(0) @db.Decimal(14, 2)
+  memo           String?
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  entry        JournalEntry  @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  account      LedgerAccount @relation(fields: [accountId], references: [id])
+
+  @@index([organizationId, accountId])
+  @@index([entryId])
+  @@map("journal_lines")
+}
+
+/// What the books currently say about one source (a sale, an expense...): the fingerprint of its posting, so a change is noticed
+/// and the old entry reversed before the new one is posted. One row per source, so nothing is ever posted twice.
+model LedgerPosting {
+  id             String   @id @default(uuid())
+  organizationId String
+  sourceType     String
+  sourceId       String
+  fingerprint    String
+  /// The entry now standing for it (null when the source needs none, e.g. it was voided).
+  entryId        String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, sourceType, sourceId])
+  @@map("ledger_postings")
 }

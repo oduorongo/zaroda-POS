@@ -26,6 +26,7 @@ import {
   ScanBarcode,
   ClipboardCheck,
   TrendingUp,
+  BookOpen,
   UtensilsCrossed,
   BedDouble,
   Pill,
@@ -91,6 +92,13 @@ const MANAGER_TILES: Tile[] = [
     description: "What you really made: sales less costs and expenses, by day, week or month.",
     icon: TrendingUp,
     tone: "bg-green-600",
+  },
+  {
+    href: "/accounting",
+    label: "Accounts (books)",
+    description: "Double-entry books: trial balance, profit and loss, balance sheet and journals, posted for you.",
+    icon: BookOpen,
+    tone: "bg-sky-700",
   },
   {
     href: "/expenses",
