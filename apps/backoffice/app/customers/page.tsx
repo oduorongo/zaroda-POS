@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { apiGet, apiPost, ApiError } from "../../lib/api";
+import { apiGet, apiPatch, apiPost, ApiError } from "../../lib/api";
 import { getSession, clearSession, isBackofficeRole, type Session } from "../../lib/auth";
 import { Nav } from "../../components/nav";
 import { PageHeader } from "../../components/page-header";
@@ -12,6 +12,7 @@ interface Customer {
   id: string;
   name: string;
   phone: string | null;
+  kraPin: string | null;
   loyaltyPoints: number;
 }
 
@@ -31,6 +32,7 @@ export default function CustomersPage() {
 
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
+  const [kraPin, setKraPin] = useState("");
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
 
@@ -67,9 +69,10 @@ export default function CustomersPage() {
     setCreating(true);
     setCreateError(null);
     try {
-      await apiPost("/customers", { name: name.trim(), phone: phone.trim() || undefined });
+      await apiPost("/customers", { name: name.trim(), phone: phone.trim() || undefined, kraPin: kraPin.trim() || undefined });
       setName("");
       setPhone("");
+      setKraPin("");
       await load(search);
     } catch (err) {
       setCreateError(err instanceof ApiError ? err.message : "Could not create customer.");
@@ -93,6 +96,7 @@ export default function CustomersPage() {
             <div className="flex flex-wrap gap-2">
               <Input placeholder="Name" value={name} onChange={(e) => setName(e.target.value)} className="flex-1" />
               <Input placeholder="Phone (optional)" value={phone} onChange={(e) => setPhone(e.target.value)} className="w-48" />
+              <Input placeholder="KRA PIN (optional)" value={kraPin} onChange={(e) => setKraPin(e.target.value)} className="w-48" />
               <Button onClick={() => void createCustomer()} disabled={creating || !name.trim()}>
                 {creating ? "Creating..." : "Create"}
               </Button>
@@ -124,6 +128,7 @@ export default function CustomersPage() {
                 <TableRow>
                   <TableHeaderCell>Name</TableHeaderCell>
                   <TableHeaderCell>Phone</TableHeaderCell>
+                  <TableHeaderCell>KRA PIN</TableHeaderCell>
                   <TableHeaderCell>Loyalty points</TableHeaderCell>
                 </TableRow>
               </TableHead>
@@ -132,6 +137,39 @@ export default function CustomersPage() {
                   <TableRow key={c.id}>
                     <TableCell className="font-medium">{c.name}</TableCell>
                     <TableCell className="text-secondary-500">{c.phone ?? "—"}</TableCell>
+                    <TableCell className="font-mono text-xs">
+                      {c.kraPin ?? "—"}{" "}
+                      <button
+                        className="text-primary-600 hover:underline"
+                        onClick={async () => {
+                          const v = window.prompt("KRA PIN for " + c.name + " (leave empty to remove it):", c.kraPin ?? "");
+                          if (v === null) return;
+                          try {
+                            await apiPatch("/customers/" + c.id, { kraPin: v.trim() ? v.trim() : null });
+                            await load(search);
+                          } catch (err) {
+                            setError(err instanceof ApiError ? err.message : "Could not save the PIN.");
+                          }
+                        }}
+                      >
+                        {c.kraPin ? "change" : "add"}
+                      </button>
+                      {c.kraPin && (
+                        <button
+                          className="ml-2 text-primary-600 hover:underline"
+                          onClick={async () => {
+                            try {
+                              const r = await apiGet<{ found: boolean; name?: string | null; status?: string | null; message?: string }>("/etims/pin/" + c.kraPin);
+                              window.alert(r.found ? (r.name ?? "") + " - " + (r.status ?? "") : (r.message ?? "KRA has no taxpayer with that PIN."));
+                            } catch (err) {
+                              window.alert(err instanceof ApiError ? err.message : "Could not check the PIN with KRA.");
+                            }
+                          }}
+                        >
+                          check at KRA
+                        </button>
+                      )}
+                    </TableCell>
                     <TableCell>
                       <Badge variant={c.loyaltyPoints > 0 ? "success" : "neutral"}>{c.loyaltyPoints} pts</Badge>
                     </TableCell>

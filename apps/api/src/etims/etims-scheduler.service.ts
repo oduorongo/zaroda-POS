@@ -9,6 +9,7 @@ import { Role } from '@prisma/client';
 import { PrismaService } from '../common/prisma/prisma.service';
 import { tenantContext } from '../common/tenant/tenant-context';
 import { EtimsDocumentsService } from './etims-documents.service';
+import { EtimsExtrasService } from './etims-extras.service';
 
 const FIRST_RUN_DELAY_MS = 90_000;
 const INTERVAL_MS = 60_000;
@@ -28,6 +29,7 @@ export class EtimsSchedulerService implements OnModuleInit, OnModuleDestroy {
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
     private readonly documents: EtimsDocumentsService,
+    private readonly extras: EtimsExtrasService,
   ) {}
 
   onModuleInit() {
@@ -62,7 +64,14 @@ export class EtimsSchedulerService implements OnModuleInit, OnModuleDestroy {
         try {
           const r = await tenantContext.run(
             { organizationId, orgUserId: 'system', role: Role.OWNER },
-            () => this.documents.runPass(now),
+            async () => {
+              const pass = await this.documents.runPass(now);
+              // customers with a KRA PIN go to KRA too; a failure here never stops the sales
+              await this.extras.syncCustomers().catch((e) =>
+                this.logger.warn({ err: e, organizationId }, 'Sending customers to KRA failed'),
+              );
+              return pass;
+            },
           );
           if (r.queued || r.sent || r.rejected)
             this.logger.log({ organizationId, ...r }, 'Sales sent to KRA');

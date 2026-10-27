@@ -4,11 +4,12 @@ import {
   Get,
   Param,
   ParseUUIDPipe,
+  Patch,
   Post,
   Query,
 } from '@nestjs/common';
 import { CustomersService } from './customers.service';
-import { CreateCustomerDto } from './dto/create-customer.dto';
+import { CreateCustomerDto, UpdateCustomerDto } from './dto/create-customer.dto';
 import { ListCustomersDto } from './dto/list-customers.dto';
 
 // JwtAuthGuard is global (see app.module.ts). No role restriction - any
@@ -26,6 +27,11 @@ export class CustomersController {
   @Get()
   findAll(@Query() query: ListCustomersDto) {
     return this.customers.findAll({ search: query.search });
+  }
+
+  @Patch(':id')
+  update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateCustomerDto) {
+    return this.customers.update(id, dto);
   }
 
   @Get(':id')

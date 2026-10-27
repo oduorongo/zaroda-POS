@@ -97,6 +97,9 @@ const PIN = `A${rand(9)}Z`;
   await sql.query('DELETE FROM etims_item_classes');
   await sql.query('DELETE FROM etims_documents WHERE "organizationId" = $1', [org.id]);
   await sql.query('DELETE FROM etims_receipt_prints WHERE "organizationId" = $1', [org.id]);
+  await sql.query('DELETE FROM etims_notices WHERE "organizationId" = $1', [org.id]);
+  await sql.query('DELETE FROM etims_imports WHERE "organizationId" = $1', [org.id]);
+  await sql.query('UPDATE etims_settings SET "noticesSyncedAt" = NULL, "importsSyncedAt" = NULL WHERE "organizationId" = $1', [org.id]);
   await sql.query('DELETE FROM etims_items WHERE "organizationId" = $1', [org.id]);
   await sql.query('DELETE FROM etims_devices WHERE "organizationId" = $1', [
     org.id,
@@ -641,6 +644,74 @@ const PIN = `A${rand(9)}Z`;
   const cp = await h('GET', `/etims/receipts/by-sale/${s1.json.id}?copy=true`);
   check('printed again it is marked COPY, THIS IS NOT AN OFFICIAL RECEIPT, and the copies are counted (sale and credit note)', cp.json.sale.receipt.copyNotice?.label === 'COPY' && /NOT AN OFFICIAL RECEIPT/.test(cp.json.sale.receipt.copyNotice.note) && (await sql.query('SELECT count(*)::int AS n FROM etims_receipt_prints WHERE "organizationId" = $1', [org.id])).rows[0].n === printsBefore + 2);
 
+  // a business customer's KRA PIN goes to KRA and onto the receipt
+  check('a customer\'s KRA PIN must be a letter, nine digits and a letter', (await h('POST', '/customers', { name: `Bad PIN Ltd ${tag}`, kraPin: 'NOTAPIN' })).status === 400);
+  const bizCust = await h('POST', '/customers', { name: `Buyer Ltd ${tag}`, phone: `07${String(Math.floor(10000000 + Math.random() * 89999999))}`, kraPin: 'p051234567x' });
+  check('a customer is saved with a KRA PIN, in capitals', bizCust.status === 201 && bizCust.json.kraPin === 'P051234567X', bizCust.json);
+  const sPin = await sell([[sa, 1]], 116, { customerId: bizCust.json.id });
+  await run();
+  const kPin = (await kra('GET', '/_test/sales')).json.find((x) => x.trdInvcNo === sPin.json.id);
+  check('KRA is sent the buyer PIN with the sale', kPin?.custTin === 'P051234567X', kPin);
+  const rPin = await h('GET', `/etims/receipts/by-sale/${sPin.json.id}`);
+  check('the receipt shows the buyer PIN', rPin.json.sale.receipt?.buyerPin === 'P051234567X', rPin.json.sale);
+  const clr = await h('PATCH', `/customers/${bizCust.json.id}`, { kraPin: null });
+  check('a PIN can be cleared or changed on the customer later', clr.status === 200 && clr.json.kraPin === null);
+
+  // PIN lookup, KRA's branch list, notices, imported items and customers sent to KRA
+  const pinOk = await h('GET', '/etims/pin/p051234567x');
+  check('a PIN is looked up at KRA: the taxpayer name and that it is active', pinOk.status === 200 && pinOk.json.found === true && pinOk.json.name === 'BUYER LIMITED' && pinOk.json.active === true && pinOk.json.pin === 'P051234567X', pinOk.json);
+  check('an inactive taxpayer shows as inactive', (await h('GET', '/etims/pin/A000000001B')).json.active === false);
+  check('a PIN KRA does not know says so', (await h('GET', '/etims/pin/A999999999Z')).json.found === false);
+  check('something that is not a PIN is refused', (await h('GET', '/etims/pin/NOTAPIN')).status === 400);
+  check('a cashier may check a PIN at the till', (await h('GET', '/etims/pin/P051234567X', undefined, cashier)).status === 200);
+  const kb = await h('GET', '/etims/kra-branches');
+  check("KRA's list of the business's branches can be read, with the head office", kb.status === 200 && kb.json.some((b) => b.bhfId === '00' && b.headOffice), kb.json);
+
+  const ns1 = await h('POST', '/etims/notices/sync', {});
+  const nl1 = (await h('GET', '/etims/notices')).json;
+  check("KRA's notices are fetched and kept, unread", ns1.status === 200 && ns1.json.added >= 1 && nl1.unread >= 1 && nl1.rows.some((n) => n.title === 'Planned maintenance'), [ns1.json, nl1.unread]);
+  check('fetching again brings nothing twice', (await h('POST', '/etims/notices/sync', {})).json.added === 0);
+  await kra('POST', '/_test/add-notice');
+  check('a new notice from KRA is picked up', (await h('POST', '/etims/notices/sync', {})).json.added === 1);
+  const firstNotice = nl1.rows[0];
+  await h('POST', `/etims/notices/${firstNotice.id}/read`, {});
+  check('a notice can be marked read', (await h('GET', '/etims/notices')).json.rows.find((n) => n.id === firstNotice.id).read === true);
+  check('a cashier cannot fetch notices', (await h('POST', '/etims/notices/sync', {}, cashier)).status === 403);
+
+  await kra('POST', `/_test/add-import?tin=${PIN}&name=BAKED%20BEANS%20${tag}`);
+  await kra('POST', `/_test/add-import?tin=${PIN}&name=TOMATO%20PASTE%20${tag}`);
+  const is1 = await h('POST', '/etims/imports/sync', {});
+  const il = (await h('GET', '/etims/imports')).json;
+  const beans = il.find((i) => i.itemName === `BAKED BEANS ${tag}`);
+  const paste = il.find((i) => i.itemName === `TOMATO PASTE ${tag}`);
+  check('imported items declared by customs come down, waiting for a decision', is1.status === 200 && is1.json.added >= 2 && beans?.status === 'WAITING' && beans.quantity === 240 && beans.supplierName === 'ODERICH CONSERVA', [is1.json, beans]);
+  check('approving needs the product it is', (await h('POST', `/etims/imports/${beans.id}/decision`, { decision: 'APPROVE' })).status === 400);
+  const loose = await mk2('ImpLoose', vat.id, 10);
+  check('approving as a product KRA does not have yet is refused', (await h('POST', `/etims/imports/${beans.id}/decision`, { decision: 'APPROVE', variantId: loose.v.id })).status === 400);
+  const ap = await h('POST', `/etims/imports/${beans.id}/decision`, { decision: 'APPROVE', variantId: sa.v.id, remark: 'Received at the main store' });
+  const dec = (await kra('GET', '/_test/import-decisions')).json.slice(-1)[0];
+  const saItem = (await sql.query('SELECT "itemCd", "itemClsCd" FROM etims_items WHERE "variantId" = $1', [sa.v.id])).rows[0];
+  check('approving as a registered product tells KRA (status 3, with its item code)', ap.status === 200 && ap.json.status === 'APPROVED' && dec.imptItemSttsCd === '3' && dec.itemCd === saItem.itemCd && dec.itemClsCd === saItem.itemClsCd, [ap.json, dec]);
+  check('it then shows approved, matched to the product', (await h('GET', '/etims/imports')).json.find((i) => i.id === beans.id).product?.id === sa.v.id);
+  check('a decided item cannot be decided again', (await h('POST', `/etims/imports/${beans.id}/decision`, { decision: 'CANCEL' })).status === 400);
+  const cn = await h('POST', `/etims/imports/${paste.id}/decision`, { decision: 'CANCEL', remark: 'Not ours' });
+  check('an item can be cancelled without a product, and KRA is told (status 4)', cn.json.status === 'CANCELLED' && (await kra('GET', '/_test/import-decisions')).json.slice(-1)[0].imptItemSttsCd === '4');
+  check('a cashier cannot decide imports', (await h('POST', `/etims/imports/${paste.id}/decision`, { decision: 'CANCEL' }, cashier)).status === 403);
+
+  const pinCust = (await h('POST', '/customers', { name: `Sync Buyer ${tag}`, phone: `07${String(Math.floor(10000000 + Math.random() * 89999999))}`, kraPin: 'P051234567X' })).json;
+  const cs1 = await h('POST', '/etims/customers/sync', {});
+  const kc1 = (await kra('GET', '/_test/customers')).json.find((x) => x.custNm === `Sync Buyer ${tag}`);
+  check('a customer with a KRA PIN is sent to KRA with a 9-digit customer number', cs1.status === 200 && cs1.json.sent >= 1 && kc1?.custTin === 'P051234567X' && /^\d{9}$/.test(kc1.custNo), [cs1.json, kc1]);
+  check('sending again sends nothing that has not changed', (await h('POST', '/etims/customers/sync', {})).json.sent === 0);
+  await h('PATCH', `/customers/${pinCust.id}`, { name: `Sync Buyer Ltd ${tag}` });
+  const cs3 = await h('POST', '/etims/customers/sync', {});
+  const kc3 = (await kra('GET', '/_test/customers')).json.find((x) => x.custNm === `Sync Buyer Ltd ${tag}`);
+  check('a changed name is sent again under the same customer number', cs3.json.sent === 1 && kc3?.custNo === kc1.custNo, [cs3.json, kc3]);
+  for (const t of ['etims_notices', 'etims_imports']) {
+    const r = (await sql.query('SELECT relrowsecurity AS on, relforcerowsecurity AS forced FROM pg_class WHERE relname = $1', [t])).rows[0];
+    check(`${t} has row-level security switched on and forced`, r?.on === true && r?.forced === true, r);
+  }
+
   const xr = await h('GET', `/etims/reports/x?branchId=${branchId}`);
   const xt = xr.json.totals;
   check('the X report counts what KRA signed since the last Z: sales, the credit note, the tax split and the payments', xr.status === 200 && xr.json.type === 'X' && xt.sales.count >= 4 && xt.creditNotes.count === 1 && xt.creditNotes.total === 482 && xt.taxByRate.some((t) => t.letter === 'B' && t.sales.tax > 0) && xt.paymentsSales.some((p) => p.code === '01'), xt);
@@ -657,7 +728,7 @@ const PIN = `A${rand(9)}Z`;
   const plu = await h('GET', `/etims/reports/plu?branchId=${branchId}&from=${today0}&to=${today0}`);
   const pa = plu.json.rows.find((r) => r.name.startsWith('SaleA'));
   const pc = plu.json.rows.find((r) => r.name.startsWith('SaleC'));
-  check('the PLU report lists each item with quantity and takings, credit notes taken off, and stock left', plu.status === 200 && pa?.quantity === 4 && pa.amount === 464 && pc?.quantity === 1 && pc.amount === 46.4 && pa.tax === '16%' && typeof pa.remaining === 'number', [pa, pc]);
+  check('the PLU report lists each item with quantity and takings, credit notes taken off, and stock left', plu.status === 200 && pa?.quantity === 5 && pa.amount === 580 && pc?.quantity === 1 && pc.amount === 46.4 && pa.tax === '16%' && typeof pa.remaining === 'number', [pa, pc]);
   check('the PLU report needs sensible dates', (await h('GET', `/etims/reports/plu?branchId=${branchId}&from=${today0}&to=2000-01-01`)).status === 400 && (await h('GET', `/etims/reports/plu?branchId=${branchId}&from=nope&to=${today0}`)).status === 400);
   const cs = await h('GET', `/etims/reports/closing-stock?branchId=${branchId}&date=${today0}`);
   check('closing stock on a date lists the items with what was on hand then', cs.status === 200 && cs.json.rows.some((r) => r.name.startsWith('SaleA')) && (await h('GET', `/etims/reports/closing-stock?branchId=${branchId}&date=2020-01-01`)).json.rows.every((r) => r.quantity !== 0));

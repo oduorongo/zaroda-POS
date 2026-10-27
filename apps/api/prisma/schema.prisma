@@ -76,6 +76,8 @@ model Organization {
   schoolTenderNotices       SchoolTenderNotice[]
   etimsZReports             EtimsZReport[]
   etimsReceiptPrints        EtimsReceiptPrint[]
+  etimsNotices              EtimsNotice[]
+  etimsImports              EtimsImport[]
   schoolWriteOffs           SchoolWriteOff[]
   schoolProvisionEntries    SchoolProvisionEntry[]
   supplierPayments          SupplierPayment[]
@@ -1009,6 +1011,11 @@ model Customer {
   // file), but unique per-org so lookup-by-phone at the register is
   // unambiguous within a tenant.
   phone          String?
+  /// The customer's KRA PIN, when it is a business that wants it on its tax invoice (sent to KRA with the sale and printed on the receipt).
+  kraPin         String?
+  /// The number this customer has at KRA, and the name+PIN last sent there (so a change is sent again, and nothing twice).
+  etimsCustNo    String?
+  etimsSentKey   String?
   loyaltyPoints  Int      @default(0)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
@@ -4895,6 +4902,11 @@ model EtimsSetting {
   /// Whether this business sends its sales to KRA. Off until the owner turns it on; only sales made after that moment are ever sent.
   sendSales      Boolean          @default(false)
   salesStartAt   DateTime?
+  /// "Last request" stamps KRA wants back so it only sends what is new: notices, and imported items.
+  noticesSyncedAt String?
+  importsSyncedAt String?
+  /// The last customer number used when customers with a KRA PIN were sent to KRA (a 9-digit running number).
+  custSeq        Int              @default(0)
   updatedAt      DateTime         @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
@@ -5020,6 +5032,66 @@ model EtimsItem {
 enum EtimsDocKind {
   SALE
   CREDIT_NOTE
+}
+
+/// A notice KRA put out for the taxpayer (new rules, downtime...), kept so it can be read in the back office.
+model EtimsNotice {
+  id             String    @id @default(uuid())
+  organizationId String
+  noticeNo       Int
+  title          String
+  content        String
+  detailUrl      String?
+  postedBy       String?
+  /// When KRA posted it (KRA's own yyyyMMddhhmmss).
+  postedAt       String?
+  readAt         DateTime?
+  createdAt      DateTime  @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, noticeNo])
+  @@map("etims_notices")
+}
+
+/// An imported item KRA's customs system declared under the business's PIN. The business matches it to a product and approves it
+/// (or cancels it); KRA is told either way.
+model EtimsImport {
+  id             String   @id @default(uuid())
+  organizationId String
+  taskCd         String
+  declDate       String
+  itemSeq        Int
+  declNo         String?
+  hsCd           String?
+  itemName       String
+  originCd       String?
+  exportCd       String?
+  pkg            Decimal? @db.Decimal(13, 2)
+  pkgUnitCd      String?
+  qty            Decimal? @db.Decimal(13, 2)
+  qtyUnitCd      String?
+  grossWeight    Decimal? @db.Decimal(13, 2)
+  netWeight      Decimal? @db.Decimal(13, 2)
+  supplierName   String?
+  agentName      String?
+  invoiceAmount  Decimal? @db.Decimal(18, 2)
+  invoiceCurrency String?
+  invoiceRate    Decimal? @db.Decimal(18, 2)
+  /// KRA's status: 1 unsent, 2 waiting, 3 approved, 4 cancelled.
+  statusCd       String   @default("2")
+  /// The product it was matched to when approved.
+  variantId      String?
+  remark         String?
+  decidedAt      DateTime?
+  lastError      String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, taskCd, declDate, itemSeq])
+  @@map("etims_imports")
 }
 
 enum EtimsDocStatus {
