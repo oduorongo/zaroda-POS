@@ -6,6 +6,7 @@ Prices are launch figures to be validated with pilot contractors.
 ## Plans (KES)
 | Code | Name | Fits | Monthly | Annual (pay 10, get 12) | Active projects | Workers | Internal users |
 |---|---|---|---|---|---|---|---|
+| `CON_MJENGO` | Mjengo | One site at a time | 1,500 | 15,000 | 1 | 10 | 2 |
 | `CON_FUNDI` | Fundi | NCA 7–8 | 3,500 | 35,000 | 2 | 30 | 5 |
 | `CON_CONTRACTOR` | Contractor | NCA 5–6 | 9,500 | 95,000 | 6 | 150 | 15 |
 | `CON_PRO` | Pro | NCA 3–4 | 25,000 | 250,000 | 20 | Unlimited | 50 |
@@ -14,27 +15,31 @@ Prices are launch figures to be validated with pilot contractors.
 External portal users (client, consultants, subcontractors) are FREE on every plan and never count toward limits.
 
 ## Features per plan
-| Feature | Fundi | Contractor | Pro | Enterprise |
-|---|---|---|---|---|
-| Compliance vault + expiry alerts | ✓ | ✓ | ✓ | ✓ |
-| Projects, BQ, site diary, photos | ✓ | ✓ | ✓ | ✓ |
-| Muster roll, workers, safety registers | ✓ | ✓ | ✓ | ✓ |
-| Tenders register + NCA cap check | ✓ | ✓ | ✓ | ✓ |
-| Requisitions, LPO, GRN, site stock | Basic (no approval limits) | ✓ | ✓ | ✓ |
-| Valuations, IPCs, variations, retention | ✓ | ✓ | ✓ | ✓ |
-| eTIMS invoicing of IPCs | ✓ | ✓ | ✓ | ✓ |
-| Labour payroll + M-Pesa B2C | — | ✓ | ✓ | ✓ |
-| Client / consultant portal | — | ✓ | ✓ | ✓ |
-| Subcontract accounts | — | — | ✓ | ✓ |
-| Plant & fuel management | — | ✓ | ✓ | ✓ |
-| Full reports + Excel/PDF export | Basic | ✓ | ✓ | ✓ |
-| Multi-branch / custom roles / API | — | — | — | ✓ |
+| Feature | Mjengo | Fundi | Contractor | Pro | Enterprise |
+|---|---|---|---|---|---|
+| Compliance vault + expiry alerts | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Projects, BQ, site diary, photos | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Muster roll, workers, safety registers | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Tenders register + NCA cap check | — | ✓ | ✓ | ✓ | ✓ |
+| Requisitions, LPO, GRN, site stock | Basic | Basic (no approval limits) | ✓ | ✓ | ✓ |
+| Valuations, IPCs, variations, retention | ✓ | ✓ | ✓ | ✓ | ✓ |
+| eTIMS invoicing of IPCs | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Labour payroll + M-Pesa B2C | — | — | ✓ | ✓ | ✓ |
+| Client / consultant portal | — | — | ✓ | ✓ | ✓ |
+| Subcontract accounts | — | — | — | ✓ | ✓ |
+| Plant & fuel management | — | — | ✓ | ✓ | ✓ |
+| Full reports + Excel/PDF export | Basic | Basic | ✓ | ✓ | ✓ |
+| Multi-branch / custom roles / API | — | — | — | — | ✓ |
+| Extra projects (add-on) | — | ✓ | ✓ | ✓ | n/a |
+
+## Mjengo (entry plan)
+For small builders who run one site at a time; a low price makes saying yes easy. It keeps the daily tools (compliance alerts, BQ + site diary with photos, muster + safety registers, valuations/IPCs, eTIMS, basic materials) and leaves out tenders, M-Pesa payroll, the client portal and plant, which are the reasons to move up. Starting a second project asks the customer to upgrade to Fundi: extra projects are not sold on Mjengo, because 1,500 + 1,500 costs almost a Fundi without its features (feature key `extra_projects` decides which plans sell them).
 
 ## Add-ons
 | Code | Add-on | Price |
 |---|---|---|
-| `SETUP_FEE` | Onboarding: import workers, BQ, compliance docs, training | KES 10,000–30,000 one-time (by plan) |
-| `EXTRA_PROJECT` | Extra active project above limit | KES 1,500 / project / month |
+| `SETUP_FEE` | Onboarding: import workers, BQ, compliance docs, training | Mjengo: KES 3,000, optional. Other plans: KES 10,000–30,000 one-time (by plan, set per plan in `con_plans.setupFee`) |
+| `EXTRA_PROJECT` | Extra active project above limit | KES 1,500 / project / month (Fundi and above; not sold on Mjengo) |
 | `PAYOUT_FEE` | M-Pesa payroll payout | Daraja cost + KES 10 per payout |
 | `SMS_BUNDLE` | SMS bundles (payslips, alerts) | Per bundle, tenant settings |
 

@@ -24,8 +24,9 @@ export function effectiveStatus(sub: SubscriptionLike, now: Date = new Date()): 
  * Whether a business gets the device/branch subscription (BASIC, STANDARD...) with its trial and payments.
  * A rental landlord does not: their plan is the rental plan (Bure, Starter, Pay-as-you-collect), billed from the
  * rentals screens (see rental/rental-platform-billing.service.ts), so a second, unrelated subscription would only
- * show up as "payment overdue" in the platform admin's billing screen.
+ * show up as "payment overdue" in the platform admin's billing screen. A construction contractor is on a construction
+ * plan instead (construction/plans), and its project sites are branches the device plan's branch limit must not block.
  */
 export function needsDeviceSubscription(industryType: string): boolean {
-  return industryType !== 'RENTAL';
+  return industryType !== 'RENTAL' && industryType !== 'CONSTRUCTION';
 }

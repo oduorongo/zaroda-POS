@@ -5,6 +5,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { login, getOrganization, ApiError } from "../../lib/api";
 import { setSession, clearSession, decodeRole, homePath, isBackofficeRole, isCaretaker } from "../../lib/auth";
+import { constructionUrl, currentProduct, hasConstructionDomain } from "../../lib/product";
 
 const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:3001";
 const TERMINAL_URL = process.env.NEXT_PUBLIC_TERMINAL_URL ?? "https://pos.zarodashop.com";
@@ -35,8 +36,14 @@ export default function LoginPage() {
       }
 
       const { industryType } = await getOrganization(apiBaseUrl, accessToken);
+      // Construction has its own site and sessions are per site, so they sign in again there.
+      if (industryType === "CONSTRUCTION" && hasConstructionDomain() && currentProduct() === "POS") {
+        clearSession();
+        window.location.href = constructionUrl("/construction/login");
+        return;
+      }
       setSession({ apiBaseUrl, accessToken, role, email: email.trim(), industryType });
-      router.replace(homePath(role));
+      router.replace(homePath(role, industryType));
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Login failed - check the API URL and try again");
     } finally {
@@ -142,6 +149,9 @@ export default function LoginPage() {
           >
             New here? Set up your organization
           </button>
+          <a href={constructionUrl("/construction/signup")} className="block text-center text-sm text-secondary-500 hover:underline">
+            Construction contractor? Use Zaroda Build
+          </a>
         </form>
       </div>
     </div>

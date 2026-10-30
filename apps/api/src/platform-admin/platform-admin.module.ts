@@ -14,6 +14,8 @@ import { HotelModule } from '../hotel/hotel.module';
 import { TenderAdvertsModule } from '../tender-adverts/tender-adverts.module';
 import { AccountingModule } from '../accounting/accounting.module';
 import { PlatformAccountingController } from './platform-accounting.controller';
+import { PlatformConstructionController } from './platform-construction.controller';
+import { ConstructionModule } from '../construction/construction.module';
 
 @Module({
   imports: [
@@ -30,6 +32,8 @@ import { PlatformAccountingController } from './platform-accounting.controller';
     TenderAdvertsModule,
     // PlatformLedgerService - ZARODA's own books.
     AccountingModule,
+    // ConPlansService - construction plans, coupons, trials and payments are a platform-admin job.
+    ConstructionModule,
     // A second, independent JwtModule registration (separate from
     // AuthModule's) - its own secret (PLATFORM_ADMIN_JWT_SECRET), its
     // own JwtService instance. Deliberately not sharing JWT_SECRET with
@@ -46,7 +50,7 @@ import { PlatformAccountingController } from './platform-accounting.controller';
       }),
     }),
   ],
-  controllers: [PlatformAdminController, PlatformAccountingController],
+  controllers: [PlatformAdminController, PlatformAccountingController, PlatformConstructionController],
   providers: [
     PlatformAdminAuthService,
     PlatformAdminService,

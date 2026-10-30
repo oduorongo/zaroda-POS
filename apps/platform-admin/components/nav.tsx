@@ -12,6 +12,7 @@ const LINKS = [
   { href: "/billing", label: "Billing" },
   { href: "/commission", label: "Commission" },
   { href: "/rental-billing", label: "Rental billing" },
+  { href: "/construction", label: "Construction" },
   { href: "/adverts", label: "Adverts" },
   { href: "/tender-schools", label: "Tender schools" },
   { href: "/hospitality", label: "Hotels & dining" },

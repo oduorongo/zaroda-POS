@@ -32,6 +32,7 @@ const VERTICAL_LINKS: Record<string, { href: string; label: string }> = {
   RENTAL: { href: "/rentals", label: "Rentals" },
   SCHOOL_SUPPLIER: { href: "/school-orders", label: "School Orders" },
   HOTEL: { href: "/front-desk", label: "Front desk" },
+  CONSTRUCTION: { href: "/construction", label: "Construction" },
 };
 
 // The navy top ribbon shared with Zaroda Events and the other web apps: logo and app name, then the menu,
@@ -57,7 +58,7 @@ export function Nav({ session }: { session: Session }) {
   }, [session]);
 
   return (
-    <TopRibbon appName={orgName ?? "Back Office"} homeHref={homePath(session.role)} LinkComponent={Link}>
+    <TopRibbon appName={orgName ?? "Back Office"} homeHref={homePath(session.role, session.industryType)} LinkComponent={Link}>
       {orgName && <span className="hidden text-xs text-white/60 lg:inline">Back Office</span>}
       {!caretaker && (
       <RibbonLink href="/dashboard" LinkComponent={Link} active={pathname === "/dashboard"}>

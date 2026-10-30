@@ -14,6 +14,7 @@ import { CreateOrgUserDto } from './dto/create-org-user.dto';
 import { UpdateOrgUserDto } from './dto/update-org-user.dto';
 import { SetPinDto } from './dto/set-pin.dto';
 import { assertCaretakerAllowed } from '../rental/rental-plans.service';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 
 const SALT_ROUNDS = 10;
 
@@ -23,6 +24,7 @@ export class OrgUsersService {
     private readonly tenantPrisma: TenantScopedPrismaService,
     private readonly prisma: PrismaService,
     private readonly auditLog: AuditLogService,
+    private readonly events: EventEmitter2,
   ) {}
 
   /**
@@ -94,6 +96,8 @@ export class OrgUsersService {
     try {
       return await this.tenantPrisma.run(async (tx) => {
         if (dto.role === 'CARETAKER') await assertCaretakerAllowed(tx, organizationId);
+        // A vertical with user limits (construction plans) can refuse by throwing.
+        await this.events.emitAsync('orgUser.beforeCreate', { tx, organizationId });
         const orgUser = await tx.orgUser.create({
           data: {
             organizationId,

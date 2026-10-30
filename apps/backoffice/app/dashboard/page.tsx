@@ -202,6 +202,10 @@ export default function DashboardPage() {
       router.replace("/login");
       return;
     }
+    if (s.industryType === "CONSTRUCTION") {
+      router.replace("/construction");
+      return;
+    }
     if (!isBackofficeRole(s.role)) {
       clearSession();
       router.replace("/login");

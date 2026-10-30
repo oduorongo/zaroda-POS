@@ -42,6 +42,7 @@ import { AlertsModule } from './alerts/alerts.module';
 import { ExpensesModule } from './expenses/expenses.module';
 import { AccountingModule } from './accounting/accounting.module';
 import { SchoolSupplierModule } from './school-supplier/school-supplier.module';
+import { ConstructionModule } from './construction/construction.module';
 import { TenderAdvertsModule } from './tender-adverts/tender-adverts.module';
 import { PharmacyModule } from './pharmacy/pharmacy.module';
 import { SalonModule } from './salon/salon.module';
@@ -151,6 +152,7 @@ import { DeliveryModule } from './delivery/delivery.module';
     ExpensesModule,
     AccountingModule,
     SchoolSupplierModule,
+    ConstructionModule,
     TenderAdvertsModule,
     PharmacyModule,
     SalonModule,

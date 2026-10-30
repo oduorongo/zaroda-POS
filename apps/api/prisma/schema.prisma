@@ -172,6 +172,16 @@ model Organization {
   deliveryJobs              DeliveryJob[]
   deliveryQuotes            DeliveryQuote[]
   deliveryJobContacts       DeliveryJobContact[]
+  conSubscription           ConSubscription?
+  conSubscriptionPayments   ConSubscriptionPayment[]
+  conRoles                  ConRole[]
+  conUserRoles              ConUserRole[]
+  conProjectMembers         ConProjectMember[]
+  conRegistrations          ConCompanyRegistration[]
+  conComplianceDocs         ConComplianceDoc[]
+  conCategoryLimits         ConCategoryLimit[]
+  conTaxSettings            ConTaxSetting[]
+  conAlerts                 ConAlert[]
 
   @@map("organizations")
 }
@@ -296,6 +306,8 @@ model OrgUser {
   payrollRunsApproved PayrollRun[]              @relation("PayrollRunApprovedBy")
   rosterShifts        RosterShift[]             @relation("RosterShiftFor")
   rosterShiftsCreated RosterShift[]             @relation("RosterShiftCreatedBy")
+  conUserRoles        ConUserRole[]
+  conProjectMembers   ConProjectMember[]
 
   @@unique([organizationId, userId])
   @@index([organizationId])
@@ -5401,4 +5413,305 @@ model PlatformLedgerPosting {
 
   @@unique([sourceType, sourceId])
   @@map("platform_ledger_postings")
+}
+
+// ── Construction (industryType "CONSTRUCTION", docs/construction) ─────────────
+
+enum ConWorksClass {
+  BUILDING
+  ROADS_CIVIL
+  ELEC_MECH
+}
+
+enum ConRoleCode {
+  CON_DIRECTOR
+  CON_CONTRACTS_MGR
+  CON_QS
+  CON_ACCOUNTANT
+  CON_PROCUREMENT
+  CON_COMPLIANCE
+  CON_SHE_OFFICER
+  CON_PROJECT_MGR
+  CON_SITE_ENGINEER
+  CON_SITE_SUPERVISOR
+  CON_STOREKEEPER
+  CON_TIMEKEEPER
+  CON_CLIENT
+  CON_CONSULTANT_ARCH
+  CON_CONSULTANT_QS
+  CON_CONSULTANT_ENG
+  CON_SUBCONTRACTOR
+}
+
+enum ConRoleScope {
+  COMPANY
+  PROJECT
+  EXTERNAL
+}
+
+enum ConDocType {
+  NCA_CERT
+  NCA_LICENCE
+  KRA_TCC
+  BUSINESS_PERMIT
+  AGPO
+  INSURANCE_CAR
+  INSURANCE_PL
+  WIBA
+  OTHER
+}
+
+enum ConBillingCycle {
+  MONTHLY
+  ANNUAL
+}
+
+enum ConSubscriptionStatus {
+  TRIAL
+  ACTIVE
+  GRACE
+  SUSPENDED
+  CANCELLED
+}
+
+enum ConPaymentStatus {
+  PENDING
+  PAID
+  FAILED
+}
+
+/// Construction price list (global, edited by ZARODA super-admin). limits: { activeProjects, workers, users }, null = unlimited.
+model ConPlan {
+  id               String   @id @default(uuid())
+  code             String   @unique
+  name             String
+  fits             String?
+  monthlyPrice     Decimal  @db.Decimal(14, 2)
+  annualPrice      Decimal? @db.Decimal(14, 2)
+  quoteOnly        Boolean  @default(false)
+  setupFee         Decimal? @db.Decimal(14, 2)
+  setupFeeOptional Boolean  @default(false)
+  limits           Json
+  features         Json
+  sortOrder        Int      @default(0)
+  isActive         Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@map("con_plans")
+}
+
+/// Global discount codes, e.g. PILOT50 = 50% off for 2 months.
+model ConCoupon {
+  id          String    @id @default(uuid())
+  code        String    @unique
+  description String?
+  percentOff  Int
+  months      Int
+  validUntil  DateTime?
+  maxUses     Int?
+  uses        Int       @default(0)
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@map("con_coupons")
+}
+
+/// One per construction business. GRACE/SUSPENDED are worked out from currentPeriodEnd when read; stored status is TRIAL, ACTIVE or CANCELLED.
+model ConSubscription {
+  id                String                @id @default(uuid())
+  organizationId    String                @unique
+  planCode          String
+  cycle             ConBillingCycle       @default(MONTHLY)
+  status            ConSubscriptionStatus @default(TRIAL)
+  currentPeriodEnd  DateTime
+  graceDays         Int                   @default(7)
+  addons            Json                  @default("{}")
+  couponCode        String?
+  couponMonthsLeft  Int                   @default(0)
+  paidPaymentsCount Int                   @default(0)
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("con_subscriptions")
+}
+
+/// A payment for the construction plan: an M-Pesa prompt (Tuma) or money a platform admin recorded by hand.
+model ConSubscriptionPayment {
+  id                        String           @id @default(uuid())
+  organizationId            String
+  planCode                  String
+  cycle                     ConBillingCycle
+  months                    Int
+  amount                    Decimal          @db.Decimal(14, 2)
+  discount                  Decimal          @default(0) @db.Decimal(14, 2)
+  couponCode                String?
+  status                    ConPaymentStatus @default(PENDING)
+  method                    String           @default("MPESA")
+  phone                     String?
+  tumaMerchantRequestId     String?
+  receipt                   String?
+  error                     String?
+  paidAt                    DateTime?
+  periodEndAfter            DateTime?
+  recordedByPlatformAdminId String?
+  createdBy                 String?
+  createdAt                 DateTime         @default(now())
+  updatedAt                 DateTime         @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@map("con_subscription_payments")
+}
+
+/// The construction roles (docs/construction/02), seeded per business, with the most each role may approve.
+model ConRole {
+  id             String       @id @default(uuid())
+  organizationId String
+  code           ConRoleCode
+  name           String
+  scope          ConRoleScope
+  approvalLimit  Decimal?     @db.Decimal(14, 2)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, code])
+  @@map("con_roles")
+}
+
+/// Company-level construction roles held by a staff member (on top of their core OrgUser role).
+model ConUserRole {
+  id             String      @id @default(uuid())
+  organizationId String
+  orgUserId      String
+  role           ConRoleCode
+  createdBy      String?
+  createdAt      DateTime    @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  orgUser      OrgUser      @relation(fields: [orgUserId], references: [id], onDelete: Cascade)
+
+  @@unique([orgUserId, role])
+  @@index([organizationId])
+  @@map("con_user_roles")
+}
+
+/// Project-level roles. projectId gets its foreign key to con_projects when that table is added (C2).
+model ConProjectMember {
+  id             String      @id @default(uuid())
+  organizationId String
+  projectId      String
+  orgUserId      String
+  role           ConRoleCode
+  createdBy      String?
+  createdAt      DateTime    @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  orgUser      OrgUser      @relation(fields: [orgUserId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, orgUserId, role])
+  @@index([organizationId])
+  @@index([orgUserId])
+  @@map("con_project_members")
+}
+
+/// The firm's NCA registration per works class.
+model ConCompanyRegistration {
+  id               String        @id @default(uuid())
+  organizationId   String
+  worksClass       ConWorksClass
+  ncaCategory      Int
+  regNo            String
+  registeredAt     DateTime?     @db.Date
+  licenceExpiresAt DateTime?     @db.Date
+  createdBy        String?
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, worksClass])
+  @@map("con_company_registrations")
+}
+
+/// Compliance vault: certificates, licences and insurance, with the file in private storage.
+model ConComplianceDoc {
+  id             String     @id @default(uuid())
+  organizationId String
+  type           ConDocType
+  title          String
+  refNo          String?
+  fileKey        String?
+  fileName       String?
+  fileType       String?
+  issuedAt       DateTime?  @db.Date
+  expiresAt      DateTime?  @db.Date
+  projectId      String?
+  notes          String?
+  createdBy      String?
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, expiresAt])
+  @@map("con_compliance_docs")
+}
+
+/// Most a firm may take on per works class and NCA category. maxValue null = unlimited (NCA1).
+model ConCategoryLimit {
+  id             String        @id @default(uuid())
+  organizationId String
+  worksClass     ConWorksClass
+  ncaCategory    Int
+  maxValue       Decimal?      @db.Decimal(16, 2)
+  updatedAt      DateTime      @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, worksClass, ncaCategory])
+  @@map("con_category_limits")
+}
+
+/// Rates the law can change (VAT, WHT, NCA levy, retention, SHIF...). The row with the latest effectiveFrom on or before a date applies.
+model ConTaxSetting {
+  id             String   @id @default(uuid())
+  organizationId String
+  key            String
+  rate           Decimal  @db.Decimal(9, 4)
+  threshold      Decimal? @db.Decimal(16, 2)
+  active         Boolean  @default(true)
+  effectiveFrom  DateTime @db.Date
+  notes          String?
+  createdBy      String?
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, key, effectiveFrom])
+  @@map("con_tax_settings")
+}
+
+/// In-app construction alerts (document expiry...). dedupeKey stops the same alert being raised twice.
+model ConAlert {
+  id             String    @id @default(uuid())
+  organizationId String
+  kind           String
+  title          String
+  body           String
+  href           String?
+  dedupeKey      String
+  readAt         DateTime?
+  createdAt      DateTime  @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, dedupeKey])
+  @@map("con_alerts")
 }
