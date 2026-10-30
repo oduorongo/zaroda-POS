@@ -6,6 +6,7 @@ import { apiGet, apiPost } from "../../lib/api";
 import { CON_BRAND, errorText, type ConMe, type ConStatus } from "../../lib/construction";
 import { ConShell } from "../../components/construction/con-shell";
 import { ErrorBox, ExpiryBadge, Panel, type ExpiryState } from "../../components/construction/ui";
+import { STATUS_COLOUR, STATUS_LABEL, type ProjectStatus } from "./projects/shared";
 
 interface Dashboard {
   me: ConMe;
@@ -16,6 +17,7 @@ interface Dashboard {
     missing: string[];
     attention: { id: string; name: string; expiresAt: string | null; state: ExpiryState; daysLeft: number | null }[];
   };
+  projects: { id: string; code: string; name: string; status: ProjectStatus; progress: number }[];
   alerts: { unread: number; latest: { id: string; title: string; body: string; createdAt: string; readAt: string | null }[] };
 }
 
@@ -104,8 +106,21 @@ export default function ConstructionHome() {
             )}
           </Panel>
 
-          <Panel title="Coming next">
-            <p className="text-sm text-secondary-600">Projects, BQ, site diary, labour, materials and valuations arrive in the next phases.</p>
+          <Panel title="Projects" action={<Link href="/construction/projects" className="text-sm font-medium" style={{ color: CON_BRAND.orange }}>All projects</Link>}>
+            {data.projects.length === 0 ? (
+              <p className="text-sm text-secondary-500">No open projects. Create one, or mark a tender as won.</p>
+            ) : (
+              <ul className="divide-y divide-border text-sm">
+                {data.projects.map((p) => (
+                  <li key={p.id} className="py-2">
+                    <Link href={`/construction/projects/${p.id}`} className="flex items-center justify-between gap-2 no-underline">
+                      <span className="min-w-0 truncate text-foreground">{p.code} · {p.name}</span>
+                      <span className="shrink-0 text-xs font-semibold" style={{ color: STATUS_COLOUR[p.status] }}>{STATUS_LABEL[p.status]} · {p.progress}%</span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            )}
           </Panel>
         </div>
       )}

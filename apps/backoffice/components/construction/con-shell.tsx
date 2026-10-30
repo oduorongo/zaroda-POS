@@ -6,7 +6,7 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from "
 import { ThemeToggle } from "@zaroda/ui";
 import { apiGet } from "../../lib/api";
 import { clearSession, type Session } from "../../lib/auth";
-import { CON_BRAND, isDirector, useConSession, type ConMe } from "../../lib/construction";
+import { CON_BRAND, hasConRole, useConSession, type ConMe } from "../../lib/construction";
 import { useIdleLogout } from "../../hooks/use-idle-logout";
 
 const MeContext = createContext<ConMe | null>(null);
@@ -14,6 +14,8 @@ export const useConMe = () => useContext(MeContext);
 
 const LINKS = [
   { href: "/construction", label: "Home" },
+  { href: "/construction/projects", label: "Projects" },
+  { href: "/construction/tenders", label: "Tenders" },
   { href: "/construction/compliance", label: "Compliance" },
   { href: "/construction/plan", label: "Plan" },
   { href: "/construction/settings", label: "Settings" },
@@ -30,7 +32,7 @@ const CORE_LINKS = [
 export function ConHeader({ session, me }: { session: Session; me: ConMe | null }) {
   const pathname = usePathname();
   const router = useRouter();
-  const links = [...LINKS, ...(isDirector(me) ? [{ href: "/construction/staff", label: "Staff & roles" }] : []), ...(["OWNER", "MANAGER"].includes(session.role) ? CORE_LINKS : [])];
+  const links = [...LINKS, ...(hasConRole(me, "CON_COMPLIANCE") ? [{ href: "/construction/staff", label: "Staff & roles" }] : []), ...(["OWNER", "MANAGER"].includes(session.role) ? CORE_LINKS : [])];
 
   return (
     <header className="sticky top-0 z-40 text-white shadow" style={{ background: CON_BRAND.navy }}>

@@ -3,11 +3,11 @@
 import { useCallback, useEffect, useState } from "react";
 import { PasswordInput } from "@zaroda/ui";
 import { apiGet, apiPost, apiPut } from "../../../lib/api";
-import { CON_BRAND, errorText } from "../../../lib/construction";
-import { ConShell } from "../../../components/construction/con-shell";
+import { CON_BRAND, errorText, isDirector } from "../../../lib/construction";
+import { ConShell, useConMe } from "../../../components/construction/con-shell";
 import { ErrorBox, Field, Panel, PrimaryButton, inputClass } from "../../../components/construction/ui";
 
-interface Staff { orgUserId: string; fullName: string; email: string; coreRole: string; isActive: boolean; roles: string[]; projectRoles: { projectId: string; role: string }[] }
+interface Staff { orgUserId: string; fullName: string; email: string; coreRole: string; isActive: boolean; roles: string[]; projectRoles: { projectId: string; role: string; project: { code: string; name: string } }[]; ncaCard: { cardNo: string; expiresAt: string } | null }
 interface RoleRow { code: string; name: string; scope: string }
 
 const ACCESS: Record<string, string> = { OWNER: "Director (full access)", MANAGER: "Office", SUPERVISOR: "Site", AUDITOR: "View only" };
@@ -15,6 +15,16 @@ const SITE = { code: "SITE", name: "Site staff (engineer, supervisor, storekeepe
 const blank = { fullName: "", email: "", password: "", job: "CON_QS" };
 
 export default function StaffPage() {
+  return (
+    <ConShell title="Staff & roles">
+      <Staff />
+    </ConShell>
+  );
+}
+
+function Staff() {
+  const me = useConMe();
+  const director = isDirector(me);
   const [staff, setStaff] = useState<Staff[]>([]);
   const [roles, setRoles] = useState<RoleRow[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -63,10 +73,24 @@ export default function StaffPage() {
     }
   }
 
+  async function card(s: Staff) {
+    const cardNo = window.prompt(`NCA accreditation card number for ${s.fullName}`, s.ncaCard?.cardNo ?? "");
+    if (!cardNo?.trim()) return;
+    const expiresAt = window.prompt("Card expiry date (YYYY-MM-DD)", s.ncaCard?.expiresAt ?? "");
+    if (!expiresAt || !/^d{4}-d{2}-d{2}$/.test(expiresAt)) return setError("Enter the expiry as YYYY-MM-DD, e.g. 2028-03-31");
+    try {
+      await apiPut(`/construction/staff/${s.orgUserId}/accreditation`, { cardNo: cardNo.trim(), expiresAt });
+      await load();
+      setError(null);
+    } catch (e) {
+      setError(errorText(e, "Could not save the card."));
+    }
+  }
+
   return (
-    <ConShell title="Staff & roles">
+    <>
       <ErrorBox message={error} />
-      <Panel title="Add a person">
+      {director && <Panel title="Add a person">
         <div className="grid gap-3 sm:grid-cols-2">
           <Field label="Full name"><input className={inputClass} value={form.fullName} onChange={(e) => setForm({ ...form, fullName: e.target.value })} /></Field>
           <Field label="Email"><input type="email" className={inputClass} value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></Field>
@@ -79,7 +103,7 @@ export default function StaffPage() {
         </div>
         <p className="mt-2 text-xs text-secondary-500">Each person counts toward your plan&apos;s user limit. If the email already has a Zaroda account, its existing password is kept.</p>
         <div className="mt-3"><PrimaryButton disabled={adding || !form.email.trim()} onClick={add}>{adding ? "Adding..." : "Add person"}</PrimaryButton></div>
-      </Panel>
+      </Panel>}
       <div className="space-y-3">
         {staff.map((s) => (
           <Panel key={s.orgUserId}>
@@ -97,7 +121,7 @@ export default function StaffPage() {
                   <button
                     key={r.code}
                     type="button"
-                    disabled={saving === s.orgUserId}
+                    disabled={!director || saving === s.orgUserId}
                     onClick={() => toggle(s, r.code)}
                     className="rounded-full border px-3 py-1.5 text-xs font-medium"
                     style={on ? { background: CON_BRAND.navy, borderColor: CON_BRAND.navy, color: "white" } : { borderColor: "#cbd5e1" }}
@@ -108,9 +132,13 @@ export default function StaffPage() {
               })}
             </div>
             {s.coreRole === "OWNER" && <p className="mt-2 text-xs text-secondary-500">Owners always act as Director.</p>}
+            <p className="mt-2 flex flex-wrap items-center gap-2 text-xs text-secondary-500">
+              NCA accreditation: {s.ncaCard ? `${s.ncaCard.cardNo}, expires ${s.ncaCard.expiresAt}` : "none recorded"}
+              <button type="button" className="font-medium underline" style={{ color: CON_BRAND.orange }} onClick={() => card(s)}>{s.ncaCard ? "Update" : "Record card"}</button>
+            </p>
           </Panel>
         ))}
       </div>
-    </ConShell>
+    </>
   );
 }

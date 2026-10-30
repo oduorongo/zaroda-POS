@@ -38,6 +38,7 @@ import {
   TaxSettingDto,
 } from './dto/construction.dto';
 import { ConPlansService } from './plans/con-plans.service';
+import { AccreditationDto, RulesDto } from './dto/projects.dto';
 import { ConSetupService } from './common/con-setup.service';
 import { TRIAL_DAYS, TRIAL_PLAN } from './common/con-defaults';
 import { CON_FEATURES } from './plans/con-plans.util';
@@ -103,7 +104,13 @@ export class ConstructionController {
     return this.construction.updateRoleLimit(code, dto);
   }
 
-  @ConRoles('CON_DIRECTOR')
+  @ConRoles(...INTERNAL)
+  @Get('people')
+  people() {
+    return this.construction.listPeople();
+  }
+
+  @ConRoles('CON_DIRECTOR', 'CON_COMPLIANCE')
   @Get('staff')
   staff() {
     return this.construction.listStaff();
@@ -113,6 +120,24 @@ export class ConstructionController {
   @Post('staff')
   addStaff(@Body() dto: AddConStaffDto) {
     return this.construction.addStaff(dto);
+  }
+
+  @ConRoles('CON_COMPLIANCE')
+  @Put('staff/:orgUserId/accreditation')
+  accreditation(@Param('orgUserId', ParseUUIDPipe) orgUserId: string, @Body() dto: AccreditationDto) {
+    return this.construction.setAccreditation(orgUserId, dto);
+  }
+
+  @ConRoles(...INTERNAL)
+  @Get('settings/rules')
+  rules() {
+    return this.construction.rules();
+  }
+
+  @ConRoles('CON_DIRECTOR')
+  @Patch('settings/rules')
+  setRules(@Body() dto: RulesDto) {
+    return this.construction.setRules(dto);
   }
 
   @ConRoles('CON_DIRECTOR')

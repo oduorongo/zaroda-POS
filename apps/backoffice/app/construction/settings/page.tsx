@@ -56,6 +56,7 @@ function Settings() {
   return (
     <div className="space-y-4">
       <ErrorBox message={error} />
+      <RulesPanel canEdit={isDirector(me)} onError={setError} />
       <Panel title="Tax and statutory rates">
         <p className="mb-3 text-xs text-secondary-500">The law changes these. A change is a new rate from its effective date; earlier rates stay for past documents. Check figures with KRA/NCA before relying on them.</p>
         <div className="overflow-x-auto">
@@ -158,5 +159,27 @@ function Settings() {
         </ul>
       </Panel>
     </div>
+  );
+}
+
+function RulesPanel({ canEdit, onError }: { canEdit: boolean; onError: (m: string | null) => void }) {
+  const [rule, setRule] = useState<"BLOCK" | "WARN" | null>(null);
+  useEffect(() => {
+    apiGet<{ ncaProjectRegRule: "BLOCK" | "WARN" }>("/construction/settings/rules").then((r) => setRule(r.ncaProjectRegRule)).catch(() => undefined);
+  }, []);
+  const change = (next: "BLOCK" | "WARN") =>
+    apiPatch<{ ncaProjectRegRule: "BLOCK" | "WARN" }>("/construction/settings/rules", { ncaProjectRegRule: next })
+      .then((r) => (setRule(r.ncaProjectRegRule), onError(null)))
+      .catch((e) => onError(errorText(e, "Could not save the rule.")));
+  if (!rule) return null;
+  return (
+    <Panel title="Project rules">
+      <p className="text-sm text-secondary-600">When a project goes Active without an approved NCA project registration:</p>
+      <div className="mt-2 flex flex-wrap gap-4 text-sm">
+        <label className="flex items-center gap-2"><input type="radio" disabled={!canEdit} checked={rule === "BLOCK"} onChange={() => change("BLOCK")} /> Stop it (recommended)</label>
+        <label className="flex items-center gap-2"><input type="radio" disabled={!canEdit} checked={rule === "WARN"} onChange={() => change("WARN")} /> Warn, then allow</label>
+      </div>
+      {!canEdit && <p className="mt-1 text-xs text-secondary-500">Only the Director can change this.</p>}
+    </Panel>
   );
 }

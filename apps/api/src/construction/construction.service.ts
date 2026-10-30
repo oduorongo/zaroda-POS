@@ -9,6 +9,8 @@ import { ComplianceService } from './compliance/compliance.service';
 import { AddConStaffDto, RoleLimitDto, SITE_STAFF } from './dto/construction.dto';
 import { OrgUsersService } from '../org-users/org-users.service';
 import { ConPlansService } from './plans/con-plans.service';
+import { ProjectsService } from './projects/projects.service';
+import { AccreditationDto, RulesDto } from './dto/projects.dto';
 
 const COMPANY_ROLES = new Set(CON_ROLES.filter((r) => r.scope === 'COMPANY').map((r) => r.code));
 
@@ -20,6 +22,7 @@ export class ConstructionService {
     private readonly compliance: ComplianceService,
     private readonly plans: ConPlansService,
     private readonly orgUsers: OrgUsersService,
+    private readonly projects: ProjectsService,
   ) {}
 
   me(con: ConContext) {
@@ -33,9 +36,10 @@ export class ConstructionService {
   }
 
   async dashboard(con: ConContext) {
-    const [plan, health, alerts] = await Promise.all([
+    const [plan, health, projects, alerts] = await Promise.all([
       this.plans.mine(),
       this.compliance.health(),
+      this.projects.list(con),
       this.tenantPrisma.run(async (tx) => ({
         unread: await tx.conAlert.count({ where: { readAt: null } }),
         latest: await tx.conAlert.findMany({ orderBy: { createdAt: 'desc' }, take: 5 }),
@@ -45,6 +49,7 @@ export class ConstructionService {
       me: this.me(con),
       plan: { planCode: plan.planCode, planName: plan.planName, status: plan.status, currentPeriodEnd: plan.currentPeriodEnd, daysLeft: plan.daysLeft, graceEndsAt: plan.graceEndsAt, usage: plan.usage, limits: plan.limits },
       compliance: health,
+      projects: projects.filter((p) => p.status !== 'CLOSED').slice(0, 8),
       alerts,
     };
   }
@@ -79,7 +84,7 @@ export class ConstructionService {
   async listStaff() {
     const rows = await this.tenantPrisma.run((tx) =>
       tx.orgUser.findMany({
-        select: { id: true, role: true, isActive: true, user: { select: { fullName: true, email: true } }, conUserRoles: { select: { role: true } }, conProjectMembers: { select: { projectId: true, role: true } } },
+        select: { id: true, role: true, isActive: true, user: { select: { fullName: true, email: true } }, conUserRoles: { select: { role: true } }, conProjectMembers: { select: { projectId: true, role: true, project: { select: { code: true, name: true } } } }, conAccreditation: { select: { cardNo: true, expiresAt: true } } },
         orderBy: { createdAt: 'asc' },
       }),
     );
@@ -91,7 +96,14 @@ export class ConstructionService {
       isActive: u.isActive,
       roles: u.conUserRoles.map((r) => r.role),
       projectRoles: u.conProjectMembers,
+      ncaCard: u.conAccreditation ? { cardNo: u.conAccreditation.cardNo, expiresAt: u.conAccreditation.expiresAt.toISOString().slice(0, 10) } : null,
     }));
+  }
+
+  /** Names to pick from when building a project team (no emails or phone numbers). */
+  async listPeople() {
+    const rows = await this.tenantPrisma.run((tx) => tx.orgUser.findMany({ where: { isActive: true }, select: { id: true, role: true, user: { select: { fullName: true } }, conAccreditation: { select: { expiresAt: true } } }, orderBy: { createdAt: 'asc' } }));
+    return rows.map((u) => ({ orgUserId: u.id, fullName: u.user.fullName, coreRole: u.role, ncaCardExpiresAt: u.conAccreditation?.expiresAt.toISOString().slice(0, 10) ?? null }));
   }
 
   async setUserRoles(orgUserId: string, roles: ConRoleCode[]) {
@@ -116,5 +128,33 @@ export class ConstructionService {
     const created = await this.orgUsers.create({ email: dto.email.trim().toLowerCase(), fullName: dto.fullName?.trim() || undefined, password: dto.password || undefined, role });
     if (job) await this.setUserRoles(created.id, [job]);
     return { orgUserId: created.id, role, job };
+  }
+
+  async rules() {
+    const { organizationId } = getTenantStore();
+    return this.tenantPrisma.run(async (tx) => (await tx.conSettings.findUnique({ where: { organizationId } })) ?? { organizationId, ncaProjectRegRule: 'BLOCK' as const });
+  }
+
+  async setRules(dto: RulesDto) {
+    const { organizationId } = getTenantStore();
+    return this.tenantPrisma.run(async (tx) => {
+      const before = await tx.conSettings.findUnique({ where: { organizationId } });
+      const after = await tx.conSettings.upsert({ where: { organizationId }, create: { organizationId, ...dto }, update: dto });
+      await this.audit.logInTx(tx, { action: 'con_settings.updated', entityType: 'ConSettings', entityId: organizationId, before: before ?? undefined, after });
+      return after;
+    });
+  }
+
+  /** The NCA accreditation card a staff member holds (needed to be a Site Supervisor). */
+  async setAccreditation(orgUserId: string, dto: AccreditationDto) {
+    const { organizationId } = getTenantStore();
+    return this.tenantPrisma.run(async (tx) => {
+      if (!(await tx.orgUser.findUnique({ where: { id: orgUserId } }))) throw new NotFoundException('Staff member not found');
+      const before = await tx.conStaffAccreditation.findUnique({ where: { orgUserId } });
+      const data = { cardNo: dto.cardNo.trim().toUpperCase(), expiresAt: new Date(`${dto.expiresAt}T00:00:00Z`) };
+      const after = await tx.conStaffAccreditation.upsert({ where: { orgUserId }, create: { organizationId, orgUserId, ...data }, update: data });
+      await this.audit.logInTx(tx, { action: 'con_accreditation.saved', entityType: 'ConStaffAccreditation', entityId: after.id, before: before ?? undefined, after });
+      return { cardNo: after.cardNo, expiresAt: after.expiresAt.toISOString().slice(0, 10) };
+    });
   }
 }

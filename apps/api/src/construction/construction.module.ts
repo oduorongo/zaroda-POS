@@ -12,11 +12,15 @@ import { ConBillingCallbackController, ConPublicController, ConstructionControll
 import { ConstructionService } from './construction.service';
 import { ConLimitsListener } from './plans/con-limits.listener';
 import { ConPlansService } from './plans/con-plans.service';
+import { BqService } from './projects/bq.service';
+import { ProjectsController, TendersController } from './projects/projects.controller';
+import { ProjectsService } from './projects/projects.service';
+import { TendersService } from './projects/tenders.service';
 
 /** Construction contractors (industryType "CONSTRUCTION", served at CONSTRUCTION_DOMAIN). See docs/construction. */
 @Module({
   imports: [ModuleRegistryModule, OnlineStoreModule, OrgUsersModule],
-  controllers: [ConstructionController, ConBillingCallbackController, ConPublicController],
+  controllers: [ConstructionController, TendersController, ProjectsController, ConBillingCallbackController, ConPublicController],
   providers: [
     ConSetupService,
     ConstructionGuard,
@@ -26,6 +30,9 @@ import { ConPlansService } from './plans/con-plans.service';
     ComplianceService,
     ComplianceAlertsService,
     ConstructionService,
+    ProjectsService,
+    TendersService,
+    BqService,
     PrivateObjectStorageService,
   ],
   // Platform admin edits plans and coupons, extends trials and records payments.
@@ -51,6 +58,16 @@ export class ConstructionModule implements OnModuleInit {
         { tableName: 'con_category_limits', description: 'NCA category caps per works class' },
         { tableName: 'con_tax_settings', description: 'VAT, withholding, levies and retention rates with effective dates' },
         { tableName: 'con_alerts', description: 'In-app construction alerts (expiring documents)' },
+        { tableName: 'con_settings', description: 'Construction rules: block or only warn' },
+        { tableName: 'con_staff_accreditations', description: 'NCA accreditation cards held by staff' },
+        { tableName: 'con_parties', description: 'Clients, consultants and subcontractors' },
+        { tableName: 'con_tenders', description: 'Tender register with NCA cap check' },
+        { tableName: 'con_projects', description: 'Projects and contracts' },
+        { tableName: 'con_project_parties', description: 'Consultants and subcontractors on a project' },
+        { tableName: 'con_project_permits', description: 'Project permit checklist (NCA, county, NEMA, DOSHS, occupancy)' },
+        { tableName: 'con_milestones', description: 'Programme milestones with percent complete' },
+        { tableName: 'con_bq_sections', description: 'Bill of Quantities sections' },
+        { tableName: 'con_bq_items', description: 'Bill of Quantities items' },
       ],
     });
   }

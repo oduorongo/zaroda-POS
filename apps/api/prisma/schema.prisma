@@ -182,6 +182,16 @@ model Organization {
   conCategoryLimits         ConCategoryLimit[]
   conTaxSettings            ConTaxSetting[]
   conAlerts                 ConAlert[]
+  conSettings               ConSettings?
+  conStaffAccreditations    ConStaffAccreditation[]
+  conParties                ConParty[]
+  conTenders                ConTender[]
+  conProjects               ConProject[]
+  conProjectParties         ConProjectParty[]
+  conProjectPermits         ConProjectPermit[]
+  conMilestones             ConMilestone[]
+  conBqSections             ConBqSection[]
+  conBqItems                ConBqItem[]
 
   @@map("organizations")
 }
@@ -308,6 +318,7 @@ model OrgUser {
   rosterShiftsCreated RosterShift[]             @relation("RosterShiftCreatedBy")
   conUserRoles        ConUserRole[]
   conProjectMembers   ConProjectMember[]
+  conAccreditation    ConStaffAccreditation?
 
   @@unique([organizationId, userId])
   @@index([organizationId])
@@ -5602,7 +5613,7 @@ model ConUserRole {
   @@map("con_user_roles")
 }
 
-/// Project-level roles. projectId gets its foreign key to con_projects when that table is added (C2).
+/// Project-level roles (who works on which project, as what).
 model ConProjectMember {
   id             String      @id @default(uuid())
   organizationId String
@@ -5614,6 +5625,7 @@ model ConProjectMember {
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   orgUser      OrgUser      @relation(fields: [orgUserId], references: [id], onDelete: Cascade)
+  project      ConProject   @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@unique([projectId, orgUserId, role])
   @@index([organizationId])
@@ -5714,4 +5726,280 @@ model ConAlert {
 
   @@unique([organizationId, dedupeKey])
   @@map("con_alerts")
+}
+
+// ── Construction C2: tenders, parties, projects, permits, programme, BQ ──────
+
+enum ConTenderStatus {
+  PREPARING
+  SUBMITTED
+  WON
+  LOST
+  WITHDRAWN
+}
+
+enum ConPartyKind {
+  CLIENT
+  ARCHITECT
+  QS
+  ENGINEER
+  SUBCONTRACTOR
+  OTHER
+}
+
+enum ConFormOfContract {
+  JBC
+  FIDIC
+  PPADA
+  SIMPLE
+}
+
+enum ConProjectStatus {
+  PLANNING
+  ACTIVE
+  PRACTICAL_COMPLETION
+  DLP
+  CLOSED
+}
+
+enum ConPermitType {
+  NCA_PROJECT_REG
+  COUNTY_APPROVAL
+  BUILDING_PERMIT
+  NEMA_EIA
+  DOSHS_REG
+  OCCUPANCY
+}
+
+enum ConPermitStatus {
+  PENDING
+  APPLIED
+  APPROVED
+  NOT_REQUIRED
+}
+
+enum ConRuleMode {
+  BLOCK
+  WARN
+}
+
+/// Per-business construction rules that can be a block or only a warning.
+model ConSettings {
+  organizationId    String      @id
+  ncaProjectRegRule ConRuleMode @default(BLOCK)
+  updatedAt         DateTime    @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("con_settings")
+}
+
+/// NCA site-supervisor / skilled-worker accreditation held by a staff member (needed for the Site Supervisor role).
+model ConStaffAccreditation {
+  id             String   @id @default(uuid())
+  organizationId String
+  orgUserId      String   @unique
+  cardNo         String
+  expiresAt      DateTime @db.Date
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  orgUser      OrgUser      @relation(fields: [orgUserId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@map("con_staff_accreditations")
+}
+
+/// Clients, consultants and subcontractors the business works with.
+model ConParty {
+  id             String       @id @default(uuid())
+  organizationId String
+  kind           ConPartyKind
+  name           String
+  contactPerson  String?
+  kraPin         String?
+  phone          String?
+  email          String?
+  createdBy      String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  organization   Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  clientProjects ConProject[]      @relation("ConProjectClient")
+  projectLinks   ConProjectParty[]
+
+  @@index([organizationId, kind])
+  @@map("con_parties")
+}
+
+model ConTender {
+  id                String          @id @default(uuid())
+  organizationId    String
+  ref               String?
+  title             String
+  procuringEntity   String
+  isPublic          Boolean         @default(true)
+  agpoReserved      Boolean         @default(false)
+  worksClass        ConWorksClass
+  estValue          Decimal         @db.Decimal(16, 2)
+  closingAt         DateTime?
+  bidBond           Decimal?        @db.Decimal(14, 2)
+  bidBondExpiresAt  DateTime?       @db.Date
+  status            ConTenderStatus @default(PREPARING)
+  capOverrideReason String?
+  capOverrideBy     String?
+  outcomeNote       String?
+  notes             String?
+  createdBy         String?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project      ConProject?
+
+  @@index([organizationId, status])
+  @@map("con_tenders")
+}
+
+model ConProject {
+  id                String            @id @default(uuid())
+  organizationId    String
+  code              String
+  name              String
+  clientId          String?
+  tenderId          String?           @unique
+  worksClass        ConWorksClass
+  contractSum       Decimal           @db.Decimal(16, 2)
+  revisedSum        Decimal?          @db.Decimal(16, 2)
+  formOfContract    ConFormOfContract @default(JBC)
+  startDate         DateTime?         @db.Date
+  completionDate    DateTime?         @db.Date
+  dlpMonths         Int               @default(12)
+  retentionRate     Decimal           @default(10) @db.Decimal(5, 2)
+  retentionLimit    Decimal           @default(5) @db.Decimal(5, 2)
+  county            String?
+  location          String?
+  lat               Decimal?          @db.Decimal(9, 6)
+  lng               Decimal?          @db.Decimal(9, 6)
+  status            ConProjectStatus  @default(PLANNING)
+  capOverrideReason String?
+  capOverrideBy     String?
+  createdBy         String?
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+
+  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  client       ConParty?          @relation("ConProjectClient", fields: [clientId], references: [id], onDelete: SetNull)
+  tender       ConTender?         @relation(fields: [tenderId], references: [id], onDelete: SetNull)
+  parties      ConProjectParty[]
+  members      ConProjectMember[]
+  permits      ConProjectPermit[]
+  milestones   ConMilestone[]
+  bqSections   ConBqSection[]
+  bqItems      ConBqItem[]
+
+  @@unique([organizationId, code])
+  @@index([organizationId, status])
+  @@map("con_projects")
+}
+
+/// Consultants and subcontractors on a project (the client is con_projects.clientId).
+model ConProjectParty {
+  id             String       @id @default(uuid())
+  organizationId String
+  projectId      String
+  partyId        String
+  role           ConPartyKind
+  createdAt      DateTime     @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project      ConProject   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  party        ConParty     @relation(fields: [partyId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, partyId, role])
+  @@index([organizationId])
+  @@map("con_project_parties")
+}
+
+model ConProjectPermit {
+  id             String          @id @default(uuid())
+  organizationId String
+  projectId      String
+  type           ConPermitType
+  status         ConPermitStatus @default(PENDING)
+  refNo          String?
+  fileKey        String?
+  fileName       String?
+  fileType       String?
+  issuedAt       DateTime?       @db.Date
+  expiresAt      DateTime?       @db.Date
+  notes          String?
+  updatedAt      DateTime        @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project      ConProject   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, type])
+  @@index([organizationId])
+  @@map("con_project_permits")
+}
+
+model ConMilestone {
+  id              String    @id @default(uuid())
+  organizationId  String
+  projectId       String
+  name            String
+  startDate       DateTime  @db.Date
+  endDate         DateTime  @db.Date
+  percentComplete Int       @default(0)
+  sortOrder       Int       @default(0)
+  updatedAt       DateTime  @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project      ConProject   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([projectId])
+  @@map("con_milestones")
+}
+
+model ConBqSection {
+  id             String   @id @default(uuid())
+  organizationId String
+  projectId      String
+  code           String?
+  name           String
+  sortOrder      Int      @default(0)
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project      ConProject   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  items        ConBqItem[]
+
+  @@index([organizationId])
+  @@index([projectId])
+  @@map("con_bq_sections")
+}
+
+model ConBqItem {
+  id             String   @id @default(uuid())
+  organizationId String
+  projectId      String
+  sectionId      String
+  code           String?
+  description    String
+  unit           String
+  qty            Decimal  @db.Decimal(14, 3)
+  rate           Decimal  @db.Decimal(14, 2)
+  amount         Decimal  @db.Decimal(16, 2)
+  sortOrder      Int      @default(0)
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project      ConProject   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  section      ConBqSection @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([sectionId])
+  @@map("con_bq_items")
 }

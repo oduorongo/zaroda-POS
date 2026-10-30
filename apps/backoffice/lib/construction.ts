@@ -72,3 +72,58 @@ export async function conOpenFile(path: string): Promise<void> {
     throw e;
   }
 }
+
+/** An API refusal with its details: warnings to confirm (409), blocks (400), or the BQ import preview. */
+export class ConApiError extends ApiError {
+  data: { message?: string; warnings?: string[]; blocks?: string[]; needsConfirm?: boolean; capExceeded?: boolean; [k: string]: unknown };
+  constructor(message: string, status: number, data: ConApiError["data"]) {
+    super(message, status);
+    this.data = data;
+  }
+}
+
+/** Like apiPost/apiPut, but a refusal keeps its warnings and blocks. A file body is sent raw with its name in X-File-Name. */
+export async function conSend<T>(method: "POST" | "PUT" | "PATCH" | "DELETE", path: string, body?: unknown): Promise<T> {
+  const s = getSession();
+  if (!s) throw new ApiError("Not logged in", 401);
+  const isFile = typeof File !== "undefined" && body instanceof File;
+  const res = await fetch(`${s.apiBaseUrl.replace(/\/+$/, "")}${path}`, {
+    method,
+    headers: {
+      Authorization: `Bearer ${s.accessToken}`,
+      ...(isFile ? { "Content-Type": (body as File).type || "application/octet-stream", "X-File-Name": encodeURIComponent((body as File).name) } : { "Content-Type": "application/json" }),
+    },
+    body: body === undefined ? undefined : isFile ? (body as File) : JSON.stringify(body),
+  });
+  const json = (await res.json().catch(() => ({}))) as ConApiError["data"];
+  if (!res.ok) throw new ConApiError(typeof json.message === "string" ? json.message : `Request failed (${res.status})`, res.status, json);
+  return json as T;
+}
+
+/**
+ * Runs a change the API may question: warnings (409) are shown for a yes/no and then sent again with confirm; above the NCA cap a
+ * Director is asked for the override reason. Returns null when the person backs out.
+ */
+export async function withChecks<T>(send: (extra: { confirm?: boolean; overrideReason?: string }) => Promise<T>, canOverride: boolean): Promise<T | null> {
+  const extra: { confirm?: boolean; overrideReason?: string } = {};
+  for (let i = 0; i < 3; i++) {
+    try {
+      return await send(extra);
+    } catch (e) {
+      if (!(e instanceof ConApiError)) throw e;
+      if (e.status === 409 && e.data.needsConfirm) {
+        if (!window.confirm(`${e.message}\n\n- ${(e.data.warnings ?? []).join("\n- ")}\n\nGo ahead anyway?`)) return null;
+        extra.confirm = true;
+        continue;
+      }
+      if (e.status === 400 && e.data.capExceeded && canOverride) {
+        const reason = window.prompt(`${e.message}\n\nAs Director you may go ahead. Give the reason (it is kept in the record):`);
+        if (!reason?.trim()) return null;
+        extra.overrideReason = reason.trim();
+        continue;
+      }
+      throw e;
+    }
+  }
+  return null;
+}

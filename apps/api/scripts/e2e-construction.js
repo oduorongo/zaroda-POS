@@ -66,6 +66,7 @@ const login = async (email, password = 'password123') => (await call('POST', '/a
 const sql = new Client({ connectionString: env.DIRECT_URL });
 const tag = Date.now().toString(36);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const t0 = Date.now();
 
 async function main() {
   await sql.connect();
@@ -73,6 +74,7 @@ async function main() {
   if (!org) throw new Error('Run prisma/seed-construction.ts first');
   const orgId = org.id;
   await sql.query('DELETE FROM con_alerts WHERE "organizationId" = $1', [orgId]);
+  await sql.query(`DELETE FROM con_tax_settings WHERE "organizationId" = $1 AND "effectiveFrom" > '2090-01-01'`, [orgId]);
   await sql.query(`UPDATE con_roles SET "approvalLimit" = 500000 WHERE "organizationId" = $1 AND code = 'CON_PROJECT_MGR'`, [orgId]);
   await sql.query(`UPDATE con_subscriptions SET "couponCode" = NULL, "couponMonthsLeft" = 0, addons = '{}', "planCode" = 'CON_CONTRACTOR' WHERE "organizationId" = $1`, [orgId]);
   await sql.query(`UPDATE org_users SET "isActive" = false WHERE "organizationId" = $1 AND "userId" IN (SELECT id FROM users WHERE email ~ '^(extra|fill|sixth|proc-|site-)')`, [orgId]);
@@ -251,6 +253,143 @@ async function main() {
   check("a new business sees none of Uriri's documents", (await fresh.get('/construction/compliance/docs')).json.length === 0);
   check("and cannot fetch Uriri's file", (await call('GET', `/construction/compliance/docs/${doc.json.id}/file`, { token: signup.json.accessToken })).status === 404);
   check("or edit Uriri's document", (await fresh.put(`/construction/compliance/docs/${doc.json.id}`, { type: 'OTHER', title: 'hijack' })).status === 404);
+
+  section('13b. Projects, tenders, permits, BQ, programme (C2)');
+  const { Workbook } = require(require.resolve('exceljs', { paths: [API_DIR] }));
+  const seeded = (await dir.get('/construction/projects')).json.find((p) => p.name === 'Uriri Day Secondary Classrooms');
+  check('the seeded project is listed, active, BQ equal to the contract sum', seeded?.status === 'ACTIVE' && seeded.bqTotal === seeded.contractSum && seeded.contractSum === 10713000, seeded);
+  const detail = (await dir.get(`/construction/projects/${seeded.id}`)).json;
+  check('it has 6 permits, 3 consultants and 2 team members', detail.permits?.length === 6 && detail.parties.length === 3 && detail.members.length === 2, { p: detail.permits?.length, parties: detail.parties?.length, m: detail.members?.length });
+  const seededBq = (await qs.get(`/construction/projects/${seeded.id}/bq`)).json;
+  check('its BQ has 7 sections and 30 items, no difference', seededBq.sections.length === 7 && seededBq.sections.reduce((a, s) => a + s.items.length, 0) === 30 && seededBq.difference === 0);
+  check('programme progress is worked out from milestones', seeded.progress > 0 && seeded.progress < 100, seeded.progress);
+  check('three tenders are seeded', (await qs.get('/construction/tenders')).json.length >= 3);
+
+  const okTender = await qs.post('/construction/tenders', { title: `Ward block ${tag}`, procuringEntity: `Clinic ${tag}`, worksClass: 'BUILDING', estValue: 40000000, closingAt: new Date(Date.now() + 10 * 86400000).toISOString() });
+  check('QS adds a tender within the NCA5 cap', okTender.status === 201 && !okTender.json.capOverrideReason, okTender.json);
+  const big = { title: `Hospital ${tag}`, procuringEntity: 'County Government', worksClass: 'BUILDING', estValue: 150000000 };
+  const blocked = await qs.post('/construction/tenders', big);
+  check('a 150M building tender is blocked above the NCA5 cap', blocked.status === 400 && blocked.json.capExceeded === true && /NCA5/.test(blocked.json.message), blocked.json);
+  check('a QS cannot override the cap', (await qs.post('/construction/tenders', { ...big, overrideReason: 'Joint venture partner holds NCA1' })).status === 403);
+  const overridden = await dir.post('/construction/tenders', { ...big, overrideReason: 'Joint venture partner holds NCA1' });
+  check('the Director overrides with a reason, which is kept', overridden.status === 201 && overridden.json.capOverrideReason === 'Joint venture partner holds NCA1', overridden.json);
+  const submit = async (id) => {
+    let r = await qs.post(`/construction/tenders/${id}/outcome`, { status: 'SUBMITTED' });
+    if (r.status === 409) r = await qs.post(`/construction/tenders/${id}/outcome`, { status: 'SUBMITTED', confirm: true });
+    return r;
+  };
+  check('the tender is submitted', (await submit(okTender.json.id)).json.status === 'SUBMITTED');
+  check('a submitted tender cannot be edited', (await qs.put(`/construction/tenders/${okTender.json.id}`, { title: 'x2', procuringEntity: 'y2', worksClass: 'BUILDING', estValue: 1 })).status === 409);
+  const won = await qs.post(`/construction/tenders/${okTender.json.id}/outcome`, { status: 'WON', awardedSum: 39500000 });
+  check('won: a project is created from it', won.status === 200 && won.json.status === 'WON' && !!won.json.project?.id, won.json);
+  const pid = won.json.project.id;
+  const np = (await dir.get(`/construction/projects/${pid}`)).json;
+  check('the new project is PLANNING with the awarded sum, the client and 6 permits to do', np.status === 'PLANNING' && np.contractSum === 39500000 && np.client?.name === `Clinic ${tag}` && np.permits.every((x) => x.status === 'PENDING'), np);
+  check('a won tender cannot be marked lost', (await qs.post(`/construction/tenders/${okTender.json.id}/outcome`, { status: 'LOST' })).status === 400);
+
+  const active1 = await dir.post(`/construction/projects/${pid}/status`, { status: 'ACTIVE' });
+  check('going Active without the NCA project registration is blocked', active1.status === 400 && active1.json.blocks?.length === 1, active1.json);
+  check('only the Director changes the rule', (await qs.patch('/construction/settings/rules', { ncaProjectRegRule: 'WARN' })).status === 403);
+  await dir.patch('/construction/settings/rules', { ncaProjectRegRule: 'WARN' });
+  const active2 = await dir.post(`/construction/projects/${pid}/status`, { status: 'ACTIVE' });
+  check('set to warn: it asks to confirm, listing what is missing (BQ, permits)', active2.status === 409 && active2.json.needsConfirm && active2.json.warnings.some((w) => /BQ totals/.test(w)) && active2.json.warnings.some((w) => /NCA project/.test(w)), active2.json);
+  await dir.patch('/construction/settings/rules', { ncaProjectRegRule: 'BLOCK' });
+  check('a project cannot skip ahead', (await dir.post(`/construction/projects/${pid}/status`, { status: 'DLP' })).status === 400);
+
+  const permit = await comp.put(`/construction/projects/${pid}/permits/NCA_PROJECT_REG`, { status: 'APPROVED', refNo: `NCA/PR/${tag}`, issuedAt: '2026-10-01', expiresAt: new Date(Date.now() + 20 * 86400000).toISOString().slice(0, 10) });
+  check('the compliance officer records the NCA project registration', permit.status === 200 && permit.json.status === 'APPROVED', permit.json);
+  const permitPdf = Buffer.from('%PDF-1.4\n%%EOF\n');
+  const pup = await call('POST', `/construction/projects/${pid}/permits/NCA_PROJECT_REG/file`, { token: compToken, raw: permitPdf, headers: { 'Content-Type': 'application/pdf', 'X-File-Name': 'nca.pdf' } });
+  check('a permit file uploads', pup.status === 201, pup.json);
+  check('and is downloaded through the API', (await call('GET', `/construction/projects/${pid}/permits/NCA_PROJECT_REG/file`, { token: qsToken })).buf.equals(permitPdf));
+  check('a QS cannot record permits', (await qs.put(`/construction/projects/${pid}/permits/BUILDING_PERMIT`, { status: 'APPROVED' })).status === 403);
+  const active3 = await dir.post(`/construction/projects/${pid}/status`, { status: 'ACTIVE', confirm: true });
+  check('with the registration, it goes Active after confirming the warnings', active3.status === 200 && active3.json.status === 'ACTIVE', active3.json);
+
+  const people = (await qs.get('/construction/people')).json;
+  const siteGuy = people.find((x) => x.fullName === 'Fredrick Ouma');
+  const qsGuy = people.find((x) => x.fullName === 'Caroline Wanjiku');
+  check('people list has names but no emails', !!siteGuy && people.every((x) => !('email' in x)));
+  const noCard = await dir.post(`/construction/projects/${pid}/members`, { orgUserId: qsGuy.orgUserId, role: 'CON_SITE_SUPERVISOR' });
+  check('a Site Supervisor needs an NCA card', noCard.status === 400 && /accreditation/.test(noCard.json.message), noCard.json);
+  await comp.put(`/construction/staff/${qsGuy.orgUserId}/accreditation`, { cardNo: `NCA/SS/${tag}`, expiresAt: new Date(Date.now() - 86400000).toISOString().slice(0, 10) });
+  check('an expired card is refused', (await dir.post(`/construction/projects/${pid}/members`, { orgUserId: qsGuy.orgUserId, role: 'CON_SITE_SUPERVISOR' })).status === 400);
+  await comp.put(`/construction/staff/${qsGuy.orgUserId}/accreditation`, { cardNo: `NCA/SS/${tag}`, expiresAt: new Date(Date.now() + 10 * 86400000).toISOString().slice(0, 10) });
+  const soon = await dir.post(`/construction/projects/${pid}/members`, { orgUserId: qsGuy.orgUserId, role: 'CON_SITE_SUPERVISOR' });
+  check('a card expiring within 30 days is allowed with a warning', soon.status === 201 && /expires in 1\d days|expires in \d days/.test(soon.json.warning ?? ''), soon.json);
+  check('a project role is only for project roles', (await dir.post(`/construction/projects/${pid}/members`, { orgUserId: qsGuy.orgUserId, role: 'CON_QS' })).status === 400);
+
+  const wait = 62000 - (Date.now() - t0) % 62000;
+  if (Date.now() - t0 < 62000) await sleep(wait);
+  const siteUser = as(await login('site@uriri.demo'));
+  const siteList = (await siteUser.get('/construction/projects')).json;
+  check('site staff see only the projects they are on', Array.isArray(siteList) && siteList.length === 1 && siteList[0].id === seeded.id, siteList);
+  check("and cannot open another project", (await siteUser.get(`/construction/projects/${pid}`)).status === 403);
+  check('site staff cannot see tenders', (await siteUser.get('/construction/tenders')).status === 403);
+  check('the site supervisor can read the BQ of their project', (await siteUser.get(`/construction/projects/${seeded.id}/bq`)).status === 200);
+  check('but cannot change it', (await siteUser.post(`/construction/projects/${seeded.id}/bq/sections`, { name: 'x' })).status === 403);
+
+  const makeXlsx = async (rows) => {
+    const wb = new Workbook();
+    const ws = wb.addWorksheet('Bill 1');
+    for (const r of rows) ws.addRow(r);
+    return Buffer.from(await wb.xlsx.writeBuffer());
+  };
+  const xlsxType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+  const upload = (buf, save) => call('POST', `/construction/projects/${pid}/bq/import${save ? '?save=true' : ''}`, { token: qsToken, raw: buf, headers: { 'Content-Type': xlsxType, 'X-File-Name': 'bq.xlsx' } });
+  const bad = await makeXlsx([['Item', 'Description', 'Unit', 'Qty', 'Rate', 'Amount'], [null, 'PRELIMINARIES'], ['A', 'Site office', 'Item', null, null, 500000], ['B', 'Fencing', null, 100, 900, 90000]]);
+  const badCheck = await upload(bad, false);
+  check('a BQ with a bad row previews with the error and saves nothing', badCheck.status === 200 && badCheck.json.errors.length === 1 && badCheck.json.saved === false, badCheck.json);
+  check('saving it is refused', (await upload(bad, true)).status === 400);
+  const rows = [['Item', 'Description', 'Unit', 'Qty', 'Rate', 'Amount'], [null, 'BILL 1 - PRELIMINARIES'], ['A', 'Site office', 'Item', null, null, 500000], [null, 'BILL 2 - WORKS']];
+  for (let i = 0; i < 20; i++) rows.push([String.fromCharCode(65 + i), `Work item ${i + 1}`, 'm²', 100, 19500, { formula: `D${rows.length + 1}*E${rows.length + 1}`, result: 1950000 }]);
+  const good = await makeXlsx(rows);
+  const preview = await upload(good, false);
+  check('a good BQ previews: 2 sections, 21 items, 39.5M, matching', preview.json.itemCount === 21 && preview.json.sections.length === 2 && preview.json.total === 39500000 && preview.json.difference === 0, preview.json);
+  check('nothing is saved by the preview', (await qs.get(`/construction/projects/${pid}/bq`)).json.sections.length === 0);
+  check('saving imports it', (await upload(good, true)).json.saved === true);
+  const imported = (await qs.get(`/construction/projects/${pid}/bq`)).json;
+  check('the BQ now holds 21 items and matches the contract sum', imported.sections.reduce((a, s) => a + s.items.length, 0) === 21 && imported.difference === 0);
+  const sec = (await qs.post(`/construction/projects/${pid}/bq/sections`, { name: 'BILL 3 - EXTRAS' })).json;
+  const it = await qs.post(`/construction/projects/${pid}/bq/items`, { sectionId: sec.id, description: 'Extra paving', unit: 'm²', qty: 12.5, rate: 1200 });
+  check('a BQ item added by hand is qty x rate', Number(it.json.amount) === 15000, it.json);
+  check('and now shows a 15,000 difference', (await qs.get(`/construction/projects/${pid}/bq`)).json.difference === 15000);
+  await qs.put(`/construction/projects/${pid}/bq/items/${it.json.id}`, { sectionId: sec.id, description: 'Extra paving', unit: 'm²', qty: 10, rate: 1200 });
+  check('editing recalculates', (await qs.get(`/construction/projects/${pid}/bq`)).json.difference === 12000);
+  await qs.del(`/construction/projects/${pid}/bq/sections/${sec.id}`);
+  check('deleting the section removes its items', (await qs.get(`/construction/projects/${pid}/bq`)).json.difference === 0);
+  check('an item cannot be put in another project\'s section', (await qs.post(`/construction/projects/${pid}/bq/items`, { sectionId: seededBq.sections[0].id, description: 'x', unit: 'm', qty: 1, rate: 1 })).status === 404);
+
+  const m1 = await dir.post(`/construction/projects/${pid}/milestones`, { name: 'Substructure', startDate: '2026-11-01', endDate: '2026-11-30', percentComplete: 50 });
+  check('a milestone is added', m1.status === 201, m1.json);
+  check('one cannot end before it starts', (await dir.post(`/construction/projects/${pid}/milestones`, { name: 'Bad', startDate: '2026-12-10', endDate: '2026-12-01' })).status === 400);
+  await dir.put(`/construction/projects/${pid}/milestones/${m1.json.id}`, { name: 'Substructure', startDate: '2026-11-01', endDate: '2026-11-30', percentComplete: 100 });
+  check('progress follows the milestones', (await dir.get(`/construction/projects/${pid}`)).json.progress === 100);
+
+  await admin.post('/platform-admin/construction/alerts/run', {});
+  check('a permit expiring in 20 days raises an alert', (await dir.get('/construction/alerts')).json.some((a) => a.title.includes('NCA project registration') && /expires in 30 days/.test(a.title)));
+
+  await sql.query(`UPDATE con_subscriptions SET "planCode" = 'CON_MJENGO' WHERE "organizationId" = $1`, [orgId]);
+  const mj = await qs.post('/construction/projects', { name: `Third ${tag}`, worksClass: 'BUILDING', contractSum: 1000000 });
+  check('on Mjengo a further project asks to upgrade to Fundi, no extra-project offer', mj.status === 402 && /Upgrade to Fundi/.test(mj.json.message) && !/extra project/.test(mj.json.message), mj.json);
+  const mjT = await qs.get('/construction/tenders');
+  check('Mjengo has no tenders register (upgrade prompt)', mjT.status === 402 && mjT.json.feature === 'tenders', mjT.json);
+  await sql.query(`UPDATE con_subscriptions SET "planCode" = 'CON_CONTRACTOR' WHERE "organizationId" = $1`, [orgId]);
+  const usageBefore = (await dir.get('/construction/plan')).json.usage.activeProjects;
+  const closeMe = await qs.post('/construction/projects', { name: `Cancelled ${tag}`, worksClass: 'BUILDING', contractSum: 1000000 });
+  check('a project gets the next code', /^PRJ-\d{3}$/.test(closeMe.json.code), closeMe.json);
+  await dir.post(`/construction/projects/${closeMe.json.id}/status`, { status: 'CLOSED' });
+  check('closed projects do not count toward the limit', (await dir.get('/construction/plan')).json.usage.activeProjects === usageBefore);
+  check('a closed project cannot be edited', (await dir.put(`/construction/projects/${closeMe.json.id}`, { name: 'Renamed', worksClass: 'BUILDING', contractSum: 1 })).status === 409);
+
+  check("another business cannot open Uriri's project", (await fresh.get(`/construction/projects/${seeded.id}`)).status === 404);
+  check("or its BQ", (await fresh.get(`/construction/projects/${seeded.id}/bq`)).status === 404);
+  const c2audit = (await sql.query(`SELECT DISTINCT action FROM audit_log WHERE "organizationId" = $1 AND action LIKE 'con_%'`, [orgId])).rows.map((r) => r.action);
+  for (const a of ['con_tender.created', 'con_tender.status_changed', 'con_project.created', 'con_project.status_changed', 'con_permit.updated', 'con_permit.file_uploaded', 'con_project_member.added', 'con_accreditation.saved', 'con_bq.imported', 'con_bq_item.created', 'con_bq_item.updated', 'con_bq_section.deleted', 'con_milestone.created', 'con_settings.updated']) {
+    check(`audit: ${a}`, c2audit.includes(a));
+  }
+  await sql.query('UPDATE con_projects SET status = $2 WHERE id = $1', [pid, 'CLOSED']);
+  await sql.query('DELETE FROM con_staff_accreditations WHERE "orgUserId" = $1', [qsGuy.orgUserId]);
 
   section('14. Super-admin');
   const tenants = await admin.get('/platform-admin/construction/tenants');

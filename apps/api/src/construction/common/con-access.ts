@@ -51,7 +51,6 @@ export const ConFeature = (feature: ConFeatureKey) => SetMetadata(CON_FEATURE_KE
 export const ConWriteWhenSuspended = () => SetMetadata(CON_WRITE_WHEN_SUSPENDED_KEY, true);
 
 const READ_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
-const ALL_PROJECTS: ConRoleCode[] = ['CON_DIRECTOR', 'CON_CONTRACTS_MGR'];
 
 export function hasRole(con: ConContext, roles: ConRoleCode[], projectId?: string): boolean {
   if (con.isOwner || con.companyRoles.includes('CON_DIRECTOR')) return true;
@@ -59,7 +58,9 @@ export function hasRole(con: ConContext, roles: ConRoleCode[], projectId?: strin
   return con.projectRoles.some((p) => roles.includes(p.role) && (!projectId || p.projectId === projectId));
 }
 
-export const canSeeAllProjects = (con: ConContext) => con.isOwner || ALL_PROJECTS.some((r) => con.companyRoles.includes(r));
+/** Company-wide roles see every project; project-only staff see the projects they are on. */
+export const canSeeAllProjects = (con: ConContext) => con.isOwner || con.companyRoles.length > 0;
+export const isDirector = (con: ConContext) => con.isOwner || con.companyRoles.includes('CON_DIRECTOR');
 
 export function upgradeError(message: string, extra: Record<string, unknown> = {}) {
   return new HttpException({ statusCode: HttpStatus.PAYMENT_REQUIRED, message, upgrade: true, ...extra }, HttpStatus.PAYMENT_REQUIRED);
@@ -118,7 +119,7 @@ export class ConstructionGuard implements CanActivate {
   }
 }
 
-/** Project screens: the caller must be a member of the project in the route (Directors and Contracts Managers see every project). */
+/** Project screens: the caller must be a member of the project in the route (company-wide roles see every project). */
 @Injectable()
 export class ConProjectGuard implements CanActivate {
   canActivate(context: ExecutionContext): boolean {

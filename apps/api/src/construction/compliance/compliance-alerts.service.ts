@@ -9,6 +9,7 @@ import { ResendEmailProvider } from '../../notifications/resend-email.provider';
 import { asOrg } from '../common/con-access';
 import { constructionUrl } from '../common/con-domain';
 import { WORKS_CLASS_LABELS, alertKey, alertStage, alertText, todayKey } from './compliance.util';
+import { PERMIT_LABELS } from '../projects/projects.util';
 
 const FIRST_RUN_DELAY_MS = 2 * 60_000;
 const INTERVAL_MS = 6 * 60 * 60_000;
@@ -20,7 +21,7 @@ interface NewAlert {
 }
 
 /**
- * Expiry alerts for the compliance vault: 60, 30 and 7 days before a document or NCA licence expires, and once it has expired.
+ * Expiry alerts: 60, 30 and 7 days before a vault document, NCA licence, project permit or staff NCA card expires, and once it has.
  * Each stage is raised once (con_alerts.dedupeKey), in-app, and emailed / texted where those are configured. Runs in the API
  * process every few hours with a per-business advisory lock; CONSTRUCTION_SCHEDULER=off turns it off.
  */
@@ -62,13 +63,17 @@ export class ComplianceAlertsService implements OnModuleInit, OnModuleDestroy {
     const fresh = await asOrg(this.prisma, organizationId, async (tx) => {
       const rows = await tx.$queryRaw<{ locked: boolean }[]>`SELECT pg_try_advisory_xact_lock(hashtext(${'zaroda-con-alerts:' + organizationId})) AS locked`;
       if (!rows[0]?.locked) return [];
-      const [docs, regs] = await Promise.all([
+      const [docs, regs, permits, cards] = await Promise.all([
         tx.conComplianceDoc.findMany({ where: { expiresAt: { not: null } } }),
         tx.conCompanyRegistration.findMany({ where: { licenceExpiresAt: { not: null } } }),
+        tx.conProjectPermit.findMany({ where: { expiresAt: { not: null }, project: { status: { not: 'CLOSED' } } }, include: { project: { select: { code: true } } } }),
+        tx.conStaffAccreditation.findMany({ where: { orgUser: { isActive: true } }, include: { orgUser: { select: { user: { select: { fullName: true } } } } } }),
       ]);
       const items = [
         ...docs.map((d) => ({ kind: 'doc', id: d.id, name: d.title, expires: d.expiresAt!.toISOString().slice(0, 10) })),
         ...regs.map((r) => ({ kind: 'nca', id: r.id, name: `NCA${r.ncaCategory} licence (${WORKS_CLASS_LABELS[r.worksClass]})`, expires: r.licenceExpiresAt!.toISOString().slice(0, 10) })),
+        ...permits.map((p) => ({ kind: 'permit', id: p.id, name: `${p.project.code} ${PERMIT_LABELS[p.type]}`, expires: p.expiresAt!.toISOString().slice(0, 10) })),
+        ...cards.map((c) => ({ kind: 'card', id: c.id, name: `${c.orgUser.user.fullName}'s NCA accreditation card`, expires: c.expiresAt.toISOString().slice(0, 10) })),
       ];
       const out: NewAlert[] = [];
       for (const item of items) {
