@@ -88,7 +88,7 @@ function PlanScreen() {
       {notice && <p className="rounded-lg border border-green-300 bg-green-50 px-3 py-2 text-sm text-green-800">{notice}</p>}
 
       <Panel title="Current plan">
-        <p className="text-lg font-bold" style={{ color: CON_BRAND.navy }}>{mine.planName} {mine.cycle === "ANNUAL" ? "(annual)" : ""}</p>
+        <p className="text-lg font-bold" style={{ color: "var(--con-ink)" }}>{mine.planName} {mine.cycle === "ANNUAL" ? "(annual)" : ""}</p>
         <p className="text-sm text-secondary-600">
           {mine.status === "TRIAL" && `Free trial - ends ${new Date(mine.currentPeriodEnd).toLocaleDateString("en-KE")} (${Math.max(mine.daysLeft, 0)} days left)`}
           {mine.status === "ACTIVE" && `Paid to ${new Date(mine.currentPeriodEnd).toLocaleDateString("en-KE")}`}
@@ -112,7 +112,7 @@ function PlanScreen() {
           const on = p.code === planCode;
           return (
             <button key={p.code} type="button" onClick={() => setPlanCode(p.code)} className="rounded-xl border-2 bg-surface p-3 text-left" style={{ borderColor: on ? CON_BRAND.gold : "transparent", boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}>
-              <p className="font-bold" style={{ color: CON_BRAND.navy }}>{p.name}{p.code === mine.planCode && " · current"}</p>
+              <p className="font-bold" style={{ color: "var(--con-ink)" }}>{p.name}{p.code === mine.planCode && " · current"}</p>
               <p className="text-sm">{p.quoteOnly ? `From ${kes(p.monthlyPrice)}/month` : `${kes(p.monthlyPrice)}/month`}</p>
               {!p.quoteOnly && p.annualPrice !== null && <p className="text-xs text-secondary-500">{kes(p.annualPrice)}/year (12 for 10)</p>}
               <p className="mt-2 text-xs text-secondary-600">{limit(p.limits.activeProjects)} projects · {limit(p.limits.workers)} workers · {limit(p.limits.users)} users</p>

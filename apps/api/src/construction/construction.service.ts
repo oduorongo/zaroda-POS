@@ -1,12 +1,13 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { ConRoleCode } from '@prisma/client';
+import { ConRoleCode, Role } from '@prisma/client';
 import { AuditLogService } from '../common/audit/audit-log.service';
 import { TenantScopedPrismaService } from '../common/prisma/tenant-scoped-prisma.service';
 import { getTenantStore } from '../common/tenant/tenant-context';
 import { ConContext } from './common/con-access';
 import { CON_ROLES } from './common/con-defaults';
 import { ComplianceService } from './compliance/compliance.service';
-import { RoleLimitDto } from './dto/construction.dto';
+import { AddConStaffDto, RoleLimitDto, SITE_STAFF } from './dto/construction.dto';
+import { OrgUsersService } from '../org-users/org-users.service';
 import { ConPlansService } from './plans/con-plans.service';
 
 const COMPANY_ROLES = new Set(CON_ROLES.filter((r) => r.scope === 'COMPANY').map((r) => r.code));
@@ -18,6 +19,7 @@ export class ConstructionService {
     private readonly audit: AuditLogService,
     private readonly compliance: ComplianceService,
     private readonly plans: ConPlansService,
+    private readonly orgUsers: OrgUsersService,
   ) {}
 
   me(con: ConContext) {
@@ -105,5 +107,14 @@ export class ConstructionService {
       await this.audit.logInTx(tx, { action: 'con_user_roles.set', entityType: 'OrgUser', entityId: orgUserId, before: { roles: before }, after: { roles: [...roles].sort() } });
       return { orgUserId, roles };
     });
+  }
+
+  /** Adds a person by their construction job; the matching core access is set for them (office = MANAGER, site = SUPERVISOR). */
+  async addStaff(dto: AddConStaffDto) {
+    const job = dto.job === SITE_STAFF ? null : (dto.job as ConRoleCode);
+    const role = job === 'CON_DIRECTOR' ? Role.OWNER : job ? Role.MANAGER : Role.SUPERVISOR;
+    const created = await this.orgUsers.create({ email: dto.email.trim().toLowerCase(), fullName: dto.fullName?.trim() || undefined, password: dto.password || undefined, role });
+    if (job) await this.setUserRoles(created.id, [job]);
+    return { orgUserId: created.id, role, job };
   }
 }

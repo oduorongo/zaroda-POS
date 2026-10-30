@@ -51,7 +51,7 @@ export default function ConstructionSignup() {
   return (
     <PublicFrame>
       <main className="mx-auto max-w-md px-4 py-10">
-        <h1 className="text-2xl font-bold" style={{ color: CON_BRAND.navy }}>Start your free trial</h1>
+        <h1 className="text-2xl font-bold" style={{ color: "var(--con-ink)" }}>Start your free trial</h1>
         <p className="mt-1 text-sm text-secondary-600">14 days of the Contractor plan. No M-Pesa needed.</p>
         <form onSubmit={submit} className="mt-6 space-y-3">
           <Field label="Company name"><input className={inputClass} value={f.organizationName} onChange={set("organizationName")} required /></Field>
@@ -69,7 +69,7 @@ export default function ConstructionSignup() {
             {busy ? "Setting up..." : "Create my account"}
           </button>
         </form>
-        <Link href="/construction/login" className="mt-4 block text-center text-sm" style={{ color: CON_BRAND.navy }}>Already have an account? Sign in</Link>
+        <Link href="/construction/login" className="mt-4 block text-center text-sm" style={{ color: "var(--con-ink)" }}>Already have an account? Sign in</Link>
       </main>
     </PublicFrame>
   );

@@ -20,6 +20,8 @@ interface OrgUser {
 }
 
 const ROLES: Role[] = ["CASHIER", "SUPERVISOR", "MANAGER", "OWNER", "AUDITOR", "CARETAKER"];
+const CON_ROLE_OPTIONS: Role[] = ["MANAGER", "SUPERVISOR", "AUDITOR", "OWNER"];
+const CON_ROLE_LABELS: Partial<Record<Role, string>> = { OWNER: "Director (full access)", MANAGER: "Office", SUPERVISOR: "Site", AUDITOR: "View only" };
 
 /**
  * The first UI for org-users.controller.ts's write endpoints (added
@@ -30,7 +32,9 @@ export default function StaffPage() {
   const router = useRouter();
   const [session, setSessionState] = useState<Session | null>(null);
   // A caretaker is a rental-business role (one per landlord, Starter plan and up), so only rental businesses are offered it.
-  const roleOptions = session?.industryType === "RENTAL" ? ROLES : ROLES.filter((r) => r !== "CARETAKER");
+  // Construction has no till or caretaker; its jobs are picked on Staff & roles (the API refuses these roles too).
+  const roleOptions = session?.industryType === "RENTAL" ? ROLES : session?.industryType === "CONSTRUCTION" ? CON_ROLE_OPTIONS : ROLES.filter((r) => r !== "CARETAKER");
+  const roleLabel = (r: Role) => (session?.industryType === "CONSTRUCTION" ? CON_ROLE_LABELS[r] ?? r : r);
   const [orgUsers, setOrgUsers] = useState<OrgUser[]>([]);
   const [includeInactive, setIncludeInactive] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -113,7 +117,7 @@ export default function StaffPage() {
         email: newEmail.trim(),
         fullName: newFullName.trim() || undefined,
         password: newPassword || undefined,
-        role: newRole,
+        role: roleOptions.includes(newRole) ? newRole : roleOptions[0],
         branchId: newBranchId.trim() || undefined,
       });
       setNewOpen(false);
@@ -219,13 +223,13 @@ export default function StaffPage() {
                 className="rounded-md border border-border bg-background p-2 text-sm"
               />
               <select
-                value={newRole}
+                value={roleOptions.includes(newRole) ? newRole : roleOptions[0]}
                 onChange={(e) => setNewRole(e.target.value as Role)}
                 className="rounded-md border border-border bg-background p-2 text-sm"
               >
                 {roleOptions.map((r) => (
                   <option key={r} value={r}>
-                    {r}
+                    {roleLabel(r)}
                   </option>
                 ))}
               </select>
@@ -297,7 +301,7 @@ export default function StaffPage() {
                     >
                       {roleOptions.map((r) => (
                         <option key={r} value={r}>
-                          {r}
+                          {roleLabel(r)}
                         </option>
                       ))}
                     </select>

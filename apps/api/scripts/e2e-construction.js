@@ -75,7 +75,7 @@ async function main() {
   await sql.query('DELETE FROM con_alerts WHERE "organizationId" = $1', [orgId]);
   await sql.query(`UPDATE con_roles SET "approvalLimit" = 500000 WHERE "organizationId" = $1 AND code = 'CON_PROJECT_MGR'`, [orgId]);
   await sql.query(`UPDATE con_subscriptions SET "couponCode" = NULL, "couponMonthsLeft" = 0, addons = '{}', "planCode" = 'CON_CONTRACTOR' WHERE "organizationId" = $1`, [orgId]);
-  await sql.query(`UPDATE org_users SET "isActive" = false WHERE "organizationId" = $1 AND "userId" IN (SELECT id FROM users WHERE email ~ '^(extra|fill|sixth)')`, [orgId]);
+  await sql.query(`UPDATE org_users SET "isActive" = false WHERE "organizationId" = $1 AND "userId" IN (SELECT id FROM users WHERE email ~ '^(extra|fill|sixth|proc-|site-)')`, [orgId]);
 
   section('1. Signing in and who may use construction');
   const dir = as(await login('director@uriri.demo'));
@@ -157,6 +157,14 @@ async function main() {
   check('director gives the QS procurement too', (await dir.put(`/construction/staff/${qsRow.orgUserId}/roles`, { roles: ['CON_QS', 'CON_PROCUREMENT'] })).status === 200);
   check('a project role cannot be given company-wide', (await dir.put(`/construction/staff/${qsRow.orgUserId}/roles`, { roles: ['CON_SITE_ENGINEER'] })).status === 400);
   await dir.put(`/construction/staff/${qsRow.orgUserId}/roles`, { roles: ['CON_QS'] });
+  const addedStaff = await dir.post('/construction/staff', { email: `proc-${tag}@uriri.demo`, fullName: 'Procurement Person', password: 'password123', job: 'CON_PROCUREMENT' });
+  check('director adds a person by their job (office access + the role)', addedStaff.status === 201 && addedStaff.json.role === 'MANAGER' && addedStaff.json.job === 'CON_PROCUREMENT', addedStaff.json);
+  const site = await dir.post('/construction/staff', { email: `site-${tag}@uriri.demo`, fullName: 'Site Person', password: 'password123', job: 'SITE' });
+  check('site staff get site access', site.json.role === 'SUPERVISOR' && site.json.job === null, site.json);
+  check('a cashier cannot be added to a construction business', (await dir.post('/org-users', { email: `cashier-${tag}@uriri.demo`, fullName: 'C', password: 'password123', role: 'CASHIER' })).status === 400);
+  check('nor can someone be changed to cashier', (await dir.patch(`/org-users/${site.json.orgUserId}`, { role: 'CASHIER' })).status === 400);
+  check('a made-up job is refused', (await dir.post('/construction/staff', { email: `x-${tag}@uriri.demo`, job: 'CON_CLIENT' })).status === 400);
+  await sql.query('UPDATE org_users SET "isActive" = false WHERE id = ANY($1)', [[addedStaff.json.orgUserId, site.json.orgUserId]]);
 
   section('8. Expiry alerts (60/30/7 days, once each)');
   const admin = as((await call('POST', '/platform-admin/auth/login', { body: { email: 'admin@test.local', password: 'test-admin-password' } })).json.accessToken);

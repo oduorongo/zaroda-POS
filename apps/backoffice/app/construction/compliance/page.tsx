@@ -192,7 +192,7 @@ function Vault() {
               </div>
               <div className="mt-2 flex flex-wrap gap-3 text-xs">
                 {d.hasFile ? (
-                  <button type="button" className="font-medium" style={{ color: CON_BRAND.navy }} onClick={() => conOpenFile(`/construction/compliance/docs/${d.id}/file`).catch((e) => setError(errorText(e, "Could not open the file.")))}>
+                  <button type="button" className="font-medium" style={{ color: "var(--con-ink)" }} onClick={() => conOpenFile(`/construction/compliance/docs/${d.id}/file`).catch((e) => setError(errorText(e, "Could not open the file.")))}>
                     View file
                   </button>
                 ) : (

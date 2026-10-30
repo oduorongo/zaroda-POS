@@ -4,6 +4,7 @@ import {
   IsArray,
   IsBoolean,
   IsDateString,
+  IsEmail,
   IsEnum,
   IsIn,
   IsInt,
@@ -300,4 +301,24 @@ export class RecordConPaymentDto {
   @IsOptional()
   @MaxLength(80)
   reference?: string;
+}
+
+export const SITE_STAFF = 'SITE';
+
+export class AddConStaffDto {
+  @IsEmail()
+  email!: string;
+
+  @IsString()
+  @IsOptional()
+  @MaxLength(200)
+  fullName?: string;
+
+  @IsString()
+  @IsOptional()
+  @MinLength(8)
+  password?: string;
+
+  @IsIn(['CON_DIRECTOR', 'CON_CONTRACTS_MGR', 'CON_QS', 'CON_ACCOUNTANT', 'CON_PROCUREMENT', 'CON_COMPLIANCE', 'CON_SHE_OFFICER', SITE_STAFF])
+  job!: string;
 }

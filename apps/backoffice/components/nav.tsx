@@ -8,6 +8,7 @@ import { apiGet } from "../lib/api";
 import { clearSession, homePath, isCaretaker, setSession, type Session } from "../lib/auth";
 import { useIdleLogout } from "../hooks/use-idle-logout";
 import { RibbonButton, RibbonLink, ThemeToggle, TopRibbon } from "@zaroda/ui";
+import { ConHeader, useConMeFetch } from "./construction/con-shell";
 
 // A handful of the most-used screens, kept in the top bar for quick access.
 // The full set of screens lives on the /dashboard tile grid.
@@ -56,6 +57,10 @@ export function Nav({ session }: { session: Session }) {
       })
       .catch(() => {});
   }, [session]);
+  const conMe = useConMeFetch(session);
+
+  // A contractor on a shared screen (Suppliers, Materials) keeps the construction bar.
+  if (session.industryType === "CONSTRUCTION") return <ConHeader session={{ ...session, orgName: orgName ?? session.orgName }} me={conMe} />;
 
   return (
     <TopRibbon appName={orgName ?? "Back Office"} homeHref={homePath(session.role, session.industryType)} LinkComponent={Link}>

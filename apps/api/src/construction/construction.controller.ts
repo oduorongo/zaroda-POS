@@ -26,6 +26,7 @@ import { ComplianceAlertsService } from './compliance/compliance-alerts.service'
 import { ComplianceService, MAX_DOC_BYTES } from './compliance/compliance.service';
 import { ConstructionService } from './construction.service';
 import {
+  AddConStaffDto,
   CapCheckDto,
   CategoryLimitDto,
   ComplianceDocDto,
@@ -106,6 +107,12 @@ export class ConstructionController {
   @Get('staff')
   staff() {
     return this.construction.listStaff();
+  }
+
+  @ConRoles('CON_DIRECTOR')
+  @Post('staff')
+  addStaff(@Body() dto: AddConStaffDto) {
+    return this.construction.addStaff(dto);
   }
 
   @ConRoles('CON_DIRECTOR')

@@ -29,7 +29,7 @@ export function Panel({ title, children, action }: { title?: string; children: R
     <section className="rounded-xl border border-border bg-surface p-4 shadow-sm">
       {(title || action) && (
         <div className="mb-3 flex items-center justify-between gap-2">
-          {title && <h2 className="font-semibold" style={{ color: CON_BRAND.navy }}>{title}</h2>}
+          {title && <h2 className="font-semibold" style={{ color: "var(--con-ink)" }}>{title}</h2>}
           {action}
         </div>
       )}
@@ -48,7 +48,7 @@ export function UpgradeCard({ message }: { message: string }) {
   return (
     <div className="rounded-xl border-2 p-4" style={{ borderColor: CON_BRAND.gold, background: "#fffbeb" }}>
       <p className="font-semibold" style={{ color: CON_BRAND.navy }}>Upgrade to use this</p>
-      <p className="mt-1 text-sm text-secondary-700">{message}</p>
+      <p className="mt-1 text-sm" style={{ color: "#374151" }}>{message}</p>
       <Link href="/construction/plan" className="mt-3 inline-block rounded-lg px-4 py-2 text-sm font-semibold text-white no-underline" style={{ background: CON_BRAND.orange }}>
         See plans
       </Link>

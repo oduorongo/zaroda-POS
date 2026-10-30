@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { ThemeToggle } from "@zaroda/ui";
 import { CON_BRAND } from "../../lib/construction";
 
 /** Construction's public pages (landing, pricing, login, signup). Links use the paths middleware maps on CONSTRUCTION_DOMAIN. */
@@ -21,6 +22,7 @@ export function PublicFrame({ children }: { children: ReactNode }) {
             <Link href="/construction/signup" className="rounded-md px-3 py-1.5 font-semibold no-underline" style={{ background: CON_BRAND.orange, color: "white" }}>
               Free trial
             </Link>
+            <ThemeToggle className="text-white hover:bg-white/10 hover:text-white" />
           </nav>
         </div>
       </header>

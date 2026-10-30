@@ -69,7 +69,7 @@ export default function ConstructionHome() {
           </Panel>
 
           <Panel title="Your plan" action={<Link href="/construction/plan" className="text-sm font-medium" style={{ color: CON_BRAND.orange }}>Manage</Link>}>
-            <p className="text-lg font-bold" style={{ color: CON_BRAND.navy }}>{data.plan.planName}</p>
+            <p className="text-lg font-bold" style={{ color: "var(--con-ink)" }}>{data.plan.planName}</p>
             <p className="text-sm text-secondary-600">
               {data.plan.status === "TRIAL" ? `Free trial - ${Math.max(data.plan.daysLeft, 0)} days left` : `${data.plan.status} - paid to ${new Date(data.plan.currentPeriodEnd).toLocaleDateString("en-KE")}`}
             </p>

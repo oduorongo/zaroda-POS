@@ -98,3 +98,10 @@ body {
 .rounded-2xl.bg-surface {
   box-shadow: var(--card-shadow);
 }
+
+/* Construction text in the brand navy, which turns gold in dark mode so it stays readable. */
+:root { --con-ink: #1a2e5a; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { --con-ink: #d4af37; }
+}
+:root[data-theme="dark"] { --con-ink: #d4af37; }

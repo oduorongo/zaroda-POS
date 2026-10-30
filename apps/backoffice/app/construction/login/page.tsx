@@ -53,7 +53,7 @@ export default function ConstructionLogin() {
     <PublicFrame>
       <main className="mx-auto flex max-w-sm flex-col gap-5 px-4 py-12">
         <div>
-          <h1 className="text-2xl font-bold" style={{ color: CON_BRAND.navy }}>Sign in</h1>
+          <h1 className="text-2xl font-bold" style={{ color: "var(--con-ink)" }}>Sign in</h1>
           <p className="text-sm text-secondary-500">Zaroda Build, for contractors.</p>
         </div>
         <form onSubmit={submit} className="space-y-4">

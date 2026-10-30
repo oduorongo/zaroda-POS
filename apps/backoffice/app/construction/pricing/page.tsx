@@ -25,13 +25,13 @@ export default function ConstructionPricing() {
   return (
     <PublicFrame>
       <main className="mx-auto max-w-5xl px-4 py-10">
-        <h1 className="text-3xl font-bold" style={{ color: CON_BRAND.navy }}>Pricing</h1>
+        <h1 className="text-3xl font-bold" style={{ color: "var(--con-ink)" }}>Pricing</h1>
         <p className="mt-2 text-secondary-600">Every plan starts with a {data?.trialDays ?? 14}-day free trial - no M-Pesa needed. Pay annually and get 12 months for the price of 10. Client, consultant and subcontractor portal users are always free.</p>
         {error && <p className="mt-6 text-sm text-red-700">Could not load the plans right now.</p>}
         <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
           {data?.plans.map((p) => (
             <div key={p.code} className="flex flex-col rounded-xl border-2 bg-surface p-5" style={{ borderColor: p.code === data.trialPlan ? CON_BRAND.gold : "transparent", boxShadow: "0 1px 4px rgba(0,0,0,0.08)" }}>
-              <h2 className="text-lg font-bold" style={{ color: CON_BRAND.navy }}>{p.name}</h2>
+              <h2 className="text-lg font-bold" style={{ color: "var(--con-ink)" }}>{p.name}</h2>
               <p className="mt-2 text-2xl font-bold">{p.quoteOnly ? "Quote" : kes(p.monthlyPrice)}</p>
               <p className="text-xs text-secondary-500">{p.quoteOnly ? `from ${kes(p.monthlyPrice)}/month` : `per month · ${p.annualPrice !== null ? `${kes(p.annualPrice)}/year` : ""}`}</p>
               <ul className="mt-3 space-y-1 text-sm">

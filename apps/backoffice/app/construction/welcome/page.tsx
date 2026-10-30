@@ -28,7 +28,7 @@ export default function ConstructionWelcome() {
       <section className="mx-auto grid max-w-5xl gap-4 px-4 py-10 sm:grid-cols-2">
         {POINTS.map((p) => (
           <div key={p.title} className="rounded-xl border border-border bg-surface p-5">
-            <h2 className="font-bold" style={{ color: CON_BRAND.navy }}>{p.title}</h2>
+            <h2 className="font-bold" style={{ color: "var(--con-ink)" }}>{p.title}</h2>
             <p className="mt-1 text-sm text-secondary-600">{p.text}</p>
           </div>
         ))}

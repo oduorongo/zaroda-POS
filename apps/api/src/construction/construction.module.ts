@@ -2,6 +2,7 @@ import { Module, OnModuleInit } from '@nestjs/common';
 import { ModuleRegistryModule } from '../module-registry/module-registry.module';
 import { ModuleRegistryService } from '../module-registry/module-registry.service';
 import { OnlineStoreModule } from '../online-store/online-store.module';
+import { OrgUsersModule } from '../org-users/org-users.module';
 import { PrivateObjectStorageService } from '../common/storage/private-object-storage.service';
 import { ConProjectGuard, ConstructionGuard } from './common/con-access';
 import { ConSetupService } from './common/con-setup.service';
@@ -14,7 +15,7 @@ import { ConPlansService } from './plans/con-plans.service';
 
 /** Construction contractors (industryType "CONSTRUCTION", served at CONSTRUCTION_DOMAIN). See docs/construction. */
 @Module({
-  imports: [ModuleRegistryModule, OnlineStoreModule],
+  imports: [ModuleRegistryModule, OnlineStoreModule, OrgUsersModule],
   controllers: [ConstructionController, ConBillingCallbackController, ConPublicController],
   providers: [
     ConSetupService,
