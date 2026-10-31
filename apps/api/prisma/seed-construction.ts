@@ -3,6 +3,8 @@ import * as bcrypt from "bcryptjs";
 import { randomUUID } from "node:crypto";
 import { ConSetupService } from "../src/construction/common/con-setup.service";
 import { PrismaService } from "../src/common/prisma/prisma.service";
+import { recordIpcSale } from "../src/construction/commercial/ipc-sale";
+import { previousCertified, valuation } from "../src/construction/commercial/valuation.util";
 
 const prisma = new PrismaClient();
 const DAY = 86_400_000;
@@ -20,6 +22,7 @@ async function main() {
   await seedProject(orgId);
   await seedSite(orgId);
   await seedMaterials(orgId);
+  await seedCommercial(orgId);
 }
 
 const hashed = bcrypt.hash("password123", 10);
@@ -419,6 +422,87 @@ async function seedMaterials(orgId: string) {
         ],
       });
       console.log(`Seeded materials: 6 items with BQ allowances, REQ-001, LPO-001 (2 deliveries), LPO-002 awaiting approval, 7 issues, 2 plant with logs.`);
+    },
+    { timeout: 120_000, maxWait: 30_000 },
+  );
+}
+
+/** C5: an approved variation from SI-001, and two certified IPCs (IPC 1 invoiced and paid with withholding certificates; IPC 2 waiting to be invoiced). */
+async function seedCommercial(orgId: string) {
+  await prisma.$transaction(
+    async (tx) => {
+      await tx.$executeRaw`SELECT set_config('app.current_tenant', ${orgId}, true)`;
+      const project = await tx.conProject.findFirst({ where: { name: "Uriri Day Secondary Classrooms" } });
+      if (!project) return;
+      if (await tx.conValuation.count({ where: { projectId: project.id } })) {
+        console.log("Valuations already seeded - nothing to do.");
+        return;
+      }
+      const pid = project.id;
+      const by = (email: string) => tx.orgUser.findFirst({ where: { user: { email } } });
+      const [qs, director, accounts] = await Promise.all([by("qs@uriri.demo"), by("director@uriri.demo"), by("accounts@uriri.demo")]);
+      const instruction = await tx.conSiteInstruction.findFirst({ where: { projectId: pid, number: "SI-001" } });
+      const variation = await tx.conVariation.create({
+        data: { organizationId: orgId, projectId: pid, ref: "VO-001", instructionId: instruction?.id, description: "Raise ring beam by one course to suit revised window heights", amount: 85000, status: "APPROVED", createdBy: qs!.id, approvedBy: director!.id, approvedByName: "Arch. P. Ochieng", approvedAt: inDays(-20) },
+      });
+      if (instruction) await tx.conSiteInstruction.update({ where: { id: instruction.id }, data: { variationId: variation.id } });
+      await tx.conProject.update({ where: { id: pid }, data: { revisedSum: Number(project.contractSum) + 85000 } });
+
+      const items = await tx.conBqItem.findMany({ where: { projectId: pid }, include: { section: true }, orderBy: [{ section: { sortOrder: "asc" } }, { sortOrder: "asc" }] });
+      const share = (section: string, part: number) => items.filter((i) => i.section.name === section).map((i) => ({ item: i, qty: Math.round(Number(i.qty) * part * 1000) / 1000 }));
+      const plan = [
+        { at: -35, lines: [...share("PRELIMINARIES", 1), ...share("SUBSTRUCTURE", 0.8)], vo: 0, mos: 150000 },
+        { at: -5, lines: [...share("PRELIMINARIES", 1), ...share("SUBSTRUCTURE", 1), ...share("SUPERSTRUCTURE", 0.6)], vo: 85000, mos: 120000 },
+      ];
+      const done: { netDue: number }[] = [];
+      let lastDeducted = 0;
+      for (const [k, v] of plan.entries()) {
+        const r = valuation({
+          bq: v.lines.map((l) => ({ qtyToDate: l.qty, rate: Number(l.item.rate), qty: Number(l.item.qty) })),
+          variations: v.vo ? [{ amountToDate: v.vo, approvedAmount: 85000 }] : [],
+          materialsOnSite: v.mos,
+          retentionRate: Number(project.retentionRate),
+          retentionLimitPercent: Number(project.retentionLimit),
+          contractSum: Number(project.contractSum),
+          retentionReleasedToDate: 0,
+          advanceRecoveryToDate: 0,
+          previousCertified: previousCertified(done),
+        });
+        const val = await tx.conValuation.create({
+          data: {
+            organizationId: orgId, projectId: pid, number: k + 1, periodEnd: inDays(v.at - 3), status: "CERTIFIED", createdBy: qs!.id, submittedBy: director!.id, submittedAt: inDays(v.at - 2),
+            certifiedByName: "QS M. Akinyi (Lakeview Quantity Surveyors)", certifiedRef: `LQS/UDSS/IPC/${k + 1}`, certifiedAt: inDays(v.at), certifiedRecordedBy: qs!.id,
+            workToDate: r.workToDate, variationsToDate: r.variationsToDate, materialsOnSite: r.materialsOnSite, grossToDate: r.grossToDate, retentionRate: project.retentionRate,
+            retentionDeducted: r.retentionDeducted, retentionReleased: r.retentionReleased, retentionHeld: r.retentionHeld, advanceRecovery: r.advanceRecovery, previousCertified: r.previousCertified, netDue: r.netDue,
+            lines: {
+              create: [
+                ...v.lines.map((l) => ({ organizationId: orgId, bqItemId: l.item.id, qtyToDate: l.qty, amountToDate: Math.round(l.qty * Number(l.item.rate) * 100) / 100 })),
+                ...(v.vo ? [{ organizationId: orgId, variationId: variation.id, amountToDate: v.vo }] : []),
+              ],
+            },
+          },
+        });
+        await tx.conRetentionEntry.create({ data: { organizationId: orgId, projectId: pid, valuationId: val.id, type: "DEDUCT", amount: Math.round((r.retentionDeducted - lastDeducted) * 100) / 100, reason: `IPC ${k + 1}`, createdBy: qs!.id } });
+        lastDeducted = r.retentionDeducted;
+        done.push({ netDue: r.netDue });
+        if (k === 0) {
+          const vatAmount = Math.round(r.netDue * 0.16 * 100) / 100;
+          const total = Math.round((r.netDue + vatAmount) * 100) / 100;
+          const client = await tx.conParty.findUnique({ where: { id: project.clientId! } });
+          const saleId = await recordIpcSale(tx as never, { organizationId: orgId, orgUserId: accounts!.id, valuationId: val.id, netAmount: r.netDue, vatRate: 16, vatAmount, client: client ? { name: client.name, kraPin: client.kraPin, phone: client.phone } : null });
+          const wht = Math.round(r.netDue * 0.03 * 100) / 100;
+          const whtVat = Math.round(r.netDue * 0.02 * 100) / 100;
+          await tx.conValuation.update({ where: { id: val.id }, data: { saleId, invoicedAt: inDays(v.at + 1), vatRate: 16, vatAmount, invoiceTotal: total, status: "PAID", paidAt: inDays(v.at + 20) } });
+          await tx.conValuationReceipt.createMany({
+            data: [
+              { organizationId: orgId, valuationId: val.id, kind: "PAYMENT", amount: Math.round((total - wht - whtVat) * 100) / 100, method: "BANK", reference: "EFT/UDSS/0091", receivedAt: inDays(v.at + 20), createdBy: accounts!.id },
+              { organizationId: orgId, valuationId: val.id, kind: "WHT", amount: wht, certificateNo: "KRAWHT0026114", receivedAt: inDays(v.at + 20), createdBy: accounts!.id },
+              { organizationId: orgId, valuationId: val.id, kind: "WHT_VAT", amount: whtVat, certificateNo: "KRAWHV0019920", receivedAt: inDays(v.at + 20), createdBy: accounts!.id },
+            ],
+          });
+        }
+      }
+      console.log(`Seeded VO-001 and IPC 1 (paid) and IPC 2 (certified) on ${project.code}.`);
     },
     { timeout: 120_000, maxWait: 30_000 },
   );

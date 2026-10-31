@@ -20,6 +20,9 @@ import { LabourService } from './site/labour.service';
 import { SafetyService } from './site/safety.service';
 import { SiteController } from './site/site.controller';
 import { MaterialsController } from './materials/materials.controller';
+import { CommercialController } from './commercial/commercial.controller';
+import { CommercialService } from './commercial/commercial.service';
+import { SubcontractsService } from './commercial/subcontracts.service';
 import { MaterialsService } from './materials/materials.service';
 import { PlantService } from './materials/plant.service';
 import { PurchasingModule } from '../purchasing/purchasing.module';
@@ -29,7 +32,7 @@ import { SiteService } from './site/site.service';
 /** Construction contractors (industryType "CONSTRUCTION", served at CONSTRUCTION_DOMAIN). See docs/construction. */
 @Module({
   imports: [ModuleRegistryModule, OnlineStoreModule, OrgUsersModule, PurchasingModule, InventoryModule],
-  controllers: [ConstructionController, TendersController, ProjectsController, SiteController, MaterialsController, ConBillingCallbackController, ConPublicController],
+  controllers: [ConstructionController, TendersController, ProjectsController, SiteController, MaterialsController, CommercialController, ConBillingCallbackController, ConPublicController],
   providers: [
     ConSetupService,
     ConstructionGuard,
@@ -47,6 +50,8 @@ import { SiteService } from './site/site.service';
     SafetyService,
     MaterialsService,
     PlantService,
+    CommercialService,
+    SubcontractsService,
     PrivateObjectStorageService,
   ],
   // Platform admin edits plans and coupons, extends trials and records payments.
@@ -98,6 +103,13 @@ export class ConstructionModule implements OnModuleInit {
         { tableName: 'con_material_budgets', description: 'BQ allowance per material per project' },
         { tableName: 'con_plant', description: 'Plant and equipment register (owned or hired)' },
         { tableName: 'con_plant_logs', description: 'Daily plant hours and fuel per project' },
+        { tableName: 'con_variations', description: 'Variations, linked to site instructions; approved ones change the revised sum' },
+        { tableName: 'con_valuations', description: 'Interim valuations / IPCs (locked once certified; corrected by reversal)' },
+        { tableName: 'con_valuation_lines', description: 'BQ items and variations measured to date on a valuation' },
+        { tableName: 'con_valuation_receipts', description: 'Payments and withholding certificates against an IPC' },
+        { tableName: 'con_retention_ledger', description: 'Retention deducted per IPC and released' },
+        { tableName: 'con_subcontracts', description: 'Subcontracts on a project' },
+        { tableName: 'con_sub_valuations', description: 'Subcontractor valuations, retention and payments' },
       ],
     });
   }

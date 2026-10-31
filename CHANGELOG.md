@@ -1,5 +1,16 @@
 # Changelog
 
+## Construction C5: commercial - variations, valuations, IPCs, retention (2026-10-31)
+
+- Variations register (VO-001...) linked to site instructions; priced, then approved or rejected by the Contracts Manager / Director (never by whoever raised it). Approved variations update the revised contract sum.
+- Valuations against the BQ (quantity to date per item), approved variations and materials on site; retention at the project rate capped at the project limit (5% of the contract sum), advance recovery, less everything certified before = net due. Flow DRAFT (QS) → approved and sent (Contracts Manager, not the preparer) → CERTIFIED (client's QS name, ref, date) → PAID. Certified IPCs are locked; a mistake is corrected with a reversing certificate, then a fresh valuation.
+- Retention ledger: deductions per IPC, release at practical completion (any share) and at the end of the defects period.
+- Certified IPC → invoice through the existing eTIMS sales (sale on account, VAT from `con_tax_settings` at the certificate date). Reversing an invoiced IPC credits it (refund → eTIMS credit note).
+- Money received: payments plus WHT and WHT-VAT certificates; expected withholding shown from tax settings; overpayment refused; settled IPCs become PAID.
+- Subcontracts (Pro plan): each with its own valuations, retention (rate and cap), approval and payment.
+- Commercial tab on each project, valuation editor/detail screen, printable IPC (print / save as PDF). Valuation maths unit-tested.
+- Migration `20261215100000_construction_commercial` (+ `rls.sql`), seed: VO-001 and two certified IPCs on the demo project (IPC 1 invoiced and paid with withholding certificates, IPC 2 waiting to be invoiced); e2e now 389 checks.
+
 ## Construction C4: materials, procurement, plant (2026-10-31)
 
 - Each project gets its own site store (a branch on the shared inventory), created the first time materials go to it. No second inventory: LPOs are purchase orders to that branch, deliveries are goods received notes, and site stock is the normal stock ledger.

@@ -597,6 +597,173 @@ async function main() {
   }
   await sql.query('UPDATE con_plant SET "isActive" = false WHERE id = $1', [hired.json.id]);
 
+  section('13e. Variations, valuations/IPCs, retention, eTIMS invoices, receipts, subcontracts (C5)');
+  const resetC5 = async () => {
+    await sql.query(`UPDATE con_valuations SET "reversesId" = NULL WHERE "projectId" = $1 AND number > 2`, [sid]);
+    await sql.query(`DELETE FROM con_retention_ledger WHERE "projectId" = $1 AND ("valuationId" IS NULL OR "valuationId" IN (SELECT id FROM con_valuations WHERE "projectId" = $1 AND number > 2))`, [sid]);
+    await sql.query(`DELETE FROM con_valuations WHERE "projectId" = $1 AND number > 2`, [sid]);
+    await sql.query(`DELETE FROM con_valuation_receipts WHERE "valuationId" IN (SELECT id FROM con_valuations WHERE "projectId" = $1 AND number = 2)`, [sid]);
+    await sql.query(`UPDATE con_valuations SET status = 'CERTIFIED', reversed = false, "saleId" = NULL, "invoicedAt" = NULL, "vatRate" = NULL, "vatAmount" = NULL, "invoiceTotal" = NULL, "paidAt" = NULL WHERE "projectId" = $1 AND number = 2`, [sid]);
+    await sql.query(`UPDATE con_site_instructions SET "variationId" = NULL WHERE "variationId" IN (SELECT id FROM con_variations WHERE "projectId" = $1 AND ref <> 'VO-001')`, [sid]);
+    await sql.query(`DELETE FROM con_variations WHERE "projectId" = $1 AND ref <> 'VO-001'`, [sid]);
+    await sql.query(`UPDATE con_projects SET "revisedSum" = "contractSum" + 85000, status = 'ACTIVE' WHERE id = $1`, [sid]);
+    await sql.query(`DELETE FROM con_subcontracts WHERE "projectId" = $1`, [sid]);
+  };
+  await resetC5();
+  const V = `/construction/projects/${sid}`;
+  const near = (a, b) => Math.abs(a - b) < 0.011;
+  const r2 = (x) => Math.round(x * 100) / 100;
+  const revised = async () => Number((await sql.query('SELECT "revisedSum" FROM con_projects WHERE id = $1', [sid])).rows[0].revisedSum);
+  const contractSum = Number((await sql.query('SELECT "contractSum" FROM con_projects WHERE id = $1', [sid])).rows[0].contractSum);
+  const cap = r2(contractSum * 0.05);
+
+  const vals0 = (await qs.get(`${V}/valuations`)).json;
+  const ipc1 = vals0.find((v) => v.number === 1);
+  const ipc2 = vals0.find((v) => v.number === 2);
+  check('seeded IPC 1 is paid and IPC 2 is certified, not invoiced', ipc1?.status === 'PAID' && ipc1.invoiced && ipc2?.status === 'CERTIFIED' && !ipc2.invoiced, vals0);
+  const ipc1View = (await acc.get(`${V}/valuations/${ipc1.id}`)).json;
+  check('IPC 1 reconciles: payment + WHT + WHT-VAT certificates cover the invoice', ipc1View.balance?.settled === true && ipc1View.receipts.length === 3 && near(ipc1View.invoiceTotal, r2(ipc1View.netDue * 1.16)), ipc1View.balance);
+  check('the IPC prints with the company, project, client and valuation lines', ipc1View.company?.name === 'Uriri Builders Ltd' && ipc1View.project?.code === 'PRJ-001' && ipc1View.lines.length > 5);
+  const ret0 = (await qs.get(`${V}/retention`)).json;
+  check('retention ledger holds what IPC 2 deducted, cap is 5% of the contract sum', near(ret0.held, 506324) && near(ret0.cap, cap) && ret0.entries.length === 2, ret0);
+  check('the site supervisor cannot see the money side (403)', (await siteUser.get(`${V}/valuations`)).status === 403);
+
+  const vo0 = (await pm.get(`${V}/variations`)).json;
+  check('VO-001 is approved and linked to site instruction SI-001', vo0.some((v) => v.ref === 'VO-001' && v.status === 'APPROVED' && v.instruction?.number === 'SI-001'), vo0);
+  check('a site instruction can carry only one variation', (await qs.post(`${V}/variations`, { description: 'Dup', amount: 1, instructionId: vo0.find((v) => v.ref === 'VO-001').instruction.id })).status === 409);
+  const voA = await pm.post(`${V}/variations`, { description: `Extra drainage ${tag}`, amount: 0 });
+  check('the PM raises an unpriced variation (PROPOSED)', voA.status === 201 && /^VO-\d{3}$/.test(voA.json.ref) && voA.json.status === 'PROPOSED', voA.json);
+  check('an unpriced variation cannot be decided', (await dir.post(`${V}/variations/${voA.json.id}/decision`, { decision: 'APPROVE' })).status === 409);
+  check('pricing it makes it PRICED', (await pm.put(`${V}/variations/${voA.json.id}`, { description: `Extra drainage ${tag}`, amount: 120000 })).json.status === 'PRICED');
+  check('the PM cannot decide variations', (await pm.post(`${V}/variations/${voA.json.id}/decision`, { decision: 'APPROVE' })).status === 403);
+  const sumBefore = await revised();
+  const appr = await dir.post(`${V}/variations/${voA.json.id}/decision`, { decision: 'APPROVE', approvedByName: 'Arch. P. Ochieng' });
+  check('the Director approves it', appr.status === 200 && appr.json.status === 'APPROVED', appr.json);
+  check('approval raises the revised contract sum by 120,000', near(await revised(), sumBefore + 120000) && near(sumBefore, contractSum + 85000));
+  check('an approved variation is locked', (await pm.put(`${V}/variations/${voA.json.id}`, { description: 'Changed after approval', amount: 1 })).status === 409);
+  const voB = await pm.post(`${V}/variations`, { description: `Gate canopy ${tag}`, amount: 50000 });
+  const rej = await dir.post(`${V}/variations/${voB.json.id}/decision`, { decision: 'REJECT', reason: 'Not instructed' });
+  check('a rejected variation leaves the revised sum alone', rej.json.status === 'REJECTED' && near(await revised(), sumBefore + 120000), rej.json);
+  const voC = await dir.post(`${V}/variations`, { description: `Director VO ${tag}`, amount: 10000 });
+  check('whoever raised a variation cannot decide it', (await dir.post(`${V}/variations/${voC.json.id}/decision`, { decision: 'APPROVE' })).status === 403);
+
+  check('the PM cannot invoice an IPC', (await pm.post(`${V}/valuations/${ipc2.id}/invoice`, {})).status === 403);
+  const inv2 = await acc.post(`${V}/valuations/${ipc2.id}/invoice`, {});
+  check('accounts invoices certified IPC 2 with 16% VAT from tax settings', inv2.status === 200 && inv2.json.vatRate === 16 && near(inv2.json.vatAmount, r2(ipc2.netDue * 0.16)) && near(inv2.json.invoiceTotal, r2(ipc2.netDue * 1.16)), inv2.json);
+  const sale2 = (await sql.query(`SELECT s.id, s."clientId" FROM sales s JOIN con_valuations v ON v."saleId" = s.id WHERE v.id = $1`, [ipc2.id])).rows[0];
+  check('...as a normal sale on account, so it reaches eTIMS like any other sale', sale2?.clientId === `con-ipc-${ipc2.id}`, sale2);
+  check('an IPC is invoiced once', (await acc.post(`${V}/valuations/${ipc2.id}/invoice`, {})).status === 409);
+  check('the QS cannot record money received', (await qs.post(`${V}/valuations/${ipc2.id}/receipts`, { kind: 'PAYMENT', amount: 1, method: 'BANK', receivedAt: nairobi() })).status === 403);
+  check('a withholding certificate needs its number', (await acc.post(`${V}/valuations/${ipc2.id}/receipts`, { kind: 'WHT', amount: 1, receivedAt: nairobi() })).status === 400);
+  const ew = inv2.json.expectedWithholding;
+  check('expected withholding is 3% WHT and 2% WHT-VAT of the net', near(ew.wht, r2(ipc2.netDue * 0.03)) && near(ew.whtVat, r2(ipc2.netDue * 0.02)), ew);
+  await acc.post(`${V}/valuations/${ipc2.id}/receipts`, { kind: 'WHT', amount: ew.wht, certificateNo: `WHT-${tag}`, receivedAt: nairobi() });
+  const afterWht = await acc.post(`${V}/valuations/${ipc2.id}/receipts`, { kind: 'WHT_VAT', amount: ew.whtVat, certificateNo: `WHV-${tag}`, receivedAt: nairobi() });
+  const owed = afterWht.json.balance.outstanding;
+  check('certificates reduce what is still owed', near(owed, r2(inv2.json.invoiceTotal - ew.wht - ew.whtVat)), afterWht.json.balance);
+  check('more than is owed is refused', (await acc.post(`${V}/valuations/${ipc2.id}/receipts`, { kind: 'PAYMENT', amount: owed + 100, method: 'BANK', receivedAt: nairobi() })).status === 400);
+  const paid2 = await acc.post(`${V}/valuations/${ipc2.id}/receipts`, { kind: 'PAYMENT', amount: owed, method: 'MPESA', reference: `QK${tag}`.toUpperCase(), receivedAt: nairobi() });
+  check('the payment settles it: IPC 2 is PAID', paid2.json.status === 'PAID' && paid2.json.balance.settled, paid2.json.balance);
+  check('nothing more can be recorded on a paid IPC', (await acc.post(`${V}/valuations/${ipc2.id}/receipts`, { kind: 'PAYMENT', amount: 1, method: 'BANK', receivedAt: nairobi() })).status === 409);
+
+  check('only the QS or Contracts Manager starts valuations (PM 403)', (await pm.get(`${V}/valuations/template`)).status === 403);
+  const tpl = (await qs.get(`${V}/valuations/template`)).json;
+  check('the template starts from IPC 2 and lists both approved variations', tpl.last?.number === 2 && tpl.variations.length === 2 && tpl.sections.some((s) => s.items.some((i) => i.lastQtyToDate > 0)), { last: tpl.last, vos: tpl.variations.length });
+  const items = tpl.sections.flatMap((s) => s.items.map((i) => ({ ...i, section: s.name })));
+  const qtyFor = (i) => (i.section === 'SUPERSTRUCTURE' ? Math.round(i.qty * 0.9 * 1000) / 1000 : i.section === 'PRELIMINARIES' || i.section === 'SUBSTRUCTURE' ? i.qty : i.lastQtyToDate);
+  const body3 = (mos, over) => ({
+    periodEnd: nairobi(), materialsOnSite: mos, advanceRecovery: 0,
+    lines: [...items.filter((i) => qtyFor(i) > 0).map((i, k) => ({ bqItemId: i.bqItemId, qtyToDate: over && k === 0 ? i.qty * 2 : qtyFor(i) })), ...tpl.variations.map((x) => ({ variationId: x.variationId, amountToDate: x.amount }))],
+  });
+  const work3 = r2(items.filter((i) => qtyFor(i) > 0).reduce((a, i) => a + r2(qtyFor(i) * i.rate), 0));
+  const prevNet = r2(ipc1.netDue + ipc2.netDue);
+  check('accounts cannot prepare valuations', (await acc.post(`${V}/valuations`, body3(0))).status === 403);
+  check('a valuation cannot be dated in the future', (await qs.post(`${V}/valuations`, { ...body3(0), periodEnd: nairobi(2) })).status === 400);
+  check('a rejected variation cannot be valued', (await qs.post(`${V}/valuations`, { ...body3(0), lines: [...body3(0).lines, { variationId: voB.json.id, amountToDate: 1 }] })).status === 400);
+  check('a BQ item from elsewhere is refused', (await qs.post(`${V}/valuations`, { ...body3(0), lines: [{ bqItemId: randomUUIDish(), qtyToDate: 1 }] })).status === 400);
+  const v3 = await qs.post(`${V}/valuations`, body3(100000));
+  const gross3 = r2(work3 + 205000 + 100000);
+  const ret3 = Math.min(r2(gross3 * 0.1), cap);
+  check('the QS saves valuation 3 as a DRAFT', v3.status === 201 && v3.json.number === 3 && v3.json.status === 'DRAFT', v3.json);
+  check('work, variations (85,000 + 120,000) and materials add to the gross', near(v3.json.workToDate, work3) && near(v3.json.variationsToDate, 205000) && near(v3.json.grossToDate, gross3), { got: v3.json.grossToDate, want: gross3 });
+  check('retention is 10% but stops at the 5% cap', near(v3.json.retentionDeducted, ret3) && ret3 === cap, { got: v3.json.retentionDeducted, cap });
+  check('net due = gross - retention - certified before', near(v3.json.previousCertified, prevNet) && near(v3.json.netDue, r2(gross3 - ret3 - prevNet)), { net: v3.json.netDue });
+  check('one valuation is worked on at a time', (await qs.post(`${V}/valuations`, body3(0))).status === 409);
+  const overQty = await qs.put(`${V}/valuations/${v3.json.id}`, body3(100000, true));
+  check('more than the BQ quantity is allowed with a warning', overQty.status === 200 && overQty.json.warnings.length > 0, overQty.json.warnings);
+  const fixed = await qs.put(`${V}/valuations/${v3.json.id}`, body3(80000));
+  check('the QS corrects the draft (materials 80,000)', near(fixed.json.materialsOnSite, 80000) && near(fixed.json.netDue, r2(gross3 - 20000 - ret3 - prevNet)), fixed.json.netDue);
+  check('the QS cannot approve and send it', (await qs.post(`${V}/valuations/${v3.json.id}/submit`, {})).status === 403);
+  check('it cannot be certified before it is sent', (await qs.post(`${V}/valuations/${v3.json.id}/certify`, { certifiedByName: 'QS M. Akinyi', certifiedAt: nairobi() })).status === 409);
+  check('the Director approves and sends it to the client\'s QS', (await dir.post(`${V}/valuations/${v3.json.id}/submit`, {})).json.status === 'SUBMITTED');
+  check('once sent it cannot be edited', (await qs.put(`${V}/valuations/${v3.json.id}`, body3(0))).status === 409);
+  check('a certificate cannot be dated in the future', (await qs.post(`${V}/valuations/${v3.json.id}/certify`, { certifiedByName: 'QS M. Akinyi', certifiedAt: nairobi(3) })).status === 400);
+  const c3 = await qs.post(`${V}/valuations/${v3.json.id}/certify`, { certifiedByName: 'QS M. Akinyi', certifiedRef: `LQS/${tag}/3`, certifiedAt: nairobi() });
+  check('the QS records the client\'s certificate: IPC 3 CERTIFIED', c3.status === 200 && c3.json.status === 'CERTIFIED' && c3.json.certifiedRef === `LQS/${tag}/3`, c3.json);
+  check('a certified IPC cannot be edited or certified again', (await qs.put(`${V}/valuations/${v3.json.id}`, body3(0))).status === 409 && (await qs.post(`${V}/valuations/${v3.json.id}/certify`, { certifiedByName: 'x y', certifiedAt: nairobi() })).status === 409);
+  const ret1 = (await qs.get(`${V}/retention`)).json;
+  check('the ledger takes only the extra retention: now held = the cap', near(ret1.held, cap) && near(ret1.entries[ret1.entries.length - 1].amount, r2(cap - 506324)), ret1.held);
+
+  check('an earlier IPC cannot be reversed while a later one stands', (await qs.post(`${V}/valuations/${ipc2.id}/reverse`, {})).status === 409);
+  const inv3 = await acc.post(`${V}/valuations/${v3.json.id}/invoice`, {});
+  check('IPC 3 is invoiced', inv3.status === 200 && inv3.json.invoiced, inv3.json);
+  check('accounts cannot reverse a certificate', (await acc.post(`${V}/valuations/${v3.json.id}/reverse`, {})).status === 403);
+  const rev = await qs.post(`${V}/valuations/${v3.json.id}/reverse`, {});
+  check('the QS raises a reversing certificate (IPC 4) for minus the net', rev.status === 200 && rev.json.kind === 'REVERSAL' && rev.json.number === 4 && rev.json.reverses === 3 && rev.json.status === 'SUBMITTED' && near(rev.json.netDue, -fixed.json.netDue), rev.json);
+  check('it carries back IPC 2\'s figures to date', near(rev.json.grossToDate, (await qs.get(`${V}/valuations/${ipc2.id}`)).json.grossToDate));
+  check('IPC 3 cannot be reversed twice', (await qs.post(`${V}/valuations/${v3.json.id}/reverse`, {})).status === 409);
+  const crev = await qs.post(`${V}/valuations/${rev.json.id}/certify`, { certifiedByName: 'QS M. Akinyi', certifiedAt: nairobi() });
+  check('the reversal is certified', crev.json.status === 'CERTIFIED', crev.json);
+  const credit = (await sql.query(`SELECT amount, "saleId" FROM refunds WHERE "clientId" = $1`, [`con-ipc-credit-${rev.json.id}`])).rows[0];
+  check('...and IPC 3\'s invoice is credited (credit note via eTIMS)', credit && near(Number(credit.amount), inv3.json.invoiceTotal), credit);
+  check('a reversed IPC cannot be invoiced', (await acc.post(`${V}/valuations/${rev.json.id}/invoice`, {})).status === 409);
+  const ret2 = (await qs.get(`${V}/retention`)).json;
+  check('retention goes back to what IPC 2 held', near(ret2.held, 506324), ret2.held);
+  const v5 = await qs.post(`${V}/valuations`, body3(80000));
+  check('the corrected valuation (IPC 5) sees the same certified-before as IPC 3 did', v5.json.number === 5 && near(v5.json.previousCertified, prevNet) && near(v5.json.netDue, fixed.json.netDue), { n: v5.json.number, prev: v5.json.previousCertified });
+
+  check('retention is not released before practical completion', (await qs.post(`${V}/retention/release`, { percent: 50, stage: 'PRACTICAL_COMPLETION' })).status === 409);
+  await sql.query(`UPDATE con_projects SET status = 'PRACTICAL_COMPLETION' WHERE id = $1`, [sid]);
+  check('the PM cannot release retention', (await pm.post(`${V}/retention/release`, { percent: 50, stage: 'PRACTICAL_COMPLETION' })).status === 403);
+  const rel1 = await qs.post(`${V}/retention/release`, { percent: 50, stage: 'PRACTICAL_COMPLETION' });
+  check('half is released at practical completion', near(rel1.json.released, 253162) && near(rel1.json.held, 253162), rel1.json);
+  check('the rest waits for the end of the defects period', (await qs.post(`${V}/retention/release`, { percent: 100, stage: 'END_OF_DLP' })).status === 409);
+  await sql.query(`UPDATE con_projects SET status = 'DLP' WHERE id = $1`, [sid]);
+  const rel2 = await dir.post(`${V}/retention/release`, { percent: 100, stage: 'END_OF_DLP' });
+  check('the balance is released at the end of the defects period', near(rel2.json.released, 253162) && near(rel2.json.held, 0), rel2.json);
+  check('nothing left to release', (await qs.post(`${V}/retention/release`, { percent: 100, stage: 'END_OF_DLP' })).status === 409);
+  await sql.query(`UPDATE con_projects SET status = 'ACTIVE' WHERE id = $1`, [sid]);
+  await sql.query(`DELETE FROM con_retention_ledger WHERE "projectId" = $1 AND type = 'RELEASE'`, [sid]);
+
+  const subs402 = await qs.get(`${V}/subcontracts`);
+  check('subcontract accounts are a Pro feature (upgrade prompt on Contractor)', subs402.status === 402 && subs402.json.feature === 'subcontracts', subs402.json);
+  await sql.query(`UPDATE con_subscriptions SET "planCode" = 'CON_PRO' WHERE "organizationId" = $1`, [orgId]);
+  const subParty = await dir.post('/construction/parties', { kind: 'SUBCONTRACTOR', name: `Okoth Plumbing ${tag}` });
+  const clientParty = (await dir.get('/construction/parties')).json.find((p) => p.kind === 'CLIENT');
+  check('only a subcontractor can hold a subcontract', (await qs.post(`${V}/subcontracts`, { partyId: clientParty.id, scope: 'x', sum: 1000 })).status === 400);
+  const sc = await qs.post(`${V}/subcontracts`, { partyId: subParty.json.id, scope: 'Plumbing and drainage', sum: 1000000 });
+  check('the QS lets a subcontract (SC-001, 10% retention, 5% cap)', sc.status === 201 && sc.json.ref === 'SC-001' && Number(sc.json.retentionRate) === 10, sc.json);
+  const sv1 = await qs.post(`${V}/subcontracts/${sc.json.id}/valuations`, { grossToDate: 300000 });
+  check('subcontract valuation 1: 300,000 less 10% retention = 270,000', near(Number(sv1.json.retention), 30000) && near(Number(sv1.json.netDue), 270000), sv1.json);
+  check('one draft at a time', (await qs.post(`${V}/subcontracts/${sc.json.id}/valuations`, { grossToDate: 1 })).status === 409);
+  check('the QS cannot approve it', (await qs.post(`${V}/subcontracts/${sc.json.id}/valuations/${sv1.json.id}/approve`, {})).status === 403);
+  check('it cannot be paid before approval', (await acc.post(`${V}/subcontracts/${sc.json.id}/valuations/${sv1.json.id}/paid`, { paymentRef: 'X1' })).status === 409);
+  check('the Director approves it', (await dir.post(`${V}/subcontracts/${sc.json.id}/valuations/${sv1.json.id}/approve`, {})).json.status === 'APPROVED');
+  check('accounts marks it paid', (await acc.post(`${V}/subcontracts/${sc.json.id}/valuations/${sv1.json.id}/paid`, { paymentRef: `EFT-${tag}` })).json.status === 'PAID');
+  const sv2 = await qs.post(`${V}/subcontracts/${sc.json.id}/valuations`, { grossToDate: 800000 });
+  check('valuation 2: retention capped at 50,000, less 270,000 paid = 480,000', near(Number(sv2.json.retention), 50000) && near(Number(sv2.json.previousPaid), 270000) && near(Number(sv2.json.netDue), 480000), sv2.json);
+  check('a draft can be removed', (await qs.del(`${V}/subcontracts/${sc.json.id}/valuations/${sv2.json.id}`)).status === 200);
+  const scList = (await pm.get(`${V}/subcontracts`)).json.find((s) => s.id === sc.json.id);
+  check('the subcontract account shows 270,000 paid and 30,000 retention held', scList?.paid === 270000 && scList.retentionHeld === 30000, scList);
+  await sql.query(`UPDATE con_subscriptions SET "planCode" = 'CON_CONTRACTOR' WHERE "organizationId" = $1`, [orgId]);
+
+  const foreign = await fresh.get(`${V}/valuations`);
+  check("another business cannot see or certify Uriri's IPCs", (foreign.status === 404 || (Array.isArray(foreign.json) && foreign.json.length === 0)) && (await fresh.post(`${V}/valuations/${v5.json.id}/submit`, {})).status >= 403);
+  const c5audit = (await sql.query(`SELECT DISTINCT action FROM audit_log WHERE "organizationId" = $1 AND action LIKE 'con_%'`, [orgId])).rows.map((r) => r.action);
+  for (const a of ['con_variation.created', 'con_variation.updated', 'con_variation.approved', 'con_variation.rejected', 'con_project.revised_sum_changed', 'con_valuation.created', 'con_valuation.updated', 'con_valuation.submitted', 'con_valuation.certified', 'con_valuation.reversal_raised', 'con_valuation.invoiced', 'con_valuation.receipt_recorded', 'con_retention.released', 'con_subcontract.created', 'con_sub_valuation.approved', 'con_sub_valuation.paid', 'con_sub_valuation.deleted']) {
+    check(`audit: ${a}`, c5audit.includes(a));
+  }
+
   section('14. Super-admin');
   const tenants = await admin.get('/platform-admin/construction/tenants');
   const uriri = tenants.json.tenants?.find((t) => t.id === orgId);

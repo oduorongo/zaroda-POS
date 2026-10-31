@@ -208,6 +208,13 @@ model Organization {
   conMaterialBudgets        ConMaterialBudget[]
   conPlant                  ConPlant[]
   conPlantLogs              ConPlantLog[]
+  conVariations             ConVariation[]
+  conValuations             ConValuation[]
+  conValuationLines         ConValuationLine[]
+  conValuationReceipts      ConValuationReceipt[]
+  conRetentionEntries       ConRetentionEntry[]
+  conSubcontracts           ConSubcontract[]
+  conSubValuations          ConSubValuation[]
 
   @@map("organizations")
 }
@@ -5852,6 +5859,7 @@ model ConParty {
   clientProjects ConProject[]      @relation("ConProjectClient")
   projectLinks   ConProjectParty[]
   instructions   ConSiteInstruction[]
+  subcontracts   ConSubcontract[]
 
   @@index([organizationId, kind])
   @@map("con_parties")
@@ -5938,6 +5946,10 @@ model ConProject {
   budgets      ConMaterialBudget[]
   plant        ConPlant[]
   plantLogs    ConPlantLog[]
+  variations   ConVariation[]
+  valuations   ConValuation[]
+  retention    ConRetentionEntry[]
+  subcontracts ConSubcontract[]
   siteBranch   Branch?            @relation(fields: [branchId], references: [id], onDelete: SetNull)
 
   @@unique([organizationId, code])
@@ -6042,6 +6054,7 @@ model ConBqItem {
   section      ConBqSection @relation(fields: [sectionId], references: [id], onDelete: Cascade)
   requisitionLines ConRequisitionLine[]
   issues           ConMaterialIssue[]
+  valuationLines   ConValuationLine[]
 
   @@index([organizationId])
   @@index([sectionId])
@@ -6507,4 +6520,237 @@ model ConPlantLog {
   @@index([organizationId])
   @@index([projectId, date])
   @@map("con_plant_logs")
+}
+
+// ── Construction C5: variations, valuations / IPCs, retention, subcontracts ───
+
+enum ConVariationStatus {
+  PROPOSED
+  PRICED
+  APPROVED
+  REJECTED
+}
+
+enum ConValuationKind {
+  VALUATION
+  REVERSAL
+}
+
+enum ConValuationStatus {
+  DRAFT
+  SUBMITTED
+  CERTIFIED
+  PAID
+}
+
+enum ConRetentionType {
+  DEDUCT
+  RELEASE
+}
+
+enum ConReceiptKind {
+  PAYMENT
+  WHT
+  WHT_VAT
+}
+
+enum ConSubValuationStatus {
+  DRAFT
+  APPROVED
+  PAID
+}
+
+/// Changes to the works (from a site instruction or not). Approved variations change the project's revised sum.
+model ConVariation {
+  id             String             @id @default(uuid())
+  organizationId String
+  projectId      String
+  ref            String
+  instructionId  String?            @unique
+  description    String
+  amount         Decimal            @db.Decimal(16, 2)
+  status         ConVariationStatus @default(PROPOSED)
+  createdBy      String
+  approvedBy     String?
+  approvedByName String?
+  approvedAt     DateTime?
+  rejectedReason String?
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project      ConProject          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  lines        ConValuationLine[]
+
+  @@unique([projectId, ref])
+  @@index([organizationId])
+  @@map("con_variations")
+}
+
+/// An interim valuation (becomes the IPC once the client's QS certifies it). Cumulative to date; certified ones are locked and
+/// corrected only by a REVERSAL valuation. Money figures are kept as they were certified.
+model ConValuation {
+  id                  String             @id @default(uuid())
+  organizationId      String
+  projectId           String
+  number              Int
+  kind                ConValuationKind   @default(VALUATION)
+  reversesId          String?            @unique
+  periodEnd           DateTime           @db.Date
+  workToDate          Decimal            @default(0) @db.Decimal(16, 2)
+  variationsToDate    Decimal            @default(0) @db.Decimal(16, 2)
+  materialsOnSite     Decimal            @default(0) @db.Decimal(16, 2)
+  grossToDate         Decimal            @default(0) @db.Decimal(16, 2)
+  retentionRate       Decimal            @db.Decimal(5, 2)
+  retentionDeducted   Decimal            @default(0) @db.Decimal(16, 2)
+  retentionReleased   Decimal            @default(0) @db.Decimal(16, 2)
+  retentionHeld       Decimal            @default(0) @db.Decimal(16, 2)
+  advanceRecovery     Decimal            @default(0) @db.Decimal(16, 2)
+  previousCertified   Decimal            @default(0) @db.Decimal(16, 2)
+  netDue              Decimal            @default(0) @db.Decimal(16, 2)
+  status              ConValuationStatus @default(DRAFT)
+  reversed            Boolean            @default(false)
+  notes               String?
+  createdBy           String
+  submittedBy         String?
+  submittedAt         DateTime?
+  certifiedByName     String?
+  certifiedRef        String?
+  certifiedAt         DateTime?          @db.Date
+  certifiedRecordedBy String?
+  vatRate             Decimal?           @db.Decimal(6, 2)
+  vatAmount           Decimal?           @db.Decimal(16, 2)
+  invoiceTotal        Decimal?           @db.Decimal(16, 2)
+  saleId              String?            @unique
+  invoicedAt          DateTime?
+  paidAt              DateTime?
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+
+  organization Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project      ConProject            @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  reverses     ConValuation?         @relation("ConValuationReversal", fields: [reversesId], references: [id], onDelete: Restrict)
+  reversedBy   ConValuation?         @relation("ConValuationReversal")
+  lines        ConValuationLine[]
+  receipts     ConValuationReceipt[]
+  retention    ConRetentionEntry[]
+
+  @@unique([projectId, number])
+  @@index([organizationId])
+  @@map("con_valuations")
+}
+
+/// Work measured to date on one BQ item (qty x rate) or one approved variation (amount).
+model ConValuationLine {
+  id             String   @id @default(uuid())
+  organizationId String
+  valuationId    String
+  bqItemId       String?
+  variationId    String?
+  qtyToDate      Decimal? @db.Decimal(14, 3)
+  amountToDate   Decimal  @db.Decimal(16, 2)
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  valuation    ConValuation  @relation(fields: [valuationId], references: [id], onDelete: Cascade)
+  bqItem       ConBqItem?    @relation(fields: [bqItemId], references: [id], onDelete: Restrict)
+  variation    ConVariation? @relation(fields: [variationId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId])
+  @@index([valuationId])
+  @@map("con_valuation_lines")
+}
+
+/// Money received against a certified IPC: the client's payment, and withholding tax / withholding VAT certificates.
+model ConValuationReceipt {
+  id             String         @id @default(uuid())
+  organizationId String
+  valuationId    String
+  kind           ConReceiptKind
+  amount         Decimal        @db.Decimal(16, 2)
+  method         String?
+  reference      String?
+  certificateNo  String?
+  receivedAt     DateTime       @db.Date
+  createdBy      String
+  createdAt      DateTime       @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  valuation    ConValuation @relation(fields: [valuationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([valuationId])
+  @@map("con_valuation_receipts")
+}
+
+/// Retention deducted on each certificate and released (half at practical completion, the rest after the defects period).
+model ConRetentionEntry {
+  id             String           @id @default(uuid())
+  organizationId String
+  projectId      String
+  valuationId    String?
+  type           ConRetentionType
+  amount         Decimal          @db.Decimal(16, 2)
+  reason         String?
+  createdBy      String
+  createdAt      DateTime         @default(now())
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project      ConProject    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  valuation    ConValuation? @relation(fields: [valuationId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([projectId])
+  @@map("con_retention_ledger")
+}
+
+model ConSubcontract {
+  id             String   @id @default(uuid())
+  organizationId String
+  projectId      String
+  partyId        String
+  ref            String
+  scope          String
+  sum            Decimal  @db.Decimal(16, 2)
+  retentionRate  Decimal  @default(10) @db.Decimal(5, 2)
+  retentionLimit Decimal  @default(5) @db.Decimal(5, 2)
+  isActive       Boolean  @default(true)
+  createdBy      String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project      ConProject          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  party        ConParty            @relation(fields: [partyId], references: [id], onDelete: Restrict)
+  valuations   ConSubValuation[]
+
+  @@unique([projectId, ref])
+  @@index([organizationId])
+  @@map("con_subcontracts")
+}
+
+/// A subcontractor's valuation: their work to date less their retention and what they were paid before.
+model ConSubValuation {
+  id             String                @id @default(uuid())
+  organizationId String
+  subcontractId  String
+  number         Int
+  grossToDate    Decimal               @db.Decimal(16, 2)
+  retention      Decimal               @db.Decimal(16, 2)
+  previousPaid   Decimal               @db.Decimal(16, 2)
+  netDue         Decimal               @db.Decimal(16, 2)
+  status         ConSubValuationStatus @default(DRAFT)
+  notes          String?
+  createdBy      String
+  approvedBy     String?
+  approvedAt     DateTime?
+  paidAt         DateTime?
+  paymentRef     String?
+  createdAt      DateTime              @default(now())
+
+  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  subcontract  ConSubcontract @relation(fields: [subcontractId], references: [id], onDelete: Cascade)
+
+  @@unique([subcontractId, number])
+  @@index([organizationId])
+  @@map("con_sub_valuations")
 }
