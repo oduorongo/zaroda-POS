@@ -38,7 +38,7 @@ const PERMIT_EDIT: ConRoleCode[] = ['CON_CONTRACTS_MGR', 'CON_COMPLIANCE', 'CON_
 const TEAM_EDIT: ConRoleCode[] = ['CON_CONTRACTS_MGR', 'CON_PROJECT_MGR'];
 const PARTY_EDIT: ConRoleCode[] = ['CON_CONTRACTS_MGR', 'CON_QS', 'CON_PROCUREMENT', 'CON_COMPLIANCE', 'CON_PROJECT_MGR'];
 
-async function readBody(req: Request, max: number, what: string) {
+export async function readBody(req: Request, max: number, what: string) {
   const chunks: Buffer[] = [];
   let total = 0;
   for await (const chunk of req as AsyncIterable<Buffer>) {
@@ -48,7 +48,7 @@ async function readBody(req: Request, max: number, what: string) {
   }
   return Buffer.concat(chunks);
 }
-const mime = (h?: string) => (h ?? '').split(';')[0].trim().toLowerCase();
+export const mime = (h?: string) => (h ?? '').split(';')[0].trim().toLowerCase();
 const fileNameOf = (h?: string) => (h ? decodeURIComponent(h) : undefined);
 
 @Controller('construction')

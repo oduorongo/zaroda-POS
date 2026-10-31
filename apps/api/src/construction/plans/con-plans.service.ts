@@ -85,7 +85,8 @@ export class ConPlansService {
   async usage(tx: Tx): Promise<Record<LimitKey, number>> {
     const users = await tx.orgUser.count({ where: { isActive: true } });
     const activeProjects = await tx.conProject.count({ where: { status: { not: 'CLOSED' } } });
-    return { users, activeProjects, workers: 0 };
+    const workers = await tx.conWorker.count({ where: { isActive: true } });
+    return { users, activeProjects, workers };
   }
 
   /** For later phases and the user hook: blocks adding one more of `kind` beyond the plan, with an upgrade prompt. */

@@ -18,6 +18,7 @@ async function main() {
   const existing = await prisma.organization.findFirst({ where: { name: "Uriri Builders Ltd", industryType: "CONSTRUCTION" } });
   const orgId = existing?.id ?? (await seedCompany());
   await seedProject(orgId);
+  await seedSite(orgId);
 }
 
 const hashed = bcrypt.hash("password123", 10);
@@ -205,6 +206,106 @@ async function seedProject(orgId: string) {
         });
       }
       console.log(`Seeded ${name}: 30 BQ items, KES ${total.toLocaleString("en-KE")}.`);
+    },
+    { timeout: 60_000, maxWait: 30_000 },
+  );
+}
+
+const WORKERS: [string, string, number, boolean, number | null][] = [
+  ["Joseph Okoth", "Foreman", 1800, true, 400],
+  ["Peter Onyango", "Mason", 1500, false, 220],
+  ["Samuel Odera", "Mason", 1500, false, -15],
+  ["Kevin Achola", "Mason", 1400, false, 25],
+  ["Moses Otieno", "Carpenter", 1400, false, 300],
+  ["Philip Owino", "Carpenter", 1400, false, null],
+  ["Tom Mboya Ojwang", "Steel fixer", 1400, false, null],
+  ["Daniel Omolo", "Plumber", 1500, false, 500],
+  ["George Ouko", "Electrician", 1600, false, 450],
+  ["Mary Akinyi", "Helper", 800, false, null],
+  ["Jane Atieno", "Helper", 800, false, null],
+  ["Beatrice Adhiambo", "Helper", 800, false, null],
+  ["John Ochieng", "Helper", 800, false, null],
+  ["Paul Odhiambo", "Helper", 800, false, null],
+  ["Esther Anyango", "Store helper", 900, false, null],
+];
+const WEATHER = ["Sunny", "Sunny, hot", "Cloudy", "Light rain in the afternoon", "Sunny", "Heavy rain from 2pm", "Sunny"];
+const WORKS = [
+  "Walling to classroom 2 up to lintel level; ring beam formwork started.",
+  "Ring beam reinforcement fixed to classrooms 1 and 2.",
+  "Concrete to ring beam classroom 1 (3.5 m3). Walling continued on classroom 3.",
+  "Walling classroom 3; curing ring beam.",
+  "Ring beam concrete classroom 2. Gable walls started.",
+  "Gable walls continued; works stopped at 2pm because of rain.",
+  "Gable walls completed classroom 1; roof trusses delivered.",
+];
+
+/** C3: 15 workers on PRJ-001 and the last 7 days of diaries, muster roll and safety records. */
+async function seedSite(orgId: string) {
+  await prisma.$transaction(
+    async (tx) => {
+      await tx.$executeRaw`SELECT set_config('app.current_tenant', ${orgId}, true)`;
+      const project = await tx.conProject.findFirst({ where: { name: "Uriri Day Secondary Classrooms" } });
+      if (!project) return;
+      if (await tx.conWorker.count({ where: { projectId: project.id } })) {
+        console.log("Site workers already seeded - nothing to do.");
+        return;
+      }
+      const pid = project.id;
+      const site = await tx.orgUser.findFirst({ where: { user: { email: "site@uriri.demo" } } });
+      const workers = [];
+      for (const [i, [name, trade, dailyRate, isSupervisor, cardDays]] of WORKERS.entries()) {
+        workers.push(
+          await tx.conWorker.create({
+            data: {
+              organizationId: orgId, projectId: pid, name, trade, dailyRate, isSupervisor,
+              idNo: String(23456700 + i * 137), phone: `07${String(10000000 + i * 4111).slice(0, 8)}`,
+              ncaCardNo: cardDays === null ? null : `NCA/SW/2025/${4100 + i}`, ncaExpiresAt: cardDays === null ? null : inDays(cardDays),
+            },
+          }),
+        );
+      }
+      for (let back = 6; back >= 0; back--) {
+        const date = inDays(-back);
+        const marks = workers.map((w, i) => ({
+          organizationId: orgId, projectId: pid, workerId: w.id, date, markedBy: site?.id,
+          status: (i + back) % 9 === 0 ? ("ABSENT" as const) : back === 1 && i > 9 ? ("HALF" as const) : ("PRESENT" as const),
+        }));
+        await tx.conMuster.createMany({ data: marks.map((m) => ({ ...m, hours: m.status === "PRESENT" ? 8 : m.status === "HALF" ? 4 : 0 })) });
+        const present = marks.filter((m) => m.status !== "ABSENT").length;
+        await tx.conSiteDiary.create({
+          data: {
+            organizationId: orgId, projectId: pid, date, weather: WEATHER[6 - back], worksDone: WORKS[6 - back], labourCount: present,
+            delays: back === 1 ? "Rain stopped work from 2pm." : null, visitors: back === 3 ? "Client's QS (site measurement)" : null, plantOnSite: "Concrete mixer, poker vibrator",
+            status: back >= 2 ? "APPROVED" : back === 1 ? "SUBMITTED" : "DRAFT", createdBy: site?.id, approvedAt: back >= 2 ? inDays(-back + 1) : null,
+          },
+        });
+      }
+      const architect = await tx.conParty.findFirst({ where: { kind: "ARCHITECT" } });
+      await tx.conSiteInstruction.createMany({
+        data: [
+          { organizationId: orgId, projectId: pid, number: "SI-001", partyId: architect?.id, date: inDays(-12), description: "Raise ring beam by one course to suit revised window heights.", status: "ACTIONED" },
+          { organizationId: orgId, projectId: pid, number: "SI-002", partyId: architect?.id, date: inDays(-2), description: "Provide an additional rainwater downpipe on the north elevation.", status: "OPEN" },
+        ],
+      });
+      await tx.conToolboxTalk.createMany({
+        data: [
+          { organizationId: orgId, projectId: pid, date: inDays(-6), topic: "Working on scaffolds and ladders", attendeeIds: workers.slice(0, 12).map((w) => w.id), heldBy: site?.id },
+          { organizationId: orgId, projectId: pid, date: inDays(-1), topic: "Manual handling of roof trusses", attendeeIds: workers.map((w) => w.id), heldBy: site?.id },
+        ],
+      });
+      await tx.conPpeIssue.createMany({ data: workers.slice(0, 10).map((w) => ({ organizationId: orgId, projectId: pid, workerId: w.id, item: "Safety helmet", qty: 1, issuedAt: inDays(-30), issuedBy: site?.id })) });
+      await tx.conPpeIssue.createMany({ data: workers.slice(0, 10).map((w) => ({ organizationId: orgId, projectId: pid, workerId: w.id, item: "Safety boots", qty: 1, issuedAt: inDays(-30), issuedBy: site?.id })) });
+      const now = new Date();
+      await tx.conPermitToWork.create({
+        data: { organizationId: orgId, projectId: pid, number: "PTW-001", type: "HEIGHT", location: "Classroom 1 gable wall", precautions: "Scaffold inspected; harness for work above 2m", validFrom: now, validTo: new Date(now.getTime() + 3 * DAY), issuedBy: site?.id },
+      });
+      await tx.conIncident.createMany({
+        data: [
+          { organizationId: orgId, projectId: pid, occurredAt: inDays(-5), severity: "MINOR", description: "Cut to left hand while cutting hoop iron; first aid given.", actionTaken: "Gloves issued for cutting work", workerId: workers[11].id, createdBy: site?.id },
+          { organizationId: orgId, projectId: pid, occurredAt: inDays(-2), severity: "LOST_TIME", description: "Helper slipped from the second scaffold lift; sprained ankle, off work 4 days.", actionTaken: "Scaffold boards replaced; toolbox talk held", workerId: workers[12].id, reportDueAt: new Date(inDays(-2).getTime() + 7 * DAY), createdBy: site?.id },
+        ],
+      });
+      console.log("Seeded 15 workers, 7 days of diaries and muster, toolbox talks, PPE, a permit-to-work and 2 incidents.");
     },
     { timeout: 60_000, maxWait: 30_000 },
   );

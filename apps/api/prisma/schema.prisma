@@ -192,6 +192,15 @@ model Organization {
   conMilestones             ConMilestone[]
   conBqSections             ConBqSection[]
   conBqItems                ConBqItem[]
+  conSiteDiaries            ConSiteDiary[]
+  conSitePhotos             ConSitePhoto[]
+  conSiteInstructions       ConSiteInstruction[]
+  conWorkers                ConWorker[]
+  conMuster                 ConMuster[]
+  conToolboxTalks           ConToolboxTalk[]
+  conPpeIssues              ConPpeIssue[]
+  conPermitsToWork          ConPermitToWork[]
+  conIncidents              ConIncident[]
 
   @@map("organizations")
 }
@@ -5827,6 +5836,7 @@ model ConParty {
   organization   Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   clientProjects ConProject[]      @relation("ConProjectClient")
   projectLinks   ConProjectParty[]
+  instructions   ConSiteInstruction[]
 
   @@index([organizationId, kind])
   @@map("con_parties")
@@ -5897,6 +5907,15 @@ model ConProject {
   milestones   ConMilestone[]
   bqSections   ConBqSection[]
   bqItems      ConBqItem[]
+  diaries      ConSiteDiary[]
+  photos       ConSitePhoto[]
+  instructions ConSiteInstruction[]
+  workers      ConWorker[]
+  muster       ConMuster[]
+  toolboxTalks ConToolboxTalk[]
+  ppeIssues    ConPpeIssue[]
+  workPermits  ConPermitToWork[]
+  incidents    ConIncident[]
 
   @@unique([organizationId, code])
   @@index([organizationId, status])
@@ -6002,4 +6021,264 @@ model ConBqItem {
   @@index([organizationId])
   @@index([sectionId])
   @@map("con_bq_items")
+}
+
+// ── Construction C3: site diary, photos, instructions, workers, muster, safety ──
+
+enum ConDiaryStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+}
+
+enum ConInstructionStatus {
+  OPEN
+  ACTIONED
+  CLOSED
+}
+
+enum ConMusterStatus {
+  PRESENT
+  HALF
+  ABSENT
+}
+
+enum ConWorkPermitType {
+  HEIGHT
+  HOT_WORK
+  EXCAVATION
+  CONFINED
+  ELECTRICAL
+}
+
+enum ConWorkPermitStatus {
+  OPEN
+  CLOSED
+  CANCELLED
+}
+
+enum ConIncidentSeverity {
+  NEAR_MISS
+  MINOR
+  LOST_TIME
+  FATAL
+}
+
+/// One per project per day: weather, works done, delays, visitors, labour and plant on site. Approved diaries are locked.
+model ConSiteDiary {
+  id             String         @id @default(uuid())
+  organizationId String
+  projectId      String
+  date           DateTime       @db.Date
+  weather        String?
+  worksDone      String?
+  delays         String?
+  visitors       String?
+  plantOnSite    String?
+  labourCount    Int?
+  status         ConDiaryStatus @default(DRAFT)
+  createdBy      String?
+  approvedBy     String?
+  approvedAt     DateTime?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project      ConProject     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  photos       ConSitePhoto[]
+
+  @@unique([projectId, date])
+  @@index([organizationId])
+  @@map("con_site_diaries")
+}
+
+/// Site photos (private files), geo-tagged when the phone allows.
+model ConSitePhoto {
+  id             String    @id @default(uuid())
+  organizationId String
+  projectId      String
+  diaryId        String?
+  fileKey        String
+  fileType       String
+  caption        String?
+  lat            Decimal?  @db.Decimal(9, 6)
+  lng            Decimal?  @db.Decimal(9, 6)
+  takenAt        DateTime
+  uploadedBy     String?
+  createdAt      DateTime  @default(now())
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project      ConProject    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  diary        ConSiteDiary? @relation(fields: [diaryId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([projectId, takenAt])
+  @@map("con_site_photos")
+}
+
+/// Instructions received from the client's consultants (may later become variations).
+model ConSiteInstruction {
+  id             String               @id @default(uuid())
+  organizationId String
+  projectId      String
+  number         String
+  partyId        String?
+  issuedByName   String?
+  date           DateTime             @db.Date
+  description    String
+  status         ConInstructionStatus @default(OPEN)
+  variationId    String?
+  createdBy      String?
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project      ConProject   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  party        ConParty?    @relation(fields: [partyId], references: [id], onDelete: SetNull)
+
+  @@unique([projectId, number])
+  @@index([organizationId])
+  @@map("con_site_instructions")
+}
+
+/// Site workers (casuals and skilled), who do not sign in. ID number and phone are personal data: masked in lists.
+model ConWorker {
+  id             String    @id @default(uuid())
+  organizationId String
+  projectId      String?
+  name           String
+  idNo           String?
+  phone          String?
+  trade          String
+  ncaCardNo      String?
+  ncaExpiresAt   DateTime? @db.Date
+  dailyRate      Decimal   @db.Decimal(12, 2)
+  isSupervisor   Boolean   @default(false)
+  isActive       Boolean   @default(true)
+  createdBy      String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project      ConProject?   @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  muster       ConMuster[]
+  ppeIssues    ConPpeIssue[]
+  incidents    ConIncident[]
+
+  @@unique([organizationId, idNo])
+  @@index([organizationId, projectId])
+  @@map("con_workers")
+}
+
+/// Daily attendance. clientRef makes a retried phone upload safe to send twice.
+model ConMuster {
+  id             String          @id @default(uuid())
+  organizationId String
+  projectId      String
+  workerId       String
+  date           DateTime        @db.Date
+  status         ConMusterStatus
+  hours          Decimal?        @db.Decimal(4, 1)
+  markedBy       String?
+  clientRef      String?
+  updatedAt      DateTime        @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project      ConProject   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  worker       ConWorker    @relation(fields: [workerId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, workerId, date])
+  @@index([organizationId])
+  @@index([projectId, date])
+  @@map("con_muster")
+}
+
+model ConToolboxTalk {
+  id             String   @id @default(uuid())
+  organizationId String
+  projectId      String
+  date           DateTime @db.Date
+  topic          String
+  notes          String?
+  attendeeIds    Json     @default("[]")
+  heldBy         String?
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project      ConProject   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([projectId])
+  @@map("con_toolbox_talks")
+}
+
+model ConPpeIssue {
+  id             String   @id @default(uuid())
+  organizationId String
+  projectId      String
+  workerId       String
+  item           String
+  qty            Int      @default(1)
+  issuedAt       DateTime @db.Date
+  issuedBy       String?
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project      ConProject   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  worker       ConWorker    @relation(fields: [workerId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([projectId])
+  @@map("con_ppe_issues")
+}
+
+model ConPermitToWork {
+  id             String              @id @default(uuid())
+  organizationId String
+  projectId      String
+  number         String
+  type           ConWorkPermitType
+  location       String
+  precautions    String?
+  validFrom      DateTime
+  validTo        DateTime
+  status         ConWorkPermitStatus @default(OPEN)
+  issuedBy       String?
+  closedBy       String?
+  closedAt       DateTime?
+  createdAt      DateTime            @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project      ConProject   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, number])
+  @@index([organizationId])
+  @@map("con_permits_to_work")
+}
+
+/// Incident register. Lost-time and fatal incidents must be reported to DOSHS by reportDueAt.
+model ConIncident {
+  id              String              @id @default(uuid())
+  organizationId  String
+  projectId       String
+  occurredAt      DateTime
+  severity        ConIncidentSeverity
+  description     String
+  actionTaken     String?
+  workerId        String?
+  reportDueAt     DateTime?
+  reportedToDoshs Boolean             @default(false)
+  reportedAt      DateTime?
+  doshsRef        String?
+  createdBy       String?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project      ConProject   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  worker       ConWorker?   @relation(fields: [workerId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([projectId, occurredAt])
+  @@map("con_incidents")
 }

@@ -16,11 +16,15 @@ import { BqService } from './projects/bq.service';
 import { ProjectsController, TendersController } from './projects/projects.controller';
 import { ProjectsService } from './projects/projects.service';
 import { TendersService } from './projects/tenders.service';
+import { LabourService } from './site/labour.service';
+import { SafetyService } from './site/safety.service';
+import { SiteController } from './site/site.controller';
+import { SiteService } from './site/site.service';
 
 /** Construction contractors (industryType "CONSTRUCTION", served at CONSTRUCTION_DOMAIN). See docs/construction. */
 @Module({
   imports: [ModuleRegistryModule, OnlineStoreModule, OrgUsersModule],
-  controllers: [ConstructionController, TendersController, ProjectsController, ConBillingCallbackController, ConPublicController],
+  controllers: [ConstructionController, TendersController, ProjectsController, SiteController, ConBillingCallbackController, ConPublicController],
   providers: [
     ConSetupService,
     ConstructionGuard,
@@ -33,6 +37,9 @@ import { TendersService } from './projects/tenders.service';
     ProjectsService,
     TendersService,
     BqService,
+    SiteService,
+    LabourService,
+    SafetyService,
     PrivateObjectStorageService,
   ],
   // Platform admin edits plans and coupons, extends trials and records payments.
@@ -68,6 +75,15 @@ export class ConstructionModule implements OnModuleInit {
         { tableName: 'con_milestones', description: 'Programme milestones with percent complete' },
         { tableName: 'con_bq_sections', description: 'Bill of Quantities sections' },
         { tableName: 'con_bq_items', description: 'Bill of Quantities items' },
+        { tableName: 'con_site_diaries', description: 'Daily site diary, one per project per day' },
+        { tableName: 'con_site_photos', description: 'Geo-tagged site photos (private files)' },
+        { tableName: 'con_site_instructions', description: 'Site instructions from consultants' },
+        { tableName: 'con_workers', description: 'Site workers with NCA accreditation cards' },
+        { tableName: 'con_muster', description: 'Daily muster roll' },
+        { tableName: 'con_toolbox_talks', description: 'Toolbox talks and who attended' },
+        { tableName: 'con_ppe_issues', description: 'PPE issued to workers' },
+        { tableName: 'con_permits_to_work', description: 'Permits to work (height, hot works, excavation...)' },
+        { tableName: 'con_incidents', description: 'Incident register with DOSHS reporting' },
       ],
     });
   }

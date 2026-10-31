@@ -63,17 +63,20 @@ export class ComplianceAlertsService implements OnModuleInit, OnModuleDestroy {
     const fresh = await asOrg(this.prisma, organizationId, async (tx) => {
       const rows = await tx.$queryRaw<{ locked: boolean }[]>`SELECT pg_try_advisory_xact_lock(hashtext(${'zaroda-con-alerts:' + organizationId})) AS locked`;
       if (!rows[0]?.locked) return [];
-      const [docs, regs, permits, cards] = await Promise.all([
+      const [docs, regs, permits, cards, workers, incidents] = await Promise.all([
         tx.conComplianceDoc.findMany({ where: { expiresAt: { not: null } } }),
         tx.conCompanyRegistration.findMany({ where: { licenceExpiresAt: { not: null } } }),
         tx.conProjectPermit.findMany({ where: { expiresAt: { not: null }, project: { status: { not: 'CLOSED' } } }, include: { project: { select: { code: true } } } }),
         tx.conStaffAccreditation.findMany({ where: { orgUser: { isActive: true } }, include: { orgUser: { select: { user: { select: { fullName: true } } } } } }),
+        tx.conWorker.findMany({ where: { isActive: true, ncaExpiresAt: { not: null } }, select: { id: true, name: true, ncaExpiresAt: true } }),
+        tx.conIncident.findMany({ where: { reportedToDoshs: false, reportDueAt: { not: null } }, include: { project: { select: { id: true, code: true } } } }),
       ]);
       const items = [
         ...docs.map((d) => ({ kind: 'doc', id: d.id, name: d.title, expires: d.expiresAt!.toISOString().slice(0, 10) })),
         ...regs.map((r) => ({ kind: 'nca', id: r.id, name: `NCA${r.ncaCategory} licence (${WORKS_CLASS_LABELS[r.worksClass]})`, expires: r.licenceExpiresAt!.toISOString().slice(0, 10) })),
         ...permits.map((p) => ({ kind: 'permit', id: p.id, name: `${p.project.code} ${PERMIT_LABELS[p.type]}`, expires: p.expiresAt!.toISOString().slice(0, 10) })),
         ...cards.map((c) => ({ kind: 'card', id: c.id, name: `${c.orgUser.user.fullName}'s NCA accreditation card`, expires: c.expiresAt.toISOString().slice(0, 10) })),
+        ...workers.map((w) => ({ kind: 'worker', id: w.id, name: `${w.name}'s NCA card`, expires: w.ncaExpiresAt!.toISOString().slice(0, 10) })),
       ];
       const out: NewAlert[] = [];
       for (const item of items) {
@@ -82,6 +85,18 @@ export class ComplianceAlertsService implements OnModuleInit, OnModuleDestroy {
         const text = alertText(item.name, item.expires, stage);
         const res = await tx.conAlert.createMany({
           data: [{ organizationId, kind: stage === 0 ? 'EXPIRED' : 'EXPIRING', ...text, href: COMPLIANCE_HREF, dedupeKey: alertKey(item.kind, item.id, item.expires, stage) }],
+          skipDuplicates: true,
+        });
+        if (res.count === 1) out.push(text);
+      }
+      for (const i of incidents) {
+        const overdue = i.reportDueAt! < new Date();
+        const text = {
+          title: overdue ? `${i.project.code}: DOSHS report overdue` : `${i.project.code}: report the ${i.severity === 'FATAL' ? 'fatal' : 'lost-time'} incident to DOSHS`,
+          body: `Due by ${i.reportDueAt!.toISOString().slice(0, 16).replace('T', ' ')} UTC (OSHA 2007). Record the DOSHS reference once reported.`,
+        };
+        const res = await tx.conAlert.createMany({
+          data: [{ organizationId, kind: overdue ? 'DOSHS_OVERDUE' : 'DOSHS_DUE', ...text, href: `/construction/projects/${i.project.id}`, dedupeKey: `incident:${i.id}:${overdue ? 'overdue' : 'due'}` }],
           skipDuplicates: true,
         });
         if (res.count === 1) out.push(text);

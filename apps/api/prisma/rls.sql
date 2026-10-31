@@ -1664,3 +1664,68 @@ DROP POLICY IF EXISTS tenant_isolation ON con_bq_items;
 CREATE POLICY tenant_isolation ON con_bq_items
   USING ("organizationId" = current_setting('app.current_tenant', true))
   WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+-- Construction C3
+
+ALTER TABLE con_site_diaries ENABLE ROW LEVEL SECURITY;
+ALTER TABLE con_site_diaries FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON con_site_diaries;
+CREATE POLICY tenant_isolation ON con_site_diaries
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+ALTER TABLE con_site_photos ENABLE ROW LEVEL SECURITY;
+ALTER TABLE con_site_photos FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON con_site_photos;
+CREATE POLICY tenant_isolation ON con_site_photos
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+ALTER TABLE con_site_instructions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE con_site_instructions FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON con_site_instructions;
+CREATE POLICY tenant_isolation ON con_site_instructions
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+ALTER TABLE con_workers ENABLE ROW LEVEL SECURITY;
+ALTER TABLE con_workers FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON con_workers;
+CREATE POLICY tenant_isolation ON con_workers
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+ALTER TABLE con_muster ENABLE ROW LEVEL SECURITY;
+ALTER TABLE con_muster FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON con_muster;
+CREATE POLICY tenant_isolation ON con_muster
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+ALTER TABLE con_toolbox_talks ENABLE ROW LEVEL SECURITY;
+ALTER TABLE con_toolbox_talks FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON con_toolbox_talks;
+CREATE POLICY tenant_isolation ON con_toolbox_talks
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+ALTER TABLE con_ppe_issues ENABLE ROW LEVEL SECURITY;
+ALTER TABLE con_ppe_issues FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON con_ppe_issues;
+CREATE POLICY tenant_isolation ON con_ppe_issues
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+ALTER TABLE con_permits_to_work ENABLE ROW LEVEL SECURITY;
+ALTER TABLE con_permits_to_work FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON con_permits_to_work;
+CREATE POLICY tenant_isolation ON con_permits_to_work
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+ALTER TABLE con_incidents ENABLE ROW LEVEL SECURITY;
+ALTER TABLE con_incidents FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON con_incidents;
+CREATE POLICY tenant_isolation ON con_incidents
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));

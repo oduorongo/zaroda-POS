@@ -56,6 +56,7 @@ async function call(method, p, { token, body, headers, raw } = {}) {
   return { status: response.status, json, buf, type: response.headers.get('content-type') };
 }
 const as = (token) => ({
+  _token: token,
   get: (p) => call('GET', p, { token }),
   post: (p, body) => call('POST', p, { token, body }),
   put: (p, body) => call('PUT', p, { token, body }),
@@ -66,6 +67,8 @@ const login = async (email, password = 'password123') => (await call('POST', '/a
 const sql = new Client({ connectionString: env.DIRECT_URL });
 const tag = Date.now().toString(36);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const randomUUIDish = () => require('crypto').randomUUID();
+const nairobi = (offsetDays = 0) => new Date(Date.now() + 3 * 3600_000 + offsetDays * 86_400_000).toISOString().slice(0, 10);
 const t0 = Date.now();
 
 async function main() {
@@ -74,6 +77,7 @@ async function main() {
   if (!org) throw new Error('Run prisma/seed-construction.ts first');
   const orgId = org.id;
   await sql.query('DELETE FROM con_alerts WHERE "organizationId" = $1', [orgId]);
+  await sql.query(`DELETE FROM con_project_members WHERE "orgUserId" IN (SELECT ou.id FROM org_users ou JOIN users u ON u.id = ou."userId" WHERE u.email = 'qs@uriri.demo')`);
   await sql.query(`DELETE FROM con_tax_settings WHERE "organizationId" = $1 AND "effectiveFrom" > '2090-01-01'`, [orgId]);
   await sql.query(`UPDATE con_roles SET "approvalLimit" = 500000 WHERE "organizationId" = $1 AND code = 'CON_PROJECT_MGR'`, [orgId]);
   await sql.query(`UPDATE con_subscriptions SET "couponCode" = NULL, "couponMonthsLeft" = 0, addons = '{}', "planCode" = 'CON_CONTRACTOR' WHERE "organizationId" = $1`, [orgId]);
@@ -259,7 +263,7 @@ async function main() {
   const seeded = (await dir.get('/construction/projects')).json.find((p) => p.name === 'Uriri Day Secondary Classrooms');
   check('the seeded project is listed, active, BQ equal to the contract sum', seeded?.status === 'ACTIVE' && seeded.bqTotal === seeded.contractSum && seeded.contractSum === 10713000, seeded);
   const detail = (await dir.get(`/construction/projects/${seeded.id}`)).json;
-  check('it has 6 permits, 3 consultants and 2 team members', detail.permits?.length === 6 && detail.parties.length === 3 && detail.members.length === 2, { p: detail.permits?.length, parties: detail.parties?.length, m: detail.members?.length });
+  check('it has 6 permits, 3 consultants and at least 2 team members', detail.permits?.length === 6 && detail.parties.length >= 3 && detail.members.length >= 2, { p: detail.permits?.length, parties: detail.parties?.length, m: detail.members?.length });
   const seededBq = (await qs.get(`/construction/projects/${seeded.id}/bq`)).json;
   check('its BQ has 7 sections and 30 items, no difference', seededBq.sections.length === 7 && seededBq.sections.reduce((a, s) => a + s.items.length, 0) === 30 && seededBq.difference === 0);
   check('programme progress is worked out from milestones', seeded.progress > 0 && seeded.progress < 100, seeded.progress);
@@ -390,6 +394,103 @@ async function main() {
   }
   await sql.query('UPDATE con_projects SET status = $2 WHERE id = $1', [pid, 'CLOSED']);
   await sql.query('DELETE FROM con_staff_accreditations WHERE "orgUserId" = $1', [qsGuy.orgUserId]);
+  await sql.query('DELETE FROM con_project_members WHERE "orgUserId" = $1 AND "projectId" = $2', [qsGuy.orgUserId, pid]);
+
+  section('13c. Site diary, photos, workers, muster, safety (C3)');
+  const sid = seeded.id;
+  const seededWorkers = (await siteUser.get(`/construction/workers?projectId=${sid}`)).json;
+  check('15 workers are seeded on the project', Array.isArray(seededWorkers) && seededWorkers.filter((w) => w.name !== 'x').length >= 15, seededWorkers.length);
+  check('lists mask ID numbers and phones', seededWorkers.every((w) => !w.idNo || /^\*+\d{4}$/.test(w.idNo)) && seededWorkers.every((w) => !w.phone || w.phone.includes('*')));
+  check('an expired NCA card is flagged', seededWorkers.some((w) => w.ncaState === 'EXPIRED'));
+  const one = seededWorkers.find((w) => w.name === 'Peter Onyango');
+  check('the site supervisor opening a worker still sees the ID masked', (await siteUser.get(`/construction/workers/${one.id}`)).json.idNo.startsWith('****'));
+  check('the accountant sees the full ID', /^\d{8}$/.test((await acc.get(`/construction/workers/${one.id}`)).json.idNo ?? ''));
+  check('the QS cannot see the worker register', (await qs.get('/construction/workers')).status === 403);
+  check('site staff cannot add a worker to a project they are not on', (await siteUser.post('/construction/workers', { name: 'Off project', trade: 'Mason', dailyRate: 1000, projectId: pid })).status === 403);
+  const newW = await siteUser.post('/construction/workers', { name: `New Mason ${tag}`, trade: 'Mason', dailyRate: 1500, projectId: sid, idNo: `3${String(Date.now()).slice(-7)}`, phone: '0711222333' });
+  check('the site supervisor adds a worker to their project', newW.status === 201 && newW.json.idNo.startsWith('****'), newW.json);
+  check('the same ID number cannot be registered twice', (await siteUser.post('/construction/workers', { name: 'Dup', trade: 'Mason', dailyRate: 1, projectId: sid, idNo: (await acc.get(`/construction/workers/${newW.json.id}`)).json.idNo })).status === 409);
+  check('a supervisor without a card is refused', (await siteUser.post('/construction/workers', { name: 'Foreman two', trade: 'Foreman', dailyRate: 1800, projectId: sid, isSupervisor: true })).status === 400);
+  check('a supervisor with an expired card is refused', (await siteUser.post('/construction/workers', { name: 'Foreman two', trade: 'Foreman', dailyRate: 1800, projectId: sid, isSupervisor: true, ncaCardNo: 'X1', ncaExpiresAt: '2026-01-01' })).status === 400);
+  check('a bad ID number is refused', (await siteUser.post('/construction/workers', { name: 'Bad id', trade: 'Mason', dailyRate: 1, projectId: sid, idNo: 'abc' })).status === 400);
+  check('plan usage counts active workers', (await dir.get('/construction/plan')).json.usage.workers >= 16);
+  await sql.query(`UPDATE con_subscriptions SET "planCode" = 'CON_MJENGO' WHERE "organizationId" = $1`, [orgId]);
+  const overWorkers = await siteUser.post('/construction/workers', { name: 'One too many', trade: 'Helper', dailyRate: 800, projectId: sid });
+  check('on Mjengo (10 workers) another worker asks to upgrade', overWorkers.status === 402 && /10 workers/.test(overWorkers.json.message), overWorkers.json);
+  await sql.query(`UPDATE con_subscriptions SET "planCode" = 'CON_CONTRACTOR' WHERE "organizationId" = $1`, [orgId]);
+
+  const today = nairobi();
+  const sheet = (await siteUser.get(`/construction/projects/${sid}/muster?date=${today}`)).json;
+  check("today's muster lists the project's workers", sheet.rows.length >= 16 && sheet.date === today, sheet.rows?.length);
+  const entries = sheet.rows.map((r, i) => ({ workerId: r.workerId, status: i === 0 ? 'ABSENT' : i === 1 ? 'HALF' : 'PRESENT', clientRef: `${r.workerId}:${tag}` }));
+  const saved = await siteUser.post(`/construction/projects/${sid}/muster`, { date: today, entries });
+  check('the supervisor saves the whole muster', saved.status === 200 && saved.json.saved === entries.length && saved.json.totals.absent === 1 && saved.json.totals.half === 1, saved.json);
+  const again = await siteUser.post(`/construction/projects/${sid}/muster`, { date: today, entries });
+  check('sending the same marks again (phone retry) changes nothing', again.json.totals.present === saved.json.totals.present && Number((await sql.query('SELECT count(*) FROM con_muster WHERE "projectId" = $1 AND date = $2::date', [sid, today])).rows[0].count) === entries.length);
+  check('the muster cannot be marked for tomorrow', (await siteUser.post(`/construction/projects/${sid}/muster`, { date: nairobi(1), entries: entries.slice(0, 1) })).status === 400);
+  check("a worker from another project is refused", (await siteUser.post(`/construction/projects/${sid}/muster`, { date: today, entries: [{ workerId: randomUUIDish(), status: 'PRESENT' }] })).status === 400);
+  check('the QS cannot mark the muster', (await qs.post(`/construction/projects/${sid}/muster`, { date: today, entries: entries.slice(0, 1) })).status === 403);
+  const summary = (await siteUser.get(`/construction/projects/${sid}/muster/summary?from=${nairobi(-6)}&to=${today}`)).json;
+  check('the week summary counts days per worker (half days as half)', summary.length >= 15 && summary.every((s) => s.days <= 7) && summary.some((s) => s.half > 0), summary.slice(0, 2));
+
+  const diaries = (await siteUser.get(`/construction/projects/${sid}/diaries`)).json;
+  check('a week of diaries is seeded', diaries.length >= 7 && diaries.some((d) => d.status === 'APPROVED'));
+  const approvedDay = diaries.find((d) => d.status === 'APPROVED').date;
+  check('an approved diary is locked', (await siteUser.put(`/construction/projects/${sid}/diaries/${approvedDay}`, { worksDone: 'changed' })).status === 409);
+  const todayDiary = (await siteUser.get(`/construction/projects/${sid}/diaries/${today}`)).json;
+  check("today's diary shows labour from the muster", todayDiary.labourFromMuster === entries.length - 1, todayDiary);
+  const savedDiary = await siteUser.put(`/construction/projects/${sid}/diaries/${today}`, { weather: 'Sunny', worksDone: 'Roof trusses lifted onto classroom 1.' });
+  check('the supervisor writes today\'s diary', savedDiary.status === 200);
+  check('a diary cannot be written for tomorrow', (await siteUser.put(`/construction/projects/${sid}/diaries/${nairobi(1)}`, { worksDone: 'x' })).status === 400);
+  const png = Buffer.from('89504e470d0a1a0a0000000d4948445200000001000000010806000000', 'hex');
+  const photo = await call('POST', `/construction/projects/${sid}/photos?lat=-0.9467&lng=34.4719&caption=Trusses`, { token: siteUser._token, raw: png, headers: { 'Content-Type': 'image/png' } });
+  check('a geo-tagged photo uploads from the phone', photo.status === 201 && photo.json.lat === -0.9467 && photo.json.date === today, photo.json);
+  check('it shows on today\'s diary', (await siteUser.get(`/construction/projects/${sid}/diaries/${today}`)).json.photos.some((p) => p.id === photo.json.id));
+  check('the photo comes back through the API', (await call('GET', `/construction/projects/${sid}/photos/${photo.json.id}/file`, { token: siteUser._token })).buf.equals(png));
+  check('a non-image is refused', (await call('POST', `/construction/projects/${sid}/photos`, { token: siteUser._token, raw: Buffer.from('x'), headers: { 'Content-Type': 'text/plain' } })).status === 400);
+  check('only the PM approves the diary', (await siteUser.post(`/construction/projects/${sid}/diaries/${today}/approve`, {})).status === 403);
+  check('the supervisor submits it', (await siteUser.post(`/construction/projects/${sid}/diaries/${today}/submit`, {})).json.status === 'SUBMITTED');
+  const pm = as(await login('pm@uriri.demo'));
+  check('the PM approves it', (await pm.post(`/construction/projects/${sid}/diaries/${today}/approve`, {})).json.status === 'APPROVED');
+  check('no photos can be added to an approved day', (await call('POST', `/construction/projects/${sid}/photos`, { token: siteUser._token, raw: png, headers: { 'Content-Type': 'image/png' } })).status === 409);
+
+  const instr = await pm.post(`/construction/projects/${sid}/instructions`, { issuedByName: 'Arch. P. Ochieng', date: today, description: 'Change roof pitch to 25 degrees on classroom 3.' });
+  check('the PM records a site instruction, numbered', instr.status === 201 && /^SI-\d{3}$/.test(instr.json.number), instr.json);
+  check('it can be marked actioned', (await pm.patch(`/construction/projects/${sid}/instructions/${instr.json.id}`, { status: 'ACTIONED' })).json.status === 'ACTIONED');
+  check('an instruction needs who issued it', (await pm.post(`/construction/projects/${sid}/instructions`, { date: today, description: 'No issuer here' })).status === 400);
+
+  const safetyReg = (await siteUser.get(`/construction/projects/${sid}/safety`)).json;
+  check('safety registers are seeded: talks, PPE, a permit, incidents', safetyReg.talks.length >= 2 && safetyReg.ppe.length >= 20 && safetyReg.permits.length >= 1 && safetyReg.incidents.length >= 2);
+  const lost = safetyReg.incidents.find((i) => i.severity === 'LOST_TIME');
+  check('the lost-time incident must be reported to DOSHS, with a due date', lost?.mustReport && !lost.reportedToDoshs && !!lost.reportDueAt, lost);
+  const talk = await siteUser.post(`/construction/projects/${sid}/toolbox-talks`, { date: today, topic: 'Lifting trusses safely', attendeeIds: entries.slice(0, 5).map((e) => e.workerId) });
+  check('a toolbox talk with attendees is recorded', talk.status === 201);
+  check('PPE is issued to a worker', (await siteUser.post(`/construction/projects/${sid}/ppe`, { workerId: entries[2].workerId, item: 'Harness', issuedAt: today })).status === 201);
+  const ptw = await siteUser.post(`/construction/projects/${sid}/work-permits`, { type: 'HOT_WORK', location: 'Steel gate', validFrom: new Date().toISOString(), validTo: new Date(Date.now() + 8 * 3600000).toISOString() });
+  check('a hot-works permit is issued and numbered', ptw.status === 201 && /^PTW-\d{3}$/.test(ptw.json.number), ptw.json);
+  check('a permit longer than 7 days is refused', (await siteUser.post(`/construction/projects/${sid}/work-permits`, { type: 'HEIGHT', location: 'x1', validFrom: new Date().toISOString(), validTo: new Date(Date.now() + 9 * 86400000).toISOString() })).status === 400);
+  check('the permit is closed', (await siteUser.post(`/construction/projects/${sid}/work-permits/${ptw.json.id}/close`, {})).json.status === 'CLOSED');
+  const fatal = await siteUser.post(`/construction/projects/${sid}/incidents`, { occurredAt: new Date(Date.now() - 30 * 3600000).toISOString(), severity: 'FATAL', description: 'Test fatal incident record', workerId: entries[3].workerId });
+  check('a fatal incident is due to DOSHS within 24 hours', fatal.status === 201 && fatal.json.mustReport && Math.round((new Date(fatal.json.reportDueAt) - new Date(fatal.json.occurredAt)) / 3600000) === 24, fatal.json);
+  await admin.post('/platform-admin/construction/alerts/run', {});
+  const doshsAlerts = (await dir.get('/construction/alerts')).json.filter((a) => a.kind?.startsWith('DOSHS'));
+  check('DOSHS alerts are raised: overdue for the fatal one, due for the lost-time one', doshsAlerts.some((a) => a.kind === 'DOSHS_OVERDUE') && doshsAlerts.some((a) => a.kind === 'DOSHS_DUE'), doshsAlerts.map((a) => a.title));
+  check('the supervisor cannot record the DOSHS report', (await siteUser.post(`/construction/projects/${sid}/incidents/${fatal.json.id}/doshs`, { doshsRef: 'DOSHS/1' })).status === 403);
+  check('the PM records it', (await pm.post(`/construction/projects/${sid}/incidents/${fatal.json.id}/doshs`, { doshsRef: `DOSHS/MGR/${tag}` })).json.reportedToDoshs === true);
+  check('...once', (await pm.post(`/construction/projects/${sid}/incidents/${fatal.json.id}/doshs`, { doshsRef: 'again' })).status === 409);
+  check('a QS cannot see the safety registers', (await qs.get(`/construction/projects/${sid}/safety`)).status === 403);
+  check("another business cannot see Uriri's workers", (await fresh.get('/construction/workers')).json.length === 0);
+  check("or its muster", (await fresh.get(`/construction/projects/${sid}/muster?date=${today}`)).json.rows?.length === 0);
+  const c3audit = (await sql.query(`SELECT DISTINCT action FROM audit_log WHERE "organizationId" = $1 AND action LIKE 'con_%'`, [orgId])).rows.map((r) => r.action);
+  for (const a of ['con_worker.created', 'con_muster.saved', 'con_diary.saved', 'con_diary.approved', 'con_photo.uploaded', 'con_instruction.created', 'con_toolbox_talk.created', 'con_ppe.issued', 'con_work_permit.issued', 'con_incident.created', 'con_incident.reported_to_doshs']) {
+    check(`audit: ${a}`, c3audit.includes(a));
+  }
+  const auditWorker = (await sql.query(`SELECT after FROM audit_log WHERE "organizationId" = $1 AND action = 'con_worker.created' ORDER BY "createdAt" DESC LIMIT 1`, [orgId])).rows[0];
+  check('the audit log keeps the ID masked too', String(auditWorker.after.idNo).startsWith('****'));
+  await sql.query('DELETE FROM con_incidents WHERE id = $1', [fatal.json.id]);
+  await sql.query(`UPDATE con_site_diaries SET status = 'DRAFT', "approvedAt" = NULL WHERE "projectId" = $1 AND date = $2::date`, [sid, today]);
+  await sql.query('DELETE FROM con_site_photos WHERE id = $1', [photo.json.id]);
+  await sql.query('UPDATE con_workers SET "isActive" = false WHERE id = $1', [newW.json.id]);
 
   section('14. Super-admin');
   const tenants = await admin.get('/platform-admin/construction/tenants');

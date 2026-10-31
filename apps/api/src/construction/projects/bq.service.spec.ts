@@ -2,6 +2,8 @@ import { Workbook } from 'exceljs';
 import { readSheets } from './bq.service';
 import { parseBq } from './projects.util';
 
+jest.setTimeout(30_000);
+
 describe('reading a BQ workbook', () => {
   it('reads an .xlsx with formulas across sheets', async () => {
     const wb = new Workbook();

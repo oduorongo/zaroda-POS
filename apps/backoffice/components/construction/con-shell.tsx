@@ -15,6 +15,8 @@ export const useConMe = () => useContext(MeContext);
 const LINKS = [
   { href: "/construction", label: "Home" },
   { href: "/construction/projects", label: "Projects" },
+  { href: "/construction/site", label: "Site" },
+  { href: "/construction/workers", label: "Workers" },
   { href: "/construction/tenders", label: "Tenders" },
   { href: "/construction/compliance", label: "Compliance" },
   { href: "/construction/plan", label: "Plan" },

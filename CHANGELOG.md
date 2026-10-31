@@ -1,5 +1,15 @@
 # Changelog
 
+## Construction C3: site diary, labour, safety (2026-10-30)
+
+- Site diary, one per project per day (weather, works done, delays, visitors, plant, labour from the muster): written on site, submitted, approved and locked by the Project Manager.
+- Geo-tagged site photos from the phone camera (shrunk before upload, private storage, GPS when the phone allows); site instructions register (SI-001...).
+- Worker register with NCA card no. and expiry (expired cards highlighted); a worker marked supervisor needs a valid card. ID numbers and phones are masked in every list and in the audit log; full only for Director, Accounts and Compliance. Active workers count toward the plan limit.
+- Phone muster roll: big Present / Half / Absent buttons, mark everyone present, works with no signal (marks queue on the phone and send by themselves; safe to resend).
+- Safety: toolbox talks with attendees, PPE issue register, permits-to-work (max 7 days), incident register; lost-time and fatal incidents get a DOSHS deadline (7 days / 24 hours) with due and overdue alerts. Worker NCA cards join the expiry alerts.
+- Who sees workers: company-wide labour roles see all; site staff only the workers on their projects.
+- Migration `20261213100000_construction_site_labour_safety` (+ `rls.sql`), seed: 15 workers and 7 days of diaries, muster and safety records on "Uriri Day Secondary Classrooms"; e2e now 231 checks.
+
 ## Construction C2: tenders, projects, permits, BQ, programme (2026-10-30)
 
 - Tender register (Preparing → Submitted → Won/Lost/Withdrawn) with the NCA category cap check: above the cap only a Director can go ahead, with a reason that is kept. Submitting warns about an expired KRA TCC, NCA licence, bid bond or closing date.

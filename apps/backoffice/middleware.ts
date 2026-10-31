@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 
 // Host-based product routing (docs/construction/06-domain-routing.md). Same app, two products:
 // CONSTRUCTION_DOMAIN serves Construction (its own landing, pricing, login and signup); every other host is the POS back office.
-// On localhost, ?product=construction / ?product=pos switches for testing and is remembered in the cookie.
+// On localhost (or a phone on the same Wi-Fi), ?product=construction / ?product=pos switches for testing and is remembered in the cookie.
 const COOKIE = "zaroda_product";
 const CONSTRUCTION_PUBLIC: Record<string, string> = {
   "/": "/construction/welcome",
@@ -18,7 +18,8 @@ const domainOf = (v: string | undefined) => (v ?? "").trim().toLowerCase().repla
 export function middleware(req: NextRequest) {
   const host = (req.headers.get("host") ?? "").split(":")[0].toLowerCase();
   const constructionDomain = domainOf(process.env.CONSTRUCTION_DOMAIN ?? process.env.NEXT_PUBLIC_CONSTRUCTION_DOMAIN);
-  const isLocal = host === "localhost" || host === "127.0.0.1";
+  // This computer, or it reached from a phone on the same Wi-Fi (192.168.x.x, 10.x.x.x, 172.16-31.x.x) while testing.
+  const isLocal = host === "localhost" || host === "127.0.0.1" || /^(192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+)$/.test(host);
   const { pathname, searchParams } = req.nextUrl;
 
   let product: "POS" | "CONSTRUCTION" = constructionDomain && host === constructionDomain ? "CONSTRUCTION" : "POS";
