@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { ClipboardCheck, BookOpen, HardHat, MessageSquareWarning } from "lucide-react";
+import { ClipboardCheck, BookOpen, HardHat, MessageSquareWarning, Warehouse } from "lucide-react";
 import { apiGet } from "../../../lib/api";
 import { CON_BRAND, errorText } from "../../../lib/construction";
 import { ConShell } from "../../../components/construction/con-shell";
@@ -47,6 +47,7 @@ export default function SitePage() {
     { href: "diary", label: "Diary & photos", note: "Today's works, weather, photos", icon: BookOpen },
     { href: "safety", label: "Safety", note: "Toolbox talk, PPE, permits, incidents", icon: HardHat },
     { href: "instructions", label: "Instructions", note: "From the architect / engineer", icon: MessageSquareWarning },
+    { href: "store", label: "Store", note: "Deliveries, issues, requests", icon: Warehouse },
   ];
 
   return (

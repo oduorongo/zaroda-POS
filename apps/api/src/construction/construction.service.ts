@@ -27,6 +27,7 @@ export class ConstructionService {
 
   me(con: ConContext) {
     return {
+      orgUserId: con.orgUserId,
       isOwner: con.isOwner,
       companyRoles: con.companyRoles,
       projectRoles: con.projectRoles,

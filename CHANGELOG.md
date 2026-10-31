@@ -1,5 +1,16 @@
 # Changelog
 
+## Construction C4: materials, procurement, plant (2026-10-31)
+
+- Each project gets its own site store (a branch on the shared inventory), created the first time materials go to it. No second inventory: LPOs are purchase orders to that branch, deliveries are goods received notes, and site stock is the normal stock ledger.
+- Requisition (site) → approval (Project Manager / Contracts Manager; never by whoever raised it) → LPO (procurement; a DRAFT purchase order until approved). LPO approval follows the role approval limits (Project Manager KES 500,000, Contracts Manager KES 5M, Director unlimited; off on plans without approval limits) and the creator can never approve. Printable LPO in the brand colours (print / save as PDF).
+- Deliveries by the storekeeper, part deliveries welcome; damaged items stay owed; over-delivery refused. Issues from the site store to a BQ item, or as wastage (new SITE_ISSUE stock movement; WASTE for wastage); never more than is on site.
+- Material reconciliation per project: BQ allowance vs ordered, delivered, used, wasted, on site, wastage % and anything unaccounted for.
+- Plant register (owned or hired, per day or per hour), daily logs of hours and fuel (one per machine per day), plant cost per project.
+- Phone "Store" screen on the Site menu (receive, issue, request); Materials and Plant tabs on each project; Plant register.
+- Core: `PurchaseOrdersService.createInTx` can create a DRAFT order; the new tables count as product history (a product used there is archived, not deleted).
+- Migration `20261214100000_construction_materials_plant` (+ `rls.sql`), seed: cement / steel / ballast flow on the demo project (REQ-001 → LPO-001 with two deliveries → issues; LPO-002 awaiting approval; excavator and mixer logs); e2e now 294 checks.
+
 ## Construction C3: site diary, labour, safety (2026-10-30)
 
 - Site diary, one per project per day (weather, works done, delays, visitors, plant, labour from the muster): written on site, submitted, approved and locked by the Project Manager.

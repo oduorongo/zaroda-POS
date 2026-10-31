@@ -8,6 +8,8 @@ import { ConShell } from "../../../../components/construction/con-shell";
 import { ErrorBox } from "../../../../components/construction/ui";
 import { STATUS_COLOUR, STATUS_LABEL } from "../shared";
 import { BqTab } from "./bq";
+import { MaterialsTab } from "./materials";
+import { PlantTab } from "./plant";
 import { OverviewTab } from "./overview";
 import { PermitsTab } from "./permits";
 import { ProgrammeTab } from "./programme";
@@ -20,6 +22,8 @@ const TABS = [
   { key: "permits", label: "Permits" },
   { key: "bq", label: "BQ" },
   { key: "programme", label: "Programme" },
+  { key: "materials", label: "Materials" },
+  { key: "plant", label: "Plant" },
 ] as const;
 type Tab = (typeof TABS)[number]["key"];
 
@@ -68,6 +72,8 @@ export default function ProjectPage() {
           {tab === "permits" && <PermitsTab project={project} reload={load} />}
           {tab === "bq" && <BqTab project={project} reload={load} />}
           {tab === "programme" && <ProgrammeTab project={project} reload={load} />}
+          {tab === "materials" && <MaterialsTab project={project} reload={load} />}
+          {tab === "plant" && <PlantTab project={project} reload={load} />}
         </>
       )}
     </ConShell>

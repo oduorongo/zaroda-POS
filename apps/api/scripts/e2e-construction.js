@@ -492,6 +492,111 @@ async function main() {
   await sql.query('DELETE FROM con_site_photos WHERE id = $1', [photo.json.id]);
   await sql.query('UPDATE con_workers SET "isActive" = false WHERE id = $1', [newW.json.id]);
 
+  section('13d. Requisitions, LPOs, deliveries, site stock, reconciliation, plant (C4)');
+  await sql.query(`UPDATE con_roles SET "approvalLimit" = 500000 WHERE "organizationId" = $1 AND code = 'CON_PROJECT_MGR'`, [orgId]);
+  const proc = as(await login('procurement@uriri.demo'));
+  const store = as(await login('store@uriri.demo'));
+  const recon0 = (await pm.get(`/construction/projects/${sid}/reconciliation`)).json;
+  const cement0 = recon0.find((r) => r.name.startsWith('Cement'));
+  check('seeded reconciliation for cement: allowance, ordered, delivered, used, wasted, on site', cement0 && cement0.budget >= 1300 && cement0.ordered >= 400 && cement0.delivered >= 350 && cement0.wasted >= 6 && cement0.wastagePercent > 0, cement0);
+  check('nothing is unaccounted for in the seed', recon0.every((r) => Math.abs(r.unaccounted) < 0.001), recon0.filter((r) => Math.abs(r.unaccounted) >= 0.001));
+  const lpos0 = (await pm.get(`/construction/projects/${sid}/lpos`)).json;
+  check('LPO-001 is part received and LPO-002 waits for approval', lpos0.some((l) => l.number === 'LPO-001' && l.status === 'PART_RECEIVED') && lpos0.some((l) => l.number === 'LPO-002' && l.status === 'AWAITING_APPROVAL'), lpos0.map((l) => [l.number, l.status]));
+  const plantCost0 = (await pm.get(`/construction/projects/${sid}/plant-cost`)).json;
+  const exc = plantCost0.rows?.find((r) => r.name.startsWith('Excavator'));
+  check('hired excavator costs 3 days x 25,000 plus fuel', exc?.hireCost === 75000 && exc.fuelCost === 64800 && exc.total === 139800, exc);
+  const stock0 = (await store.get(`/construction/projects/${sid}/stock`)).json;
+  const cementVar = stock0.items.find((s) => s.name.startsWith('Cement'));
+  const steelVar = stock0.items.find((s) => s.name.startsWith('Y12'));
+  check('the site store holds the delivered less the issued', cementVar?.qty === cement0.onHand && stock0.value > 0, { stock: cementVar, recon: cement0.onHand });
+
+  const myReq = await pm.post(`/construction/projects/${sid}/requisitions`, { lines: [{ variantId: cementVar.variantId, qty: 10 }] });
+  check('the PM raises a requisition', myReq.status === 201 && /^REQ-\d{3}$/.test(myReq.json.number), myReq.json);
+  check('...and cannot approve their own', (await pm.post(`/construction/projects/${sid}/requisitions/${myReq.json.id}/approve`, {})).status === 403);
+  const req2 = await store.post(`/construction/projects/${sid}/requisitions`, { neededBy: nairobi(3), lines: [{ variantId: cementVar.variantId, qty: 100 }, { variantId: steelVar.variantId, qty: 20 }] });
+  check('the storekeeper raises a requisition', req2.status === 201, req2.json);
+  check('the storekeeper cannot approve requisitions', (await store.post(`/construction/projects/${sid}/requisitions/${req2.json.id}/approve`, {})).status === 403);
+  check('the PM approves it', (await pm.post(`/construction/projects/${sid}/requisitions/${req2.json.id}/approve`, {})).json.status === 'APPROVED');
+  check('a requisition item must be on this project\'s BQ', (await store.post(`/construction/projects/${sid}/requisitions`, { lines: [{ variantId: cementVar.variantId, qty: 1, bqItemId: randomUUIDish() }] })).status === 400);
+  check('the PM rejects their own leftover requisition? no - someone else must', (await pm.post(`/construction/projects/${sid}/requisitions/${myReq.json.id}/reject`, { reason: 'Not needed now' })).status === 403);
+  check('the director rejects it with a reason', (await dir.post(`/construction/projects/${sid}/requisitions/${myReq.json.id}/reject`, { reason: 'Not needed now' })).json.status === 'REJECTED');
+
+  const supplierId = (await sql.query(`SELECT id FROM suppliers WHERE "organizationId" = $1 AND name LIKE 'Migori Hardware%'`, [orgId])).rows[0].id;
+  check('only procurement raises LPOs', (await pm.post(`/construction/projects/${sid}/lpos`, { supplierId, lines: [{ variantId: cementVar.variantId, qty: 1, rate: 1 }] })).status === 403);
+  check('a rejected requisition cannot be ordered', (await proc.post(`/construction/projects/${sid}/lpos`, { supplierId, requisitionId: myReq.json.id, lines: [{ variantId: cementVar.variantId, qty: 1, rate: 1 }] })).status === 409);
+  const lpo = await proc.post(`/construction/projects/${sid}/lpos`, { supplierId, requisitionId: req2.json.id, deliverBy: nairobi(3), lines: [{ variantId: cementVar.variantId, qty: 100, rate: 780 }, { variantId: steelVar.variantId, qty: 20, rate: 1150 }] });
+  check('procurement raises an LPO from the requisition: numbered, totalled, awaiting approval', lpo.status === 201 && /^LPO-\d{3}$/.test(lpo.json.number) && lpo.json.total === 101000 && lpo.json.status === 'AWAITING_APPROVAL', lpo.json);
+  check('the requisition is now ordered', (await pm.get(`/construction/projects/${sid}/requisitions`)).json.find((r) => r.id === req2.json.id)?.status === 'ORDERED');
+  const poStatus = async (lpoId) => (await sql.query('SELECT p.status FROM purchase_orders p JOIN con_lpos l ON l."purchaseOrderId" = p.id WHERE l.id = $1', [lpoId])).rows[0].status;
+  check('behind it is a DRAFT purchase order to the project site', (await poStatus(lpo.json.id)) === 'DRAFT');
+  check('an unapproved LPO cannot be received', (await store.post(`/construction/projects/${sid}/lpos/${lpo.json.id}/receive`, { lines: [{ lineItemId: lpo.json.lines[0].lineItemId, quantity: 1 }] })).status === 409);
+  check('procurement cannot approve', (await proc.post(`/construction/projects/${sid}/lpos/${lpo.json.id}/approve`, {})).status === 403);
+  const approvedLpo = await pm.post(`/construction/projects/${sid}/lpos/${lpo.json.id}/approve`, {});
+  check('the PM approves it within their limit; it is sent', approvedLpo.status === 200 && approvedLpo.json.status === 'SENT', approvedLpo.json);
+  check('the purchase order is now ORDERED', (await poStatus(lpo.json.id)) === 'ORDERED');
+  const printable = (await proc.get(`/construction/projects/${sid}/lpos/${lpo.json.id}`)).json;
+  check('the LPO prints with the company, supplier, site and lines', printable.company?.name === 'Uriri Builders Ltd' && printable.supplier?.name?.startsWith('Migori') && printable.project?.code === 'PRJ-001' && printable.lines.length === 2, printable);
+
+  const bigLpo = await proc.post(`/construction/projects/${sid}/lpos`, { supplierId, lines: [{ variantId: steelVar.variantId, qty: 600, rate: 1150 }] });
+  const overLimit = await pm.post(`/construction/projects/${sid}/lpos/${bigLpo.json.id}/approve`, {});
+  check('a 690,000 LPO is above the PM limit (500,000)', overLimit.status === 403 && /approval limit of KES 500,000/.test(overLimit.json.message), overLimit.json);
+  await sql.query(`UPDATE con_subscriptions SET "planCode" = 'CON_FUNDI' WHERE "organizationId" = $1`, [orgId]);
+  const onFundi = await pm.post(`/construction/projects/${sid}/lpos/${bigLpo.json.id}/approve`, {});
+  check('on Fundi (no approval limits) the PM may approve it', onFundi.status === 200 && onFundi.json.status === 'SENT', onFundi.json);
+  await sql.query(`UPDATE con_subscriptions SET "planCode" = 'CON_CONTRACTOR' WHERE "organizationId" = $1`, [orgId]);
+  check('it can be cancelled before anything arrives', (await proc.post(`/construction/projects/${sid}/lpos/${bigLpo.json.id}/cancel`, {})).json.status === 'CANCELLED');
+  const dirLpo = await dir.post(`/construction/projects/${sid}/lpos`, { supplierId, lines: [{ variantId: cementVar.variantId, qty: 1, rate: 780 }] });
+  check('even the Director cannot approve an LPO they raised', (await dir.post(`/construction/projects/${sid}/lpos/${dirLpo.json.id}/approve`, {})).status === 403);
+  await proc.post(`/construction/projects/${sid}/lpos/${dirLpo.json.id}/cancel`, {});
+
+  const cementLine = approvedLpo.json.lines.find((l) => l.name.startsWith('Cement'));
+  const steelLine = approvedLpo.json.lines.find((l) => l.name.startsWith('Y12'));
+  const grn1 = await store.post(`/construction/projects/${sid}/lpos/${lpo.json.id}/receive`, { deliveryNote: `DN-${tag}`, lines: [{ lineItemId: cementLine.lineItemId, quantity: 60, damaged: 2 }] });
+  check('the storekeeper receives a part delivery with a GRN number', grn1.status === 200 && /^GRN-\d{4}-\d{4}$/.test(grn1.json.receiptNumber) && grn1.json.lpo.status === 'PART_RECEIVED', grn1.json);
+  check('more than is outstanding is refused', (await store.post(`/construction/projects/${sid}/lpos/${lpo.json.id}/receive`, { lines: [{ lineItemId: cementLine.lineItemId, quantity: 50 }] })).status === 400);
+  check('the PM cannot record deliveries', (await pm.post(`/construction/projects/${sid}/lpos/${lpo.json.id}/receive`, { lines: [{ lineItemId: steelLine.lineItemId, quantity: 1 }] })).status === 403);
+  const grn2 = await store.post(`/construction/projects/${sid}/lpos/${lpo.json.id}/receive`, { lines: [{ lineItemId: cementLine.lineItemId, quantity: 40 }, { lineItemId: steelLine.lineItemId, quantity: 20 }] });
+  check('the rest arrives: received in full', grn2.json.lpo?.status === 'RECEIVED', grn2.json);
+  check('a received LPO cannot be cancelled', (await proc.post(`/construction/projects/${sid}/lpos/${lpo.json.id}/cancel`, {})).status === 409);
+  const stock1 = (await store.get(`/construction/projects/${sid}/stock`)).json;
+  check('site stock went up by what was accepted (100 bags; the 2 damaged stay owed and came later)', stock1.items.find((s) => s.variantId === cementVar.variantId).qty === cementVar.qty + 100);
+  const txns = Number((await sql.query(`SELECT count(*) FROM inventory_transactions t JOIN con_projects p ON p."branchId" = t."branchId" WHERE p.id = $1 AND t.type = 'RECEIPT'`, [sid])).rows[0].count);
+  check('deliveries are in the normal stock ledger of the site branch', txns >= 6, txns);
+
+  const concreteItem = seededBq.sections.flatMap((s) => s.items).find((i) => i.description.startsWith('Concrete class 25'));
+  const iss = await store.post(`/construction/projects/${sid}/issues`, { variantId: cementVar.variantId, qty: 40, kind: 'USED', bqItemId: concreteItem.id, issuedTo: 'Foreman' });
+  check('the storekeeper issues cement to a BQ item', iss.status === 201, iss.json);
+  check('wastage is recorded', (await store.post(`/construction/projects/${sid}/issues`, { variantId: cementVar.variantId, qty: 2, kind: 'WASTED', note: 'Hardened' })).status === 201);
+  check('more than is on site cannot be issued', (await store.post(`/construction/projects/${sid}/issues`, { variantId: cementVar.variantId, qty: 100000 })).status === 400);
+  check('whole bags only (count material)', (await store.post(`/construction/projects/${sid}/issues`, { variantId: cementVar.variantId, qty: 1.5 })).status === 400);
+  check('a QS cannot issue material', (await qs.post(`/construction/projects/${sid}/issues`, { variantId: cementVar.variantId, qty: 1 })).status === 403);
+  const recon1 = (await qs.get(`/construction/projects/${sid}/reconciliation`)).json.find((r) => r.variantId === cementVar.variantId);
+  check('reconciliation moves: +100 ordered, +100 delivered, +40 used, +2 wasted', recon1.ordered === cement0.ordered + 100 && recon1.delivered === cement0.delivered + 100 && recon1.used === cement0.used + 40 && recon1.wasted === cement0.wasted + 2 && Math.abs(recon1.unaccounted) < 0.001, { recon1, cement0 });
+  check('the QS sets a BQ allowance', (await qs.put(`/construction/projects/${sid}/material-budgets`, { variantId: cementVar.variantId, qty: 1350 })).status === 200 && (await qs.get(`/construction/projects/${sid}/reconciliation`)).json.find((r) => r.variantId === cementVar.variantId).budget === 1350);
+  check('the storekeeper cannot change allowances', (await store.put(`/construction/projects/${sid}/material-budgets`, { variantId: cementVar.variantId, qty: 1 })).status === 403);
+
+  const hired = await proc.post('/construction/plant', { name: `Roller ${tag}`, ownership: 'HIRED', hireRate: 3500, rateUnit: 'HOUR', projectId: sid });
+  check('procurement registers hired plant', hired.status === 201, hired.json);
+  check('hired plant needs a rate', (await proc.post('/construction/plant', { name: 'No rate', ownership: 'HIRED' })).status === 400);
+  const pl = await siteUser.post(`/construction/projects/${sid}/plant-logs`, { plantId: hired.json.id, date: nairobi(), hours: 6, fuelLitres: 30, fuelCost: 5400, operator: 'Op' });
+  check('the site supervisor logs a day of plant use', pl.status === 201, pl.json);
+  await siteUser.post(`/construction/projects/${sid}/plant-logs`, { plantId: hired.json.id, date: nairobi(), hours: 7, fuelLitres: 30, fuelCost: 5400 });
+  const roller = (await pm.get(`/construction/projects/${sid}/plant-cost`)).json.rows.find((r) => r.plantId === hired.json.id);
+  check('logging the same day again corrects it; hourly hire is 7 h x 3,500 + fuel', roller?.hours === 7 && roller.hireCost === 24500 && roller.total === 29900, roller);
+  check('plant cannot be logged for tomorrow', (await siteUser.post(`/construction/projects/${sid}/plant-logs`, { plantId: hired.json.id, date: nairobi(1), hours: 1 })).status === 400);
+  check('the site supervisor cannot add plant to the register', (await siteUser.post('/construction/plant', { name: 'x2', ownership: 'OWNED' })).status === 403);
+  await sql.query(`UPDATE con_subscriptions SET "planCode" = 'CON_FUNDI' WHERE "organizationId" = $1`, [orgId]);
+  const fundiPlant = await pm.get('/construction/plant');
+  check('Fundi has no plant management (upgrade prompt)', fundiPlant.status === 402 && fundiPlant.json.feature === 'plant', fundiPlant.json);
+  await sql.query(`UPDATE con_subscriptions SET "planCode" = 'CON_CONTRACTOR' WHERE "organizationId" = $1`, [orgId]);
+
+  check("another business cannot see Uriri's LPOs or stock", (await fresh.get(`/construction/projects/${sid}/lpos`)).json.length === 0 && (await fresh.get(`/construction/projects/${sid}/stock`)).status === 404);
+  const c4audit = (await sql.query(`SELECT DISTINCT action FROM audit_log WHERE "organizationId" = $1 AND action LIKE 'con_%'`, [orgId])).rows.map((r) => r.action);
+  for (const a of ['con_requisition.created', 'con_requisition.approved', 'con_requisition.rejected', 'con_lpo.created', 'con_lpo.approved', 'con_lpo.cancelled', 'con_lpo.received', 'con_material.issued', 'con_material.wasted', 'con_material_budget.set', 'con_plant.created', 'con_plant_log.created', 'con_plant_log.corrected']) {
+    check(`audit: ${a}`, c4audit.includes(a));
+  }
+  await sql.query('UPDATE con_plant SET "isActive" = false WHERE id = $1', [hired.json.id]);
+
   section('14. Super-admin');
   const tenants = await admin.get('/platform-admin/construction/tenants');
   const uriri = tenants.json.tenants?.find((t) => t.id === orgId);

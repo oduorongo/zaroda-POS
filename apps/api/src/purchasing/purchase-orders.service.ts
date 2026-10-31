@@ -4,7 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InventoryTxnType, PurchaseOrderStatus } from '@prisma/client';
-import { TenantScopedPrismaService } from '../common/prisma/tenant-scoped-prisma.service';
+import { TenantScopedPrismaService, TenantTx } from '../common/prisma/tenant-scoped-prisma.service';
 import { AuditLogService } from '../common/audit/audit-log.service';
 import { getTenantStore } from '../common/tenant/tenant-context';
 import { assertQuantityMatchesMode } from '../common/inventory/quantity-mode.util';
@@ -29,68 +29,72 @@ export class PurchaseOrdersService {
     private readonly receipts: GoodsReceiptsService,
   ) {}
 
-  async create(dto: CreatePurchaseOrderDto) {
-    return this.tenantPrisma.run(async (tx) => {
-      const [branch, supplier] = await Promise.all([
-        tx.branch.findUnique({ where: { id: dto.branchId } }),
-        tx.supplier.findUnique({ where: { id: dto.supplierId } }),
-      ]);
-      if (!branch) throw new NotFoundException('Branch not found');
-      if (!supplier) throw new NotFoundException('Supplier not found');
+  create(dto: CreatePurchaseOrderDto) {
+    return this.tenantPrisma.run((tx) => this.createInTx(tx, dto));
+  }
 
-      const variantIds = dto.lineItems.map((l) => l.variantId);
-      const variants = await tx.productVariant.findMany({
-        where: { id: { in: variantIds } },
-      });
-      if (variants.length !== new Set(variantIds).size) {
-        throw new NotFoundException(
-          'One or more product variants were not found',
-        );
-      }
-      const variantById = new Map(variants.map((v) => [v.id, v]));
-      for (const l of dto.lineItems) {
-        const variant = variantById.get(l.variantId)!;
-        assertQuantityMatchesMode(
-          variant.quantityMode,
-          l.quantityOrdered,
-          `Quantity ordered for ${variant.sku}`,
-        );
-      }
+  /** A DRAFT order (a construction LPO awaiting approval) is not placed with the supplier until it is set to ORDERED. */
+  async createInTx(tx: TenantTx, dto: CreatePurchaseOrderDto, status: PurchaseOrderStatus = PurchaseOrderStatus.ORDERED) {
+    const [branch, supplier] = await Promise.all([
+      tx.branch.findUnique({ where: { id: dto.branchId } }),
+      tx.supplier.findUnique({ where: { id: dto.supplierId } }),
+    ]);
+    if (!branch) throw new NotFoundException('Branch not found');
+    if (!supplier) throw new NotFoundException('Supplier not found');
 
-      const { organizationId, orgUserId } = getTenantStore();
-      const order = await tx.purchaseOrder.create({
-        data: {
-          organizationId,
-          branchId: dto.branchId,
-          supplierId: dto.supplierId,
-          reference: dto.reference,
-          notes: dto.notes,
-          createdById: orgUserId,
-          status: PurchaseOrderStatus.ORDERED,
-          lineItems: {
-            create: dto.lineItems.map((l) => ({
-              variantId: l.variantId,
-              quantityOrdered: l.quantityOrdered,
-              unitCost: l.unitCost,
-            })),
-          },
-        },
-        include: PURCHASE_ORDER_INCLUDE,
-      });
-
-      await this.auditLog.logInTx(tx, {
-        action: 'purchase_order.created',
-        entityType: 'PurchaseOrder',
-        entityId: order.id,
-        after: {
-          branchId: dto.branchId,
-          supplierId: dto.supplierId,
-          lineItems: dto.lineItems,
-        },
-      });
-
-      return order;
+    const variantIds = dto.lineItems.map((l) => l.variantId);
+    const variants = await tx.productVariant.findMany({
+      where: { id: { in: variantIds } },
     });
+    if (variants.length !== new Set(variantIds).size) {
+      throw new NotFoundException(
+        'One or more product variants were not found',
+      );
+    }
+    const variantById = new Map(variants.map((v) => [v.id, v]));
+    for (const l of dto.lineItems) {
+      const variant = variantById.get(l.variantId)!;
+      assertQuantityMatchesMode(
+        variant.quantityMode,
+        l.quantityOrdered,
+        `Quantity ordered for ${variant.sku}`,
+      );
+    }
+
+    const { organizationId, orgUserId } = getTenantStore();
+    const order = await tx.purchaseOrder.create({
+      data: {
+        organizationId,
+        branchId: dto.branchId,
+        supplierId: dto.supplierId,
+        reference: dto.reference,
+        notes: dto.notes,
+        createdById: orgUserId,
+        status,
+        lineItems: {
+          create: dto.lineItems.map((l) => ({
+            variantId: l.variantId,
+            quantityOrdered: l.quantityOrdered,
+            unitCost: l.unitCost,
+          })),
+        },
+      },
+      include: PURCHASE_ORDER_INCLUDE,
+    });
+
+    await this.auditLog.logInTx(tx, {
+      action: 'purchase_order.created',
+      entityType: 'PurchaseOrder',
+      entityId: order.id,
+      after: {
+        branchId: dto.branchId,
+        supplierId: dto.supplierId,
+        lineItems: dto.lineItems,
+        status,
+      },
+    });
+
+    return order;
   }
 
   findAll(filters: { branchId?: string; supplierId?: string; status?: PurchaseOrderStatus }) {

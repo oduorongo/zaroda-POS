@@ -14,6 +14,7 @@ export const kes = (n: number | null | undefined) => (n === null || n === undefi
 
 export type ConStatus = "TRIAL" | "ACTIVE" | "GRACE" | "SUSPENDED" | "CANCELLED";
 export interface ConMe {
+  orgUserId: string;
   isOwner: boolean;
   companyRoles: string[];
   projectRoles: { projectId: string; role: string }[];

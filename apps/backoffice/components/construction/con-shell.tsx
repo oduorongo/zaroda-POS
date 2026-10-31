@@ -17,6 +17,7 @@ const LINKS = [
   { href: "/construction/projects", label: "Projects" },
   { href: "/construction/site", label: "Site" },
   { href: "/construction/workers", label: "Workers" },
+  { href: "/construction/plant", label: "Plant" },
   { href: "/construction/tenders", label: "Tenders" },
   { href: "/construction/compliance", label: "Compliance" },
   { href: "/construction/plan", label: "Plan" },

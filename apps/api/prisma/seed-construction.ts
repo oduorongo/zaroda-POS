@@ -12,13 +12,14 @@ const inDays = (n: number) => new Date(Date.UTC(new Date().getUTCFullYear(), new
  * Demo construction tenant "Uriri Builders Ltd" (NCA5 Building, NCA6 Roads) on the Contractor plan, with staff in construction
  * roles and a compliance vault showing green, amber and red documents. Dev/demo only. Run after the construction migration:
  *   npx ts-node prisma/seed-construction.ts
- * Sign in with director@uriri.demo / password123 (also compliance@, qs@, accounts@, pm@, site@).
+ * Sign in with director@uriri.demo / password123 (also compliance@, qs@, accounts@, pm@, site@, procurement@, store@).
  */
 async function main() {
   const existing = await prisma.organization.findFirst({ where: { name: "Uriri Builders Ltd", industryType: "CONSTRUCTION" } });
   const orgId = existing?.id ?? (await seedCompany());
   await seedProject(orgId);
   await seedSite(orgId);
+  await seedMaterials(orgId);
 }
 
 const hashed = bcrypt.hash("password123", 10);
@@ -308,6 +309,118 @@ async function seedSite(orgId: string) {
       console.log("Seeded 15 workers, 7 days of diaries and muster, toolbox talks, PPE, a permit-to-work and 2 incidents.");
     },
     { timeout: 60_000, maxWait: 30_000 },
+  );
+}
+
+const MATERIALS: [string, string, "COUNT" | "WEIGHT", number, number][] = [
+  ["Cement OPC 42.5 (50kg)", "bag", "COUNT", 780, 1300],
+  ["Y12 high-yield steel bar (12m)", "length", "COUNT", 1150, 380],
+  ["Y8 steel bar (12m)", "length", "COUNT", 520, 220],
+  ["Ballast 3/4\"", "tonne", "WEIGHT", 2600, 120],
+  ["River sand", "tonne", "WEIGHT", 2200, 150],
+  ["Machine-cut stone 9x9", "piece", "COUNT", 75, 6000],
+];
+
+/** C4: materials on the shared catalogue, the project's site store, a requisition → LPO → two deliveries → issues flow, a second LPO awaiting approval, and plant. */
+async function seedMaterials(orgId: string) {
+  const hash = await hashed;
+  await prisma.$transaction(
+    async (tx) => {
+      await tx.$executeRaw`SELECT set_config('app.current_tenant', ${orgId}, true)`;
+      const project = await tx.conProject.findFirst({ where: { name: "Uriri Day Secondary Classrooms" } });
+      if (!project) return;
+      if (await tx.conLpo.count({ where: { projectId: project.id } })) {
+        console.log("Materials already seeded - nothing to do.");
+        return;
+      }
+      const pid = project.id;
+      const person = async (email: string, fullName: string, role: Role) => {
+        const user = (await tx.user.findUnique({ where: { email } })) ?? (await tx.user.create({ data: { email, fullName, passwordHash: hash } }));
+        return (await tx.orgUser.findFirst({ where: { userId: user.id } })) ?? tx.orgUser.create({ data: { organizationId: orgId, userId: user.id, role } });
+      };
+      const proc = await person("procurement@uriri.demo", "Grace Moraa", Role.MANAGER);
+      await tx.conUserRole.createMany({ data: [{ organizationId: orgId, orgUserId: proc.id, role: "CON_PROCUREMENT" }], skipDuplicates: true });
+      const store = await person("store@uriri.demo", "Henry Ndege", Role.SUPERVISOR);
+      await tx.conProjectMember.createMany({ data: [{ organizationId: orgId, projectId: pid, orgUserId: store.id, role: "CON_STOREKEEPER" }], skipDuplicates: true });
+      const pm = await tx.orgUser.findFirst({ where: { user: { email: "pm@uriri.demo" } } });
+      const site = await tx.orgUser.findFirst({ where: { user: { email: "site@uriri.demo" } } });
+      const director = await tx.orgUser.findFirst({ where: { user: { email: "director@uriri.demo" } } });
+
+      const branch = await tx.branch.create({ data: { organizationId: orgId, name: `${project.code} site - ${project.name}`, county: project.county } });
+      await tx.conProject.update({ where: { id: pid }, data: { branchId: branch.id } });
+
+      const variants: Record<string, { id: string }> = {};
+      for (const [name, unit, mode, cost, budget] of MATERIALS) {
+        const product = (await tx.product.findFirst({ where: { name } })) ?? (await tx.product.create({ data: { organizationId: orgId, name, baseUnit: unit } }));
+        const variant = (await tx.productVariant.findFirst({ where: { productId: product.id } })) ?? (await tx.productVariant.create({ data: { productId: product.id, sku: `MAT-${name.replace(/[^A-Z0-9]/gi, "").slice(0, 10).toUpperCase()}`, price: 0, cost, quantityMode: mode } }));
+        variants[name] = variant;
+        await tx.conMaterialBudget.create({ data: { organizationId: orgId, projectId: pid, variantId: variant.id, qty: budget } });
+      }
+      const v = (i: number) => variants[MATERIALS[i][0]].id;
+      const supplier = await tx.supplier.create({ data: { organizationId: orgId, name: "Migori Hardware & Building Supplies", phone: "0722000111", paymentTermsDays: 30 } });
+      const plantHire = await tx.supplier.create({ data: { organizationId: orgId, name: "Lake Basin Plant Hire", phone: "0733000222", paymentTermsDays: 14 } });
+
+      const bq = await tx.conBqItem.findMany({ where: { projectId: pid }, orderBy: { sortOrder: "asc" } });
+      const concrete = bq.find((b) => b.description.startsWith("Concrete class 25")) ?? bq[0];
+      const slab = bq.find((b) => b.description.startsWith("150mm ground floor slab")) ?? bq[0];
+
+      const req = await tx.conRequisition.create({
+        data: {
+          organizationId: orgId, projectId: pid, number: "REQ-001", status: "ORDERED", neededBy: inDays(-8), createdBy: site!.id, approvedBy: pm!.id, approvedAt: inDays(-11),
+          notes: "For ring beams and gable walls",
+          lines: { create: [[0, 400], [1, 150], [3, 40]].map(([i, qty]) => ({ organizationId: orgId, variantId: v(i), qty, bqItemId: concrete.id })) },
+        },
+      });
+      const lines1: [number, number][] = [[0, 400], [1, 150], [3, 40]];
+      const po1 = await tx.purchaseOrder.create({
+        data: { organizationId: orgId, branchId: branch.id, supplierId: supplier.id, status: "PARTIALLY_RECEIVED", createdById: proc.id, notes: "Deliver to Uriri Day Secondary site",
+          lineItems: { create: lines1.map(([i, qty]) => ({ variantId: v(i), quantityOrdered: qty, unitCost: MATERIALS[i][3] })) } },
+        include: { lineItems: true },
+      });
+      const total1 = lines1.reduce((a, [i, q]) => a + q * MATERIALS[i][3], 0);
+      await tx.conLpo.create({ data: { organizationId: orgId, projectId: pid, purchaseOrderId: po1.id, requisitionId: req.id, number: "LPO-001", status: "APPROVED", total: total1, deliverBy: inDays(-6), createdBy: proc.id, approvedBy: director!.id, approvedAt: inDays(-10) } });
+
+      const year = new Date().getUTCFullYear();
+      let seq = (await tx.goodsReceipt.count({ where: { receiptNumber: { startsWith: `GRN-${year}-` } } })) + 1;
+      const deliveries: [number, [number, number][]][] = [[-7, [[0, 200], [1, 150], [3, 20]]], [-3, [[0, 150]]]];
+      const received = new Map<number, number>();
+      for (const [when, items] of deliveries) {
+        const receipt = await tx.goodsReceipt.create({ data: { organizationId: orgId, branchId: branch.id, receiptNumber: `GRN-${year}-${String(seq++).padStart(4, "0")}`, purchaseOrderId: po1.id, supplierId: supplier.id, deliveryNote: `DN-${4400 + seq}`, receivedById: store.id, createdAt: inDays(when) } });
+        for (const [i, qty] of items) {
+          const li = po1.lineItems.find((l) => l.variantId === v(i))!;
+          await tx.goodsReceiptLine.create({ data: { receiptId: receipt.id, variantId: v(i), purchaseOrderLineId: li.id, quantityAccepted: qty, unitCost: MATERIALS[i][3] } });
+          await tx.purchaseOrderLineItem.update({ where: { id: li.id }, data: { quantityReceived: { increment: qty } } });
+          await tx.inventoryTransaction.create({ data: { branchId: branch.id, variantId: v(i), type: "RECEIPT", quantityDelta: qty, referenceId: po1.id, unitCost: MATERIALS[i][3], createdAt: inDays(when) } });
+          received.set(i, (received.get(i) ?? 0) + qty);
+        }
+      }
+      const issues: [number, number, "USED" | "WASTED", string | null, number][] = [
+        [0, 120, "USED", slab.id, -6], [0, 90, "USED", concrete.id, -4], [0, 70, "USED", concrete.id, -1], [0, 6, "WASTED", null, -4],
+        [1, 120, "USED", concrete.id, -5], [3, 18, "USED", concrete.id, -4], [3, 0.5, "WASTED", null, -2],
+      ];
+      const used = new Map<number, number>();
+      for (const [i, qty, kind, bqItemId, when] of issues) {
+        const issue = await tx.conMaterialIssue.create({ data: { organizationId: orgId, projectId: pid, variantId: v(i), qty, kind, bqItemId, issuedTo: kind === "USED" ? "Joseph Okoth (foreman)" : null, note: kind === "WASTED" ? "Set in bags after rain" : null, issuedAt: inDays(when), issuedBy: store.id } });
+        await tx.inventoryTransaction.create({ data: { branchId: branch.id, variantId: v(i), type: kind === "WASTED" ? "WASTE" : "SITE_ISSUE", quantityDelta: -qty, referenceId: issue.id, createdAt: inDays(when) } });
+        used.set(i, (used.get(i) ?? 0) + qty);
+      }
+      for (const [i, qty] of received) await tx.inventoryItem.create({ data: { branchId: branch.id, variantId: v(i), quantity: qty - (used.get(i) ?? 0) } });
+
+      const lines2: [number, number][] = [[4, 30], [5, 2000]];
+      const po2 = await tx.purchaseOrder.create({ data: { organizationId: orgId, branchId: branch.id, supplierId: supplier.id, status: "DRAFT", createdById: proc.id, lineItems: { create: lines2.map(([i, qty]) => ({ variantId: v(i), quantityOrdered: qty, unitCost: MATERIALS[i][3] })) } } });
+      await tx.conLpo.create({ data: { organizationId: orgId, projectId: pid, purchaseOrderId: po2.id, number: "LPO-002", status: "AWAITING_APPROVAL", total: lines2.reduce((a, [i, q]) => a + q * MATERIALS[i][3], 0), deliverBy: inDays(5), createdBy: proc.id } });
+
+      const mixer = await tx.conPlant.create({ data: { organizationId: orgId, name: "Concrete mixer 0.5 m³", regNo: "MIX-01", ownership: "OWNED", rateUnit: "DAY", projectId: pid } });
+      const excavator = await tx.conPlant.create({ data: { organizationId: orgId, name: "Excavator CAT 320", regNo: "KCX 214Y", ownership: "HIRED", hireRate: 25000, rateUnit: "DAY", supplierId: plantHire.id, projectId: pid } });
+      await tx.conPlantLog.createMany({
+        data: [
+          ...[-12, -11, -10].map((d) => ({ organizationId: orgId, plantId: excavator.id, projectId: pid, date: inDays(d), hours: 8, fuelLitres: 120, fuelCost: 21600, operator: "Plant hire operator" })),
+          ...[-6, -5, -4, -3, -1].map((d) => ({ organizationId: orgId, plantId: mixer.id, projectId: pid, date: inDays(d), hours: 6, fuelLitres: 10, fuelCost: 1800, operator: "Kevin Achola" })),
+        ],
+      });
+      console.log(`Seeded materials: 6 items with BQ allowances, REQ-001, LPO-001 (2 deliveries), LPO-002 awaiting approval, 7 issues, 2 plant with logs.`);
+    },
+    { timeout: 120_000, maxWait: 30_000 },
   );
 }
 

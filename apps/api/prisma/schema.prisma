@@ -201,6 +201,13 @@ model Organization {
   conPpeIssues              ConPpeIssue[]
   conPermitsToWork          ConPermitToWork[]
   conIncidents              ConIncident[]
+  conRequisitions           ConRequisition[]
+  conRequisitionLines       ConRequisitionLine[]
+  conLpos                   ConLpo[]
+  conMaterialIssues         ConMaterialIssue[]
+  conMaterialBudgets        ConMaterialBudget[]
+  conPlant                  ConPlant[]
+  conPlantLogs              ConPlantLog[]
 
   @@map("organizations")
 }
@@ -243,6 +250,7 @@ model Branch {
   rosterShifts          RosterShift[]
   onlineStores          OnlineStore[]
   onlineOrders          OnlineOrder[]
+  conProject            ConProject?
 
   @@index([organizationId])
   @@map("branches")
@@ -614,6 +622,9 @@ model ProductVariant {
   @@index([barcode])
   schoolOrderLines   SchoolOrderLine[]
   supplierInvoiceLines SupplierInvoiceLine[]
+  conRequisitionLines  ConRequisitionLine[]
+  conMaterialIssues    ConMaterialIssue[]
+  conMaterialBudgets   ConMaterialBudget[]
 
   @@map("product_variants")
 }
@@ -739,6 +750,8 @@ enum InventoryTxnType {
   // Goods delivered to a school on credit (a school supplier's delivery note and invoice) - kept apart from SALE so the till and
   // the credit business can be told apart.
   CREDIT_SALE
+  // Construction: material taken from a project site store for the works (con_material_issues).
+  SITE_ISSUE
 }
 
 model InventoryTransaction {
@@ -2408,6 +2421,7 @@ model Supplier {
   purchaseOrders PurchaseOrder[]
   goodsReceipts  GoodsReceipt[]
   bills          SupplierBill[]
+  conPlant       ConPlant[]
 
   @@index([organizationId])
   @@map("suppliers")
@@ -2440,6 +2454,7 @@ model PurchaseOrder {
   lineItems    PurchaseOrderLineItem[]
   receipts     GoodsReceipt[]
   bills        SupplierBill[]
+  conLpo       ConLpo?
 
   @@index([organizationId])
   @@index([branchId])
@@ -5874,6 +5889,7 @@ model ConTender {
 model ConProject {
   id                String            @id @default(uuid())
   organizationId    String
+  branchId          String?           @unique
   code              String
   name              String
   clientId          String?
@@ -5916,6 +5932,13 @@ model ConProject {
   ppeIssues    ConPpeIssue[]
   workPermits  ConPermitToWork[]
   incidents    ConIncident[]
+  requisitions ConRequisition[]
+  lpos         ConLpo[]
+  issues       ConMaterialIssue[]
+  budgets      ConMaterialBudget[]
+  plant        ConPlant[]
+  plantLogs    ConPlantLog[]
+  siteBranch   Branch?            @relation(fields: [branchId], references: [id], onDelete: SetNull)
 
   @@unique([organizationId, code])
   @@index([organizationId, status])
@@ -6017,6 +6040,8 @@ model ConBqItem {
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   project      ConProject   @relation(fields: [projectId], references: [id], onDelete: Cascade)
   section      ConBqSection @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  requisitionLines ConRequisitionLine[]
+  issues           ConMaterialIssue[]
 
   @@index([organizationId])
   @@index([sectionId])
@@ -6281,4 +6306,205 @@ model ConIncident {
   @@index([organizationId])
   @@index([projectId, occurredAt])
   @@map("con_incidents")
+}
+
+// ── Construction C4: requisitions, LPOs, site stock issues, plant ─────────────
+// Each project's site is a Branch (con_projects.branchId): LPOs are purchase orders to it, deliveries are goods receipts,
+// and site stock is the normal inventory ledger for that branch.
+
+enum ConRequisitionStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  REJECTED
+  ORDERED
+  CANCELLED
+}
+
+enum ConLpoStatus {
+  AWAITING_APPROVAL
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+enum ConIssueKind {
+  USED
+  WASTED
+}
+
+enum ConPlantOwnership {
+  OWNED
+  HIRED
+}
+
+enum ConRateUnit {
+  HOUR
+  DAY
+}
+
+/// Materials the site asks for. The creator cannot approve their own requisition.
+model ConRequisition {
+  id             String               @id @default(uuid())
+  organizationId String
+  projectId      String
+  number         String
+  status         ConRequisitionStatus @default(DRAFT)
+  neededBy       DateTime?            @db.Date
+  notes          String?
+  createdBy      String
+  approvedBy     String?
+  approvedAt     DateTime?
+  rejectedReason String?
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+
+  organization Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project      ConProject           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  lines        ConRequisitionLine[]
+  lpos         ConLpo[]
+
+  @@unique([organizationId, number])
+  @@index([projectId, status])
+  @@map("con_requisitions")
+}
+
+model ConRequisitionLine {
+  id             String   @id @default(uuid())
+  organizationId String
+  requisitionId  String
+  variantId      String
+  qty            Decimal  @db.Decimal(14, 3)
+  bqItemId       String?
+  note           String?
+
+  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  requisition  ConRequisition @relation(fields: [requisitionId], references: [id], onDelete: Cascade)
+  variant      ProductVariant @relation(fields: [variantId], references: [id], onDelete: Restrict)
+  bqItem       ConBqItem?     @relation(fields: [bqItemId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([requisitionId])
+  @@map("con_requisition_lines")
+}
+
+/// The construction side of a purchase order: number, project, approval within limits (creator cannot approve).
+model ConLpo {
+  id              String       @id @default(uuid())
+  organizationId  String
+  projectId       String
+  purchaseOrderId String       @unique
+  requisitionId   String?
+  number          String
+  status          ConLpoStatus @default(AWAITING_APPROVAL)
+  total           Decimal      @db.Decimal(16, 2)
+  deliverBy       DateTime?    @db.Date
+  createdBy       String
+  approvedBy      String?
+  approvedAt      DateTime?
+  rejectedReason  String?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  organization  Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project       ConProject      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  purchaseOrder PurchaseOrder   @relation(fields: [purchaseOrderId], references: [id], onDelete: Restrict)
+  requisition   ConRequisition? @relation(fields: [requisitionId], references: [id], onDelete: SetNull)
+
+  @@unique([organizationId, number])
+  @@index([projectId])
+  @@map("con_lpos")
+}
+
+/// Material taken out of the site store: used on a BQ item, or wasted.
+model ConMaterialIssue {
+  id             String       @id @default(uuid())
+  organizationId String
+  projectId      String
+  variantId      String
+  qty            Decimal      @db.Decimal(14, 3)
+  kind           ConIssueKind @default(USED)
+  bqItemId       String?
+  issuedTo       String?
+  note           String?
+  issuedAt       DateTime     @db.Date
+  issuedBy       String?
+  createdAt      DateTime     @default(now())
+
+  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project      ConProject     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  variant      ProductVariant @relation(fields: [variantId], references: [id], onDelete: Restrict)
+  bqItem       ConBqItem?     @relation(fields: [bqItemId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([projectId, variantId])
+  @@map("con_material_issues")
+}
+
+/// How much of a material the BQ allows on a project (the QS's take-off), for the reconciliation.
+model ConMaterialBudget {
+  id             String   @id @default(uuid())
+  organizationId String
+  projectId      String
+  variantId      String
+  qty            Decimal  @db.Decimal(14, 3)
+  updatedAt      DateTime @updatedAt
+
+  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project      ConProject     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  variant      ProductVariant @relation(fields: [variantId], references: [id], onDelete: Restrict)
+
+  @@unique([projectId, variantId])
+  @@index([organizationId])
+  @@map("con_material_budgets")
+}
+
+/// Plant and equipment, owned or hired.
+model ConPlant {
+  id             String            @id @default(uuid())
+  organizationId String
+  name           String
+  regNo          String?
+  ownership      ConPlantOwnership
+  hireRate       Decimal?          @db.Decimal(12, 2)
+  rateUnit       ConRateUnit       @default(DAY)
+  supplierId     String?
+  projectId      String?
+  isActive       Boolean           @default(true)
+  createdBy      String?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  supplier     Supplier?     @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  project      ConProject?   @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  logs         ConPlantLog[]
+
+  @@index([organizationId])
+  @@map("con_plant")
+}
+
+/// A day's use of a piece of plant on a project: hours, fuel and who operated it.
+model ConPlantLog {
+  id             String   @id @default(uuid())
+  organizationId String
+  plantId        String
+  projectId      String
+  date           DateTime @db.Date
+  hours          Decimal  @db.Decimal(5, 1)
+  fuelLitres     Decimal? @db.Decimal(8, 2)
+  fuelCost       Decimal? @db.Decimal(12, 2)
+  operator       String?
+  notes          String?
+  createdBy      String?
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  plant        ConPlant     @relation(fields: [plantId], references: [id], onDelete: Cascade)
+  project      ConProject   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([plantId, date])
+  @@index([organizationId])
+  @@index([projectId, date])
+  @@map("con_plant_logs")
 }

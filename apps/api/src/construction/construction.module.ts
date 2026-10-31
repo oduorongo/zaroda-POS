@@ -19,12 +19,17 @@ import { TendersService } from './projects/tenders.service';
 import { LabourService } from './site/labour.service';
 import { SafetyService } from './site/safety.service';
 import { SiteController } from './site/site.controller';
+import { MaterialsController } from './materials/materials.controller';
+import { MaterialsService } from './materials/materials.service';
+import { PlantService } from './materials/plant.service';
+import { PurchasingModule } from '../purchasing/purchasing.module';
+import { InventoryModule } from '../inventory/inventory.module';
 import { SiteService } from './site/site.service';
 
 /** Construction contractors (industryType "CONSTRUCTION", served at CONSTRUCTION_DOMAIN). See docs/construction. */
 @Module({
-  imports: [ModuleRegistryModule, OnlineStoreModule, OrgUsersModule],
-  controllers: [ConstructionController, TendersController, ProjectsController, SiteController, ConBillingCallbackController, ConPublicController],
+  imports: [ModuleRegistryModule, OnlineStoreModule, OrgUsersModule, PurchasingModule, InventoryModule],
+  controllers: [ConstructionController, TendersController, ProjectsController, SiteController, MaterialsController, ConBillingCallbackController, ConPublicController],
   providers: [
     ConSetupService,
     ConstructionGuard,
@@ -40,6 +45,8 @@ import { SiteService } from './site/site.service';
     SiteService,
     LabourService,
     SafetyService,
+    MaterialsService,
+    PlantService,
     PrivateObjectStorageService,
   ],
   // Platform admin edits plans and coupons, extends trials and records payments.
@@ -84,6 +91,13 @@ export class ConstructionModule implements OnModuleInit {
         { tableName: 'con_ppe_issues', description: 'PPE issued to workers' },
         { tableName: 'con_permits_to_work', description: 'Permits to work (height, hot works, excavation...)' },
         { tableName: 'con_incidents', description: 'Incident register with DOSHS reporting' },
+        { tableName: 'con_requisitions', description: 'Site material requisitions' },
+        { tableName: 'con_requisition_lines', description: 'Materials asked for on a requisition' },
+        { tableName: 'con_lpos', description: 'LPOs: approval and numbering on top of purchase orders to the project site' },
+        { tableName: 'con_material_issues', description: 'Material issued from the site store to the works, or wasted' },
+        { tableName: 'con_material_budgets', description: 'BQ allowance per material per project' },
+        { tableName: 'con_plant', description: 'Plant and equipment register (owned or hired)' },
+        { tableName: 'con_plant_logs', description: 'Daily plant hours and fuel per project' },
       ],
     });
   }
