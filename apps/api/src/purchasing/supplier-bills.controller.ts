@@ -5,6 +5,7 @@ import {
   HttpCode,
   Param,
   ParseUUIDPipe,
+  Patch,
   Post,
   Query,
 } from '@nestjs/common';
@@ -14,6 +15,7 @@ import {
   CreateSupplierBillDto,
   CreditBillDto,
   PayBillDto,
+  BillVatDto,
   VoidBillDto,
 } from './dto/supplier-bill.dto';
 import { SupplierBillsService } from './supplier-bills.service';
@@ -73,6 +75,12 @@ export class SupplierBillsController {
   @Post(':id/credits')
   credit(@Param('id', ParseUUIDPipe) id: string, @Body() dto: CreditBillDto) {
     return this.bills.credit(id, dto);
+  }
+
+  @Roles(...WRITERS)
+  @Patch(':id/vat')
+  setVat(@Param('id', ParseUUIDPipe) id: string, @Body() dto: BillVatDto) {
+    return this.bills.setVat(id, dto);
   }
 
   @Roles(...WRITERS)

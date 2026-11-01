@@ -19,8 +19,10 @@ import {
   VARIANT_FOR_LINES,
 } from './etims-documents.service';
 import {
+  amountWarning,
   compactDate,
   Invoice,
+  invoiceVat,
   invoiceNumberFrom,
   parseInvoices,
   PurchaseLine,
@@ -159,6 +161,10 @@ export class EtimsPurchasesService {
       const [rows, total] = await Promise.all([
         tx.etimsPurchaseInvoice.findMany({
           where,
+          include: {
+            bill: { select: { id: true, billNumber: true, supplier: { select: { name: true } } } },
+            expense: { select: { id: true, description: true, spentOn: true, amount: true } },
+          },
           orderBy: { createdAt: 'desc' },
           skip: (page - 1) * PAGE_SIZE,
           take: PAGE_SIZE,
@@ -237,6 +243,12 @@ export class EtimsPurchasesService {
               : ('INVOICE' as const),
           date: row.salesDt,
           total: Number(row.totAmt),
+          vat: invoiceVat(inv),
+          linkedTo: row.bill
+            ? { kind: 'BILL' as const, id: row.bill.id, label: `Bill ${row.bill.billNumber} (${row.bill.supplier.name})` }
+            : row.expense
+              ? { kind: 'EXPENSE' as const, id: row.expense.id, label: `Expense ${row.expense.spentOn.toISOString().slice(0, 10)}${row.expense.description ? ` - ${row.expense.description}` : ''} (KES ${Number(row.expense.amount).toLocaleString()})` }
+              : null,
           goodsReceiptId: row.goodsReceiptId,
           lines: inv.lines.map((l, n) => {
             const v = suggested[n] ? vById.get(suggested[n]!) : undefined;
@@ -385,6 +397,10 @@ export class EtimsPurchasesService {
           update: { variantId: v.id },
         });
       }
+      if (dto.goodsReceiptId) {
+        const bill = await tx.supplierBill.findFirst({ where: { goodsReceiptId: dto.goodsReceiptId, etimsInvoiceId: null, status: { not: 'VOID' } } });
+        if (bill && !(await tx.expense.findUnique({ where: { etimsInvoiceId: id } }))) await this.linkBill(tx, row, bill.id);
+      }
       await tx.etimsPurchaseInvoice.update({
         where: { id },
         data: {
@@ -406,6 +422,109 @@ export class EtimsPurchasesService {
       });
       return { documentId: doc.id };
     });
+  }
+
+  /** Bills and expenses this KRA invoice could be: same supplier PIN, or the same amount near its date, not yet linked. */
+  async matches(id: string) {
+    return this.tenantPrisma.run(async (tx) => {
+      const row = await tx.etimsPurchaseInvoice.findUnique({ where: { id } });
+      if (!row) throw new NotFoundException('Invoice not found');
+      const total = Number(row.totAmt);
+      const day = compactDate(row.salesDt)?.slice(0, 8);
+      const at = day ? new Date(`${day.slice(0, 4)}-${day.slice(4, 6)}-${day.slice(6, 8)}T00:00:00Z`) : row.createdAt;
+      const near = { gte: new Date(at.getTime() - 60 * 86_400_000), lte: new Date(at.getTime() + 60 * 86_400_000) };
+      const [bills, expenses] = await Promise.all([
+        tx.supplierBill.findMany({
+          where: { etimsInvoiceId: null, status: { not: 'VOID' }, billDate: near, OR: [{ supplier: { kraPin: row.spplrTin } }, { total: { gte: total - 1, lte: total + 1 }, supplier: { kraPin: null } }] },
+          include: { supplier: { select: { name: true } } },
+          orderBy: { billDate: 'desc' },
+          take: 30,
+        }),
+        tx.expense.findMany({
+          where: { etimsInvoiceId: null, spentOn: near, OR: [{ supplierPin: row.spplrTin }, { amount: { gte: total - 1, lte: total + 1 } }] },
+          orderBy: { spentOn: 'desc' },
+          take: 30,
+        }),
+      ]);
+      const close = (n: number) => Math.abs(n - total) <= 1;
+      return [
+        ...bills.map((b) => ({ kind: 'BILL' as const, id: b.id, label: `Bill ${b.billNumber} from ${b.supplier.name}, ${b.billDate.toISOString().slice(0, 10)}`, total: Number(b.total), sameAmount: close(Number(b.total)) })),
+        ...expenses.map((e) => ({ kind: 'EXPENSE' as const, id: e.id, label: `Expense ${e.spentOn.toISOString().slice(0, 10)}${e.description ? ` - ${e.description}` : ''}`, total: Number(e.amount), sameAmount: close(Number(e.amount)) })),
+      ].sort((a, b) => Number(b.sameAmount) - Number(a.sameAmount));
+    });
+  }
+
+  /**
+   * Links a KRA invoice to the bill or expense it is for: the VAT becomes KRA's figure and the supplier's PIN and invoice number KRA's,
+   * so the VAT is claimable and checked. A supplier with no PIN yet is given this one.
+   */
+  async link(id: string, dto: { billId?: string; expenseId?: string }) {
+    if (!dto.billId === !dto.expenseId) throw new BadRequestException('Choose one bill or one expense.');
+    return this.tenantPrisma.run(async (tx) => {
+      const row = await tx.etimsPurchaseInvoice.findUnique({ where: { id }, include: { bill: { select: { id: true } }, expense: { select: { id: true } } } });
+      if (!row) throw new NotFoundException('Invoice not found');
+      if (row.rcptTyCd === 'R') throw new BadRequestException("A supplier's credit note cannot be linked; record it as a credit on the bill.");
+      if (row.status === 'DISMISSED') throw new BadRequestException('That invoice was put aside.');
+      if (row.bill || row.expense) throw new BadRequestException('That invoice is already linked. Unlink it first.');
+      const r = dto.billId ? await this.linkBill(tx, row, dto.billId) : await this.linkExpense(tx, row, dto.expenseId!);
+      return { ...r, vat: invoiceVat(row.body as unknown as Invoice) };
+    });
+  }
+
+  /** Undoes a link: the bill or expense keeps the VAT and invoice number, now as entered by hand. */
+  async unlink(id: string) {
+    return this.tenantPrisma.run(async (tx) => {
+      const bill = await tx.supplierBill.findUnique({ where: { etimsInvoiceId: id } });
+      const expense = await tx.expense.findUnique({ where: { etimsInvoiceId: id } });
+      if (!bill && !expense) throw new BadRequestException('That invoice is not linked.');
+      if (bill) await tx.supplierBill.update({ where: { id: bill.id }, data: { etimsInvoiceId: null } });
+      if (expense) await tx.expense.update({ where: { id: expense.id }, data: { etimsInvoiceId: null } });
+      await this.auditLog.logInTx(tx, {
+        action: 'etims.purchase_unlinked',
+        entityType: 'EtimsPurchaseInvoice',
+        entityId: id,
+        before: { billId: bill?.id ?? null, expenseId: expense?.id ?? null },
+      });
+      return { ok: true };
+    });
+  }
+
+  private async linkBill(tx: TenantTx, row: { id: string; spplrTin: string; spplrInvcNo: number; totAmt: Prisma.Decimal; body: Prisma.JsonValue }, billId: string) {
+    const bill = await tx.supplierBill.findUnique({ where: { id: billId }, include: { supplier: true } });
+    if (!bill) throw new NotFoundException('Bill not found');
+    if (bill.status === 'VOID') throw new BadRequestException('That bill is cancelled.');
+    if (bill.etimsInvoiceId) throw new BadRequestException("That bill is already linked to one of KRA's invoices.");
+    if (bill.supplier.kraPin && bill.supplier.kraPin !== row.spplrTin)
+      throw new BadRequestException(`${bill.supplier.name}'s KRA PIN is ${bill.supplier.kraPin}, but this invoice is from ${row.spplrTin}.`);
+    const vat = invoiceVat(row.body as unknown as Invoice);
+    if (vat > Number(bill.total)) throw new BadRequestException("KRA's VAT on this invoice is more than the bill.");
+    if (!bill.supplier.kraPin) await tx.supplier.update({ where: { id: bill.supplierId }, data: { kraPin: row.spplrTin } });
+    await tx.supplierBill.update({ where: { id: billId }, data: { etimsInvoiceId: row.id, taxAmount: vat, kraInvoiceNo: String(row.spplrInvcNo) } });
+    await this.auditLog.logInTx(tx, {
+      action: 'etims.purchase_linked',
+      entityType: 'EtimsPurchaseInvoice',
+      entityId: row.id,
+      before: { billId, taxAmount: Number(bill.taxAmount), kraInvoiceNo: bill.kraInvoiceNo },
+      after: { billId, taxAmount: vat, kraInvoiceNo: String(row.spplrInvcNo) },
+    });
+    return { warning: amountWarning(Number(bill.total), Number(row.totAmt)) };
+  }
+
+  private async linkExpense(tx: TenantTx, row: { id: string; spplrTin: string; spplrNm: string | null; spplrInvcNo: number; totAmt: Prisma.Decimal; body: Prisma.JsonValue }, expenseId: string) {
+    const e = await tx.expense.findUnique({ where: { id: expenseId } });
+    if (!e) throw new NotFoundException('Expense not found');
+    if (e.etimsInvoiceId) throw new BadRequestException("That expense is already linked to one of KRA's invoices.");
+    const vat = invoiceVat(row.body as unknown as Invoice);
+    if (vat > Number(e.amount)) throw new BadRequestException("KRA's VAT on this invoice is more than the expense.");
+    await tx.expense.update({ where: { id: expenseId }, data: { etimsInvoiceId: row.id, taxAmount: vat, supplierPin: row.spplrTin, supplierName: row.spplrNm ?? e.supplierName, kraInvoiceNo: String(row.spplrInvcNo) } });
+    await this.auditLog.logInTx(tx, {
+      action: 'etims.purchase_linked',
+      entityType: 'EtimsPurchaseInvoice',
+      entityId: row.id,
+      before: { expenseId, taxAmount: Number(e.taxAmount), supplierPin: e.supplierPin, kraInvoiceNo: e.kraInvoiceNo },
+      after: { expenseId, taxAmount: vat, supplierPin: row.spplrTin, kraInvoiceNo: String(row.spplrInvcNo) },
+    });
+    return { warning: amountWarning(Number(e.amount), Number(row.totAmt)) };
   }
 
   /** Puts an invoice aside without telling KRA anything (a supplier credit note, or an invoice that is not ours). */

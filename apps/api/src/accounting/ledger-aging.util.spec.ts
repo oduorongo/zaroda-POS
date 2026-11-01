@@ -1,3 +1,4 @@
+import { claimableCents, cleanPin, vatClaim } from './vat-claim.util';
 import { addDays, ageOwed, bucketOf } from './ledger-aging.util';
 import { billCreditDraft, billDraft, expenseDraft, isBalanced, payOffDraft } from './ledger-posting.util';
 import { AccountInfo, cashActivity, cashFlow, isMoneyAccount } from './ledger-reports.util';
@@ -79,5 +80,19 @@ describe('paying VAT', () => {
     const d = payOffDraft({ date: '2026-10-20', account: 'VAT_OUTPUT', amountCents: 30_000, paidFrom: 'BANK', offsetCents: 16_000 });
     expect(side(d)).toEqual({ VAT_OUTPUT: 46_000, VAT_INPUT: -16_000, BANK: -30_000 });
     expect(side(payOffDraft({ date: '2026-10-20', account: 'PAYE', amountCents: 5_000, paidFrom: 'BANK' }))).toEqual({ PAYE: 5_000, BANK: -5_000 });
+  });
+});
+
+describe('claimable VAT', () => {
+  it('needs the supplier PIN and the eTIMS invoice number, or a link to the invoice KRA holds', () => {
+    expect(vatClaim({ taxCents: 0, pin: null, invoiceNo: null, linked: false })).toBe('NONE');
+    expect(vatClaim({ taxCents: 160, pin: null, invoiceNo: '123', linked: false })).toBe('MISSING');
+    expect(vatClaim({ taxCents: 160, pin: 'P051234567X', invoiceNo: ' ', linked: false })).toBe('MISSING');
+    expect(vatClaim({ taxCents: 160, pin: 'X051234567X', invoiceNo: '123', linked: false })).toBe('MISSING');
+    expect(vatClaim({ taxCents: 160, pin: 'P051234567X', invoiceNo: '123', linked: false })).toBe('DECLARED');
+    expect(vatClaim({ taxCents: 160, pin: null, invoiceNo: null, linked: true })).toBe('KRA');
+    expect(claimableCents({ taxCents: 160, pin: null, invoiceNo: null, linked: false })).toBe(0);
+    expect(claimableCents({ taxCents: 160, pin: 'A123456789B', invoiceNo: '9', linked: false })).toBe(160);
+    expect(cleanPin(' p051234567x ')).toBe('P051234567X');
   });
 });

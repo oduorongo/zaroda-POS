@@ -1,4 +1,5 @@
-import { IsDateString, IsIn, IsNumber, IsOptional, IsString, IsUUID, Max, MaxLength, Min } from 'class-validator';
+import { Transform } from 'class-transformer';
+import { IsDateString, IsIn, IsNumber, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min } from 'class-validator';
 import { EXPENSE_CATEGORY_KEYS, PAID_WITH } from '../expense-categories';
 
 export class CreateExpenseDto {
@@ -20,6 +21,23 @@ export class CreateExpenseDto {
   @Max(100_000_000)
   @IsOptional()
   taxAmount?: number;
+
+  /** The supplier's KRA PIN (from their receipt). With the eTIMS invoice number it makes the VAT claimable. Empty clears it. */
+  @Transform(({ value }: { value: unknown }) => (typeof value === 'string' ? value.replace(/\s+/g, '').toUpperCase() || null : value))
+  @IsOptional()
+  @Matches(/^[AP]\d{9}[A-Z]$/, { message: 'A KRA PIN is a letter, nine digits and a letter, like P051234567X' })
+  supplierPin?: string | null;
+
+  @IsString()
+  @IsOptional()
+  @MaxLength(120)
+  supplierName?: string;
+
+  /** The eTIMS invoice number on the supplier's receipt (needed, with their KRA PIN, to claim the VAT). */
+  @IsString()
+  @IsOptional()
+  @MaxLength(40)
+  kraInvoiceNo?: string;
 
   @IsString()
   @IsOptional()
@@ -57,6 +75,23 @@ export class UpdateExpenseDto {
   @Max(100_000_000)
   @IsOptional()
   taxAmount?: number;
+
+  /** The supplier's KRA PIN (from their receipt). With the eTIMS invoice number it makes the VAT claimable. Empty clears it. */
+  @Transform(({ value }: { value: unknown }) => (typeof value === 'string' ? value.replace(/\s+/g, '').toUpperCase() || null : value))
+  @IsOptional()
+  @Matches(/^[AP]\d{9}[A-Z]$/, { message: 'A KRA PIN is a letter, nine digits and a letter, like P051234567X' })
+  supplierPin?: string | null;
+
+  @IsString()
+  @IsOptional()
+  @MaxLength(120)
+  supplierName?: string;
+
+  /** The eTIMS invoice number on the supplier's receipt (needed, with their KRA PIN, to claim the VAT). */
+  @IsString()
+  @IsOptional()
+  @MaxLength(40)
+  kraInvoiceNo?: string;
 
   @IsString()
   @IsOptional()

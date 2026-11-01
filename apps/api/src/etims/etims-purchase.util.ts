@@ -107,6 +107,16 @@ export interface InvoiceLine {
   taxAmt: number;
   totAmt: number;
 }
+/** The VAT on a supplier's invoice, as KRA lists it (the lines' tax), in shillings. */
+export const invoiceVat = (inv: Pick<Invoice, 'lines'>) =>
+  Math.round(inv.lines.reduce((t, l) => t + l.taxAmt, 0) * 100) / 100;
+
+/** A note when a linked bill or expense is not for the invoice's amount (part of a delivery, a typing slip), or null. */
+export const amountWarning = (ours: number, kra: number) =>
+  Math.abs(ours - kra) > 1
+    ? `KRA's invoice is for KES ${kra.toLocaleString()} but this is KES ${ours.toLocaleString()}. The VAT is KRA's figure; check the amounts.`
+    : null;
+
 export interface Invoice {
   spplrTin: string;
   spplrNm: string | null;

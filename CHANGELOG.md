@@ -1,5 +1,13 @@
 # Changelog
 
+## VAT on purchases follows eTIMS (2026-11-01)
+
+- KRA only allows VAT on purchases to be claimed from the supplier's eTIMS invoice. VAT on a bill or expense now counts as claimable only with the supplier's KRA PIN and the eTIMS invoice number, or when the bill or expense is linked to the invoice KRA holds (then KRA's VAT figure is used and it is marked "checked with KRA"). Without them the VAT is a cost, in the books and on the VAT return.
+- Expenses take the supplier's KRA PIN, name and eTIMS invoice number; bills take the eTIMS invoice number (the PIN comes from the supplier) and gain "VAT details" to add them later.
+- Purchases and KRA: each supplier invoice downloaded from eTIMS shows its VAT and can be linked to its bill or expense (suggested by PIN or same amount); accepting an invoice for a delivery links that delivery's bill. Links and unlinks are audited.
+- VAT return: the purchases list for iTax (supplier PIN, name, date, invoice number, value, VAT; CSV), VAT not claimable and why, KRA invoices to you not yet entered, and a warning when sales have not yet been confirmed by eTIMS.
+- Merged the eTIMS purchases and stock movements work (`feat/etims-purchases-stock`) into this branch. Migration `20261221100000_vat_claims`. e2e-ledger 167 checks, e2e-etims 219.
+
 ## Accounts: cash flow, aged debtors and creditors, VAT return (2026-11-01)
 
 - Statements gain four tabs: Cash flow (money in and out by trading / investing / financing, reconciled to cash at the start and end), Aged debtors (school invoices, construction IPCs due 30 days after certification, retention, rent) and Aged creditors (supplier bills, approved subcontractor valuations, retention we hold), each compared with the books, and the VAT return for a month (output VAT by VAT class, refunds, input VAT, withholding VAT certificates, what to pay KRA or carry forward). All download as CSV.

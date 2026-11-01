@@ -23,7 +23,11 @@ import {
   UpdateEtimsItemDto,
 } from './dto/etims-items.dto';
 import { DocumentListQueryDto } from './dto/etims-documents.dto';
-import { AcceptPurchaseDto, PurchaseListQueryDto } from './dto/etims-purchases.dto';
+import {
+  AcceptPurchaseDto,
+  LinkPurchaseDto,
+  PurchaseListQueryDto,
+} from './dto/etims-purchases.dto';
 import { EtimsCodesService } from './etims-codes.service';
 import { EtimsDocumentsService } from './etims-documents.service';
 import { EtimsItemsService } from './etims-items.service';
@@ -321,6 +325,31 @@ export class EtimsController {
     @Body() dto: AcceptPurchaseDto,
   ) {
     return this.purchases.accept(id, dto);
+  }
+
+  /** Bills and expenses this KRA invoice could be for. */
+  @Roles(...READERS)
+  @Get('purchases/:id/matches')
+  purchaseMatches(@Param('id', ParseUUIDPipe) id: string) {
+    return this.purchases.matches(id);
+  }
+
+  /** Links a KRA invoice to its bill or expense: the VAT becomes KRA's figure, claimable and checked. */
+  @Roles(...WRITERS)
+  @Post('purchases/:id/link')
+  @HttpCode(200)
+  linkPurchase(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: LinkPurchaseDto,
+  ) {
+    return this.purchases.link(id, dto);
+  }
+
+  @Roles(...WRITERS)
+  @Post('purchases/:id/unlink')
+  @HttpCode(200)
+  unlinkPurchase(@Param('id', ParseUUIDPipe) id: string) {
+    return this.purchases.unlink(id);
   }
 
   @Roles(...WRITERS)

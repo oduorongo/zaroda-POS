@@ -315,6 +315,7 @@ export class GoodsReceiptsService {
             ),
             total,
             taxAmount: dto.bill.taxAmount ?? 0,
+            kraInvoiceNo: dto.bill.kraInvoiceNo?.trim() || null,
             purchaseOrderId: order?.id,
             goodsReceiptId: receipt.id,
             createdById: orgUserId,

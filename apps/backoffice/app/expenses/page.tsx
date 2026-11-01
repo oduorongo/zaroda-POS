@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { apiDelete, apiGet, apiPatch, apiPost, ApiError } from "../../lib/api";
+import { VatClaimNote, type VatClaim } from "../../components/vat-claim";
 import { getSession, clearSession, isBackofficeRole, type Session } from "../../lib/auth";
 import { Nav } from "../../components/nav";
 import { PageHeader } from "../../components/page-header";
@@ -24,6 +25,11 @@ interface Expense {
   description: string | null;
   amount: number;
   taxAmount: number;
+  supplierPin: string | null;
+  supplierName: string | null;
+  kraInvoiceNo: string | null;
+  linkedToKra: boolean;
+  vatClaim: VatClaim;
   paidWith: string | null;
   branchId: string | null;
   branchName: string | null;
@@ -71,6 +77,10 @@ export default function ExpensesPage() {
   const [category, setCategory] = useState("");
   const [amount, setAmount] = useState("");
   const [taxAmount, setTaxAmount] = useState("");
+  const [supplierPin, setSupplierPin] = useState("");
+  const [supplierName, setSupplierName] = useState("");
+  const [kraInvoiceNo, setKraInvoiceNo] = useState("");
+  const [linked, setLinked] = useState(false);
   const [description, setDescription] = useState("");
   const [paidWith, setPaidWith] = useState("");
   const [branchId, setBranchId] = useState("");
@@ -118,6 +128,10 @@ export default function ExpensesPage() {
     setCategory("");
     setAmount("");
     setTaxAmount("");
+    setSupplierPin("");
+    setSupplierName("");
+    setKraInvoiceNo("");
+    setLinked(false);
     setDescription("");
     setPaidWith("");
     setBranchId("");
@@ -134,6 +148,9 @@ export default function ExpensesPage() {
         category,
         amount: Number(amount),
         taxAmount: taxAmount ? Number(taxAmount) : editingId ? 0 : undefined,
+        supplierPin: supplierPin.trim() || (editingId ? null : undefined),
+        supplierName: supplierName.trim() || (editingId ? "" : undefined),
+        kraInvoiceNo: kraInvoiceNo.trim() || (editingId ? "" : undefined),
         description: description.trim() || undefined,
         paidWith: paidWith || undefined,
         branchId: branchId || undefined,
@@ -156,6 +173,10 @@ export default function ExpensesPage() {
     setCategory(x.category);
     setAmount(String(x.amount));
     setTaxAmount(x.taxAmount ? String(x.taxAmount) : "");
+    setSupplierPin(x.supplierPin ?? "");
+    setSupplierName(x.supplierName ?? "");
+    setKraInvoiceNo(x.kraInvoiceNo ?? "");
+    setLinked(x.linkedToKra);
     setDescription(x.description ?? "");
     setPaidWith(x.paidWith ?? "");
     setBranchId(x.branchId ?? "");
@@ -213,12 +234,33 @@ export default function ExpensesPage() {
               </label>
               <label className="text-sm">
                 Amount (KES)
-                <input required type="number" inputMode="decimal" min={1} step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} className={field} />
+                <input required type="number" inputMode="decimal" min={1} step="0.01" disabled={linked} value={amount} onChange={(e) => setAmount(e.target.value)} className={field} />
               </label>
               <label className="text-sm">
                 VAT included (KES) <span className="text-secondary-500">(optional, from a VAT receipt)</span>
-                <input type="number" inputMode="decimal" min={0} step="0.01" value={taxAmount} onChange={(e) => setTaxAmount(e.target.value)} className={field} />
+                <input type="number" inputMode="decimal" min={0} step="0.01" disabled={linked} value={taxAmount} onChange={(e) => setTaxAmount(e.target.value)} className={field} />
               </label>
+              {Number(taxAmount) > 0 && (
+                <div className="grid gap-3 sm:col-span-2 sm:grid-cols-3">
+                  <p className="text-xs text-secondary-500 sm:col-span-3">
+                    {linked
+                      ? "Linked to the supplier's invoice KRA holds (eTIMS): the VAT is KRA's figure."
+                      : "KRA only allows VAT to be claimed from the supplier's eTIMS invoice. Copy these from it, or the VAT counts as a cost."}
+                  </p>
+                  <label className="text-sm">
+                    Supplier&apos;s KRA PIN
+                    <input disabled={linked} value={supplierPin} onChange={(e) => setSupplierPin(e.target.value.toUpperCase())} placeholder="P051234567X" className={field} />
+                  </label>
+                  <label className="text-sm">
+                    Supplier&apos;s name
+                    <input value={supplierName} onChange={(e) => setSupplierName(e.target.value)} className={field} />
+                  </label>
+                  <label className="text-sm">
+                    eTIMS invoice number
+                    <input disabled={linked} value={kraInvoiceNo} onChange={(e) => setKraInvoiceNo(e.target.value)} className={field} />
+                  </label>
+                </div>
+              )}
               <label className="text-sm">
                 Date it was spent
                 <input required type="date" max={today()} value={spentOn} onChange={(e) => setSpentOn(e.target.value)} className={field} />
@@ -309,6 +351,7 @@ export default function ExpensesPage() {
                 </div>
                 <div className="flex items-center gap-3">
                   <span className="font-mono font-semibold">{kes(x.amount)}</span>
+                  {x.taxAmount > 0 && <span className="block"><VatClaimNote claim={x.vatClaim} vat={x.taxAmount} kes={kes} /></span>}
                   {canEdit && (
                     <>
                       <button onClick={() => startEdit(x)} className="text-xs text-primary-600 hover:underline">

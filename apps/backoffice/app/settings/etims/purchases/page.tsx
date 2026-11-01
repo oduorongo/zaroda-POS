@@ -34,7 +34,16 @@ interface Invoice {
   kind: "INVOICE" | "CREDIT_NOTE";
   date: string | null;
   total: number;
+  vat: number;
+  linkedTo: { kind: "BILL" | "EXPENSE"; id: string; label: string } | null;
   lines: InvoiceLine[];
+}
+interface Match {
+  kind: "BILL" | "EXPENSE";
+  id: string;
+  label: string;
+  total: number;
+  sameAmount: boolean;
 }
 interface Listing {
   counts: Record<Status, number>;
@@ -93,6 +102,47 @@ function ProductPicker({ onPick }: { onPick: (item: Item) => void }) {
           ))}
         </ul>
       )}
+    </div>
+  );
+}
+
+/** Links a KRA invoice to the bill or expense it is for, so its VAT is claimed with KRA's own figure. */
+function VatLink({ inv, canWrite, busy, act }: { inv: Invoice; canWrite: boolean; busy: boolean; act: (label: string, fn: () => Promise<string>) => Promise<void> }) {
+  const [options, setOptions] = useState<Match[] | null>(null);
+  const [pick, setPick] = useState("");
+  if (inv.kind !== "INVOICE" || inv.status === "DISMISSED") return null;
+  if (inv.linkedTo)
+    return (
+      <p className="text-sm">
+        <span className="text-green-500">VAT KES {money(inv.vat)} claimed through {inv.linkedTo.label}.</span>
+        {canWrite && (
+          <button className="ml-2 text-xs text-primary-400 hover:underline" disabled={busy} onClick={() => void act(`u-${inv.id}`, async () => { await apiPost(`/etims/purchases/${inv.id}/unlink`, {}); return "Unlinked. The bill or expense keeps the VAT, now as entered by hand."; })}>
+            Unlink
+          </button>
+        )}
+      </p>
+    );
+  return (
+    <div className="space-y-1 text-sm">
+      <p className="text-amber-500">VAT KES {money(inv.vat)} is not claimed yet: link this invoice to its bill or expense.</p>
+      {canWrite && options === null && (
+        <button className={ghost} onClick={() => void apiGet<Match[]>(`/etims/purchases/${inv.id}/matches`).then(setOptions).catch(() => setOptions([]))}>Link to a bill or expense</button>
+      )}
+      {options !== null && (options.length === 0 ? (
+        <p className="text-xs text-secondary-500">No unlinked bill or expense from this supplier or for this amount near its date. Record it under Supplier bills or Expenses first.</p>
+      ) : (
+        <div className="flex flex-wrap items-center gap-2">
+          <select className="rounded-md border border-border bg-surface p-2 text-sm" value={pick} onChange={(e) => setPick(e.target.value)}>
+            <option value="">Choose...</option>
+            {options.map((o) => <option key={o.id} value={`${o.kind}:${o.id}`}>{o.label} · KES {money(o.total)}{o.sameAmount ? " (same amount)" : ""}</option>)}
+          </select>
+          <button className={primary} disabled={busy || !pick} onClick={() => void act(`l-${inv.id}`, async () => {
+            const [kind, id] = pick.split(":");
+            const r = await apiPost<{ warning: string | null }>(`/etims/purchases/${inv.id}/link`, kind === "BILL" ? { billId: id } : { expenseId: id });
+            return `Linked: its VAT is now KRA's figure and claimable.${r.warning ? ` ${r.warning}` : ""}`;
+          })}>Link</button>
+        </div>
+      ))}
     </div>
   );
 }
@@ -234,6 +284,7 @@ export default function EtimsPurchasesPage() {
                     </tbody>
                   </table>
                 </div>
+                <VatLink inv={inv} canWrite={canWrite} busy={busy !== null} act={act} />
                 {inv.status === "WAITING" && canWrite && (
                   <div className="flex flex-wrap items-center gap-2">
                     {inv.kind === "INVOICE" && (

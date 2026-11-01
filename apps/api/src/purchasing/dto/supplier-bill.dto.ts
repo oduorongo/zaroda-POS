@@ -40,6 +40,12 @@ export class CreateSupplierBillDto {
   @IsOptional()
   taxAmount?: number;
 
+  /** The eTIMS invoice number on the supplier's invoice (needed, with their KRA PIN, to claim the VAT). */
+  @IsString()
+  @IsOptional()
+  @MaxLength(40)
+  kraInvoiceNo?: string;
+
   @IsDateString()
   @IsOptional()
   billDate?: string;
@@ -114,4 +120,18 @@ export class VoidBillDto {
   @MinLength(3)
   @MaxLength(300)
   reason!: string;
+}
+
+export class BillVatDto {
+  /** The VAT included in the bill; 0 for none. */
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  @Max(1_000_000_000)
+  taxAmount!: number;
+
+  /** The eTIMS invoice number on the supplier's invoice. Empty clears it. */
+  @IsString()
+  @IsOptional()
+  @MaxLength(40)
+  kraInvoiceNo?: string;
 }

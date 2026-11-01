@@ -50,3 +50,14 @@ export class AcceptPurchaseDto {
   @IsUUID()
   goodsReceiptId?: string;
 }
+
+export class LinkPurchaseDto {
+  /** The bill this KRA invoice is for (or expenseId, not both). */
+  @IsOptional()
+  @IsUUID()
+  billId?: string;
+
+  @IsOptional()
+  @IsUUID()
+  expenseId?: string;
+}

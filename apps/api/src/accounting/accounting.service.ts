@@ -6,6 +6,8 @@ import { AsOfQueryDto, CreateAccountDto, CreateJournalDto, JournalListQueryDto, 
 import { addDays, ageOwed, Bucket, BUCKETS, OwedDoc } from './ledger-aging.util';
 import { AccountKey } from './ledger-chart';
 import { nairobiDayOf } from '../reports/profit.util';
+import { Invoice, invoiceVat } from '../etims/etims-purchase.util';
+import { vatClaim } from './vat-claim.util';
 import { dateOf, dayOf, LedgerBooksService, todayKey } from './ledger-books.service';
 import { LedgerPosterService } from './ledger-poster.service';
 import { manualProblem, PAYABLE_ACCOUNTS, payOffDraft, postingDate } from './ledger-posting.util';
@@ -575,12 +577,41 @@ export class AccountingService {
       const outputVat = -(await vatMove('VAT_OUTPUT'));
       const salesVat = sales.reduce((t, s) => t + s.vatCents, 0);
 
-      const bills = await tx.supplierBill.findMany({ where: { status: { not: 'VOID' }, billDate: { gte: dateOf(from), lte: dateOf(to) } }, select: { total: true, taxAmount: true } });
-      const expenses = await tx.expense.findMany({ where: { spentOn: { gte: dateOf(from), lte: dateOf(to) } }, select: { amount: true, taxAmount: true } });
-      const part = (rows: { gross: number; vat: number }[]) => ({ count: rows.filter((r) => r.vat > 0).length, net: money(rows.reduce((t, r) => t + r.gross - r.vat, 0)), vat: money(rows.reduce((t, r) => t + r.vat, 0)) });
-      const billPart = part(bills.map((b) => ({ gross: cents(b.total), vat: cents(b.taxAmount) })));
-      const expensePart = part(expenses.map((e) => ({ gross: cents(e.amount), vat: cents(e.taxAmount) })));
+      // every purchase with VAT this month, and whether KRA will accept the claim (see vat-claim.util)
+      const bills = await tx.supplierBill.findMany({
+        where: { status: { not: 'VOID' }, taxAmount: { gt: 0 }, billDate: { gte: dateOf(from), lte: dateOf(to) } },
+        include: { supplier: { select: { name: true, kraPin: true } } },
+        orderBy: { billDate: 'asc' },
+      });
+      const expenses = await tx.expense.findMany({ where: { taxAmount: { gt: 0 }, spentOn: { gte: dateOf(from), lte: dateOf(to) } }, orderBy: { spentOn: 'asc' } });
+      const docs = [
+        ...bills.map((b) => ({ kind: 'Bill', date: dayOf(b.billDate)!, reference: b.billNumber, pin: b.supplier.kraPin, name: b.supplier.name, invoiceNo: b.kraInvoiceNo, linked: !!b.etimsInvoiceId, grossCents: cents(b.total), taxCents: cents(b.taxAmount) })),
+        ...expenses.map((e) => ({ kind: 'Expense', date: dayOf(e.spentOn)!, reference: e.description ?? e.category, pin: e.supplierPin, name: e.supplierName, invoiceNo: e.kraInvoiceNo, linked: !!e.etimsInvoiceId, grossCents: cents(e.amount), taxCents: cents(e.taxAmount) })),
+      ].map((d) => ({ ...d, claim: vatClaim(d) }));
+      const claimed = docs.filter((d) => d.claim === 'KRA' || d.claim === 'DECLARED');
+      const missing = docs.filter((d) => d.claim === 'MISSING');
+      const part = (rows: typeof docs) => ({ count: rows.length, net: money(rows.reduce((t, r) => t + r.grossCents - r.taxCents, 0)), vat: money(rows.reduce((t, r) => t + r.taxCents, 0)) });
+      const billPart = part(claimed.filter((d) => d.kind === 'Bill'));
+      const expensePart = part(claimed.filter((d) => d.kind === 'Expense'));
       const inputVat = await vatMove('VAT_INPUT');
+
+      // KRA's own list of what suppliers sold us this month, not yet entered as a bill or expense
+      const kraInvoices = await tx.etimsPurchaseInvoice.findMany({
+        where: { rcptTyCd: 'S', status: { not: 'DISMISSED' }, bill: null, expense: null, salesDt: { gte: from.replace(/-/g, ''), lt: `${addDays(to, 1).replace(/-/g, '')}` } },
+        orderBy: { salesDt: 'asc' },
+      });
+      const notEntered = kraInvoices.map((k) => ({ id: k.id, pin: k.spplrTin, name: k.spplrNm, invoiceNo: String(k.spplrInvcNo), date: `${k.salesDt!.slice(0, 4)}-${k.salesDt!.slice(4, 6)}-${k.salesDt!.slice(6, 8)}`, total: money(cents(k.totAmt)), vat: invoiceVat(k.body as unknown as Invoice) }));
+
+      // sales KRA has not confirmed yet (only once sending sales to eTIMS is on)
+      const etims = await tx.etimsSetting.findFirst({ select: { sendSales: true, salesStartAt: true } });
+      let salesNotSent: number | null = null;
+      if (etims?.sendSales) {
+        const since = etims.salesStartAt && etims.salesStartAt > start ? etims.salesStartAt : start;
+        const r = await tx.$queryRaw<{ n: number }[]>(Prisma.sql`
+          SELECT count(*)::int AS n FROM sales s WHERE s.status::text = 'COMPLETED' AND s.total > 0 AND s."createdAt" >= ${since} AND s."createdAt" < ${end}
+          AND NOT EXISTS (SELECT 1 FROM etims_documents d WHERE d."saleId" = s.id AND d.kind::text = 'SALE' AND d.status::text = 'SENT')`);
+        salesNotSent = r[0]?.n ?? 0;
+      }
 
       const wht = await tx.conValuationReceipt.findMany({
         where: { kind: 'WHT_VAT', receivedAt: { gte: dateOf(from), lte: dateOf(to) } },
@@ -599,7 +630,16 @@ export class AccountingService {
         refunds: { count: refundRows.length, gross: money(refundGross), vat: money(refundVat) },
         otherOutputVat: money(outputVat - (salesVat - refundVat)),
         outputVat: money(outputVat),
-        purchases: { bills: billPart, expenses: expensePart },
+        purchases: {
+          bills: billPart,
+          expenses: expensePart,
+          checkedWithKra: money(claimed.filter((d) => d.claim === 'KRA').reduce((t, d) => t + d.taxCents, 0)),
+          // the purchases schedule of the iTax VAT return: supplier PIN, name, date, invoice number, value before VAT, VAT
+          schedule: claimed.map((d) => ({ kind: d.kind, pin: d.pin, name: d.name, date: d.date, invoiceNo: d.invoiceNo, reference: d.reference, net: money(d.grossCents - d.taxCents), vat: money(d.taxCents), checked: d.claim === 'KRA' })),
+          notClaimable: { count: missing.length, vat: money(missing.reduce((t, d) => t + d.taxCents, 0)), documents: missing.map((d) => ({ kind: d.kind, date: d.date, reference: d.reference, name: d.name, vat: money(d.taxCents) })) },
+          kraNotEntered: notEntered,
+        },
+        salesNotSent,
         otherInputVat: money(inputVat - cents(billPart.vat) - cents(expensePart.vat)),
         inputVat: money(inputVat),
         withholdingVat: { total: money(whtVat), certificates: wht.map((w) => ({ date: dayOf(w.receivedAt), reference: `${w.valuation.project.code} IPC ${w.valuation.number}`, certificateNo: w.certificateNo, amount: money(cents(w.amount)) })) },

@@ -5,6 +5,7 @@ import { getTenantStore } from '../common/tenant/tenant-context';
 import { EXPENSE_CATEGORIES } from '../expenses/expense-categories';
 import { nairobiDayOf } from '../reports/profit.util';
 import { dayOf, LedgerBooksService } from './ledger-books.service';
+import { claimableCents } from './vat-claim.util';
 import {
   billCreditDraft,
   billDraft,
@@ -79,6 +80,9 @@ const postedWhere = (type: string, table: string, cond: Prisma.Sql) =>
 const originalPosted = (type: string) =>
   Prisma.sql`EXISTS (SELECT 1 FROM ledger_postings o WHERE o."sourceType" = ${type} AND o."sourceId" = t.id AND o."entryId" IS NOT NULL)`;
 const dateKey = (d: Date) => d.toISOString().slice(0, 10);
+/** A bill's claimable VAT: its supplier's PIN and the eTIMS invoice number, or a link to KRA's invoice. */
+const billVat = (b: { taxAmount: Prisma.Decimal; kraInvoiceNo: string | null; etimsInvoiceId: string | null; supplier: { kraPin: string | null } }) =>
+  claimableCents({ taxCents: toCents(b.taxAmount), pin: b.supplier.kraPin, invoiceNo: b.kraInvoiceNo, linked: !!b.etimsInvoiceId });
 
 /**
  * Posts what happened in each business to its books, a batch at a time, in the background. Each source (a sale, an expense...)
@@ -197,7 +201,7 @@ export class LedgerPosterService {
           category: e.category,
           label: e.description ? `${label} - ${e.description}` : label,
           amountCents: toCents(e.amount),
-          taxCents: toCents(e.taxAmount),
+          taxCents: claimableCents({ taxCents: toCents(e.taxAmount), pin: e.supplierPin, invoiceNo: e.kraInvoiceNo, linked: !!e.etimsInvoiceId }),
           paidWith: e.paidWith,
         });
       },
@@ -207,20 +211,22 @@ export class LedgerPosterService {
       candidates: async (tx, c) => [
         ...(await ids(tx, Prisma.sql`SELECT t.id FROM supplier_bills t WHERE t."billDate" >= ${c.sinceDay} AND t.status::text <> 'VOID' AND ${unposted('BILL')} ORDER BY t."createdAt" LIMIT ${BATCH}`)),
         ...(await ids(tx, postedWhere('BILL', 'supplier_bills', Prisma.sql`t.status::text = 'VOID'`))),
+        // the VAT on a bill becomes claimable (or stops being) when the bill or its supplier's PIN changes
+        ...(await ids(tx, Prisma.sql`SELECT t.id FROM ledger_postings p JOIN supplier_bills t ON t.id = p."sourceId" JOIN suppliers s ON s.id = t."supplierId" WHERE p."sourceType" = 'BILL' AND t."taxAmount" > 0 AND (t."updatedAt" > p."updatedAt" OR s."updatedAt" > p."updatedAt") LIMIT ${BATCH}`)),
       ],
       draft: async (tx, id, c) => {
-        const b = await tx.supplierBill.findUnique({ where: { id }, include: { supplier: { select: { name: true } } } });
+        const b = await tx.supplierBill.findUnique({ where: { id }, include: { supplier: { select: { name: true, kraPin: true } } } });
         if (!b || b.status === 'VOID' || b.billDate < c.start) return null;
-        return billDraft({ date: dateKey(b.billDate), reference: b.billNumber, supplier: b.supplier.name, totalCents: toCents(b.total), taxCents: toCents(b.taxAmount) });
+        return billDraft({ date: dateKey(b.billDate), reference: b.billNumber, supplier: b.supplier.name, totalCents: toCents(b.total), taxCents: billVat(b) });
       },
     },
     {
       type: 'BILL_CREDIT',
       candidates: (tx, c) => ids(tx, Prisma.sql`SELECT t.id FROM supplier_bill_credits t WHERE t."createdAt" >= ${c.since} AND ${unposted('BILL_CREDIT')} ORDER BY t."createdAt" LIMIT ${BATCH}`),
       draft: async (tx, id) => {
-        const r = await tx.supplierBillCredit.findUnique({ where: { id }, include: { bill: { include: { supplier: { select: { name: true } } } } } });
+        const r = await tx.supplierBillCredit.findUnique({ where: { id }, include: { bill: { include: { supplier: { select: { name: true, kraPin: true } } } } } });
         if (!r) return null;
-        return billCreditDraft({ date: nairobiDayOf(r.createdAt), reference: r.bill.billNumber, supplier: r.bill.supplier.name, amountCents: toCents(r.amount), taxCents: toCents(r.bill.taxAmount), totalCents: toCents(r.bill.total) });
+        return billCreditDraft({ date: nairobiDayOf(r.createdAt), reference: r.bill.billNumber, supplier: r.bill.supplier.name, amountCents: toCents(r.amount), taxCents: billVat(r.bill), totalCents: toCents(r.bill.total) });
       },
     },
     {

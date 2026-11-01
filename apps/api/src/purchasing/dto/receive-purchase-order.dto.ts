@@ -74,6 +74,12 @@ export class ReceiveBillDto {
   @Max(1_000_000_000)
   @IsOptional()
   taxAmount?: number;
+
+  /** The eTIMS invoice number on the supplier's invoice (needed, with their KRA PIN, to claim the VAT). */
+  @IsString()
+  @IsOptional()
+  @MaxLength(40)
+  kraInvoiceNo?: string;
 }
 
 export class ReceivePurchaseOrderDto {

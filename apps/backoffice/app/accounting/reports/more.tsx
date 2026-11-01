@@ -40,7 +40,15 @@ interface Vat {
   refunds: { count: number; gross: number; vat: number };
   otherOutputVat: number;
   outputVat: number;
-  purchases: { bills: { count: number; net: number; vat: number }; expenses: { count: number; net: number; vat: number } };
+  purchases: {
+    bills: { count: number; net: number; vat: number };
+    expenses: { count: number; net: number; vat: number };
+    checkedWithKra: number;
+    schedule: { kind: string; pin: string | null; name: string | null; date: string; invoiceNo: string | null; reference: string; net: number; vat: number; checked: boolean }[];
+    notClaimable: { count: number; vat: number; documents: { kind: string; date: string; reference: string; name: string | null; vat: number }[] };
+    kraNotEntered: { id: string; pin: string; name: string | null; invoiceNo: string; date: string; total: number; vat: number }[];
+  };
+  salesNotSent: number | null;
   otherInputVat: number;
   inputVat: number;
   withholdingVat: { total: number; certificates: { date: string; reference: string; certificateNo: string | null; amount: number }[] };
@@ -225,6 +233,12 @@ export function VatReport() {
     rows.push([], ["VAT to pay KRA", "", v.payable], ["Credit carried forward", "", v.creditCarriedForward]);
     downloadCsv(`vat-return-${v.month}.csv`, csv(rows));
   }
+  function downloadSchedule() {
+    if (!v) return;
+    const rows: (string | number)[][] = [["Supplier PIN", "Supplier name", "Invoice date", "eTIMS invoice number", "Description", "Taxable value", "VAT", "Checked with KRA"]];
+    for (const p of v.purchases.schedule) rows.push([p.pin ?? "", p.name ?? "", p.date, p.invoiceNo ?? "", `${p.kind}: ${p.reference}`, p.net, p.vat, p.checked ? "yes" : "no"]);
+    downloadCsv(`vat-purchases-${v.month}.csv`, csv(rows));
+  }
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-end justify-between gap-2 text-sm">
@@ -232,9 +246,28 @@ export function VatReport() {
           Month
           <input type="month" max={todayKey().slice(0, 7)} value={month} onChange={(e) => e.target.value && setMonth(e.target.value)} className={inputClass} />
         </label>
-        <button onClick={download} className={quietButtonClass}>Download (CSV)</button>
+        <div className="flex flex-wrap gap-2">
+          <button onClick={download} className={quietButtonClass}>Download (CSV)</button>
+          <button onClick={downloadSchedule} className={quietButtonClass}>Purchases list for iTax (CSV)</button>
+        </div>
       </div>
       <Err message={error} />
+      {v && v.salesNotSent !== null && v.salesNotSent > 0 && (
+        <p className="rounded-md bg-amber-950 p-3 text-sm text-amber-200">
+          {v.salesNotSent} sale{v.salesNotSent === 1 ? " has" : "s have"} not been confirmed by KRA (eTIMS) yet. KRA compares the VAT return with what eTIMS holds: see Sales sent to KRA before filing.
+        </p>
+      )}
+      {v && v.purchases.kraNotEntered.length > 0 && (
+        <div className="rounded-md bg-amber-950 p-3 text-sm text-amber-200">
+          <p>
+            KRA holds {v.purchases.kraNotEntered.length} supplier invoice{v.purchases.kraNotEntered.length === 1 ? "" : "s"} to you this month (VAT {kes(v.purchases.kraNotEntered.reduce((t, k) => t + k.vat, 0))}) not entered as a bill or expense, so that VAT is not claimed:
+          </p>
+          <ul className="list-disc pl-5">
+            {v.purchases.kraNotEntered.map((k) => <li key={k.id}>{k.name ?? k.pin} invoice {k.invoiceNo}, {niceDay(k.date)}: {kes(k.total)} (VAT {kes(k.vat)})</li>)}
+          </ul>
+          <p>Record them, then link them on Settings, eTIMS, Purchases.</p>
+        </div>
+      )}
       {v && (
         <div className="space-y-1 rounded-lg border border-border bg-surface p-4 text-sm">
           <p className="text-xs text-secondary-500">{niceDay(v.from)} to {niceDay(v.to)} · totals are the VAT accounts in the books; file the return on iTax by the 20th of the next month.</p>
@@ -255,12 +288,32 @@ export function VatReport() {
           <Line label={`Expenses (${v.purchases.expenses.count} with VAT)`} value={v.purchases.expenses.vat} />
           {v.otherInputVat !== 0 && <Line label="Other (credit notes, adjustments)" value={v.otherInputVat} />}
           <Line label="Input VAT" value={v.inputVat} strong />
+          <p className="pl-3 text-xs text-secondary-500">
+            {kes(v.purchases.checkedWithKra)} of it is checked against KRA&apos;s eTIMS invoices; the rest was entered by hand with the supplier&apos;s PIN and invoice number: check those show on iTax before filing.
+          </p>
+          {v.purchases.schedule.length > 0 && (
+            <details className="pl-3 text-xs">
+              <summary className="cursor-pointer text-secondary-500">The purchases ({v.purchases.schedule.length})</summary>
+              {v.purchases.schedule.map((p, i) => (
+                <div key={i} className="flex justify-between gap-2 border-b border-border/60 py-1">
+                  <span>{niceDay(p.date)} · {p.name ?? ""} {p.pin} · invoice {p.invoiceNo} {p.checked ? "· checked" : ""}</span>
+                  <span className="font-mono">{kes(p.vat)}</span>
+                </div>
+              ))}
+            </details>
+          )}
+          {v.purchases.notClaimable.count > 0 && (
+            <div className="pl-3 text-xs text-amber-500">
+              <p>Not claimable ({v.purchases.notClaimable.count}): VAT {kes(v.purchases.notClaimable.vat)} was entered without the supplier&apos;s KRA PIN or eTIMS invoice number, so it is counted as a cost. Add them on the bill or expense to claim it.</p>
+              {v.purchases.notClaimable.documents.map((d, i) => <p key={i} className="pl-2">{niceDay(d.date)} {d.kind}: {d.reference}{d.name ? ` (${d.name})` : ""} · {kes(d.vat)}</p>)}
+            </div>
+          )}
           <h2 className="pt-2 font-semibold">Withholding VAT certificates received</h2>
           {v.withholdingVat.certificates.map((c) => <Line key={`${c.reference}-${c.certificateNo}`} label={`${niceDay(c.date)} ${c.reference}${c.certificateNo ? ` (${c.certificateNo})` : ""}`} value={c.amount} />)}
           <Line label="Withholding VAT" value={v.withholdingVat.total} strong />
           <div className="pt-2" />
           {v.creditCarriedForward > 0 ? <Line label="Credit carried forward to next month" value={v.creditCarriedForward} strong /> : <Line label="VAT to pay KRA" value={v.payable} strong />}
-          <p className="pt-2 text-xs text-secondary-500">Input VAT counts only where the VAT was entered on the bill or expense. Record a payment to KRA under Accounts, Money owed.</p>
+          <p className="pt-2 text-xs text-secondary-500">Input VAT counts only where it is backed by the supplier&apos;s eTIMS invoice (their KRA PIN and the invoice number, or a link to the invoice KRA holds). Record a payment to KRA under Accounts, Money owed.</p>
         </div>
       )}
     </div>

@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { vatClaim } from '../accounting/vat-claim.util';
 import { Expense } from '@prisma/client';
 import { AuditLogService } from '../common/audit/audit-log.service';
 import { TenantScopedPrismaService } from '../common/prisma/tenant-scoped-prisma.service';
@@ -22,6 +23,11 @@ export function toExpenseView(e: Expense & { branch?: { name: string } | null })
     description: e.description,
     amount: Number(e.amount),
     taxAmount: Number(e.taxAmount),
+    supplierPin: e.supplierPin,
+    supplierName: e.supplierName,
+    kraInvoiceNo: e.kraInvoiceNo,
+    linkedToKra: !!e.etimsInvoiceId,
+    vatClaim: vatClaim({ taxCents: Math.round(Number(e.taxAmount) * 100), pin: e.supplierPin, invoiceNo: e.kraInvoiceNo, linked: !!e.etimsInvoiceId }),
     paidWith: e.paidWith,
     branchId: e.branchId,
     branchName: e.branch?.name ?? null,
@@ -66,6 +72,9 @@ export class ExpensesService {
           description: dto.description?.trim() || null,
           amount: round2(dto.amount),
           taxAmount: round2(dto.taxAmount ?? 0),
+          supplierPin: dto.supplierPin ?? null,
+          supplierName: dto.supplierName?.trim() || null,
+          kraInvoiceNo: dto.kraInvoiceNo?.trim() || null,
           paidWith: dto.paidWith ?? null,
           recordedById: orgUserId,
         },
@@ -109,6 +118,15 @@ export class ExpensesService {
     return this.tenantPrisma.run(async (tx) => {
       const before = await tx.expense.findUnique({ where: { id }, include: { branch: { select: { name: true } } } });
       if (!before) throw new NotFoundException('Expense not found');
+      const differs = <T>(v: T | undefined, was: T) => v !== undefined && v !== was;
+      if (
+        before.etimsInvoiceId &&
+        (differs(dto.amount, Number(before.amount)) ||
+          differs(dto.taxAmount, Number(before.taxAmount)) ||
+          differs(dto.supplierPin, before.supplierPin) ||
+          differs(dto.kraInvoiceNo === undefined ? undefined : dto.kraInvoiceNo.trim() || null, before.kraInvoiceNo))
+      )
+        throw new BadRequestException("This expense is linked to KRA's invoice, so its amount, VAT and supplier are KRA's figures");
       if ((dto.taxAmount ?? Number(before.taxAmount)) > (dto.amount ?? Number(before.amount))) throw new BadRequestException('The VAT cannot be more than the amount');
       if (dto.branchId && !(await tx.branch.findUnique({ where: { id: dto.branchId } }))) throw new BadRequestException('Branch not found');
       const after = await tx.expense.update({
@@ -118,6 +136,9 @@ export class ExpensesService {
           category: dto.category,
           amount: dto.amount === undefined ? undefined : round2(dto.amount),
           taxAmount: dto.taxAmount === undefined ? undefined : round2(dto.taxAmount),
+          supplierPin: dto.supplierPin,
+          supplierName: dto.supplierName === undefined ? undefined : dto.supplierName.trim() || null,
+          kraInvoiceNo: dto.kraInvoiceNo === undefined ? undefined : dto.kraInvoiceNo.trim() || null,
           description: dto.description === undefined ? undefined : dto.description.trim() || null,
           paidWith: dto.paidWith,
           branchId: dto.branchId,

@@ -1280,6 +1280,12 @@ model Expense {
   amount         Decimal  @db.Decimal(12, 2)
   /// The VAT included in the amount (claimable as input VAT on the VAT return).
   taxAmount      Decimal  @default(0) @db.Decimal(12, 2)
+  /// Who it was bought from, and their eTIMS invoice number: needed for the VAT to be claimable (otherwise it is a cost).
+  supplierPin    String?
+  supplierName   String?
+  kraInvoiceNo   String?
+  /// The invoice KRA holds for it (downloaded from eTIMS): the VAT is then KRA's figure, checked.
+  etimsInvoiceId String?  @unique
   // CASH | MPESA | BANK | CARD, informational.
   paidWith       String?
   recordedById   String?
@@ -1288,6 +1294,7 @@ model Expense {
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   branch       Branch?      @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  etimsInvoice EtimsPurchaseInvoice? @relation(fields: [etimsInvoiceId], references: [id], onDelete: SetNull)
 
   @@index([organizationId, spentOn])
   @@map("expenses")
@@ -4891,6 +4898,10 @@ model SupplierBill {
   total           Decimal            @db.Decimal(12, 2)
   /// The VAT included in the total (claimable as input VAT on the VAT return).
   taxAmount       Decimal            @default(0) @db.Decimal(12, 2)
+  /// The supplier's eTIMS invoice number. With the supplier's KRA PIN it makes the VAT claimable; without them the VAT is a cost.
+  kraInvoiceNo    String?
+  /// The invoice KRA holds for it (downloaded from eTIMS): the VAT is then KRA's figure, checked.
+  etimsInvoiceId  String?            @unique
   amountPaid      Decimal            @default(0) @db.Decimal(12, 2)
   /// Taken off what is owed by credit notes (damaged goods, a price correction...). Owed = total - credits - paid.
   creditAmount    Decimal            @default(0) @db.Decimal(12, 2)
@@ -4902,8 +4913,10 @@ model SupplierBill {
   createdAt       DateTime           @default(now())
   voidedAt        DateTime?
   voidReason      String?
+  updatedAt       DateTime           @default(now()) @updatedAt
 
   organization  Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  etimsInvoice  EtimsPurchaseInvoice? @relation(fields: [etimsInvoiceId], references: [id], onDelete: SetNull)
   supplier      Supplier          @relation(fields: [supplierId], references: [id], onDelete: Restrict)
   purchaseOrder PurchaseOrder?    @relation(fields: [purchaseOrderId], references: [id], onDelete: SetNull)
   receipt       GoodsReceipt?     @relation(fields: [goodsReceiptId], references: [id], onDelete: SetNull)
@@ -7193,6 +7206,8 @@ model EtimsPurchaseInvoice {
   createdAt      DateTime            @default(now())
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  bill         SupplierBill?
+  expense      Expense?
 
   @@unique([organizationId, branchId, spplrTin, spplrBhfId, spplrInvcNo, rcptTyCd])
   @@index([organizationId, status, createdAt])
