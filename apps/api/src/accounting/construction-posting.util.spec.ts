@@ -1,3 +1,4 @@
+import { systemAccountsFor } from './ledger-chart';
 import { conPayrollDraft, conZarodaDraft, ipcReceiptDraft, materialIssueDraft, retentionDraft, subPaymentDraft, subValuationDraft } from './construction-posting.util';
 import { isBalanced } from './ledger-posting.util';
 import { platformConPaymentDraft } from './platform-posting.util';
@@ -50,5 +51,16 @@ describe('construction in the books', () => {
   it('paying ZARODA is a cost to the business and income in ZARODA\'s books', () => {
     expect(side(conZarodaDraft({ date: '2026-10-01', label: 'SMS bundle', amountCents: 50_000, method: 'MPESA' }))).toEqual({ ZARODA_FEES: 50_000, MPESA: -50_000 });
     expect(side(platformConPaymentDraft({ date: '2026-10-01', business: 'Uriri', label: 'SMS bundle', income: 'SMS_INCOME', amountCents: 50_000, method: 'MPESA' }))).toEqual({ MPESA: 50_000, SMS_INCOME: -50_000 });
+  });
+});
+
+describe('construction account names', () => {
+  it("a contractor's sales are certified work; a shop keeps Sales", () => {
+    const name = (industry: string, key: string) => systemAccountsFor(industry).find((a) => a.key === key)?.name;
+    expect(name('CONSTRUCTION', 'SALES')).toBe('Contract revenue (certified work)');
+    expect(name('CONSTRUCTION', 'SALES_RETURNS')).toBe('Certified work reversed (credit notes)');
+    expect(name('CONSTRUCTION', 'COGS')).toBe('Cost of goods sold');
+    expect(name('RETAIL', 'SALES')).toBe('Sales');
+    expect(systemAccountsFor('CONSTRUCTION').find((a) => a.key === 'SALES')?.code).toBe('4000');
   });
 });

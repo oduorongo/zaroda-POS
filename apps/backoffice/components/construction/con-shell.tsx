@@ -37,7 +37,7 @@ const CORE_LINKS = [
 export function ConHeader({ session, me }: { session: Session; me: ConMe | null }) {
   const pathname = usePathname();
   const router = useRouter();
-  const links = [...LINKS, ...(hasConRole(me, "CON_COMPLIANCE") ? [{ href: "/construction/staff", label: "Staff & roles" }] : []), ...(isDirector(me) ? [{ href: "/construction/enterprise", label: "Offices & API" }] : []), ...(["OWNER", "MANAGER"].includes(session.role) ? CORE_LINKS : [])];
+  const links = [...LINKS, ...(hasConRole(me, "CON_COMPLIANCE") ? [{ href: "/construction/staff", label: "Staff & roles" }] : []), ...(isDirector(me) ? [{ href: "/construction/enterprise", label: "Offices & API" }] : []), ...(["OWNER", "MANAGER"].includes(session.role) ? CORE_LINKS : []), { href: "/construction/guide", label: "Guide" }];
 
   return (
     <header className="sticky top-0 z-40 text-white shadow" style={{ background: CON_BRAND.navy }}>

@@ -64,8 +64,17 @@ export const CONSTRUCTION_ACCOUNTS = [
   { key: 'SITE_LABOUR', code: '5300', name: 'Site labour (casual wages)', type: 'EXPENSE' },
 ] as const satisfies readonly { key: string; code: string; name: string; type: LedgerAccountType }[];
 
-/** The keyed accounts a business of this type has. */
-export const systemAccountsFor = (industryType: string | null | undefined) => (industryType === 'CONSTRUCTION' ? [...SYSTEM_ACCOUNTS, ...CONSTRUCTION_ACCOUNTS] : [...SYSTEM_ACCOUNTS]);
+/** What a contractor calls some of the shared accounts: their "sales" are certified work (IPCs). */
+export const CONSTRUCTION_NAMES: Record<string, string> = {
+  SALES: 'Contract revenue (certified work)',
+  SALES_RETURNS: 'Certified work reversed (credit notes)',
+};
+
+/** The keyed accounts a business of this type has, named the way that business would say it. */
+export const systemAccountsFor = (industryType: string | null | undefined) =>
+  industryType === 'CONSTRUCTION'
+    ? [...SYSTEM_ACCOUNTS.map((a) => ({ ...a, name: CONSTRUCTION_NAMES[a.key] ?? a.name })), ...CONSTRUCTION_ACCOUNTS]
+    : [...SYSTEM_ACCOUNTS];
 
 export type AccountKey = (typeof SYSTEM_ACCOUNTS)[number]['key'] | (typeof CONSTRUCTION_ACCOUNTS)[number]['key'];
 

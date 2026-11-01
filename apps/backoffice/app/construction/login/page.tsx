@@ -8,7 +8,7 @@ import { ApiError, getOrganization, login } from "../../../lib/api";
 import { clearSession, decodeRole, setSession } from "../../../lib/auth";
 import { CON_BRAND, CON_LOGIN_ROLES } from "../../../lib/construction";
 import { posUrl } from "../../../lib/product";
-import { PublicFrame } from "../../../components/construction/public-frame";
+import { PhotoSplit, PublicFrame } from "../../../components/construction/public-frame";
 import { inputClass } from "../../../components/construction/ui";
 
 const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:3001";
@@ -51,7 +51,8 @@ export default function ConstructionLogin() {
 
   return (
     <PublicFrame>
-      <main className="mx-auto flex max-w-sm flex-col gap-5 px-4 py-12">
+      <PhotoSplit photo="/con-login.jpg" position="left center" title="Your sites, your team and your certificates." text="Muster rolls, site diaries, valuations and compliance - on the phone in your pocket and the laptop in the office.">
+      <main className="flex w-full max-w-sm flex-col gap-5 px-4 py-10 lg:py-16">
         <div>
           <h1 className="text-2xl font-bold" style={{ color: "var(--con-ink)" }}>Sign in</h1>
           <p className="text-sm text-secondary-500">Zaroda Build, for contractors.</p>
@@ -71,6 +72,7 @@ export default function ConstructionLogin() {
         </form>
         <Link href="/construction/signup" className="text-center text-sm" style={{ color: CON_BRAND.orange }}>New here? Start a 14-day free trial</Link>
       </main>
+      </PhotoSplit>
     </PublicFrame>
   );
 }

@@ -6,7 +6,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { decodeRole, setSession } from "../../../lib/auth";
 import { CON_BRAND } from "../../../lib/construction";
-import { PublicFrame } from "../../../components/construction/public-frame";
+import { PhotoSplit, PublicFrame } from "../../../components/construction/public-frame";
 import { Field, inputClass } from "../../../components/construction/ui";
 
 const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:3001";
@@ -50,7 +50,8 @@ export default function ConstructionSignup() {
 
   return (
     <PublicFrame>
-      <main className="mx-auto max-w-md px-4 py-10">
+      <PhotoSplit photo="/con-signup.jpg" position="center" title="From the first BQ to the final certificate." text="Bring your projects, workers and documents into one place. 14 days free, no M-Pesa needed.">
+      <main className="w-full max-w-md px-4 py-10 lg:py-14">
         <h1 className="text-2xl font-bold" style={{ color: "var(--con-ink)" }}>Start your free trial</h1>
         <p className="mt-1 text-sm text-secondary-600">14 days of the Contractor plan. No M-Pesa needed.</p>
         <form onSubmit={submit} className="mt-6 space-y-3">
@@ -71,6 +72,7 @@ export default function ConstructionSignup() {
         </form>
         <Link href="/construction/login" className="mt-4 block text-center text-sm" style={{ color: "var(--con-ink)" }}>Already have an account? Sign in</Link>
       </main>
+      </PhotoSplit>
     </PublicFrame>
   );
 }

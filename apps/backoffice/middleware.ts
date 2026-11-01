@@ -11,6 +11,7 @@ const CONSTRUCTION_PUBLIC: Record<string, string> = {
   "/signup": "/construction/signup",
   "/pricing": "/construction/pricing",
   "/portal": "/construction/portal",
+  "/guide": "/construction/guide",
 };
 const PUBLIC_BACK = Object.fromEntries(Object.entries(CONSTRUCTION_PUBLIC).map(([k, v]) => [v, k]));
 

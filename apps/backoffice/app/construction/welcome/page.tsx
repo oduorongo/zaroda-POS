@@ -9,13 +9,29 @@ const POINTS = [
   { title: "Projects and BQ", text: "Contract sums, bills of quantities, site diaries and photos from the site supervisor's phone." },
   { title: "Labour and payroll", text: "Muster roll, casual payroll with statutory deductions, and M-Pesa payouts." },
   { title: "Valuations and IPCs", text: "Interim certificates, retention and variations, invoiced through eTIMS." },
+  {
+    title: "Accounts that keep themselves",
+    text: "Double-entry books filled from IPCs, client payments, pay runs, materials issued and subcontractors. Profit and loss for every project, balance sheet, cash flow, aged debtors and creditors, and the monthly VAT return with the iTax purchases list.",
+  },
+  {
+    title: "Tax and statutory, done right",
+    text: "VAT claimed only on eTIMS-backed purchases, withholding certificates kept as credits with KRA, and PAYE, NSSF, SHIF and the Housing Levy held as owed until you pay them.",
+  },
 ];
 
 export default function ConstructionWelcome() {
   return (
     <PublicFrame>
-      <section className="text-white" style={{ background: `linear-gradient(160deg, ${CON_BRAND.navy}, #0f1c3a)` }}>
-        <div className="mx-auto max-w-5xl px-4 py-14 sm:py-20">
+      <section
+        className="bg-cover text-white"
+        style={{
+          // The site photo (public/con-hero.jpg) shows on the right; navy behind the words on the left keeps them readable.
+          backgroundImage: `linear-gradient(90deg, ${CON_BRAND.navy} 0%, ${CON_BRAND.navy}e6 40%, ${CON_BRAND.navy}59 75%, ${CON_BRAND.navy}26 100%), url(/con-hero.jpg)`,
+          backgroundPosition: "center, 70% center",
+          backgroundColor: CON_BRAND.navy,
+        }}
+      >
+        <div className="mx-auto max-w-5xl px-4 py-16 sm:py-28">
           <p className="text-sm font-semibold uppercase tracking-widest" style={{ color: CON_BRAND.gold }}>For Kenyan contractors</p>
           <h1 className="mt-2 max-w-2xl text-3xl font-bold leading-tight sm:text-4xl">Run your sites, your compliance and your certificates from one place.</h1>
           <p className="mt-4 max-w-xl text-white/80">Built around NCA categories, KRA eTIMS and the way JBC and FIDIC contracts are paid.</p>
@@ -33,6 +49,10 @@ export default function ConstructionWelcome() {
           </div>
         ))}
       </section>
+      <p className="mx-auto max-w-5xl px-4 pb-12 text-sm">
+        <Link href="/construction/guide" className="font-semibold" style={{ color: CON_BRAND.orange }}>Read the user guide</Link>
+        <span className="text-secondary-500"> - what each job does, the company books, the reports and the client portal.</span>
+      </p>
     </PublicFrame>
   );
 }
