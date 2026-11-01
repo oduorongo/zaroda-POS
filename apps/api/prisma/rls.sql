@@ -1256,7 +1256,6 @@ CREATE POLICY tenant_isolation ON etims_documents
   USING ("organizationId" = current_setting('app.current_tenant', true))
   WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
 
-<<<<<<< HEAD
 -- School supplier: each drop of goods to a school, and what was in it
 ALTER TABLE school_deliveries ENABLE ROW LEVEL SECURITY;
 ALTER TABLE school_deliveries FORCE ROW LEVEL SECURITY;
@@ -1945,7 +1944,6 @@ CREATE POLICY tenant_isolation ON con_api_keys
 DROP POLICY IF EXISTS api_key_lookup ON con_api_keys;
 CREATE POLICY api_key_lookup ON con_api_keys FOR SELECT
   USING ("prefix" = current_setting('app.current_api_key_prefix', true));
-=======
 -- KRA eTIMS: suppliers' invoices to the business, and how their products match ours
 ALTER TABLE etims_purchase_invoices ENABLE ROW LEVEL SECURITY;
 ALTER TABLE etims_purchase_invoices FORCE ROW LEVEL SECURITY;
@@ -1960,4 +1958,3 @@ DROP POLICY IF EXISTS tenant_isolation ON etims_supplier_items;
 CREATE POLICY tenant_isolation ON etims_supplier_items
   USING ("organizationId" = current_setting('app.current_tenant', true))
   WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
->>>>>>> origin/feat/etims-purchases-stock
