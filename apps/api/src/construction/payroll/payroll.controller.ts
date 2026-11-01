@@ -1,10 +1,11 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Post, Put, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Post, Put, Req, UseGuards, Query } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { ConRoleCode } from '@prisma/client';
 import { Public } from '../../auth/public.decorator';
 import { ConFeature, ConProjectGuard, ConRequest, ConRoles, ConstructionGuard } from '../common/con-access';
 import { PayoutSettingsDto, PayrollPayDto, PayrollRunDto } from '../dto/payroll-portal.dto';
 import { PayrollService } from './payroll.service';
+import { PageQueryDto } from '../dto/query.dto';
 
 const ACC: ConRoleCode = 'CON_ACCOUNTANT';
 const VIEW: ConRoleCode[] = [ACC, 'CON_CONTRACTS_MGR', 'CON_PROJECT_MGR'];
@@ -17,8 +18,8 @@ export class PayrollController {
   @ConFeature('payroll')
   @ConRoles(...VIEW)
   @Get('projects/:projectId/payroll-runs')
-  list(@Param('projectId', ParseUUIDPipe) projectId: string) {
-    return this.payroll.list(projectId);
+  list(@Param('projectId', ParseUUIDPipe) projectId: string, @Query() page: PageQueryDto) {
+    return this.payroll.list(projectId, page);
   }
 
   @ConFeature('payroll')

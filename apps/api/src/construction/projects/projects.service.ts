@@ -1,11 +1,11 @@
 import { randomUUID } from 'crypto';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, PayloadTooLargeException } from '@nestjs/common';
-import { ConPermitType, ConProject, ConWorksClass, Prisma } from '@prisma/client';
+import { ConPermitType, ConProject, ConRoleCode, ConWorksClass, Prisma } from '@prisma/client';
 import { AuditLogService } from '../../common/audit/audit-log.service';
 import { TenantScopedPrismaService } from '../../common/prisma/tenant-scoped-prisma.service';
 import { PrivateObjectStorageService } from '../../common/storage/private-object-storage.service';
 import { getTenantStore } from '../../common/tenant/tenant-context';
-import { ConContext, Tx, canSeeAllProjects, isDirector } from '../common/con-access';
+import { ConContext, Tx, canSeeAllProjects, hasRole, isDirector } from '../common/con-access';
 import { ComplianceService } from '../compliance/compliance.service';
 import { daysLeft, expiryState, todayKey } from '../compliance/compliance.util';
 import { MemberDto, MilestoneDto, PartyDto, PermitDto, ProjectDto, ProjectPartyDto, ProjectStatusDto } from '../dto/projects.dto';
@@ -16,6 +16,7 @@ const day = (d: Date | null) => (d ? d.toISOString().slice(0, 10) : null);
 const date = (s?: string) => (s ? new Date(`${s}T00:00:00Z`) : null);
 const num = (v: Prisma.Decimal | null) => (v === null ? null : Number(v));
 const MAX_FILE = 10 * 1024 * 1024;
+const CONTRACT_ROLES: ConRoleCode[] = ['CON_CONTRACTS_MGR', 'CON_QS', 'CON_ACCOUNTANT', 'CON_PROCUREMENT', 'CON_COMPLIANCE', 'CON_SHE_OFFICER', 'CON_PROJECT_MGR', 'CON_SITE_ENGINEER', 'CON_SITE_SUPERVISOR'];
 const FILE_TYPES: Record<string, string> = { 'application/pdf': 'pdf', 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' };
 
 /** Checks the NCA cap; above it only a Director may go ahead, with a reason that is kept. */
@@ -121,11 +122,17 @@ export class ProjectsService {
       const rows = await tx.conProject.findMany({ where, orderBy: [{ status: 'asc' }, { createdAt: 'desc' }], include: { client: { select: { id: true, name: true } }, milestones: true } });
       const totals = await tx.conBqItem.groupBy({ by: ['projectId'], _sum: { amount: true }, where: { projectId: { in: rows.map((r) => r.id) } } });
       const byId = new Map(totals.map((t) => [t.projectId, Number(t._sum.amount ?? 0)]));
-      return rows.map((p) => this.view(p, { bqTotal: byId.get(p.id) ?? 0, progress: programmeProgress(p.milestones) }));
+      return rows.map((p) => this.redact(con, this.view(p, { bqTotal: byId.get(p.id) ?? 0, progress: programmeProgress(p.milestones) })));
     });
   }
 
-  async get(projectId: string) {
+  /** Storekeepers and timekeepers see the project, not its contract money, client or consultants (docs/construction/02). */
+  private redact<T extends { id: string }>(con: ConContext, v: T): T {
+    if (hasRole(con, CONTRACT_ROLES, v.id)) return v;
+    return { ...v, client: null, contractSum: null, revisedSum: null, bqTotal: null, ...('parties' in v ? { parties: [] } : {}) };
+  }
+
+  async get(con: ConContext, projectId: string) {
     const today = todayKey();
     return this.tenantPrisma.run(async (tx) => {
       const p = await tx.conProject.findUnique({
@@ -140,7 +147,7 @@ export class ProjectsService {
       });
       if (!p) throw new NotFoundException('Project not found');
       const bqTotal = Number((await tx.conBqItem.aggregate({ where: { projectId }, _sum: { amount: true } }))._sum.amount ?? 0);
-      return {
+      return this.redact(con, {
         ...this.view(p, { bqTotal, progress: programmeProgress(p.milestones) }),
         parties: p.parties.map((l) => ({ id: l.id, role: l.role, party: { id: l.party.id, name: l.party.name, contactPerson: l.party.contactPerson, phone: l.party.phone, email: l.party.email } })),
         members: p.members.map((m) => {
@@ -153,7 +160,7 @@ export class ProjectsService {
           return { id: r?.id ?? null, type, label: PERMIT_LABELS[type], status: r?.status ?? 'PENDING', refNo: r?.refNo ?? null, issuedAt: day(r?.issuedAt ?? null), expiresAt: exp, expiryState: expiryState(exp, today), notes: r?.notes ?? null, hasFile: !!r?.fileKey };
         }),
         milestones: p.milestones.map((m) => ({ id: m.id, name: m.name, startDate: day(m.startDate), endDate: day(m.endDate), percentComplete: m.percentComplete, sortOrder: m.sortOrder })),
-      };
+      });
     });
   }
 

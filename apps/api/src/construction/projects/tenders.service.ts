@@ -7,6 +7,7 @@ import { ComplianceService } from '../compliance/compliance.service';
 import { WORKS_CLASS_LABELS, todayKey } from '../compliance/compliance.util';
 import { TenderDto, TenderOutcomeDto } from '../dto/projects.dto';
 import { ProjectsService, enforceCap } from './projects.service';
+import { PageQueryDto, pageOf } from '../dto/query.dto';
 
 const day = (d: Date | null) => (d ? d.toISOString().slice(0, 10) : null);
 
@@ -51,8 +52,8 @@ export class TendersService {
     };
   }
 
-  async list() {
-    const rows = await this.tenantPrisma.run((tx) => tx.conTender.findMany({ orderBy: [{ status: 'asc' }, { closingAt: 'asc' }], include: { project: { select: { id: true, code: true } } } }));
+  async list(page?: PageQueryDto) {
+    const rows = await this.tenantPrisma.run((tx) => tx.conTender.findMany({ ...pageOf(page), orderBy: [{ status: 'asc' }, { closingAt: 'asc' }], include: { project: { select: { id: true, code: true } } } }));
     return rows.map((t) => this.view(t));
   }
 

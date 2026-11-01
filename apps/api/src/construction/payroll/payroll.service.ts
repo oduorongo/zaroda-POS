@@ -16,6 +16,7 @@ import { nextCode } from '../projects/projects.util';
 import { r2 } from '../commercial/valuation.util';
 import { dayValue, maskPhone } from '../site/site.util';
 import { PAYROLL_KEYS, casualDeductions, mpesaPhone, payrollRates, payslipText, periodDays } from './payroll.util';
+import { PageQueryDto, pageOf } from '../dto/query.dto';
 
 const n = (v: Prisma.Decimal | number | null | undefined) => (v === null || v === undefined ? 0 : Number(v));
 const day = (d: Date | null) => (d ? d.toISOString().slice(0, 10) : null);
@@ -53,8 +54,8 @@ export class PayrollService {
     return payrollRates(active);
   }
 
-  async list(projectId: string) {
-    const rows = await this.tenantPrisma.run((tx) => tx.conPayrollRun.findMany({ where: { projectId }, orderBy: { periodStart: 'desc' } }));
+  async list(projectId: string, page?: PageQueryDto) {
+    const rows = await this.tenantPrisma.run((tx) => tx.conPayrollRun.findMany({ where: { projectId }, orderBy: { periodStart: 'desc' }, ...pageOf(page) }));
     return rows.map((r) => ({ id: r.id, number: r.number, periodStart: day(r.periodStart), periodEnd: day(r.periodEnd), status: r.status, workers: r.workers, gross: n(r.gross), deductions: n(r.deductions), net: n(r.net), createdBy: r.createdBy, approvedAt: r.approvedAt, paidAt: r.paidAt }));
   }
 

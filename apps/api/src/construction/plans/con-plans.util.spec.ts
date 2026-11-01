@@ -1,5 +1,5 @@
 import { constructionUrl } from '../common/con-domain';
-import { PlanLike, cheapestWith, limitMessage, downgradeProblems, extendPeriod, nextPlanUp, parseLimits, quote, subscriptionStatus, withinLimit } from './con-plans.util';
+import { PlanLike, agentCommission, cheapestWith, limitMessage, downgradeProblems, extendPeriod, nextPlanUp, parseLimits, quote, subscriptionStatus, withinLimit } from './con-plans.util';
 
 const plan = (code: string, sortOrder: number, monthlyPrice: number, features: string[], over: Partial<PlanLike> = {}): PlanLike => ({
   code,
@@ -92,5 +92,18 @@ describe('Mjengo', () => {
   it('offers an extra project on plans that sell them', () => {
     expect(limitMessage(fundi, all, 'activeProjects', 2, 1500)).toContain('Add an extra project for KES 1,500/month, or upgrade to CON_CONTRACTOR');
     expect(limitMessage(fundi, all, 'users', 5, 1500)).toBe('Your CON_FUNDI plan allows 5 staff users. Upgrade to CON_CONTRACTOR to add more.');
+  });
+});
+
+describe('agentCommission', () => {
+  const d = (s: string) => new Date(`${s}T10:00:00Z`);
+  it('15% of first-year payments, payable only after the second payment', () => {
+    expect(agentCommission([{ amount: 9500, paidAt: d('2026-01-10') }], 0.15)).toMatchObject({ payments: 1, firstYear: 9500, commission: 1425, payable: false });
+    const two = agentCommission([{ amount: 9500, paidAt: d('2026-02-10') }, { amount: 9500, paidAt: d('2026-01-10') }, { amount: 9500, paidAt: d('2027-01-10') }], 0.15);
+    expect(two).toMatchObject({ payments: 3, firstYear: 19000, commission: 2850, payable: true });
+    expect(two.firstPaidAt).toEqual(d('2026-01-10'));
+  });
+  it('nothing paid, nothing earned', () => {
+    expect(agentCommission([], 0.15)).toMatchObject({ commission: 0, payable: false, firstPaidAt: null });
   });
 });

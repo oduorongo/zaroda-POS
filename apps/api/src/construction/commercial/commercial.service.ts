@@ -8,6 +8,7 @@ import { CertifyDto, ReceiptDto, RetentionReleaseDto, ValuationDto, VariationDec
 import { nextCode } from '../projects/projects.util';
 import { creditIpcSale, recordIpcSale } from './ipc-sale';
 import { expectedWithholding, ipcBalance, previousCertified, r2, retentionRelease, revisedSum, valuation } from './valuation.util';
+import { PageQueryDto, pageOf } from '../dto/query.dto';
 
 const n = (v: Prisma.Decimal | number | null | undefined) => (v === null || v === undefined ? 0 : Number(v));
 const day = (d: Date | null) => (d ? d.toISOString().slice(0, 10) : null);
@@ -300,8 +301,8 @@ export class CommercialService {
     });
   }
 
-  async listValuations(projectId: string) {
-    const rows = await this.tenantPrisma.run((tx) => tx.conValuation.findMany({ where: { projectId }, orderBy: { number: 'desc' }, include: { receipts: true } }));
+  async listValuations(projectId: string, page?: PageQueryDto) {
+    const rows = await this.tenantPrisma.run((tx) => tx.conValuation.findMany({ where: { projectId }, orderBy: { number: 'desc' }, ...pageOf(page), include: { receipts: true } }));
     return rows.map((v) => ({
       id: v.id, number: v.number, kind: v.kind, status: v.status, reversed: v.reversed, periodEnd: day(v.periodEnd), grossToDate: n(v.grossToDate), retentionHeld: n(v.retentionHeld), netDue: n(v.netDue),
       certifiedAt: day(v.certifiedAt), invoiceTotal: v.invoiceTotal === null ? null : n(v.invoiceTotal), invoiced: !!v.saleId, received: r2(v.receipts.reduce((a, r) => a + n(r.amount), 0)),

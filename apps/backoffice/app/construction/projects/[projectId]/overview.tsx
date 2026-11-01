@@ -79,8 +79,9 @@ export function OverviewTab({ project: p, reload }: TabProps) {
       <Panel title="Contract" action={canEdit && !editing ? <button type="button" className="text-sm font-medium" style={{ color: CON_BRAND.orange }} onClick={() => (setF(toForm(p)), setEditing(true))}>Edit</button> : null}>
         {!editing ? (
           <dl className="grid gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
-            <Row label="Contract sum" value={kes(p.contractSum)} />
-            <Row label="BQ total" value={<span>{kes(p.bqTotal)}{Math.abs(diff) >= 1 && <span className="ml-1 text-xs font-semibold text-red-700">({diff > 0 ? "+" : ""}{diff.toLocaleString("en-KE")} vs contract)</span>}</span>} />
+            {/* Storekeepers and timekeepers get the project without its money (null). */}
+            {(p.contractSum as number | null) !== null && <Row label="Contract sum" value={kes(p.contractSum)} />}
+            {(p.contractSum as number | null) !== null && <Row label="BQ total" value={<span>{kes(p.bqTotal)}{Math.abs(diff) >= 1 && <span className="ml-1 text-xs font-semibold text-red-700">({diff > 0 ? "+" : ""}{diff.toLocaleString("en-KE")} vs contract)</span>}</span>} />}
             <Row label="Works class" value={WORKS[p.worksClass] ?? p.worksClass} />
             <Row label="Form of contract" value={FORMS[p.formOfContract] ?? p.formOfContract} />
             <Row label="Start" value={p.startDate ?? "-"} />

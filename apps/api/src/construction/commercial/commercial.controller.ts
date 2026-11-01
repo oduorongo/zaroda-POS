@@ -1,9 +1,10 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Post, Put, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Post, Put, Req, UseGuards, Query } from '@nestjs/common';
 import { ConRoleCode } from '@prisma/client';
 import { ConFeature, ConProjectGuard, ConRequest, ConRoles, ConstructionGuard } from '../common/con-access';
 import { CertifyDto, ReceiptDto, RetentionReleaseDto, SubPaymentDto, SubValuationDto, SubcontractDto, ValuationDto, VariationDecisionDto, VariationDto } from '../dto/commercial.dto';
 import { CommercialService } from './commercial.service';
 import { SubcontractsService } from './subcontracts.service';
+import { PageQueryDto } from '../dto/query.dto';
 
 const CM: ConRoleCode = 'CON_CONTRACTS_MGR';
 const QS: ConRoleCode = 'CON_QS';
@@ -58,8 +59,8 @@ export class CommercialController {
   @ConFeature('commercial')
   @ConRoles(...VIEW)
   @Get('valuations')
-  valuations(@Param('projectId', ParseUUIDPipe) projectId: string) {
-    return this.commercial.listValuations(projectId);
+  valuations(@Param('projectId', ParseUUIDPipe) projectId: string, @Query() page: PageQueryDto) {
+    return this.commercial.listValuations(projectId, page);
   }
 
   @ConFeature('commercial')

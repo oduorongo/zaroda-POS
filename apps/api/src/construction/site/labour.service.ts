@@ -7,6 +7,7 @@ import { daysLeft, expiryState, todayKey } from '../compliance/compliance.util';
 import { MusterDto, WorkerDto } from '../dto/site.dto';
 import { ConPlansService } from '../plans/con-plans.service';
 import { maskId, maskPhone, musterTotals, validIdNo } from './site.util';
+import { PageQueryDto, pageOf } from '../dto/query.dto';
 
 /** Who may see a worker's full ID number and phone (docs/construction/02 + Data Protection Act 2019). */
 export const FULL_ID_ROLES: ConRoleCode[] = ['CON_ACCOUNTANT', 'CON_COMPLIANCE'];
@@ -52,10 +53,11 @@ export class LabourService {
   }
 
   /** Lists always mask ID numbers and phones. Project-only staff see the workers on their projects. */
-  async list(con: ConContext, projectId?: string) {
+  async list(con: ConContext, projectId?: string, page?: PageQueryDto) {
     const rows = await this.tenantPrisma.run((tx) =>
       tx.conWorker.findMany({
-        where: { ...(projectId ? { projectId } : {}), ...(this.seesAll(con) ? {} : { projectId: { in: this.myProjects(con) } }) },
+        where: { AND: [projectId ? { projectId } : {}, this.seesAll(con) ? {} : { projectId: { in: this.myProjects(con) } }] },
+        ...pageOf(page),
         include: { project: { select: { id: true, code: true, name: true } } },
         orderBy: [{ isActive: 'desc' }, { name: 'asc' }],
       }),

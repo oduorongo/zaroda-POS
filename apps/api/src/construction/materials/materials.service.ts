@@ -9,6 +9,7 @@ import { todayKey } from '../compliance/compliance.util';
 import { BudgetDto, GrnDto, IssueDto, LpoDto, RequisitionDto } from '../dto/materials.dto';
 import { nextCode } from '../projects/projects.util';
 import { approvalProblem, reconcile } from './materials.util';
+import { PageQueryDto, pageOf } from '../dto/query.dto';
 
 const day = (d: Date | null) => (d ? d.toISOString().slice(0, 10) : null);
 const date = (s: string) => new Date(`${s}T00:00:00Z`);
@@ -56,11 +57,12 @@ export class MaterialsService {
 
   // ── Requisitions ──
 
-  async listRequisitions(projectId: string) {
+  async listRequisitions(projectId: string, page?: PageQueryDto) {
     const rows = await this.tenantPrisma.run((tx) =>
       tx.conRequisition.findMany({
         where: { projectId },
         orderBy: { createdAt: 'desc' },
+        ...pageOf(page),
         include: { lines: { include: { variant: { include: { product: true } }, bqItem: { select: { code: true, description: true } } } }, lpos: { select: { id: true, number: true } } },
       }),
     );
@@ -132,9 +134,9 @@ export class MaterialsService {
     return l;
   }
 
-  async listLpos(projectId: string) {
+  async listLpos(projectId: string, page?: PageQueryDto) {
     return this.tenantPrisma.run(async (tx) => {
-      const rows = await tx.conLpo.findMany({ where: { projectId }, orderBy: { createdAt: 'desc' }, include: this.lpoInclude });
+      const rows = await tx.conLpo.findMany({ where: { projectId }, orderBy: { createdAt: 'desc' }, ...pageOf(page), include: this.lpoInclude });
       return rows.map((l) => this.lpoView(l));
     });
   }
@@ -245,8 +247,8 @@ export class MaterialsService {
     });
   }
 
-  async listIssues(projectId: string) {
-    const rows = await this.tenantPrisma.run((tx) => tx.conMaterialIssue.findMany({ where: { projectId }, orderBy: [{ issuedAt: 'desc' }, { createdAt: 'desc' }], take: 200, include: { variant: { include: { product: true } }, bqItem: { select: { code: true, description: true } } } }));
+  async listIssues(projectId: string, page?: PageQueryDto) {
+    const rows = await this.tenantPrisma.run((tx) => tx.conMaterialIssue.findMany({ where: { projectId }, orderBy: [{ issuedAt: 'desc' }, { createdAt: 'desc' }], ...pageOf(page), include: { variant: { include: { product: true } }, bqItem: { select: { code: true, description: true } } } }));
     return rows.map((r) => ({ id: r.id, ...variantName(r.variant), qty: Number(r.qty), kind: r.kind, bqItem: r.bqItem, issuedTo: r.issuedTo, note: r.note, issuedAt: day(r.issuedAt) }));
   }
 
@@ -265,41 +267,43 @@ export class MaterialsService {
 
   /** Per material: BQ allowance, ordered (approved LPOs), delivered, used, wasted, on site, wastage %. */
   async reconciliation(projectId: string) {
-    return this.tenantPrisma.run(async (tx) => {
-      const p = await this.project(tx, projectId);
-      const [budgets, lpos, issues, stock] = await Promise.all([
-        tx.conMaterialBudget.findMany({ where: { projectId } }),
-        tx.conLpo.findMany({ where: { projectId, status: 'APPROVED' }, include: { purchaseOrder: { include: { lineItems: true } } } }),
-        tx.conMaterialIssue.groupBy({ by: ['variantId', 'kind'], where: { projectId }, _sum: { qty: true } }),
-        p.branchId ? tx.inventoryItem.findMany({ where: { branchId: p.branchId } }) : Promise.resolve([]),
-      ]);
-      const ids = new Set<string>([...budgets.map((b) => b.variantId), ...issues.map((i) => i.variantId), ...stock.map((s) => s.variantId)]);
-      const ordered = new Map<string, number>();
-      const delivered = new Map<string, number>();
-      for (const l of lpos) {
-        if (l.purchaseOrder.status === 'CANCELLED') continue;
-        for (const li of l.purchaseOrder.lineItems) {
-          ids.add(li.variantId);
-          ordered.set(li.variantId, (ordered.get(li.variantId) ?? 0) + Number(li.quantityOrdered));
-          delivered.set(li.variantId, (delivered.get(li.variantId) ?? 0) + Number(li.quantityReceived));
-        }
+    return this.tenantPrisma.run((tx) => this.reconciliationIn(tx, projectId));
+  }
+
+  async reconciliationIn(tx: Tx, projectId: string) {
+    const p = await this.project(tx, projectId);
+    const [budgets, lpos, issues, stock] = await Promise.all([
+      tx.conMaterialBudget.findMany({ where: { projectId } }),
+      tx.conLpo.findMany({ where: { projectId, status: 'APPROVED' }, include: { purchaseOrder: { include: { lineItems: true } } } }),
+      tx.conMaterialIssue.groupBy({ by: ['variantId', 'kind'], where: { projectId }, _sum: { qty: true } }),
+      p.branchId ? tx.inventoryItem.findMany({ where: { branchId: p.branchId } }) : Promise.resolve([]),
+    ]);
+    const ids = new Set<string>([...budgets.map((b) => b.variantId), ...issues.map((i) => i.variantId), ...stock.map((s) => s.variantId)]);
+    const ordered = new Map<string, number>();
+    const delivered = new Map<string, number>();
+    for (const l of lpos) {
+      if (l.purchaseOrder.status === 'CANCELLED') continue;
+      for (const li of l.purchaseOrder.lineItems) {
+        ids.add(li.variantId);
+        ordered.set(li.variantId, (ordered.get(li.variantId) ?? 0) + Number(li.quantityOrdered));
+        delivered.set(li.variantId, (delivered.get(li.variantId) ?? 0) + Number(li.quantityReceived));
       }
-      const variants = await tx.productVariant.findMany({ where: { id: { in: [...ids] } }, include: { product: true } });
-      const sum = (variantId: string, kind: 'USED' | 'WASTED') => n(issues.find((i) => i.variantId === variantId && i.kind === kind)?._sum.qty);
-      return variants
-        .map((v) => ({
-          variantId: v.id,
-          ...variantName(v),
-          ...reconcile({
-            budget: budgets.find((b) => b.variantId === v.id) ? Number(budgets.find((b) => b.variantId === v.id)!.qty) : null,
-            ordered: ordered.get(v.id) ?? 0,
-            delivered: delivered.get(v.id) ?? 0,
-            used: sum(v.id, 'USED'),
-            wasted: sum(v.id, 'WASTED'),
-            onHand: n(stock.find((s) => s.variantId === v.id)?.quantity),
-          }),
-        }))
-        .sort((a, b) => a.name.localeCompare(b.name));
-    });
+    }
+    const variants = await tx.productVariant.findMany({ where: { id: { in: [...ids] } }, include: { product: true } });
+    const sum = (variantId: string, kind: 'USED' | 'WASTED') => n(issues.find((i) => i.variantId === variantId && i.kind === kind)?._sum.qty);
+    return variants
+      .map((v) => ({
+        variantId: v.id,
+        ...variantName(v),
+        ...reconcile({
+          budget: budgets.find((b) => b.variantId === v.id) ? Number(budgets.find((b) => b.variantId === v.id)!.qty) : null,
+          ordered: ordered.get(v.id) ?? 0,
+          delivered: delivered.get(v.id) ?? 0,
+          used: sum(v.id, 'USED'),
+          wasted: sum(v.id, 'WASTED'),
+          onHand: n(stock.find((s) => s.variantId === v.id)?.quantity),
+        }),
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name));
   }
 }

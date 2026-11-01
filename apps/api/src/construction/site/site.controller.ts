@@ -9,6 +9,7 @@ import { LabourService } from './labour.service';
 import { SafetyService } from './safety.service';
 import { SiteService } from './site.service';
 import { MAX_PHOTO_BYTES } from './site.util';
+import { DiaryQueryDto, MusterDayQueryDto, MusterRangeQueryDto, PageQueryDto, PhotoQueryDto, WorkersQueryDto } from '../dto/query.dto';
 
 const PM: ConRoleCode = 'CON_PROJECT_MGR';
 const ENG: ConRoleCode = 'CON_SITE_ENGINEER';
@@ -36,8 +37,8 @@ export class SiteController {
   @ConFeature('projects')
   @ConRoles(...DIARY_VIEW)
   @Get('projects/:projectId/diaries')
-  diaries(@Param('projectId', ParseUUIDPipe) projectId: string, @Query('from') from?: string, @Query('to') to?: string) {
-    return this.site.listDiaries(projectId, from, to);
+  diaries(@Param('projectId', ParseUUIDPipe) projectId: string, @Query() q: DiaryQueryDto) {
+    return this.site.listDiaries(projectId, q.from, q.to, q);
   }
 
   @ConFeature('projects')
@@ -80,7 +81,7 @@ export class SiteController {
     @Req() req: Request & ConRequest,
     @Param('projectId', ParseUUIDPipe) projectId: string,
     @Headers('content-type') contentType: string | undefined,
-    @Query() q: { caption?: string; lat?: string; lng?: string; takenAt?: string },
+    @Query() q: PhotoQueryDto,
   ) {
     return this.site.uploadPhoto(req.con!, projectId, mime(contentType), await readBody(req, MAX_PHOTO_BYTES, 'Photos'), q);
   }
@@ -88,8 +89,8 @@ export class SiteController {
   @ConFeature('projects')
   @ConRoles(...DIARY_VIEW)
   @Get('projects/:projectId/photos')
-  photos(@Param('projectId', ParseUUIDPipe) projectId: string) {
-    return this.site.listPhotos(projectId);
+  photos(@Param('projectId', ParseUUIDPipe) projectId: string, @Query() page: PageQueryDto) {
+    return this.site.listPhotos(projectId, page);
   }
 
   @ConFeature('projects')
@@ -112,8 +113,8 @@ export class SiteController {
   @ConFeature('projects')
   @ConRoles(...DIARY_VIEW)
   @Get('projects/:projectId/instructions')
-  instructions(@Param('projectId', ParseUUIDPipe) projectId: string) {
-    return this.site.listInstructions(projectId);
+  instructions(@Param('projectId', ParseUUIDPipe) projectId: string, @Query() page: PageQueryDto) {
+    return this.site.listInstructions(projectId, page);
   }
 
   @ConFeature('projects')
@@ -135,8 +136,8 @@ export class SiteController {
   @ConFeature('labour')
   @ConRoles(...LABOUR_VIEW)
   @Get('workers')
-  workers(@Req() req: ConRequest, @Query('projectId') projectId?: string) {
-    return this.labour.list(req.con!, projectId);
+  workers(@Req() req: ConRequest, @Query() q: WorkersQueryDto) {
+    return this.labour.list(req.con!, q.projectId, q);
   }
 
   @ConFeature('labour')
@@ -165,8 +166,8 @@ export class SiteController {
   @ConFeature('labour')
   @ConRoles(...LABOUR_VIEW)
   @Get('projects/:projectId/muster')
-  musterDay(@Param('projectId', ParseUUIDPipe) projectId: string, @Query('date') date: string) {
-    return this.labour.musterDay(projectId, /^\d{4}-\d{2}-\d{2}$/.test(date ?? '') ? date : new Date(Date.now() + 3 * 3_600_000).toISOString().slice(0, 10));
+  musterDay(@Param('projectId', ParseUUIDPipe) projectId: string, @Query() q: MusterDayQueryDto) {
+    return this.labour.musterDay(projectId, q.date ?? new Date(Date.now() + 3 * 3_600_000).toISOString().slice(0, 10));
   }
 
   @ConFeature('labour')
@@ -180,8 +181,8 @@ export class SiteController {
   @ConFeature('labour')
   @ConRoles(...LABOUR_VIEW)
   @Get('projects/:projectId/muster/summary')
-  musterSummary(@Param('projectId', ParseUUIDPipe) projectId: string, @Query('from') from: string, @Query('to') to: string) {
-    return this.labour.musterSummary(projectId, from, to);
+  musterSummary(@Param('projectId', ParseUUIDPipe) projectId: string, @Query() q: MusterRangeQueryDto) {
+    return this.labour.musterSummary(projectId, q.from, q.to);
   }
 
   // ── Safety ──

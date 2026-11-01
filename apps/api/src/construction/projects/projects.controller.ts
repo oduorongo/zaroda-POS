@@ -25,10 +25,13 @@ import { BqItemDto, BqSectionDto, MemberDto, MilestoneDto, PartyDto, PermitDto, 
 import { BqService, MAX_BQ_BYTES } from './bq.service';
 import { ProjectsService } from './projects.service';
 import { TendersService } from './tenders.service';
+import { PageQueryDto } from '../dto/query.dto';
 
 const OFFICE: ConRoleCode[] = ['CON_CONTRACTS_MGR', 'CON_QS', 'CON_ACCOUNTANT', 'CON_PROCUREMENT', 'CON_COMPLIANCE', 'CON_SHE_OFFICER'];
 const SITE: ConRoleCode[] = ['CON_PROJECT_MGR', 'CON_SITE_ENGINEER', 'CON_SITE_SUPERVISOR', 'CON_STOREKEEPER', 'CON_TIMEKEEPER'];
 const ANYONE: ConRoleCode[] = [...OFFICE, ...SITE];
+// Contracts, parties and permits: not for storekeepers or timekeepers (docs/construction/02).
+const CONTRACT_VIEW: ConRoleCode[] = [...OFFICE, 'CON_PROJECT_MGR', 'CON_SITE_ENGINEER', 'CON_SITE_SUPERVISOR'];
 const TENDER_VIEW: ConRoleCode[] = ['CON_CONTRACTS_MGR', 'CON_QS', 'CON_COMPLIANCE', 'CON_ACCOUNTANT', 'CON_PROCUREMENT', 'CON_PROJECT_MGR'];
 const TENDER_EDIT: ConRoleCode[] = ['CON_CONTRACTS_MGR', 'CON_QS', 'CON_COMPLIANCE'];
 const PROJECT_EDIT: ConRoleCode[] = ['CON_CONTRACTS_MGR', 'CON_QS', 'CON_PROJECT_MGR'];
@@ -59,8 +62,8 @@ export class TendersController {
   @ConFeature('tenders')
   @ConRoles(...TENDER_VIEW)
   @Get('tenders')
-  list() {
-    return this.tenders.list();
+  list(@Query() page: PageQueryDto) {
+    return this.tenders.list(page);
   }
 
   @ConFeature('tenders')
@@ -96,7 +99,7 @@ export class ProjectsController {
 
   // ── Parties ──
 
-  @ConRoles(...ANYONE)
+  @ConRoles(...CONTRACT_VIEW)
   @Get('parties')
   parties() {
     return this.projects.listParties();
@@ -133,8 +136,8 @@ export class ProjectsController {
   @ConFeature('projects')
   @ConRoles(...ANYONE)
   @Get('projects/:projectId')
-  get(@Param('projectId', ParseUUIDPipe) projectId: string) {
-    return this.projects.get(projectId);
+  get(@Req() req: ConRequest, @Param('projectId', ParseUUIDPipe) projectId: string) {
+    return this.projects.get(req.con!, projectId);
   }
 
   @ConFeature('projects')
@@ -197,7 +200,7 @@ export class ProjectsController {
     return this.projects.uploadPermitFile(projectId, type, mime(contentType), await readBody(req, 10 * 1024 * 1024, 'Documents'), fileNameOf(fileName));
   }
 
-  @ConRoles(...ANYONE)
+  @ConRoles(...CONTRACT_VIEW)
   @Get('projects/:projectId/permits/:type/file')
   async permitFile(@Param('projectId', ParseUUIDPipe) projectId: string, @Param('type', new ParseEnumPipe(ConPermitType)) type: ConPermitType) {
     const f = await this.projects.permitFile(projectId, type);

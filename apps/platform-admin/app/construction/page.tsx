@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { apiGet, apiPatch, apiPost, ApiError } from "../../lib/api";
 import { getSession, type Session } from "../../lib/auth";
 import { Nav } from "../../components/nav";
+import { BillingReport } from "./billing-report";
 
 type Limits = { activeProjects: number | null; workers: number | null; users: number | null };
 interface Plan { id: string; code: string; name: string; fits: string | null; monthlyPrice: string; annualPrice: string | null; quoteOnly: boolean; setupFee: string | null; setupFeeOptional: boolean; limits: Limits; features: string[]; sortOrder: number; isActive: boolean }
@@ -25,6 +26,7 @@ export default function ConstructionAdminPage() {
   const [tenants, setTenants] = useState<Tenants | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [loads, setLoads] = useState(0);
   const [coupon, setCoupon] = useState({ code: "", description: "", percentOff: "50", months: "2", maxUses: "" });
 
   const load = async () => {
@@ -33,6 +35,7 @@ export default function ConstructionAdminPage() {
       setPlans(p);
       setCoupons(c);
       setTenants(t);
+      setLoads((n) => n + 1);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Could not load construction billing.");
     }
@@ -67,12 +70,7 @@ export default function ConstructionAdminPage() {
         {error && <p className="rounded border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800">{error}</p>}
         {notice && <p className="rounded border border-green-300 bg-green-50 px-3 py-2 text-sm text-green-800">{notice}</p>}
 
-        {tenants && (
-          <section className="rounded-lg border border-border bg-surface p-4">
-            <h2 className="font-semibold">MRR {kes(tenants.mrr)}</h2>
-            <p className="mt-1 text-sm text-secondary-600">{tenants.perPlan.map((p) => `${p.name}: ${p.active} paying, ${p.trial} on trial`).join(" · ")}</p>
-          </section>
-        )}
+        <BillingReport refresh={loads} />
 
         <section className="space-y-3">
           <h2 className="font-semibold">Plans</h2>

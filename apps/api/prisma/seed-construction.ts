@@ -19,6 +19,7 @@ const inDays = (n: number) => new Date(Date.UTC(new Date().getUTCFullYear(), new
  *   npx ts-node prisma/seed-construction.ts
  * Sign in with director@uriri.demo / password123 (also compliance@, qs@, accounts@, pm@, site@, procurement@, store@).
  * Portal (emailed code; shown on screen when email is not set up): client@, cqs@, arch@, sub@uriri.demo.
+ * Two projects: PRJ-001 (classrooms, on programme) and a smaller market job running late, for the dashboards and reports.
  */
 async function main() {
   const existing = await prisma.organization.findFirst({ where: { name: "Uriri Builders Ltd", industryType: "CONSTRUCTION" } });
@@ -28,6 +29,7 @@ async function main() {
   await seedMaterials(orgId);
   await seedCommercial(orgId);
   await seedPayrollPortal(orgId);
+  await seedSecondProject(orgId);
 }
 
 const hashed = bcrypt.hash("password123", 10);
@@ -583,3 +585,51 @@ main()
     process.exit(1);
   })
   .finally(() => prisma.$disconnect());
+
+/** C7: a second, smaller job running late, so the Director overview and reports compare projects. */
+async function seedSecondProject(orgId: string) {
+  const name = "Oyani Market Sheds";
+  await prisma.$transaction(
+    async (tx) => {
+      await tx.$executeRaw`SELECT set_config('app.current_tenant', ${orgId}, true)`;
+      if (await tx.conProject.findFirst({ where: { name } })) {
+        console.log(`${name} already exists - nothing to do.`);
+        return;
+      }
+      const pm = await tx.orgUser.findFirst({ where: { user: { email: "pm@uriri.demo" } } });
+      const client = await tx.conParty.create({ data: { organizationId: orgId, kind: "CLIENT", name: "County Government of Migori - Trade Department", contactPerson: "Chief Officer, Trade", phone: "0711000020" } });
+      const codes = (await tx.conProject.findMany({ select: { code: true } })).map((p) => p.code);
+      const bq: [string, [string, string, number, number][]][] = [
+        ["Substructure", [["Excavate for strip foundations", "m3", 120, 850], ["Concrete class 20 in foundations", "m3", 45, 14500], ["Hardcore filling, 200mm", "m2", 600, 420]]],
+        ["Steel sheds", [["Structural steel portal frames", "kg", 18000, 165], ["Roofing sheets, gauge 28, pre-painted", "m2", 1400, 980], ["Concrete floor slab 150mm", "m2", 600, 2350]]],
+      ];
+      const total = bq.flatMap(([, items]) => items).reduce((a, [, , qty, rate]) => a + qty * rate, 0);
+      const project = await tx.conProject.create({
+        data: {
+          organizationId: orgId, code: nextCode("PRJ", codes), name, clientId: client.id, worksClass: "BUILDING", contractSum: total, formOfContract: "PPADA",
+          startDate: inDays(-150), completionDate: inDays(10), dlpMonths: 6, county: "Migori", location: "Oyani market", status: "ACTIVE",
+        },
+      });
+      const pid = project.id;
+      if (pm) await tx.conProjectMember.create({ data: { organizationId: orgId, projectId: pid, orgUserId: pm.id, role: "CON_PROJECT_MGR" } });
+      await tx.conProjectPermit.create({ data: { organizationId: orgId, projectId: pid, type: "NCA_PROJECT_REG", status: "APPROVED", refNo: "NCA/PR/2026/49077", issuedAt: inDays(-160) } });
+      const ms: [string, number, number, number][] = [
+        ["Site clearance and setting out", -150, -135, 100],
+        ["Foundations and slab", -134, -80, 100],
+        ["Steel frames", -79, -30, 70],
+        ["Roofing and handover", -29, 10, 10],
+      ];
+      await tx.conMilestone.createMany({ data: ms.map(([n, st, en, pc], i) => ({ organizationId: orgId, projectId: pid, name: n, startDate: inDays(st), endDate: inDays(en), percentComplete: pc, sortOrder: i })) });
+      for (const [si, [sectionName, items]] of bq.entries()) {
+        const section = await tx.conBqSection.create({ data: { organizationId: orgId, projectId: pid, code: `BILL ${si + 1}`, name: sectionName, sortOrder: si } });
+        await tx.conBqItem.createMany({ data: items.map(([description, unit, qty, rate], ii) => ({ organizationId: orgId, projectId: pid, sectionId: section.id, code: String.fromCharCode(65 + ii), description, unit, qty, rate, amount: qty * rate, sortOrder: ii })) });
+      }
+      await tx.conToolboxTalk.create({ data: { organizationId: orgId, projectId: pid, date: inDays(-45), topic: "Working at height on steel frames", heldBy: pm?.id } });
+      await tx.conIncident.create({
+        data: { organizationId: orgId, projectId: pid, occurredAt: inDays(-40), severity: "LOST_TIME", description: "Fitter struck by a swinging purlin while lifting; bruised shoulder, off work 3 days.", actionTaken: "Tag lines used for every lift", reportDueAt: new Date(inDays(-40).getTime() + 7 * DAY), reportedToDoshs: true, reportedAt: inDays(-36), doshsRef: "DOSHS/MGR/2026/311", createdBy: pm?.id },
+      });
+      console.log(`Seeded ${project.code} ${name} (behind programme).`);
+    },
+    { timeout: 60_000 },
+  );
+}

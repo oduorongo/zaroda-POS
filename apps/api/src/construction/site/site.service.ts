@@ -9,6 +9,7 @@ import { todayKey } from '../compliance/compliance.util';
 import { DiaryDto, InstructionDto } from '../dto/site.dto';
 import { nextCode } from '../projects/projects.util';
 import { MAX_PHOTO_BYTES, PHOTO_TYPES } from './site.util';
+import { PageQueryDto, pageOf } from '../dto/query.dto';
 
 const day = (d: Date | null) => (d ? d.toISOString().slice(0, 10) : null);
 const date = (s: string) => new Date(`${s}T00:00:00Z`);
@@ -47,13 +48,13 @@ export class SiteService {
     };
   }
 
-  async listDiaries(projectId: string, from?: string, to?: string) {
+  async listDiaries(projectId: string, from?: string, to?: string, page?: PageQueryDto) {
     return this.tenantPrisma.run(async (tx) => {
       await this.project(tx, projectId);
       const rows = await tx.conSiteDiary.findMany({
         where: { projectId, ...(from || to ? { date: { ...(from ? { gte: date(from) } : {}), ...(to ? { lte: date(to) } : {}) } } : {}) },
         orderBy: { date: 'desc' },
-        take: 60,
+        ...pageOf(page, 60),
         include: { _count: { select: { photos: true } } },
       });
       return rows.map((d) => ({ id: d.id, date: day(d.date), weather: d.weather, worksDone: d.worksDone, labourCount: d.labourCount, status: d.status, photos: d._count.photos }));
@@ -149,8 +150,8 @@ export class SiteService {
     });
   }
 
-  async listPhotos(projectId: string, limit = 60) {
-    const rows = await this.tenantPrisma.run((tx) => tx.conSitePhoto.findMany({ where: { projectId }, orderBy: { takenAt: 'desc' }, take: Math.min(limit, 200) }));
+  async listPhotos(projectId: string, page?: PageQueryDto) {
+    const rows = await this.tenantPrisma.run((tx) => tx.conSitePhoto.findMany({ where: { projectId }, orderBy: { takenAt: 'desc' }, ...pageOf(page, 60) }));
     return rows.map(photoView);
   }
 
@@ -177,8 +178,8 @@ export class SiteService {
 
   // ── Site instructions ──
 
-  async listInstructions(projectId: string) {
-    const rows = await this.tenantPrisma.run((tx) => tx.conSiteInstruction.findMany({ where: { projectId }, orderBy: { date: 'desc' }, include: { party: { select: { id: true, name: true, kind: true } } } }));
+  async listInstructions(projectId: string, page?: PageQueryDto) {
+    const rows = await this.tenantPrisma.run((tx) => tx.conSiteInstruction.findMany({ where: { projectId }, orderBy: { date: 'desc' }, ...pageOf(page), include: { party: { select: { id: true, name: true, kind: true } } } }));
     return rows.map((i) => ({ id: i.id, number: i.number, date: day(i.date), issuedBy: i.party?.name ?? i.issuedByName, party: i.party, description: i.description, status: i.status, variationId: i.variationId }));
   }
 

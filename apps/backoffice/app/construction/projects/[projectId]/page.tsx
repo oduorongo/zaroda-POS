@@ -9,6 +9,7 @@ import { ErrorBox } from "../../../../components/construction/ui";
 import { STATUS_COLOUR, STATUS_LABEL } from "../shared";
 import { BqTab } from "./bq";
 import { CommercialTab } from "./commercial";
+import { DashboardTab } from "./dashboard";
 import { MaterialsTab } from "./materials";
 import { PlantTab } from "./plant";
 import { PayrollTab } from "./payroll";
@@ -20,6 +21,7 @@ import { TeamTab } from "./team";
 import type { ProjectDetail } from "./types";
 
 const TABS = [
+  { key: "dashboard", label: "Dashboard" },
   { key: "overview", label: "Overview" },
   { key: "team", label: "Team & parties" },
   { key: "permits", label: "Permits" },
@@ -37,7 +39,7 @@ export default function ProjectPage() {
   const { projectId } = useParams<{ projectId: string }>();
   const [project, setProject] = useState<ProjectDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [tab, setTab] = useState<Tab>("overview");
+  const [tab, setTab] = useState<Tab>("dashboard");
 
   const load = useCallback(async () => {
     try {
@@ -73,6 +75,7 @@ export default function ProjectPage() {
               </button>
             ))}
           </nav>
+          {tab === "dashboard" && <DashboardTab project={project} reload={load} />}
           {tab === "overview" && <OverviewTab project={project} reload={load} />}
           {tab === "team" && <TeamTab project={project} reload={load} />}
           {tab === "permits" && <PermitsTab project={project} reload={load} />}

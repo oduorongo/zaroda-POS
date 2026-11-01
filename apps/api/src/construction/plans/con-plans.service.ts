@@ -15,6 +15,7 @@ import { ConSetupService, toPlan } from '../common/con-setup.service';
 import { CouponDto, PayPlanDto, QuoteQueryDto, RecordConPaymentDto, UpdateConPlanDto } from '../dto/construction.dto';
 import {
   LimitKey,
+  agentCommission,
   Limits,
   PlanLike,
   downgradeProblems,
@@ -374,6 +375,34 @@ export class ConPlansService {
     });
     const perPlan = plans.map((p) => ({ code: p.code, name: p.name, active: rows.filter((r) => r.planCode === p.code && (r.status === 'ACTIVE' || r.status === 'GRACE')).length, trial: rows.filter((r) => r.planCode === p.code && r.status === 'TRIAL').length }));
     return { tenants: rows, perPlan, mrr: rows.reduce((a, r) => a + r.mrr, 0) };
+  }
+
+  /** Super-admin billing: MRR, tenants per plan and status, trials ending this week, suspended tenants and sales commissions. */
+  async billing(now: Date = new Date()) {
+    const { tenants, mrr } = await this.tenants();
+    const plans = await this.setup.activePlans();
+    const ids = tenants.map((t) => t.id);
+    const [orgs, payments] = await Promise.all([
+      this.prisma.organization.findMany({ where: { industryType: 'CONSTRUCTION', salesAgentId: { not: null } }, select: { id: true, salesAgent: { select: { fullName: true, team: { select: { name: true, conCommissionRate: true } } } } } }),
+      this.prisma.conSubscriptionPayment.findMany({ where: { organizationId: { in: ids }, status: 'PAID' }, select: { organizationId: true, amount: true, paidAt: true } }),
+    ]);
+    const week = now.getTime() + 7 * DAY;
+    const count = (code: string, status: string) => tenants.filter((t) => t.planCode === code && t.status === status).length;
+    const commissions = orgs.map((o) => {
+      const t = tenants.find((x) => x.id === o.id)!;
+      const rate = Number(o.salesAgent!.team.conCommissionRate);
+      const c = agentCommission(payments.filter((p) => p.organizationId === o.id && p.paidAt).map((p) => ({ amount: Number(p.amount), paidAt: p.paidAt! })), rate);
+      return { organizationId: o.id, tenant: t?.name ?? '', agent: o.salesAgent!.fullName, team: o.salesAgent!.team.name, rate, ...c };
+    });
+    return {
+      mrr,
+      perPlan: plans.map((p) => ({ code: p.code, name: p.name, active: count(p.code, 'ACTIVE'), trial: count(p.code, 'TRIAL'), grace: count(p.code, 'GRACE'), suspended: count(p.code, 'SUSPENDED'), mrr: tenants.filter((t) => t.planCode === p.code).reduce((a, t) => a + t.mrr, 0) })),
+      trialsEnding: tenants.filter((t) => t.status === 'TRIAL' && t.currentPeriodEnd && t.currentPeriodEnd.getTime() <= week).sort((a, b) => a.currentPeriodEnd!.getTime() - b.currentPeriodEnd!.getTime()),
+      grace: tenants.filter((t) => t.status === 'GRACE'),
+      suspended: tenants.filter((t) => t.status === 'SUSPENDED' || t.status === 'CANCELLED'),
+      commissions,
+      commissionDue: Math.round(commissions.filter((c) => c.payable).reduce((a, c) => a + c.commission, 0) * 100) / 100,
+    };
   }
 
   private async subFor(tx: Tx, organizationId: string) {

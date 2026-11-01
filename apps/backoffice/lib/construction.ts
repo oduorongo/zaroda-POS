@@ -74,6 +74,16 @@ export async function conOpenFile(path: string): Promise<void> {
   }
 }
 
+/** Saves a file the API builds (an Excel report) under the given name. */
+export async function conDownload(path: string, fileName: string): Promise<void> {
+  const url = URL.createObjectURL(await (await raw(path, { method: "GET" })).blob());
+  const a = Object.assign(document.createElement("a"), { href: url, download: fileName });
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
+
 /** An API refusal with its details: warnings to confirm (409), blocks (400), or the BQ import preview. */
 export class ConApiError extends ApiError {
   data: { message?: string; warnings?: string[]; blocks?: string[]; needsConfirm?: boolean; capExceeded?: boolean; [k: string]: unknown };

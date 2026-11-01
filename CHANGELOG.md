@@ -1,5 +1,16 @@
 # Changelog
 
+## Construction C7: reports, dashboards and hardening (2026-11-01)
+
+- Reports screen with eight reports: project cost vs BQ budget, cash flow, IPC & retention, material reconciliation, labour cost, compliance expiries, safety statistics (with LTIFR) and NCA category utilisation. Each can be filtered by project and dates, downloaded as Excel and printed / saved as PDF. Basic reports are on every plan; cash flow, labour, NCA and exports need Contractor or higher (402 with an upgrade prompt). A read-only (lapsed) account can still run and export them.
+- Who sees what follows docs/construction/02: Director and company-wide roles see every project, project roles only their own projects. Worker personal details are never in a report.
+- Director / Contracts Manager overview on Home (all open projects: certified, cost, margin, owed, retention, on site today, behind programme, approvals waiting). Project Manager dashboard as the first tab of each project. Site staff see it without the money.
+- Super-admin billing report: MRR, tenants per plan by status, trials ending in 7 days, grace and suspended tenants, and sales-agent commissions (15% of first-year plan payments by default, a per-team setting, payable after the second payment).
+- Hardening: a permission test checks every construction endpoint against the 02 matrix (exceptions listed with reasons), plan features against 05, audit-log coverage of every write, validation of every request field, and that only global tables bypass the tenant. Storekeepers and timekeepers no longer see contract sums, the client or consultant contacts. Paging (`take`/`skip`) on the long lists; query values (dates, GPS, project filters) are validated. New indexes on project, tenant, date and foreign-key columns.
+- e2e: reports cross-checked against the database, role refusals per area, and a database-level check that no construction table shows another business's rows.
+- Plain-English guide per role: `docs/construction/USER-GUIDE.md`.
+- Migration `20261217100000_construction_reports` (indexes + `sales_teams.conCommissionRate`); seed adds a second, late-running project "Oyani Market Sheds".
+
 ## Construction C6: casual payroll and the external portal (2026-10-31)
 
 - Pay runs per project and period, worked out from the muster roll (days present x daily rate, half days count half). NSSF (up to the ceiling), SHIF (with its minimum), Housing Levy and PAYE bands with personal relief all come from `con_tax_settings` in force on the last day, scaled to the pay period. New settings keys: PAYE_BAND_1-5, PERSONAL_RELIEF; NSSF and SHIF now carry their ceiling / minimum. Missing keys are added automatically for existing businesses.

@@ -64,6 +64,12 @@ export class PlatformConstructionController {
     return this.plans.tenants();
   }
 
+  @Get('billing')
+  async billing(@Req() req: PlatformAdminRequest) {
+    await this.log(req, 'viewed_con_billing', 'ConSubscription');
+    return this.plans.billing();
+  }
+
   @Post('tenants/:id/extend-trial')
   async extendTrial(@Req() req: PlatformAdminRequest, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ExtendTrialDto) {
     const { after } = await this.plans.extendTrial(id, dto.days);

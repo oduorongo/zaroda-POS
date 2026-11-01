@@ -1,9 +1,10 @@
-import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Put, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Put, Req, UseGuards, Query } from '@nestjs/common';
 import { ConRoleCode } from '@prisma/client';
 import { ConFeature, ConProjectGuard, ConRequest, ConRoles, ConstructionGuard } from '../common/con-access';
 import { BudgetDto, GrnDto, IssueDto, LpoDto, PlantDto, PlantLogDto, ReasonDto, RequisitionDto } from '../dto/materials.dto';
 import { MaterialsService } from './materials.service';
 import { PlantService } from './plant.service';
+import { PageQueryDto } from '../dto/query.dto';
 
 const CM: ConRoleCode = 'CON_CONTRACTS_MGR';
 const QS: ConRoleCode = 'CON_QS';
@@ -36,8 +37,8 @@ export class MaterialsController {
   @ConFeature('procurement')
   @ConRoles(...REQ_VIEW)
   @Get('projects/:projectId/requisitions')
-  requisitions(@Param('projectId', ParseUUIDPipe) projectId: string) {
-    return this.materials.listRequisitions(projectId);
+  requisitions(@Param('projectId', ParseUUIDPipe) projectId: string, @Query() page: PageQueryDto) {
+    return this.materials.listRequisitions(projectId, page);
   }
 
   @ConFeature('procurement')
@@ -68,8 +69,8 @@ export class MaterialsController {
   @ConFeature('procurement')
   @ConRoles(...LPO_VIEW)
   @Get('projects/:projectId/lpos')
-  lpos(@Param('projectId', ParseUUIDPipe) projectId: string) {
-    return this.materials.listLpos(projectId);
+  lpos(@Param('projectId', ParseUUIDPipe) projectId: string, @Query() page: PageQueryDto) {
+    return this.materials.listLpos(projectId, page);
   }
 
   @ConFeature('procurement')
@@ -130,8 +131,8 @@ export class MaterialsController {
   @ConFeature('procurement')
   @ConRoles(...STOCK_VIEW)
   @Get('projects/:projectId/issues')
-  issues(@Param('projectId', ParseUUIDPipe) projectId: string) {
-    return this.materials.listIssues(projectId);
+  issues(@Param('projectId', ParseUUIDPipe) projectId: string, @Query() page: PageQueryDto) {
+    return this.materials.listIssues(projectId, page);
   }
 
   @ConFeature('procurement')
@@ -181,8 +182,8 @@ export class MaterialsController {
   @ConFeature('plant')
   @ConRoles(...PLANT_VIEW)
   @Get('projects/:projectId/plant-logs')
-  plantLogs(@Param('projectId', ParseUUIDPipe) projectId: string) {
-    return this.plant.logs(projectId);
+  plantLogs(@Param('projectId', ParseUUIDPipe) projectId: string, @Query() page: PageQueryDto) {
+    return this.plant.logs(projectId, page);
   }
 
   @ConFeature('plant')
@@ -193,7 +194,7 @@ export class MaterialsController {
   }
 
   @ConFeature('plant')
-  @ConRoles(...RECON_VIEW, ACC)
+  @ConRoles(...RECON_VIEW)
   @Get('projects/:projectId/plant-cost')
   plantCost(@Param('projectId', ParseUUIDPipe) projectId: string) {
     return this.plant.projectCost(projectId);

@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { apiGet, apiPost } from "../../lib/api";
-import { CON_BRAND, errorText, type ConMe, type ConStatus } from "../../lib/construction";
+import { CON_BRAND, errorText, hasConRole, type ConMe, type ConStatus } from "../../lib/construction";
+import { DirectorOverview } from "./director-overview";
 import { ConShell } from "../../components/construction/con-shell";
 import { ErrorBox, ExpiryBadge, Panel, type ExpiryState } from "../../components/construction/ui";
 import { STATUS_COLOUR, STATUS_LABEL, type ProjectStatus } from "./projects/shared";
@@ -44,6 +45,7 @@ export default function ConstructionHome() {
     <ConShell title="Construction dashboard">
       <ErrorBox message={error} />
       {!data && !error && <p className="text-sm text-secondary-500">Loading...</p>}
+      {data && hasConRole(data.me, "CON_CONTRACTS_MGR") && <DirectorOverview />}
       {data && h && (
         <div className="grid gap-4 md:grid-cols-2">
           <Panel title="Compliance health" action={<Link href="/construction/compliance" className="text-sm font-medium" style={{ color: CON_BRAND.orange }}>Open vault</Link>}>

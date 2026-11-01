@@ -5,6 +5,7 @@ import { ConContext } from '../common/con-access';
 import { todayKey } from '../compliance/compliance.util';
 import { PlantDto, PlantLogDto } from '../dto/materials.dto';
 import { plantCost } from './materials.util';
+import { PageQueryDto, pageOf } from '../dto/query.dto';
 
 const day = (d: Date) => d.toISOString().slice(0, 10);
 const num = (v: unknown) => (v === null || v === undefined ? null : Number(v));
@@ -64,8 +65,8 @@ export class PlantService {
     });
   }
 
-  async logs(projectId: string) {
-    const rows = await this.tenantPrisma.run((tx) => tx.conPlantLog.findMany({ where: { projectId }, orderBy: { date: 'desc' }, take: 200, include: { plant: { select: { name: true, regNo: true } } } }));
+  async logs(projectId: string, page?: PageQueryDto) {
+    const rows = await this.tenantPrisma.run((tx) => tx.conPlantLog.findMany({ where: { projectId }, orderBy: { date: 'desc' }, ...pageOf(page), include: { plant: { select: { name: true, regNo: true } } } }));
     return rows.map((l) => ({ id: l.id, plant: l.plant.name, regNo: l.plant.regNo, plantId: l.plantId, date: day(l.date), hours: Number(l.hours), fuelLitres: num(l.fuelLitres), fuelCost: num(l.fuelCost), operator: l.operator, notes: l.notes }));
   }
 

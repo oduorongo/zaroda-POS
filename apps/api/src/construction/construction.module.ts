@@ -37,6 +37,9 @@ import { ConPortalGuard } from './portal/portal-access';
 import { PortalAuthService } from './portal/portal-auth.service';
 import { PortalAuthController, PortalController, PortalUsersController } from './portal/portal.controller';
 import { PortalService } from './portal/portal.service';
+import { DashboardsService } from './reports/dashboards.service';
+import { ReportsController } from './reports/reports.controller';
+import { ReportsService } from './reports/reports.service';
 
 /** Construction contractors (industryType "CONSTRUCTION", served at CONSTRUCTION_DOMAIN). See docs/construction. */
 @Module({
@@ -53,7 +56,7 @@ import { PortalService } from './portal/portal.service';
       useFactory: (config: ConfigService) => ({ secret: config.getOrThrow<string>('BUYER_JWT_SECRET'), signOptions: { expiresIn: '12h' } }),
     }),
   ],
-  controllers: [ConstructionController, TendersController, ProjectsController, SiteController, MaterialsController, CommercialController, PayrollController, PayrollCallbackController, PortalAuthController, PortalController, PortalUsersController, ConBillingCallbackController, ConPublicController],
+  controllers: [ConstructionController, TendersController, ProjectsController, SiteController, MaterialsController, CommercialController, PayrollController, PayrollCallbackController, PortalAuthController, PortalController, PortalUsersController, ReportsController, ConBillingCallbackController, ConPublicController],
   providers: [
     ConSetupService,
     ConstructionGuard,
@@ -78,6 +81,8 @@ import { PortalService } from './portal/portal.service';
     PortalAuthService,
     PortalService,
     ConPortalGuard,
+    ReportsService,
+    DashboardsService,
     PrivateObjectStorageService,
   ],
   // Platform admin edits plans and coupons, extends trials and records payments.

@@ -20,6 +20,7 @@ const LINKS = [
   { href: "/construction/plant", label: "Plant" },
   { href: "/construction/tenders", label: "Tenders" },
   { href: "/construction/compliance", label: "Compliance" },
+  { href: "/construction/reports", label: "Reports" },
   { href: "/construction/plan", label: "Plan" },
   { href: "/construction/settings", label: "Settings" },
 ];

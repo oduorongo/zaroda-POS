@@ -1,0 +1,34 @@
+-- Construction C7: sales-team commission rate for construction plans, and indexes for reports, dashboards and deletes.
+DROP INDEX "con_ppe_issues_projectId_idx";
+DROP INDEX "con_toolbox_talks_projectId_idx";
+CREATE INDEX "con_alerts_organizationId_readAt_idx" ON "con_alerts"("organizationId", "readAt");
+CREATE INDEX "con_bq_items_projectId_idx" ON "con_bq_items"("projectId");
+CREATE INDEX "con_compliance_docs_projectId_idx" ON "con_compliance_docs"("projectId");
+CREATE INDEX "con_incidents_workerId_idx" ON "con_incidents"("workerId");
+CREATE INDEX "con_lpos_requisitionId_idx" ON "con_lpos"("requisitionId");
+CREATE INDEX "con_material_budgets_variantId_idx" ON "con_material_budgets"("variantId");
+CREATE INDEX "con_material_issues_projectId_issuedAt_idx" ON "con_material_issues"("projectId", "issuedAt");
+CREATE INDEX "con_material_issues_bqItemId_idx" ON "con_material_issues"("bqItemId");
+CREATE INDEX "con_muster_workerId_date_idx" ON "con_muster"("workerId", "date");
+CREATE INDEX "con_payroll_lines_workerId_idx" ON "con_payroll_lines"("workerId");
+CREATE INDEX "con_payroll_runs_projectId_periodEnd_idx" ON "con_payroll_runs"("projectId", "periodEnd");
+CREATE INDEX "con_plant_projectId_idx" ON "con_plant"("projectId");
+CREATE INDEX "con_portal_access_projectId_idx" ON "con_portal_access"("projectId");
+CREATE INDEX "con_portal_users_partyId_idx" ON "con_portal_users"("partyId");
+CREATE INDEX "con_ppe_issues_projectId_issuedAt_idx" ON "con_ppe_issues"("projectId", "issuedAt");
+CREATE INDEX "con_ppe_issues_workerId_idx" ON "con_ppe_issues"("workerId");
+CREATE INDEX "con_project_parties_partyId_idx" ON "con_project_parties"("partyId");
+CREATE INDEX "con_projects_clientId_idx" ON "con_projects"("clientId");
+CREATE INDEX "con_requisition_lines_bqItemId_idx" ON "con_requisition_lines"("bqItemId");
+CREATE INDEX "con_retention_ledger_valuationId_idx" ON "con_retention_ledger"("valuationId");
+CREATE INDEX "con_site_instructions_variationId_idx" ON "con_site_instructions"("variationId");
+CREATE INDEX "con_site_photos_diaryId_idx" ON "con_site_photos"("diaryId");
+CREATE INDEX "con_sub_valuations_organizationId_paidAt_idx" ON "con_sub_valuations"("organizationId", "paidAt");
+CREATE INDEX "con_subcontracts_partyId_idx" ON "con_subcontracts"("partyId");
+CREATE INDEX "con_toolbox_talks_projectId_date_idx" ON "con_toolbox_talks"("projectId", "date");
+CREATE INDEX "con_valuation_lines_bqItemId_idx" ON "con_valuation_lines"("bqItemId");
+CREATE INDEX "con_valuation_lines_variationId_idx" ON "con_valuation_lines"("variationId");
+CREATE INDEX "con_valuation_receipts_organizationId_receivedAt_idx" ON "con_valuation_receipts"("organizationId", "receivedAt");
+CREATE INDEX "con_valuations_projectId_status_idx" ON "con_valuations"("projectId", "status");
+
+ALTER TABLE "sales_teams" ADD COLUMN "conCommissionRate" DECIMAL(5,4) NOT NULL DEFAULT 0.15;

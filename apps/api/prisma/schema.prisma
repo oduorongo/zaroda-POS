@@ -3186,6 +3186,8 @@ model SalesTeam {
   leaderOverrideRate    Decimal         @default(0.05) @db.Decimal(5, 4)
   onboardingBonusKes    Decimal         @default(500) @db.Decimal(12, 2)
   payoutCapRate         Decimal         @default(0.35) @db.Decimal(5, 4)
+  // Construction plans (docs/construction/05): this share of a business's first-year plan payments, payable once it has paid twice.
+  conCommissionRate     Decimal         @default(0.15) @db.Decimal(5, 4)
   createdAt             DateTime        @default(now())
   updatedAt             DateTime        @updatedAt
 
@@ -5709,6 +5711,7 @@ model ConComplianceDoc {
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([organizationId, expiresAt])
+  @@index([projectId])
   @@map("con_compliance_docs")
 }
 
@@ -5761,6 +5764,7 @@ model ConAlert {
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@unique([organizationId, dedupeKey])
+  @@index([organizationId, readAt])
   @@map("con_alerts")
 }
 
@@ -5962,6 +5966,7 @@ model ConProject {
 
   @@unique([organizationId, code])
   @@index([organizationId, status])
+  @@index([clientId])
   @@map("con_projects")
 }
 
@@ -5980,6 +5985,7 @@ model ConProjectParty {
 
   @@unique([projectId, partyId, role])
   @@index([organizationId])
+  @@index([partyId])
   @@map("con_project_parties")
 }
 
@@ -6066,6 +6072,7 @@ model ConBqItem {
 
   @@index([organizationId])
   @@index([sectionId])
+  @@index([projectId])
   @@map("con_bq_items")
 }
 
@@ -6159,6 +6166,7 @@ model ConSitePhoto {
 
   @@index([organizationId])
   @@index([projectId, takenAt])
+  @@index([diaryId])
   @@map("con_site_photos")
 }
 
@@ -6184,6 +6192,7 @@ model ConSiteInstruction {
 
   @@unique([projectId, number])
   @@index([organizationId])
+  @@index([variationId])
   @@map("con_site_instructions")
 }
 
@@ -6237,6 +6246,7 @@ model ConMuster {
   @@unique([projectId, workerId, date])
   @@index([organizationId])
   @@index([projectId, date])
+  @@index([workerId, date])
   @@map("con_muster")
 }
 
@@ -6255,7 +6265,7 @@ model ConToolboxTalk {
   project      ConProject   @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@index([organizationId])
-  @@index([projectId])
+  @@index([projectId, date])
   @@map("con_toolbox_talks")
 }
 
@@ -6275,7 +6285,8 @@ model ConPpeIssue {
   worker       ConWorker    @relation(fields: [workerId], references: [id], onDelete: Cascade)
 
   @@index([organizationId])
-  @@index([projectId])
+  @@index([projectId, issuedAt])
+  @@index([workerId])
   @@map("con_ppe_issues")
 }
 
@@ -6327,6 +6338,7 @@ model ConIncident {
 
   @@index([organizationId])
   @@index([projectId, occurredAt])
+  @@index([workerId])
   @@map("con_incidents")
 }
 
@@ -6407,6 +6419,7 @@ model ConRequisitionLine {
 
   @@index([organizationId])
   @@index([requisitionId])
+  @@index([bqItemId])
   @@map("con_requisition_lines")
 }
 
@@ -6435,6 +6448,7 @@ model ConLpo {
 
   @@unique([organizationId, number])
   @@index([projectId])
+  @@index([requisitionId])
   @@map("con_lpos")
 }
 
@@ -6460,6 +6474,8 @@ model ConMaterialIssue {
 
   @@index([organizationId])
   @@index([projectId, variantId])
+  @@index([projectId, issuedAt])
+  @@index([bqItemId])
   @@map("con_material_issues")
 }
 
@@ -6478,6 +6494,7 @@ model ConMaterialBudget {
 
   @@unique([projectId, variantId])
   @@index([organizationId])
+  @@index([variantId])
   @@map("con_material_budgets")
 }
 
@@ -6503,6 +6520,7 @@ model ConPlant {
   logs         ConPlantLog[]
 
   @@index([organizationId])
+  @@index([projectId])
   @@map("con_plant")
 }
 
@@ -6646,6 +6664,7 @@ model ConValuation {
 
   @@unique([projectId, number])
   @@index([organizationId])
+  @@index([projectId, status])
   @@map("con_valuations")
 }
 
@@ -6666,6 +6685,8 @@ model ConValuationLine {
 
   @@index([organizationId])
   @@index([valuationId])
+  @@index([bqItemId])
+  @@index([variationId])
   @@map("con_valuation_lines")
 }
 
@@ -6688,6 +6709,7 @@ model ConValuationReceipt {
 
   @@index([organizationId])
   @@index([valuationId])
+  @@index([organizationId, receivedAt])
   @@map("con_valuation_receipts")
 }
 
@@ -6709,6 +6731,7 @@ model ConRetentionEntry {
 
   @@index([organizationId])
   @@index([projectId])
+  @@index([valuationId])
   @@map("con_retention_ledger")
 }
 
@@ -6734,6 +6757,7 @@ model ConSubcontract {
 
   @@unique([projectId, ref])
   @@index([organizationId])
+  @@index([partyId])
   @@map("con_subcontracts")
 }
 
@@ -6761,6 +6785,7 @@ model ConSubValuation {
 
   @@unique([subcontractId, number])
   @@index([organizationId])
+  @@index([organizationId, paidAt])
   @@map("con_sub_valuations")
 }
 
@@ -6812,6 +6837,7 @@ model ConPayrollRun {
 
   @@unique([projectId, number])
   @@index([organizationId])
+  @@index([projectId, periodEnd])
   @@map("con_payroll_runs")
 }
 
@@ -6845,6 +6871,7 @@ model ConPayrollLine {
 
   @@unique([runId, workerId])
   @@index([organizationId])
+  @@index([workerId])
   @@map("con_payroll_lines")
 }
 
@@ -6887,6 +6914,7 @@ model ConPortalUser {
   access       ConPortalAccess[]
 
   @@unique([organizationId, email])
+  @@index([partyId])
   @@map("con_portal_users")
 }
 
@@ -6904,6 +6932,7 @@ model ConPortalAccess {
 
   @@unique([portalUserId, projectId])
   @@index([organizationId])
+  @@index([projectId])
   @@map("con_portal_access")
 }
 

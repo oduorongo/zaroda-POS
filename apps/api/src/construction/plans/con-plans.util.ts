@@ -119,3 +119,12 @@ export function limitMessage(plan: PlanLike, plans: PlanLike[], kind: LimitKey, 
   const label = limit === 1 ? LIMIT_LABELS[kind].replace(/s$/, '') : LIMIT_LABELS[kind];
   return `Your ${plan.name} plan allows ${limit} ${label}. ${how} to add more.`;
 }
+
+/** Sales commission (docs/construction/05): rate x plan payments in the first year from the first payment; payable once paid twice. */
+export function agentCommission(payments: { amount: number; paidAt: Date }[], rate: number) {
+  const paid = [...payments].sort((a, b) => a.paidAt.getTime() - b.paidAt.getTime());
+  if (!paid.length) return { firstPaidAt: null, payments: 0, firstYear: 0, commission: 0, payable: false };
+  const until = paid[0].paidAt.getTime() + 365 * DAY;
+  const firstYear = Math.round(paid.filter((p) => p.paidAt.getTime() < until).reduce((a, p) => a + p.amount, 0) * 100) / 100;
+  return { firstPaidAt: paid[0].paidAt, payments: paid.length, firstYear, commission: Math.round(firstYear * rate * 100) / 100, payable: paid.length >= 2 };
+}

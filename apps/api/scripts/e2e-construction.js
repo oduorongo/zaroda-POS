@@ -914,6 +914,162 @@ async function main() {
     check(`audit: ${a}`, c6audit.includes(a));
   }
 
+  section('13g. Reports, dashboards and hardening (C7)');
+  const RP = '/construction/reports';
+  const sum = (rows, k) => Math.round(rows.reduce((a, r) => a + Number(r[k] ?? 0), 0) * 100) / 100;
+  const close = (a, b) => Math.abs(Number(a) - Number(b)) < 0.02;
+  const catDir = await dir.get(RP);
+  check('the Director sees all 8 reports, none locked on Contractor', catDir.json.length === 8 && catDir.json.every((c) => !c.locked), catDir.json);
+  check('the storekeeper has no reports', (await store.get(RP)).status === 403);
+  const qsKeys = (await qs.get(RP)).json.map((c) => c.key);
+  check("the QS sees money reports but not labour cost", qsKeys.includes('cost') && qsKeys.includes('ipc') && !qsKeys.includes('labour') && (await qs.get(`${RP}/labour`)).status === 403, qsKeys);
+  const compKeys = (await comp.get(RP)).json.map((c) => c.key);
+  check('the compliance officer sees compliance, safety and NCA, not cost', compKeys.includes('compliance') && compKeys.includes('nca') && !compKeys.includes('cost') && (await comp.get(`${RP}/cost`)).status === 403, compKeys);
+
+  const costR = await dir.get(`${RP}/cost?projectId=${sid}`);
+  const cr = costR.json.rows?.[0];
+  const proj = (await dir.get(`/construction/projects/${sid}`)).json;
+  check('cost report: budget is the revised (else contract) sum', costR.status === 200 && cr && cr.budget === (proj.revisedSum ?? proj.contractSum), cr);
+  const branch = (await sql.query('SELECT "branchId" FROM con_projects WHERE id = $1', [sid])).rows[0].branchId;
+  const grn = Number((await sql.query('SELECT COALESCE(SUM(l."quantityAccepted" * COALESCE(l."unitCost", 0)), 0) AS v FROM goods_receipt_lines l JOIN goods_receipts g ON g.id = l."receiptId" WHERE g."branchId" = $1', [branch])).rows[0].v);
+  check('...materials = delivered value at the site store', cr && close(cr.materials, grn) && grn > 0, { report: cr?.materials, grn });
+  check('...plant = the plant cost screen', cr && close(cr.plant, (await dir.get(`/construction/projects/${sid}/plant-cost`)).json.total));
+  const labourSql = (await sql.query(`
+    SELECT COALESCE((SELECT SUM(l.gross) FROM con_payroll_lines l JOIN con_payroll_runs r ON r.id = l."runId" WHERE r."projectId" = $1 AND r.status <> 'DRAFT'), 0)
+         + COALESCE((SELECT SUM(CASE m.status WHEN 'PRESENT' THEN 1 ELSE 0.5 END * w."dailyRate") FROM con_muster m JOIN con_workers w ON w.id = m."workerId"
+                      WHERE m."projectId" = $1 AND m.status <> 'ABSENT' AND NOT EXISTS (SELECT 1 FROM con_payroll_runs r WHERE r."projectId" = $1 AND r.status <> 'DRAFT' AND m.date BETWEEN r."periodStart" AND r."periodEnd")), 0) AS v`, [sid])).rows[0].v;
+  check('...labour = pay runs + muster days not yet on a pay run', cr && close(cr.labour, labourSql) && cr.labour > 0, { report: cr?.labour, sql: labourSql });
+  check('...cost adds up and margin = certified - cost', cr && close(cr.cost, cr.materials + cr.labour + cr.plant + cr.subcontracts) && close(cr.margin, cr.certified - cr.cost) && cr.certified > 0, cr);
+
+  const ipcR = (await dir.get(`${RP}/ipc?projectId=${sid}`)).json.rows[0];
+  const received = Number((await sql.query(`SELECT COALESCE(SUM(r.amount), 0) AS v FROM con_valuation_receipts r JOIN con_valuations v ON v.id = r."valuationId" WHERE v."projectId" = $1 AND r.kind = 'PAYMENT'`, [sid])).rows[0].v);
+  check('IPC report: received and retention held match the ledgers', ipcR && close(ipcR.received, received) && close(ipcR.retentionHeld, (await dir.get(`/construction/projects/${sid}/retention`)).json.held), ipcR);
+  const matR = (await dir.get(`${RP}/materials?projectId=${sid}`)).json;
+  const recon = (await dir.get(`/construction/projects/${sid}/reconciliation`)).json;
+  check('material report = the reconciliation screen', matR.rows.length === recon.length && close(sum(matR.rows, 'unaccounted'), recon.reduce((a, r) => a + r.unaccounted, 0)), { report: matR.rows.length, recon: recon.length });
+  const labR = (await dir.get(`${RP}/labour?projectId=${sid}`)).json.rows[0];
+  const days = Number((await sql.query(`SELECT COALESCE(SUM(CASE status WHEN 'PRESENT' THEN 1 WHEN 'HALF' THEN 0.5 ELSE 0 END), 0) AS v FROM con_muster WHERE "projectId" = $1`, [sid])).rows[0].v);
+  const netPaid = Number((await sql.query(`SELECT COALESCE(SUM(l.net), 0) AS v FROM con_payroll_lines l JOIN con_payroll_runs r ON r.id = l."runId" WHERE r."projectId" = $1 AND l.status = 'PAID'`, [sid])).rows[0].v);
+  check('labour report: worker-days and net paid match the muster and pay runs', labR && close(labR.days, days) && close(labR.paid, netPaid) && close(labR.cost, cr.labour), labR);
+  const cashR = (await dir.get(`${RP}/cashflow?projectId=${sid}`)).json;
+  const inSql = Number((await sql.query(`SELECT COALESCE(SUM(r.amount), 0) AS v FROM con_valuation_receipts r JOIN con_valuations v ON v.id = r."valuationId" WHERE v."projectId" = $1 AND r.kind = 'PAYMENT' AND r."receivedAt" >= date_trunc('month', now() - interval '335 days')`, [sid])).rows[0].v);
+  check('cash flow: money in = IPC payments in the last 12 months, running balance adds up', close(cashR.totals?.inflow ?? 0, inSql) && close(cashR.rows.at(-1)?.running ?? 0, (cashR.totals?.inflow ?? 0) - (cashR.totals?.outflow ?? 0)), cashR.totals);
+  const safR = (await dir.get(`${RP}/safety?projectId=${sid}`)).json.rows[0];
+  const lt = Number((await sql.query(`SELECT count(*) FROM con_incidents WHERE "projectId" = $1 AND severity IN ('LOST_TIME', 'FATAL')`, [sid])).rows[0].count);
+  check('safety report: lost-time and fatal incidents counted, LTIFR from hours worked', safR && safR.lostTime + safR.fatal === lt && safR.hours > 0 && (lt === 0 || safR.ltifr > 0), safR);
+  check('...a date range with nothing in it shows nothing', (await dir.get(`${RP}/safety?projectId=${sid}&from=2020-01-01&to=2020-01-31`)).json.rows[0].nearMiss === 0);
+  const compR = (await dir.get(`${RP}/compliance`)).json;
+  const daysLeftList = compR.rows.filter((r) => r.daysLeft !== null).map((r) => r.daysLeft);
+  check('compliance report lists documents, licences, permits and cards, soonest first', compR.rows.some((r) => r.area === 'Company document') && compR.rows.some((r) => r.area === 'NCA licence') && daysLeftList.every((d, i) => i === 0 || d >= daysLeftList[i - 1]), compR.rows.length);
+  const ncaR = (await dir.get(`${RP}/nca`)).json.rows;
+  const bld = ncaR.find((r) => r.worksClass === 'Building works');
+  const capRow = (await sql.query(`SELECT l."maxValue" FROM con_category_limits l JOIN con_company_registrations g ON g."organizationId" = l."organizationId" AND g."worksClass" = l."worksClass" AND g."ncaCategory" = l."ncaCategory" WHERE l."organizationId" = $1 AND l."worksClass" = 'BUILDING'`, [orgId])).rows[0];
+  check('NCA utilisation: the Building cap and the biggest open contract against it', bld && Number(bld.cap) === Number(capRow?.maxValue) && bld.largest >= (proj.revisedSum ?? proj.contractSum) && bld.used > 0, bld);
+
+  const notPm = (await sql.query(`SELECT p.id FROM con_projects p WHERE p."organizationId" = $1 AND NOT EXISTS (SELECT 1 FROM con_project_members m JOIN org_users ou ON ou.id = m."orgUserId" JOIN users u ON u.id = ou."userId" WHERE m."projectId" = p.id AND u.email = 'pm@uriri.demo') LIMIT 1`, [orgId])).rows[0];
+  const pmCost = (await pm.get(`${RP}/cost`)).json;
+  const pmProjects = (await pm.get('/construction/projects')).json.map((p) => p.code);
+  check("the PM's reports cover only the PM's projects", pmCost.rows.length > 0 && pmCost.rows.every((r) => pmProjects.includes(r.code)), pmCost.rows.map((r) => r.code));
+  if (notPm) check("...and refuse a project the PM is not on", (await pm.get(`${RP}/cost?projectId=${notPm.id}`)).status === 403);
+  check("...and leave out company documents", (await pm.get(`${RP}/compliance`)).json.rows.every((r) => r.area !== 'Company document'));
+  check('another business gets no rows and cannot ask for Uriri\'s project', (await fresh.get(`${RP}/cost`)).json.rows.length === 0 && (await fresh.get(`${RP}/cost?projectId=${sid}`)).status === 404);
+
+  const xlsx = await dir.get(`${RP}/cost?format=xlsx`);
+  check('Excel export downloads a real spreadsheet', xlsx.status === 200 && /spreadsheetml/.test(xlsx.type) && xlsx.buf.subarray(0, 2).toString() === 'PK', xlsx.type);
+  const wbx = new Workbook();
+  await wbx.xlsx.load(xlsx.buf);
+  check('...with the company, title and the projects', wbx.worksheets[0].getCell('A1').value && wbx.worksheets[0].getCell('A2').value === 'Project cost vs BQ budget' && wbx.worksheets[0].rowCount >= 6);
+  for (const [q, why] of [['/cost?from=2026-13-01', 'a bad date'], ['/cost?projectId=nope', 'a bad project id'], ['/cost?format=pdf', 'an unknown format'], ['/cost?colour=red', 'an unknown field']]) {
+    check(`reports refuse ${why} (400)`, (await dir.get(`${RP}${q}`)).status === 400);
+  }
+  check('an unknown report is 404 (even a JavaScript name)', (await dir.get(`${RP}/nope`)).status === 404 && (await dir.get(`${RP}/toString`)).status === 404);
+
+  await sql.query(`UPDATE con_subscriptions SET "planCode" = 'CON_FUNDI' WHERE "organizationId" = $1`, [orgId]);
+  const fundiCat = (await dir.get(RP)).json;
+  check('on Fundi, cash flow, labour and NCA reports are locked', ['cashflow', 'labour', 'nca'].every((k) => fundiCat.find((c) => c.key === k)?.locked) && !fundiCat.find((c) => c.key === 'cost').locked);
+  const locked = await dir.get(`${RP}/cashflow`);
+  check('...asking for one says which plan to upgrade to (402)', locked.status === 402 && locked.json.upgrade === true && locked.json.requiredPlan === 'CON_CONTRACTOR', locked.json);
+  check('...basic reports still run', (await dir.get(`${RP}/cost`)).status === 200);
+  check('...but Excel and print need the upgrade', (await dir.get(`${RP}/cost?format=xlsx`)).status === 402 && (await dir.get(`${RP}/cost?format=print`)).status === 402);
+  await sql.query(`UPDATE con_subscriptions SET "planCode" = 'CON_CONTRACTOR', "currentPeriodEnd" = now() - interval '30 days' WHERE "organizationId" = $1`, [orgId]);
+  check('a suspended (read-only) business can still run and export reports', (await dir.get('/construction/me')).json.status === 'SUSPENDED' && (await dir.get(`${RP}/cost?format=xlsx`)).status === 200);
+  await sql.query(`UPDATE con_subscriptions SET "currentPeriodEnd" = now() + interval '30 days' WHERE "organizationId" = $1`, [orgId]);
+
+  const dd = await dir.get('/construction/dashboard/director');
+  const openCount = Number((await sql.query(`SELECT count(*) FROM con_projects WHERE "organizationId" = $1 AND status <> 'CLOSED'`, [orgId])).rows[0].count);
+  const awaiting = Number((await sql.query(`SELECT count(*) FROM con_lpos l JOIN con_projects p ON p.id = l."projectId" WHERE l."organizationId" = $1 AND l.status = 'AWAITING_APPROVAL' AND p.status <> 'CLOSED'`, [orgId])).rows[0].count);
+  check('Director dashboard: every open project, LPOs waiting and totals', dd.status === 200 && dd.json.projects.length === openCount && dd.json.approvals.lpos === awaiting && close(dd.json.totals.cost, sum(dd.json.projects, 'cost')), dd.json.totals);
+  check('...its project row agrees with the cost report', close(dd.json.projects.find((p) => p.id === sid)?.cost, cr.cost));
+  check('the PM cannot open the Director dashboard', (await pm.get('/construction/dashboard/director')).status === 403);
+  const pmDash = await pm.get(`/construction/projects/${sid}/dashboard`);
+  check('PM dashboard: programme, today, approvals, safety and money', pmDash.status === 200 && typeof pmDash.json.programme.progress === 'number' && pmDash.json.money && close(pmDash.json.money.cost, cr.cost) && pmDash.json.today.present >= 0, pmDash.json.programme);
+  const storeDash = await store.get(`/construction/projects/${sid}/dashboard`);
+  check('the storekeeper sees the project dashboard without the money', storeDash.status === 200 && storeDash.json.money === null);
+  if (notPm) check("the PM cannot open the dashboard of another project", (await pm.get(`/construction/projects/${notPm.id}/dashboard`)).status === 403);
+
+  const storeProj = (await store.get(`/construction/projects/${sid}`)).json;
+  check('storekeepers see their project without contract money, client or consultants', storeProj.code && storeProj.contractSum === null && storeProj.client === null && storeProj.parties.length === 0, storeProj);
+  check('...and cannot list clients and consultants', (await store.get('/construction/parties')).status === 403);
+  check('the site supervisor still sees the contract sum', typeof (await siteUser.get(`/construction/projects/${sid}`)).json.contractSum === 'number');
+
+  const forbidden = [
+    [store, 'storekeeper', [`/construction/projects/${sid}/payroll-runs`, `/construction/projects/${sid}/valuations`, `/construction/projects/${sid}/variations`, '/construction/tenders', '/construction/compliance/docs', '/construction/workers', `/construction/projects/${sid}/safety`, `/construction/projects/${sid}/diaries`, '/construction/payroll/settings', '/construction/staff']],
+    [siteUser, 'site supervisor', [`/construction/projects/${sid}/payroll-runs`, `/construction/projects/${sid}/valuations`, `/construction/projects/${sid}/reconciliation`, '/construction/tenders', '/construction/compliance/docs', RP, '/construction/dashboard/director']],
+    [qs, 'QS', [`/construction/projects/${sid}/payroll-runs`, '/construction/payroll/settings', '/construction/workers', `/construction/projects/${sid}/safety`, '/construction/staff']],
+    [proc, 'procurement', [`/construction/projects/${sid}/valuations`, `/construction/projects/${sid}/payroll-runs`, '/construction/workers', `/construction/projects/${sid}/diaries`]],
+    [comp, 'compliance', [`/construction/projects/${sid}/valuations`, `/construction/projects/${sid}/payroll-runs`, `/construction/projects/${sid}/variations`]],
+  ];
+  for (const [who, name, paths] of forbidden) {
+    const leaks = [];
+    for (const p of paths) if ((await who.get(p)).status !== 403) leaks.push(p);
+    check(`the ${name} is refused (403) on ${paths.length} areas outside their role`, leaks.length === 0, leaks);
+  }
+  const writes = [
+    [store, 'POST', `/construction/projects/${sid}/payroll-runs`, { periodStart: nairobi(-3), periodEnd: nairobi(-1) }],
+    [siteUser, 'POST', `/construction/projects/${sid}/valuations`, { lines: [] }],
+    [pm, 'POST', '/construction/staff', { email: `x-${tag}@test.local`, job: 'CON_QS' }],
+    [qs, 'POST', `/construction/projects/${sid}/lpos/${randomUUIDish()}/approve`, {}],
+    [proc, 'POST', '/construction/compliance/docs', { type: 'OTHER', title: 'No' }],
+  ];
+  for (const [who, m, p, body] of writes) check(`role check before anything else: ${m} ${p.replace(sid, ':id')} is 403`, (await call(m, p, { token: who._token, body })).status === 403);
+
+  check('paging: take=1 returns at most one instruction', (await pm.get(`/construction/projects/${sid}/instructions?take=1`)).json.length <= 1);
+  check('...skip moves on', (await pm.get(`/construction/projects/${sid}/instructions?take=1&skip=1`)).json[0]?.id !== (await pm.get(`/construction/projects/${sid}/instructions?take=1`)).json[0]?.id);
+  for (const q of ['take=0', 'take=501', 'skip=-1', 'take=abc']) check(`paging refuses ${q}`, (await pm.get(`/construction/projects/${sid}/lpos?${q}`)).status === 400);
+  check('worker filter refuses a bad project id', (await dir.get('/construction/workers?projectId=nope')).status === 400);
+  check('muster refuses a bad date', (await pm.get(`/construction/projects/${sid}/muster?date=31-10-2026`)).status === 400);
+  check('muster summary needs both dates', (await pm.get(`/construction/projects/${sid}/muster/summary?from=2026-10-01`)).status === 400);
+  check('diaries refuse a bad date', (await pm.get(`/construction/projects/${sid}/diaries?from=yesterday`)).status === 400);
+  check('a photo with an impossible GPS point is refused', (await call('POST', `/construction/projects/${sid}/photos?lat=123&lng=34`, { token: siteUser._token, raw: Buffer.from([0xff, 0xd8, 0xff]), headers: { 'Content-Type': 'image/jpeg' } })).status === 400);
+
+  // Database-level isolation: a role without BYPASSRLS, the tenant set to one business, counts other businesses' rows in every con_ table.
+  await sql.query(`DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'con_rls_probe') THEN CREATE ROLE con_rls_probe NOLOGIN; END IF; END $$`);
+  await sql.query('GRANT USAGE ON SCHEMA public TO con_rls_probe; GRANT SELECT ON ALL TABLES IN SCHEMA public TO con_rls_probe');
+  const conTables = (await sql.query(`SELECT c.table_name FROM information_schema.columns c WHERE c.table_schema = 'public' AND c.table_name LIKE 'con\\_%' AND c.column_name = 'organizationId' ORDER BY 1`)).rows.map((r) => r.table_name);
+  const probe = async (tenant) => {
+    const leaks = [];
+    let own = 0;
+    await sql.query('BEGIN');
+    try {
+      await sql.query('SET LOCAL ROLE con_rls_probe');
+      if (tenant) await sql.query("SELECT set_config('app.current_tenant', $1, true)", [tenant]);
+      for (const t of conTables) {
+        const r = (await sql.query(`SELECT count(*) FILTER (WHERE "organizationId" <> $1) AS other, count(*) AS total FROM "${t}"`, [tenant ?? ''])).rows[0];
+        if (Number(r.other) > 0 && !(tenant === null && ['con_subscriptions', 'con_subscription_payments'].includes(t))) leaks.push(`${t}:${r.other}`);
+        own += Number(r.total);
+      }
+    } finally {
+      await sql.query('ROLLBACK');
+    }
+    return { leaks, own };
+  };
+  const asUriri = await probe(orgId);
+  check(`RLS: as Uriri, none of ${conTables.length} construction tables shows another business's rows`, conTables.length >= 48 && asUriri.leaks.length === 0 && asUriri.own > 0, asUriri.leaks);
+  const asFresh = await probe(signup.json.organizationId);
+  check("RLS: as the new business, none of Uriri's rows are visible", asFresh.leaks.length === 0, asFresh.leaks);
+  const asNobody = await probe(null);
+  check('RLS: with no business set, nothing is visible (except plan billing, for ZARODA admin)', asNobody.leaks.length === 0, asNobody.leaks);
+
   section('14. Super-admin');
   const tenants = await admin.get('/platform-admin/construction/tenants');
   const uriri = tenants.json.tenants?.find((t) => t.id === orgId);
@@ -928,6 +1084,25 @@ async function main() {
   check('public pricing lists the plans', pub.status === 200 && pub.json.plans.length === 5 && pub.json.plans[0].code === 'CON_MJENGO' && pub.json.plans[0].setupFee === 3000 && pub.json.trialDays === 14);
   const rec = await admin.post(`/platform-admin/construction/tenants/${signup.json.organizationId}/payments`, { planCode: 'CON_FUNDI', cycle: 'ANNUAL', amount: 35000, method: 'BANK', reference: `BANK-${tag}` });
   check('a bank payment recorded by ZARODA activates the plan for a year', rec.json.status === 'PAID' && (await fresh.get('/construction/me')).json.status === 'ACTIVE', rec.json);
+
+  const team = (await sql.query(`INSERT INTO sales_teams (id, name, "updatedAt") VALUES (gen_random_uuid(), $1, now()) RETURNING id`, [`E2E team ${tag}`])).rows[0];
+  const agent = (await sql.query(`INSERT INTO sales_agents (id, "teamId", role, "fullName", email, "passwordHash", "updatedAt") VALUES (gen_random_uuid(), $1, 'MEMBER', 'Agent Wanjiku', $2, 'x', now()) RETURNING id`, [team.id, `agent-${tag}@test.local`])).rows[0];
+  await sql.query('UPDATE organizations SET "salesTeamId" = $1, "salesAgentId" = $2 WHERE id = $3', [team.id, agent.id, signup.json.organizationId]);
+  const billing = await admin.get('/platform-admin/construction/billing');
+  const mine = billing.json.commissions?.find((c) => c.organizationId === signup.json.organizationId);
+  check('billing report: MRR matches the tenants list and plans are counted by status', billing.status === 200 && billing.json.mrr === (await admin.get('/platform-admin/construction/tenants')).json.mrr && billing.json.perPlan.length === 5 && billing.json.perPlan.every((p) => ['active', 'trial', 'grace', 'suspended'].every((k) => typeof p[k] === 'number')), billing.json.perPlan);
+  check('...the agent earns 15% of first-year payments, not payable until the second payment', mine && mine.agent === 'Agent Wanjiku' && mine.rate === 0.15 && mine.commission === 5250 && mine.payable === false, mine);
+  await sql.query(`INSERT INTO con_subscription_payments (id, "organizationId", "planCode", cycle, months, amount, status, method, "paidAt", "updatedAt") VALUES (gen_random_uuid(), $1, 'CON_FUNDI', 'MONTHLY', 1, 3500, 'PAID', 'BANK', now(), now())`, [signup.json.organizationId]);
+  const billing2 = (await admin.get('/platform-admin/construction/billing')).json;
+  const mine2 = billing2.commissions.find((c) => c.organizationId === signup.json.organizationId);
+  check('...after the second payment it is payable: 15% of 38,500', mine2.payable === true && mine2.commission === 5775 && billing2.commissionDue >= 5775, mine2);
+  await sql.query(`UPDATE con_subscriptions SET status = 'TRIAL', "currentPeriodEnd" = now() + interval '3 days' WHERE "organizationId" = $1`, [signup.json.organizationId]);
+  check('...trials ending this week are listed', (await admin.get('/platform-admin/construction/billing')).json.trialsEnding.some((t) => t.id === signup.json.organizationId));
+  await sql.query(`UPDATE con_subscriptions SET status = 'ACTIVE', "currentPeriodEnd" = now() - interval '30 days' WHERE "organizationId" = $1`, [signup.json.organizationId]);
+  check('...and suspended tenants', (await admin.get('/platform-admin/construction/billing')).json.suspended.some((t) => t.id === signup.json.organizationId));
+  check('the billing report is for ZARODA admins only', [401, 403].includes((await dir.get('/platform-admin/construction/billing')).status));
+  await sql.query('UPDATE organizations SET "salesTeamId" = NULL, "salesAgentId" = NULL WHERE id = $1', [signup.json.organizationId]);
+  await sql.query('DELETE FROM sales_teams WHERE id = $1', [team.id]);
 
   section('15. Audit log');
   const audit = (await sql.query(`SELECT action FROM audit_log WHERE "organizationId" = $1 AND action LIKE 'con_%'`, [orgId])).rows.map((r) => r.action);
