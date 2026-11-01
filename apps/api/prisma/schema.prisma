@@ -5334,6 +5334,8 @@ model JournalEntry {
   sourceType     String?
   sourceId       String?
   branchId       String?
+  /// Construction: the project this entry belongs to, for a profit and loss per project.
+  projectId      String?
   /// The entry this one undoes.
   reversesId     String?     @unique
   createdById    String?
@@ -5348,6 +5350,7 @@ model JournalEntry {
   @@unique([organizationId, number])
   @@index([organizationId, entryDate])
   @@index([organizationId, sourceType, sourceId])
+  @@index([organizationId, projectId])
   @@map("journal_entries")
 }
 

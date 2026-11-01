@@ -10,23 +10,24 @@ const cr = (account: AccountKey, cents: number): DraftLine => ({ account, debit:
  * Retention the client keeps back on a certificate is income already earned, held as an asset until released. A release is paid
  * through the next certificate, whose sale counts it as sales again, so the release takes it back out of sales.
  */
-export function retentionDraft(r: { date: string; type: 'DEDUCT' | 'RELEASE'; project: string; reason: string; amountCents: number }): Draft {
+export function retentionDraft(r: { date: string; projectId: string; type: 'DEDUCT' | 'RELEASE'; project: string; reason: string; amountCents: number }): Draft {
   // a reversal certificate deducts a negative amount: tidy() puts it on the other side
   const c = r.amountCents;
   const lines = r.type === 'DEDUCT' ? [dr('RETENTION_RECEIVABLE', c), cr('SALES', c)] : [dr('SALES', c), cr('RETENTION_RECEIVABLE', c)];
-  return { date: r.date, memo: `Retention ${r.type === 'DEDUCT' ? 'held' : 'released'} - ${r.project} ${r.reason}`, lines: tidy(lines) };
+  return { date: r.date, projectId: r.projectId, memo: `Retention ${r.type === 'DEDUCT' ? 'held' : 'released'} - ${r.project} ${r.reason}`, lines: tidy(lines) };
 }
 
 /** Money from the client against an IPC; a withholding certificate is not money but a credit with KRA. */
-export function ipcReceiptDraft(r: { date: string; kind: 'PAYMENT' | 'WHT' | 'WHT_VAT'; reference: string; amountCents: number; method: string | null }): Draft {
+export function ipcReceiptDraft(r: { date: string; projectId: string; kind: 'PAYMENT' | 'WHT' | 'WHT_VAT'; reference: string; amountCents: number; method: string | null }): Draft {
   const into: AccountKey = r.kind === 'PAYMENT' ? moneyAccount(r.method ?? 'BANK') : 'WHT_RECEIVABLE';
   const what = r.kind === 'PAYMENT' ? 'Payment' : r.kind === 'WHT' ? 'Withholding tax certificate' : 'Withholding VAT certificate';
-  return { date: r.date, memo: `${what} on ${r.reference}`, lines: tidy([dr(into, r.amountCents), cr('AR', r.amountCents)]) };
+  return { date: r.date, projectId: r.projectId, memo: `${what} on ${r.reference}`, lines: tidy([dr(into, r.amountCents), cr('AR', r.amountCents)]) };
 }
 
-/** A site pay run once every worker is paid: wages against the statutory deductions owed and what went out by each method. */
+/** A site pay run once every worker is paid: wages (a direct cost of the job) against the statutory deductions owed and what went out by each method. */
 export function conPayrollDraft(p: {
   date: string;
+  projectId: string;
   reference: string;
   grossCents: number;
   payeCents: number;
@@ -45,9 +46,10 @@ export function conPayrollDraft(p: {
   const other = p.grossCents - p.payeCents - p.nssfCents - p.shifCents - p.housingCents - net;
   return {
     date: p.date,
+    projectId: p.projectId,
     memo: `Site payroll ${p.reference}`,
     lines: tidy([
-      dr('SALARIES', p.grossCents),
+      dr('SITE_LABOUR', p.grossCents),
       cr('PAYE', p.payeCents),
       cr('NSSF', p.nssfCents),
       cr('SHIF', p.shifCents),
@@ -59,16 +61,23 @@ export function conPayrollDraft(p: {
 }
 
 /** An approved subcontractor valuation: the work done since the last one is a cost; what we hold back is retention we owe; the rest is owed now. */
-export function subValuationDraft(s: { date: string; reference: string; workCents: number; retentionCents: number }): Draft {
+export function subValuationDraft(s: { date: string; projectId: string; reference: string; workCents: number; retentionCents: number }): Draft {
   return {
     date: s.date,
+    projectId: s.projectId,
     memo: `Subcontract valuation ${s.reference}`,
     lines: tidy([dr('SUBCONTRACTORS', s.workCents), cr('RETENTION_PAYABLE', s.retentionCents), cr('AP', s.workCents - s.retentionCents)]),
   };
 }
 
-export function subPaymentDraft(s: { date: string; reference: string; amountCents: number }): Draft {
-  return { date: s.date, memo: `Paid subcontractor ${s.reference}`, lines: tidy([dr('AP', s.amountCents), cr('BANK', s.amountCents)]) };
+export function subPaymentDraft(s: { date: string; projectId: string; reference: string; amountCents: number }): Draft {
+  return { date: s.date, projectId: s.projectId, memo: `Paid subcontractor ${s.reference}`, lines: tidy([dr('AP', s.amountCents), cr('BANK', s.amountCents)]) };
+}
+
+/** Materials taken out of a site store: used on the works is a cost of the job, wasted is a loss, both out of stock. */
+export function materialIssueDraft(m: { date: string; projectId: string; branchId: string | null; kind: 'USED' | 'WASTED'; label: string; costCents: number }): Draft {
+  const to: AccountKey = m.kind === 'USED' ? 'SITE_MATERIALS' : 'WASTE';
+  return { date: m.date, projectId: m.projectId, branchId: m.branchId, memo: `${m.kind === 'USED' ? 'Issued to site' : 'Wasted on site'}: ${m.label}`, lines: tidy([dr(to, m.costCents), cr('INVENTORY', m.costCents)]) };
 }
 
 /** The business paid ZARODA (construction plan, extra projects, an SMS bundle or the month's payout fees) by M-Pesa or bank. */

@@ -54,11 +54,13 @@ export const SYSTEM_ACCOUNTS = [
   { key: 'EXP_OTHER', code: '6900', name: 'Other expenses', type: 'EXPENSE' },
 ] as const satisfies readonly { key: string; code: string; name: string; type: LedgerAccountType }[];
 
-/** Extra accounts only construction businesses get (docs/construction): retention both ways and subcontractor costs. */
+/** Extra accounts only construction businesses get (docs/construction): retention both ways and the direct costs of a job. */
 export const CONSTRUCTION_ACCOUNTS = [
   { key: 'RETENTION_RECEIVABLE', code: '1170', name: 'Retention held by clients', type: 'ASSET' },
   { key: 'RETENTION_PAYABLE', code: '2220', name: 'Retention held from subcontractors', type: 'LIABILITY' },
   { key: 'SUBCONTRACTORS', code: '5200', name: 'Subcontractor costs', type: 'EXPENSE' },
+  { key: 'SITE_MATERIALS', code: '5210', name: 'Materials used on site', type: 'EXPENSE' },
+  { key: 'SITE_LABOUR', code: '5300', name: 'Site labour (casual wages)', type: 'EXPENSE' },
 ] as const satisfies readonly { key: string; code: string; name: string; type: LedgerAccountType }[];
 
 /** The keyed accounts a business of this type has. */

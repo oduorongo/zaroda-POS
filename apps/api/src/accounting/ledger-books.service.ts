@@ -17,6 +17,7 @@ export interface EntryInput {
   sourceType?: string | null;
   sourceId?: string | null;
   branchId?: string | null;
+  projectId?: string | null;
   reversesId?: string | null;
   /** Lines on system accounts (by key) or on any account (by id). */
   lines: (DraftLine | { accountId: string; debit: number; credit: number; memo?: string | null })[];
@@ -97,6 +98,7 @@ export class LedgerBooksService {
         sourceType: input.sourceType ?? null,
         sourceId: input.sourceId ?? null,
         branchId: input.branchId ?? null,
+        projectId: input.projectId ?? null,
         reversesId: input.reversesId ?? null,
         createdById: input.by?.id ?? null,
         createdByName: input.by?.name ?? null,
@@ -125,6 +127,7 @@ export class LedgerBooksService {
       sourceType: original.sourceType,
       sourceId: original.sourceId,
       branchId: original.branchId,
+      projectId: original.projectId,
       reversesId: original.id,
       lines: original.lines.map((l) => ({
         accountId: l.accountId,

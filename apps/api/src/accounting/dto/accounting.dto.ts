@@ -172,6 +172,11 @@ export class RangeQueryDto {
   @IsUUID()
   @IsOptional()
   branchId?: string;
+
+  /** Construction: one project's income and direct costs. */
+  @IsUUID()
+  @IsOptional()
+  projectId?: string;
 }
 
 export class AsOfQueryDto {

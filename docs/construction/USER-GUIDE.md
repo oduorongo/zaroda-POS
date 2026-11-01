@@ -16,6 +16,8 @@ You can do everything.
 - **Staff & roles**: add people by their job, and set approval limits (Settings).
 - You approve pay runs. You cannot approve one you prepared yourself.
 - **Reports**: all eight reports. Download any of them as Excel, or print or save them as PDF.
+- **Offices & API** (Enterprise plan): branch offices, custom roles and read-only API keys.
+- **Accounts**: the company books (see Accountant).
 
 ## Contracts Manager
 - Same overview on **Home** as the Director.
@@ -39,7 +41,8 @@ You can do everything.
 - Invoice certified IPCs through eTIMS, and record payments and withholding certificates.
 - **Payroll**: work out pay from the muster for a period. Someone else approves it. Then pay by M-Pesa, record cash, or record an M-Pesa payment made by hand. Workers get a payslip by SMS.
 - Set the company's M-Pesa payout account under **Settings → Wages by M-Pesa**.
-- Pay for the Zaroda plan (Plan).
+- Pay for the Zaroda plan, extra project slots, SMS bundles and the monthly payout-fee invoice (Plan).
+- **Accounts** (top menu, for the owner and office managers): the books fill themselves from IPC invoices, client payments and withholding certificates, retention, pay runs, materials issued to site, subcontractors and supplier bills. **Statements** gives the profit and loss (for the whole company or **one project**), balance sheet and trial balance, each downloadable.
 - Tax rates (VAT, withholding, NSSF, SHIF, Housing Levy, PAYE): add a new rate with the date it starts; old rates stay for past work.
 
 ## Procurement Officer

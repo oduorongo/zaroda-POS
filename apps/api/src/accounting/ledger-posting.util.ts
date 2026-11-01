@@ -16,6 +16,8 @@ export interface Draft {
   date: string;
   memo: string;
   branchId?: string | null;
+  /** Construction project (left out everywhere else, so other fingerprints never change). */
+  projectId?: string | null;
   lines: DraftLine[];
 }
 
@@ -49,7 +51,7 @@ export const reversed = (lines: DraftLine[]): DraftLine[] => lines.map((l) => ({
 /** A short, stable signature of a posting, so the poster can tell when a source has changed and must be posted again. */
 export function fingerprint(d: Draft | null): string {
   if (!d) return 'none';
-  const body = JSON.stringify([d.date, d.branchId ?? null, tidy(d.lines).map((l) => [l.account, l.debit, l.credit])]);
+  const body = JSON.stringify([d.date, d.branchId ?? null, tidy(d.lines).map((l) => [l.account, l.debit, l.credit]), ...(d.projectId ? [d.projectId] : [])]);
   return createHash('sha1').update(body).digest('hex');
 }
 

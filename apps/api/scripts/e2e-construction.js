@@ -934,6 +934,7 @@ async function main() {
   const grn = Number((await sql.query('SELECT COALESCE(SUM(l."quantityAccepted" * COALESCE(l."unitCost", 0)), 0) AS v FROM goods_receipt_lines l JOIN goods_receipts g ON g.id = l."receiptId" WHERE g."branchId" = $1', [branch])).rows[0].v);
   check('...materials = delivered value at the site store', cr && close(cr.materials, grn) && grn > 0, { report: cr?.materials, grn });
   check('...plant = the plant cost screen', cr && close(cr.plant, (await dir.get(`/construction/projects/${sid}/plant-cost`)).json.total));
+  const allProjectsForBooks = (await dir.get('/construction/projects')).json;
   const labourSql = (await sql.query(`
     SELECT COALESCE((SELECT SUM(l.gross) FROM con_payroll_lines l JOIN con_payroll_runs r ON r.id = l."runId" WHERE r."projectId" = $1 AND r.status <> 'DRAFT'), 0)
          + COALESCE((SELECT SUM(CASE m.status WHEN 'PRESENT' THEN 1 ELSE 0.5 END * w."dailyRate") FROM con_muster m JOIN con_workers w ON w.id = m."workerId"
@@ -1192,6 +1193,29 @@ async function main() {
   check('...and each subcontractor payment is posted', (await postings('CON_SUB_PAID')) === paidSubs && paidSubs > 0, { posted: await postings('CON_SUB_PAID'), paidSubs });
   const zaroda = Number((await sql.query(`SELECT count(*) FROM con_subscription_payments WHERE "organizationId" = $1 AND status = 'PAID'`, [orgId])).rows[0].count);
   check('every payment to ZARODA (plan, slots, texts, fees) is a ZARODA cost', (await postings('ZARODA_CON_PAYMENT')) === zaroda && zaroda > 0, { posted: await postings('ZARODA_CON_PAYMENT'), zaroda });
+  const siteWagesSql = Number((await sql.query(`SELECT COALESCE(SUM(gross), 0) AS v FROM con_payroll_runs WHERE "organizationId" = $1 AND status = 'PAID'`, [orgId])).rows[0].v);
+  check('site wages are a direct cost of the job (Site labour), not office salaries', close(await balance('SITE_LABOUR'), siteWagesSql) && siteWagesSql > 0, { books: await balance('SITE_LABOUR'), siteWagesSql });
+  const siteIssuesSql = (await sql.query(`SELECT i.kind, COALESCE(SUM(i.qty * COALESCE(v.cost, 0)), 0) AS v, count(*) FILTER (WHERE i.qty * COALESCE(v.cost, 0) > 0) AS n FROM con_material_issues i JOIN product_variants v ON v.id = i."variantId" WHERE i."organizationId" = $1 GROUP BY i.kind`, [orgId])).rows;
+  const usedOnSiteSql = Number(siteIssuesSql.find((r) => r.kind === 'USED')?.v ?? 0);
+  check('materials issued to site are posted as Materials used on site, at cost', close(await balance('SITE_MATERIALS'), usedOnSiteSql) && usedOnSiteSql > 0, { books: await balance('SITE_MATERIALS'), usedOnSiteSql });
+  check('...one entry per issue that has a cost', (await postings('CON_MATERIAL')) === siteIssuesSql.reduce((a, r) => a + Number(r.n), 0), { posted: await postings('CON_MATERIAL'), siteIssuesSql });
+  const untaggedCon = Number((await sql.query(`SELECT count(*) FROM journal_entries WHERE "organizationId" = $1 AND "sourceType" LIKE 'CON\\_%' AND "projectId" IS NULL`, [orgId])).rows[0].count);
+  check('every construction entry names its project', untaggedCon === 0, untaggedCon);
+  // (earlier test runs deleted some valuations they made; their sales are left over and have no project to name)
+  const ipcUntagged = Number((await sql.query(`SELECT count(*) FROM journal_entries e JOIN sales s ON s.id = e."sourceId" JOIN con_valuations v ON 'con-ipc-' || v.id = s."clientId" WHERE e."organizationId" = $1 AND e."sourceType" = 'SALE' AND e."projectId" IS NULL`, [orgId])).rows[0].count);
+  const ipcTagged = Number((await sql.query(`SELECT count(*) FROM journal_entries e JOIN sales s ON s.id = e."sourceId" JOIN con_valuations v ON 'con-ipc-' || v.id = s."clientId" WHERE e."organizationId" = $1 AND e."sourceType" = 'SALE' AND e."projectId" = v."projectId"`, [orgId])).rows[0].count);
+  check('...IPC invoices too (posted as sales, tagged with the valuation\'s project)', ipcUntagged === 0 && ipcTagged > 0, { ipcUntagged, ipcTagged });
+  const range = `from=${nairobi(-730)}&to=${nairobi(0)}`;
+  const plAll = (await dir.get(`/accounting/reports/profit-loss?${range}`)).json;
+  const plSite = (await dir.get(`/accounting/reports/profit-loss?${range}&projectId=${sid}`)).json;
+  const plLine = (pl, name) => [...pl.income, ...pl.costOfSales, ...pl.expenses].find((r) => r.name === name)?.amount ?? 0;
+  check('profit and loss for one project: its IPC income, site labour, materials and subcontractors', plSite.projectId === sid && plSite.totalIncome > 0 && plLine(plSite, 'Site labour (casual wages)') > 0 && plLine(plSite, 'Materials used on site') > 0 && plLine(plSite, 'Subcontractor costs') > 0, plSite);
+  check('...and no office overheads (ZARODA fees stay with the company)', plLine(plSite, 'ZARODA subscription and fees') === 0 && plLine(plAll, 'ZARODA subscription and fees') > 0);
+  const plOther = (await dir.get(`/accounting/reports/profit-loss?${range}&projectId=${allProjectsForBooks.find((p) => p.id !== sid).id}`)).json;
+  check('...the projects together never exceed the company', plSite.totalIncome + plOther.totalIncome <= plAll.totalIncome + 0.01 && plSite.totalCostOfSales + plOther.totalCostOfSales <= plAll.totalCostOfSales + 0.01, { site: plSite.totalIncome, other: plOther.totalIncome, all: plAll.totalIncome });
+  const tagSql = Number((await sql.query(`SELECT COALESCE(SUM(l.credit - l.debit), 0) AS v FROM journal_lines l JOIN journal_entries e ON e.id = l."entryId" JOIN ledger_accounts a ON a.id = l."accountId" WHERE e."organizationId" = $1 AND e."projectId" = $2 AND a.type = 'INCOME'`, [orgId, sid])).rows[0].v);
+  check('...matches the tagged entries in the database', close(plSite.totalIncome, tagSql), { api: plSite.totalIncome, tagSql });
+  check('an unknown project id is refused', (await dir.get(`/accounting/reports/profit-loss?${range}&projectId=nope`)).status === 400);
   const tb = (await sql.query('SELECT SUM(debit) AS d, SUM(credit) AS c FROM journal_lines WHERE "organizationId" = $1', [orgId])).rows[0];
   check("Uriri's books still balance", close(tb.d, tb.c), tb);
   check('posting again changes nothing', await (async () => {

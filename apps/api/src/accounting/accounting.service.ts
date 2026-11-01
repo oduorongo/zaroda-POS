@@ -58,6 +58,7 @@ export const SOURCE_LABELS: Record<string, string> = {
   CON_PAYROLL: 'Site payroll',
   CON_SUB_VALUATION: 'Subcontractor valuation',
   CON_SUB_PAID: 'Paid a subcontractor',
+  CON_MATERIAL: 'Materials issued to site',
   ZARODA_CON_PAYMENT: 'Paid ZARODA (construction)',
 };
 
@@ -328,13 +329,14 @@ export class AccountingService {
   // ── reports ─────────────────────────────────────────────────────────────
 
   /** Debits and credits per account between two days (either may be left open), optionally for one branch. */
-  private async sums(tx: TenantTx, r: { from?: string; to?: string; before?: string; branchId?: string }): Promise<Sums> {
+  private async sums(tx: TenantTx, r: { from?: string; to?: string; before?: string; branchId?: string; projectId?: string }): Promise<Sums> {
     const conds: Prisma.Sql[] = [Prisma.sql`TRUE`];
     // days are passed as text and cast, so the database's own time zone never moves them
     if (r.from) conds.push(Prisma.sql`e."entryDate" >= ${r.from}::date`);
     if (r.to) conds.push(Prisma.sql`e."entryDate" <= ${r.to}::date`);
     if (r.before) conds.push(Prisma.sql`e."entryDate" < ${r.before}::date`);
     if (r.branchId) conds.push(Prisma.sql`e."branchId" = ${r.branchId}`);
+    if (r.projectId) conds.push(Prisma.sql`e."projectId" = ${r.projectId}`);
     const rows = await tx.$queryRaw<{ accountId: string; debit: Prisma.Decimal; credit: Prisma.Decimal }[]>(
       Prisma.sql`SELECT l."accountId", SUM(l.debit) AS debit, SUM(l.credit) AS credit FROM journal_lines l JOIN journal_entries e ON e.id = l."entryId" WHERE ${Prisma.join(conds, ' AND ')} GROUP BY l."accountId"`,
     );
@@ -363,12 +365,13 @@ export class AccountingService {
     const from = q.from ?? `${to.slice(0, 7)}-01`;
     if (from > to) throw new BadRequestException('The start day is after the end day.');
     return this.tenantPrisma.run(async (tx) => {
-      const pl = profitAndLoss(await this.accountInfo(tx), await this.sums(tx, { from, to, branchId: q.branchId }));
+      const pl = profitAndLoss(await this.accountInfo(tx), await this.sums(tx, { from, to, branchId: q.branchId, projectId: q.projectId }));
       const m = AccountingService.moneyRows;
       return {
         from,
         to,
         branchId: q.branchId ?? null,
+        projectId: q.projectId ?? null,
         income: m(pl.income),
         totalIncome: money(pl.totalIncome),
         costOfSales: m(pl.costOfSales),

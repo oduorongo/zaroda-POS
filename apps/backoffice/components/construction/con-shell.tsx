@@ -25,6 +25,7 @@ const LINKS = [
   { href: "/construction/settings", label: "Settings" },
 ];
 const CORE_LINKS = [
+  { href: "/accounting", label: "Accounts" },
   { href: "/suppliers", label: "Suppliers" },
   { href: "/construction/materials", label: "Materials" },
 ];

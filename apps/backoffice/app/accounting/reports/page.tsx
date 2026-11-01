@@ -64,6 +64,8 @@ export default function StatementsPage() {
   const [asOf, setAsOf] = useState(todayKey());
   const [branchId, setBranchId] = useState("");
   const [branches, setBranches] = useState<Branch[]>([]);
+  const [projectId, setProjectId] = useState("");
+  const [projects, setProjects] = useState<{ id: string; code: string; name: string }[]>([]);
   const [pl, setPl] = useState<ProfitLoss | null>(null);
   const [bs, setBs] = useState<BalanceSheet | null>(null);
   const [tb, setTb] = useState<TrialBalance | null>(null);
@@ -71,6 +73,7 @@ export default function StatementsPage() {
 
   useEffect(() => {
     if (session) void loadBranches().then(setBranches).catch(() => undefined);
+    if (session?.industryType === "CONSTRUCTION") void apiGet<{ id: string; code: string; name: string }[]>("/construction/projects").then(setProjects).catch(() => undefined);
   }, [session]);
 
   const load = useCallback(async () => {
@@ -78,6 +81,7 @@ export default function StatementsPage() {
       if (tab === "pl") {
         const q = new URLSearchParams({ from, to });
         if (branchId) q.set("branchId", branchId);
+        if (projectId) q.set("projectId", projectId);
         setPl(await apiGet<ProfitLoss>(`${API}/reports/profit-loss?${q.toString()}`));
       } else if (tab === "bs") setBs(await apiGet<BalanceSheet>(`${API}/reports/balance-sheet?asOf=${asOf}`));
       else setTb(await apiGet<TrialBalance>(`${API}/reports/trial-balance?asOf=${asOf}`));
@@ -85,7 +89,7 @@ export default function StatementsPage() {
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not load the statement.");
     }
-  }, [tab, from, to, asOf, branchId]);
+  }, [tab, from, to, asOf, branchId, projectId]);
 
   useEffect(() => {
     if (session) void load();
@@ -93,7 +97,8 @@ export default function StatementsPage() {
 
   function download() {
     if (tab === "pl" && pl) {
-      const rows: (string | number)[][] = [["Profit and loss", `${pl.from} to ${pl.to}`], [], ["Code", "Account", "Amount"]];
+      const project = projects.find((p) => p.id === projectId);
+      const rows: (string | number)[][] = [["Profit and loss", `${pl.from} to ${pl.to}`, project ? `${project.code} ${project.name}` : ""], [], ["Code", "Account", "Amount"]];
       const part = (title: string, list: Row[], total: number) => {
         rows.push([title]);
         for (const r of list) rows.push([r.code, r.name, r.amount]);
@@ -104,7 +109,7 @@ export default function StatementsPage() {
       rows.push(["", "Gross profit", pl.grossProfit]);
       part("Expenses", pl.expenses, pl.totalExpenses);
       rows.push(["", "Net profit", pl.netProfit]);
-      downloadCsv(`profit-and-loss-${pl.from}-${pl.to}.csv`, csv(rows));
+      downloadCsv(`profit-and-loss-${project ? `${project.code}-` : ""}${pl.from}-${pl.to}.csv`, csv(rows));
     } else if (tab === "bs" && bs) {
       const rows: (string | number)[][] = [["Balance sheet", bs.asOf], [], ["Code", "Account", "Amount"]];
       for (const [title, list, total] of [["Assets", bs.assets, bs.totalAssets], ["Liabilities", bs.liabilities, bs.totalLiabilities]] as const) {
@@ -174,6 +179,19 @@ export default function StatementsPage() {
                     </select>
                   </label>
                 )}
+                {projects.length > 0 && (
+                  <label>
+                    Project
+                    <select value={projectId} onChange={(e) => setProjectId(e.target.value)} className={inputClass}>
+                      <option value="">All projects and overheads</option>
+                      {projects.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.code} {p.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
               </>
             ) : (
               <label>
@@ -194,6 +212,7 @@ export default function StatementsPage() {
             <p className="text-xs text-secondary-500">
               {niceDay(pl.from)} to {niceDay(pl.to)}
               {branchId ? " · one branch (costs recorded for the whole business are left out)" : ""}
+              {projectId ? " · one project: its IPCs, retention, site wages, materials used and subcontractors (office overheads are left out)" : ""}
             </p>
             <Section title="Income" rows={pl.income} total={pl.totalIncome} />
             <Section title="Cost of sales" rows={pl.costOfSales} total={pl.totalCostOfSales} />
