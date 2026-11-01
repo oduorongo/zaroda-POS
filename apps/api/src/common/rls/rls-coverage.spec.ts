@@ -52,6 +52,10 @@ const INTENTIONALLY_EXCLUDED = new Set([
   // A global price list with no organizationId - see rls.sql's "platform
   // billing tables" comment.
   'plans',
+  // Seasonal billing's terms, settings and due-date shift log: the same for every business, like plans.
+  'seasonal_terms',
+  'seasonal_billing_settings',
+  'seasonal_due_shifts',
   // KRA's own eTIMS code lists and the record of when they were last downloaded: the same data for every business (it is KRA's, not
   // a tenant's) - see rls.sql's "KRA eTIMS" comment. The business's own eTIMS switch and devices ARE tenant tables with policies.
   'etims_codes',

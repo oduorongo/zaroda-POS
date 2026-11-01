@@ -12,6 +12,8 @@ interface Plan {
   tier: string;
   name: string;
   priceKes: string;
+  billingCycle?: string;
+  active?: boolean;
   maxDevices: number;
   maxBranches: number;
 }
@@ -56,7 +58,8 @@ export default function NewTenantPage() {
       try {
         const result = await apiGet<Plan[]>("/platform-admin/plans");
         setPlans(result);
-        if (result[0]) setPlanTier(result[0].tier);
+        const first = result.find((p) => p.billingCycle !== "SEASONAL") ?? result[0];
+        if (first) setPlanTier(first.tier);
       } catch {
         // Plan dropdown just stays empty - submit is disabled without a
         // selected tier, so this fails safe rather than silently.
@@ -128,7 +131,13 @@ export default function NewTenantPage() {
                 </div>
                 <div>
                   <Label className="text-secondary-500">Industry</Label>
-                  <select value={industryType} onChange={(e) => setIndustryType(e.target.value)} className="w-full rounded-md border border-border bg-background p-2.5 text-sm">
+                  <select value={industryType} onChange={(e) => {
+                    setIndustryType(e.target.value);
+                    // School suppliers start on the seasonal (per term) plan; the admin can still pick another.
+                    const seasonal = plans.find((p) => p.billingCycle === "SEASONAL" && p.active !== false);
+                    if (e.target.value === "SCHOOL_SUPPLIER" && seasonal) setPlanTier(seasonal.tier);
+                    else if (seasonal && planTier === seasonal.tier && plans[0]) setPlanTier(plans.find((p) => p.billingCycle !== "SEASONAL")?.tier ?? plans[0].tier);
+                  }} className="w-full rounded-md border border-border bg-background p-2.5 text-sm">
                     {INDUSTRY_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
                   </select>
                 </div>
@@ -186,7 +195,7 @@ export default function NewTenantPage() {
                       className={`rounded-lg border p-3 text-left ${planTier === plan.tier ? "border-amber-500 bg-amber-500/10" : "border-border hover:border-primary-500"}`}
                     >
                       <p className="font-semibold text-foreground">{plan.name}</p>
-                      <p className="text-lg font-bold text-amber-400">KES {Number(plan.priceKes).toLocaleString()}<span className="text-xs font-normal text-secondary-500">/mo</span></p>
+                      <p className="text-lg font-bold text-amber-400">KES {Number(plan.priceKes).toLocaleString()}<span className="text-xs font-normal text-secondary-500">{plan.billingCycle === "SEASONAL" ? "/year, per term" : "/mo"}</span></p>
                       <p className="text-xs text-secondary-500">{plan.maxDevices} devices · {plan.maxBranches} branches</p>
                     </button>
                   ))}

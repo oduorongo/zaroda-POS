@@ -1,10 +1,12 @@
-export type EffectiveStatus = 'TRIAL' | 'ACTIVE' | 'GRACE' | 'SUSPENDED';
+/** READ_ONLY: a seasonal (school-term) plan past its grace days - the business can still sign in and look, but not sell or change stock. */
+export type EffectiveStatus = 'TRIAL' | 'ACTIVE' | 'GRACE' | 'SUSPENDED' | 'READ_ONLY';
 
 interface SubscriptionLike {
   currentPeriodEnd: Date;
   graceDays: number;
   isTrial: boolean;
   manuallySuspended: boolean;
+  plan?: { billingCycle: string } | null;
 }
 
 /**
@@ -17,7 +19,7 @@ export function effectiveStatus(sub: SubscriptionLike, now: Date = new Date()): 
   const graceEnd = new Date(sub.currentPeriodEnd.getTime() + sub.graceDays * 24 * 60 * 60 * 1000);
   if (now <= sub.currentPeriodEnd) return sub.isTrial ? 'TRIAL' : 'ACTIVE';
   if (now <= graceEnd) return 'GRACE';
-  return 'SUSPENDED';
+  return sub.plan?.billingCycle === 'SEASONAL' ? 'READ_ONLY' : 'SUSPENDED';
 }
 
 /**

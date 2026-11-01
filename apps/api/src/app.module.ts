@@ -1,4 +1,6 @@
 import { randomUUID } from 'crypto';
+import { SeasonalBillingModule } from './seasonal-billing/seasonal-billing.module';
+import { SeasonalReadOnlyInterceptor } from './seasonal-billing/seasonal-read-only.interceptor';
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { EventEmitterModule } from '@nestjs/event-emitter';
@@ -66,6 +68,7 @@ import { DeliveryModule } from './delivery/delivery.module';
 
 @Module({
   imports: [
+    SeasonalBillingModule,
     ConfigModule.forRoot({ isGlobal: true }),
     EventEmitterModule.forRoot(),
     LoggerModule.forRoot({
@@ -172,6 +175,8 @@ import { DeliveryModule } from './delivery/delivery.module';
     { provide: APP_GUARD, useClass: RolesGuard },
     { provide: APP_GUARD, useClass: TenantRateLimitGuard },
     { provide: APP_INTERCEPTOR, useClass: TenantContextInterceptor },
+    // After the tenant context: a seasonal plan past its grace days makes the business read-only.
+    { provide: APP_INTERCEPTOR, useExisting: SeasonalReadOnlyInterceptor },
     { provide: APP_FILTER, useClass: AllExceptionsFilter },
   ],
 })

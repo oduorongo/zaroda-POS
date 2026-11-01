@@ -85,6 +85,11 @@ export function Nav({ session }: { session: Session }) {
           </RibbonLink>
         </>
       )}
+      {session.industryType === "SCHOOL_SUPPLIER" && (session.role === "OWNER" || session.role === "MANAGER") && (
+        <RibbonLink href="/subscription" LinkComponent={Link} active={!!pathname?.startsWith("/subscription")}>
+          My subscription
+        </RibbonLink>
+      )}
       {session.industryType === "RESTAURANT" && !caretaker && (
         <RibbonLink href="/rooms" LinkComponent={Link} active={!!pathname?.startsWith("/rooms")} className="text-amber-300">
           Rooms
