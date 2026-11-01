@@ -366,6 +366,59 @@ const near = (a, b) => Math.abs(Number(a) - Number(b)) < 0.005;
   check('a manual one can', (await pa('POST', `/journals/${hosting.json.id}/reverse`, { reason: 'test' })).status === 201);
   check("no ZARODA account shows up in a business's books", !(await h('GET', '/accounting/accounts')).json.some((a) => a.systemKey === 'SUBSCRIPTION_INCOME'));
 
+  section('13. VAT on purchases, the VAT return, cash flow and aged lists');
+  const supplier = (await h('GET', '/suppliers')).json.find?.((x) => x.id) ?? (await h('POST', '/suppliers', { name: `VAT Supplier ${tag}` })).json;
+  check('a bill with more VAT than its total is refused', (await h('POST', '/supplier-bills', { supplierId: supplier.id, billNumber: `VX-${tag}`, total: 100, taxAmount: 101 })).status === 400);
+  const vatBill = await h('POST', '/supplier-bills', { supplierId: supplier.id, billNumber: `VB-${tag}`, total: 1160, taxAmount: 160 });
+  check('a supplier bill can carry the VAT on its invoice', vatBill.status === 201 && Number(vatBill.json.taxAmount ?? 160) === 160, vatBill.json);
+  check('an expense with more VAT than its amount is refused', (await h('POST', '/expenses', { spentOn: nairobi(), category: 'UTILITIES', amount: 100, taxAmount: 200, description: `bad vat ${tag}` })).status === 400);
+  const vatExp = await h('POST', '/expenses', { spentOn: nairobi(), category: 'UTILITIES', amount: 580, taxAmount: 80, description: `vat ${tag}` });
+  check('an expense can carry the VAT on its receipt', vatExp.status === 201 && vatExp.json.taxAmount === 80, vatExp.json);
+  const pass13 = (await h('POST', '/accounting/post-now', {})).json;
+  check('both are posted', pass13.posted >= 2 && pass13.failed === 0, pass13);
+  const billD = (await h('GET', `/accounting/journals/${(await entryFor('BILL', vatBill.json.id))[0]?.id}`)).json;
+  check('the bill: 1000 into stock, 160 claimable VAT, 1160 owed', line(billD, 'INVENTORY').debit === 1000 && line(billD, 'VAT_INPUT').debit === 160 && line(billD, 'AP').credit === 1160, billD.lines);
+  const expD = (await h('GET', `/accounting/journals/${(await entryFor('EXPENSE', vatExp.json.id))[0]?.id}`)).json;
+  check('the expense: 500 cost, 80 claimable VAT', line(expD, 'VAT_INPUT').debit === 80 && expD.lines.some((l) => l.debit === 500), expD.lines);
+
+  check('a month in the wrong form is refused', (await h('GET', '/accounting/reports/vat-return?month=2026-13')).status === 400);
+  check('a cashier cannot see the VAT return', (await h('GET', '/accounting/reports/vat-return', undefined, cashier)).status === 403);
+  const vr = await h('GET', `/accounting/reports/vat-return?month=${nairobi().slice(0, 7)}`);
+  const vt = vr.json;
+  check('the VAT return shows input VAT from the bill and the expense', vr.status === 200 && vt.purchases.bills.vat >= 160 && vt.purchases.expenses.vat >= 80 && near(vt.inputVat, vt.purchases.bills.vat + vt.purchases.expenses.vat + vt.otherInputVat), vt.purchases);
+  check('VAT to pay = output - input - withholding (or a credit carried forward)', near(vt.payable - vt.creditCarriedForward, vt.outputVat - vt.inputVat - vt.withholdingVat.total), vt);
+  check('output VAT by class adds up to the books (with refunds and other)', near(vt.outputVat, vt.salesVat - vt.refunds.vat + vt.otherOutputVat), vt);
+
+  const owed13 = (await h('GET', '/accounting/owed')).json.find((o) => o.account === 'VAT_OUTPUT');
+  const vatAcc = (await h('GET', '/accounting/accounts')).json;
+  const bal = (k) => vatAcc.find((a) => a.systemKey === k)?.balance ?? 0;
+  check('VAT owed is the VAT charged less the VAT claimable', near(owed13.owed, bal('VAT_OUTPUT') - bal('VAT_INPUT')) && bal('VAT_INPUT') >= 240, { owed13, out: bal('VAT_OUTPUT'), inp: bal('VAT_INPUT') });
+  const paid13 = await h('POST', '/accounting/pay-off', { account: 'VAT_OUTPUT', amount: 10, date: nairobi(), paidFrom: 'BANK', reference: `KRA2-${tag}` });
+  check('paying VAT also uses up the claimable VAT', paid13.status === 201 && line(paid13.json, 'VAT_INPUT').credit === bal('VAT_INPUT') && line(paid13.json, 'VAT_OUTPUT').debit === 10 + bal('VAT_INPUT') && line(paid13.json, 'BANK').credit === 10, paid13.json.lines);
+  const owed13b = (await h('GET', '/accounting/owed')).json.find((o) => o.account === 'VAT_OUTPUT');
+  check('and VAT owed goes down by exactly what was paid', near(owed13b.owed, owed13.owed - 10), { before: owed13.owed, after: owed13b.owed });
+  const vr2 = (await h('GET', `/accounting/reports/vat-return?month=${nairobi().slice(0, 7)}`)).json;
+  check('the payment does not change the month on the VAT return', near(vr2.inputVat, vt.inputVat) && near(vr2.outputVat, vt.outputVat), { vt: [vt.inputVat, vt.outputVat], vr2: [vr2.inputVat, vr2.outputVat] });
+
+  const cf = await h('GET', `/accounting/reports/cash-flow?from=${start}&to=${nairobi()}`);
+  check('the cash flow statement reconciles: opening + net change = closing', cf.status === 200 && cf.json.reconciles === true && near(cf.json.opening + cf.json.net, cf.json.closing), cf.json);
+  check('net change = operating + investing + financing', near(cf.json.net, cf.json.operating.total + cf.json.investing.total + cf.json.financing.total));
+  const cash = (await h('GET', '/accounting/accounts')).json.filter((a) => /^10\d\d$/.test(a.code)).reduce((t, a) => t + a.balance, 0);
+  check('cash at the end = the money accounts in the books', near(cf.json.closing, cash), { closing: cf.json.closing, cash });
+  check('a backwards cash flow range is refused', (await h('GET', `/accounting/reports/cash-flow?from=${nairobi()}&to=${start}`)).status === 400);
+
+  const cr = await h('GET', '/accounting/reports/creditors');
+  const crRow = cr.json.rows?.find((r) => r.party === supplier.name);
+  check('aged creditors lists the new bill as not yet due', cr.status === 200 && cr.json.documents.some((d) => d.reference === `VB-${tag}` && d.owed === 1160 && d.bucket === 'notDue') && crRow?.total >= 1160, crRow);
+  check('aged creditors: the columns add up to the totals', near(cr.json.totals.total, cr.json.rows.reduce((t, r) => t + r.total, 0)) && near(cr.json.totals.total, ['notDue', 'days1to30', 'days31to60', 'days61to90', 'days90plus', 'retention'].reduce((t, b) => t + cr.json.totals[b], 0)));
+  check('aged creditors shows what the books hold for suppliers', cr.json.books.some((b) => b.account === 'AP'), cr.json.books);
+  const dr = await h('GET', '/accounting/reports/debtors');
+  check('aged debtors opens and adds up', dr.status === 200 && near(dr.json.totals.total, dr.json.rows.reduce((t, r) => t + r.total, 0)) && dr.json.books.some((b) => b.account === 'AR'), dr.json.totals);
+  check('a cashier cannot see who owes what', (await h('GET', '/accounting/reports/debtors', undefined, cashier)).status === 403);
+  const tb13 = (await h('GET', '/accounting/reports/trial-balance')).json;
+  check('the trial balance still balances', tb13.balanced === true, { d: tb13.debit, c: tb13.credit });
+
+  await sql.query(`DELETE FROM supplier_bills WHERE id = $1`, [vatBill.json.id]);
   await sql.query(`DELETE FROM commission_invoices WHERE id = ANY($1)`, [[feeId, commId]]);
   await sql.query(`DELETE FROM expenses WHERE "organizationId" = $1 AND description LIKE $2`, [org.id, `%${tag}%`]);
   await sql.end();

@@ -67,6 +67,13 @@ export class ReceiveBillDto {
   @IsDateString()
   @IsOptional()
   dueDate?: string;
+
+  /** The VAT included in the bill (input VAT you can claim from KRA). Left out: none. */
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  @Max(1_000_000_000)
+  @IsOptional()
+  taxAmount?: number;
 }
 
 export class ReceivePurchaseOrderDto {

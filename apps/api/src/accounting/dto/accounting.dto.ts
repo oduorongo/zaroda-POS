@@ -210,3 +210,10 @@ export class JournalListQueryDto extends RangeQueryDto {
   @IsOptional()
   page?: number;
 }
+
+export class VatQueryDto {
+  /** "2026-10"; left out, this month. */
+  @Matches(/^\d{4}-(0[1-9]|1[0-2])$/, { message: 'Choose a month like 2026-10' })
+  @IsOptional()
+  month?: string;
+}

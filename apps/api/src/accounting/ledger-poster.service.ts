@@ -197,6 +197,7 @@ export class LedgerPosterService {
           category: e.category,
           label: e.description ? `${label} - ${e.description}` : label,
           amountCents: toCents(e.amount),
+          taxCents: toCents(e.taxAmount),
           paidWith: e.paidWith,
         });
       },
@@ -210,7 +211,7 @@ export class LedgerPosterService {
       draft: async (tx, id, c) => {
         const b = await tx.supplierBill.findUnique({ where: { id }, include: { supplier: { select: { name: true } } } });
         if (!b || b.status === 'VOID' || b.billDate < c.start) return null;
-        return billDraft({ date: dateKey(b.billDate), reference: b.billNumber, supplier: b.supplier.name, totalCents: toCents(b.total) });
+        return billDraft({ date: dateKey(b.billDate), reference: b.billNumber, supplier: b.supplier.name, totalCents: toCents(b.total), taxCents: toCents(b.taxAmount) });
       },
     },
     {
@@ -219,7 +220,7 @@ export class LedgerPosterService {
       draft: async (tx, id) => {
         const r = await tx.supplierBillCredit.findUnique({ where: { id }, include: { bill: { include: { supplier: { select: { name: true } } } } } });
         if (!r) return null;
-        return billCreditDraft({ date: nairobiDayOf(r.createdAt), reference: r.bill.billNumber, supplier: r.bill.supplier.name, amountCents: toCents(r.amount) });
+        return billCreditDraft({ date: nairobiDayOf(r.createdAt), reference: r.bill.billNumber, supplier: r.bill.supplier.name, amountCents: toCents(r.amount), taxCents: toCents(r.bill.taxAmount), totalCents: toCents(r.bill.total) });
       },
     },
     {

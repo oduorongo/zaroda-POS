@@ -14,6 +14,13 @@ export class CreateExpenseDto {
   @Max(100_000_000)
   amount!: number;
 
+  /** The VAT included in the amount (input VAT you can claim from KRA). Left out: none. */
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  @Max(100_000_000)
+  @IsOptional()
+  taxAmount?: number;
+
   @IsString()
   @IsOptional()
   @MaxLength(200)
@@ -43,6 +50,13 @@ export class UpdateExpenseDto {
   @Max(100_000_000)
   @IsOptional()
   amount?: number;
+
+  /** The VAT included in the amount (input VAT you can claim from KRA). Left out: none. */
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  @Max(100_000_000)
+  @IsOptional()
+  taxAmount?: number;
 
   @IsString()
   @IsOptional()

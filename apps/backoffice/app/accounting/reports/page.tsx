@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { apiGet, ApiError } from "../../../lib/api";
+import { AgedReport, CashFlowReport, VatReport } from "./more";
 import { API, downloadCsv, loadBranches, AccountingTabs, inputClass, kes, monthStart, niceDay, quietButtonClass, todayKey, useBooksSession, Shell } from "../shared";
 
 interface Row {
@@ -45,7 +46,8 @@ interface Branch {
   name: string;
 }
 
-type Tab = "pl" | "bs" | "tb";
+type Tab = "pl" | "bs" | "tb" | "cf" | "debtors" | "creditors" | "vat";
+const OWN_LOAD: Tab[] = ["cf", "debtors", "creditors", "vat"];
 
 // a cell a spreadsheet could read as a formula is written as text
 const cell = (v: string | number) => {
@@ -78,6 +80,7 @@ export default function StatementsPage() {
 
   const load = useCallback(async () => {
     try {
+      if (OWN_LOAD.includes(tab)) return;
       if (tab === "pl") {
         const q = new URLSearchParams({ from, to });
         if (branchId) q.set("branchId", branchId);
@@ -144,6 +147,10 @@ export default function StatementsPage() {
                 ["pl", "Profit and loss"],
                 ["bs", "Balance sheet"],
                 ["tb", "Trial balance"],
+                ["cf", "Cash flow"],
+                ["debtors", "Aged debtors"],
+                ["creditors", "Aged creditors"],
+                ["vat", "VAT return"],
               ] as [Tab, string][]
             ).map(([key, label]) => (
               <button
@@ -156,7 +163,7 @@ export default function StatementsPage() {
             ))}
           </div>
           <div className="flex flex-wrap items-end gap-3 text-sm">
-            {tab === "pl" ? (
+            {tab === "debtors" || tab === "creditors" || tab === "vat" ? null : tab === "pl" || tab === "cf" ? (
               <>
                 <label>
                   From
@@ -166,7 +173,7 @@ export default function StatementsPage() {
                   To
                   <input type="date" max={todayKey()} value={to} onChange={(e) => setTo(e.target.value)} className={inputClass} />
                 </label>
-                {branches.length > 1 && (
+                {tab === "pl" && branches.length > 1 && (
                   <label>
                     Branch
                     <select value={branchId} onChange={(e) => setBranchId(e.target.value)} className={inputClass}>
@@ -179,7 +186,7 @@ export default function StatementsPage() {
                     </select>
                   </label>
                 )}
-                {projects.length > 0 && (
+                {tab === "pl" && projects.length > 0 && (
                   <label>
                     Project
                     <select value={projectId} onChange={(e) => setProjectId(e.target.value)} className={inputClass}>
@@ -199,9 +206,11 @@ export default function StatementsPage() {
                 <input type="date" max={todayKey()} value={asOf} onChange={(e) => setAsOf(e.target.value)} className={inputClass} />
               </label>
             )}
-            <button onClick={download} className={quietButtonClass}>
-              Download (CSV)
-            </button>
+            {!OWN_LOAD.includes(tab) && (
+              <button onClick={download} className={quietButtonClass}>
+                Download (CSV)
+              </button>
+            )}
           </div>
         </div>
 
@@ -221,6 +230,10 @@ export default function StatementsPage() {
             <Total label={pl.netProfit >= 0 ? "Net profit" : "Net loss"} value={pl.netProfit} big />
           </div>
         )}
+
+        {tab === "cf" && <CashFlowReport from={from} to={to} />}
+        {(tab === "debtors" || tab === "creditors") && <AgedReport key={tab} kind={tab} />}
+        {tab === "vat" && <VatReport />}
 
         {tab === "bs" && bs && (
           <div className="space-y-1 rounded-lg border border-border bg-surface p-4 text-sm">

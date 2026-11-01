@@ -126,6 +126,8 @@ export class SupplierBillsService {
         if (!po || po.supplierId !== supplier.id)
           throw new BadRequestException("That order is not this supplier's");
       }
+      if ((dto.taxAmount ?? 0) > dto.total)
+        throw new BadRequestException('The VAT cannot be more than the bill');
       const billDate = dto.billDate ? dto.billDate.slice(0, 10) : kenyaToday();
       const dueDate = dto.dueDate
         ? dto.dueDate.slice(0, 10)
@@ -144,6 +146,7 @@ export class SupplierBillsService {
             billDate: day(billDate),
             dueDate: day(dueDate),
             total: dto.total,
+            taxAmount: dto.taxAmount ?? 0,
             purchaseOrderId: dto.purchaseOrderId,
             notes: dto.notes || null,
             createdById: orgUserId,

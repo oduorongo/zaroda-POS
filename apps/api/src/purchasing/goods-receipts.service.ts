@@ -294,6 +294,8 @@ export class GoodsReceiptsService {
         throw new BadRequestException(
           'Nothing was accepted, so there is nothing to bill',
         );
+      if ((dto.bill.taxAmount ?? 0) > total)
+        throw new BadRequestException('The VAT cannot be more than the bill');
       const billDate = dto.bill.billDate ?? kenyaToday();
       const billNumber = (
         dto.bill.billNumber ||
@@ -312,6 +314,7 @@ export class GoodsReceiptsService {
                 dueDateFor(billDate, supplier.paymentTermsDays),
             ),
             total,
+            taxAmount: dto.bill.taxAmount ?? 0,
             purchaseOrderId: order?.id,
             goodsReceiptId: receipt.id,
             createdById: orgUserId,

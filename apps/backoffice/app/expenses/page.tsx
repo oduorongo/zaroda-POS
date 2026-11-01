@@ -23,6 +23,7 @@ interface Expense {
   categoryLabel: string;
   description: string | null;
   amount: number;
+  taxAmount: number;
   paidWith: string | null;
   branchId: string | null;
   branchName: string | null;
@@ -69,6 +70,7 @@ export default function ExpensesPage() {
   const [spentOn, setSpentOn] = useState(today());
   const [category, setCategory] = useState("");
   const [amount, setAmount] = useState("");
+  const [taxAmount, setTaxAmount] = useState("");
   const [description, setDescription] = useState("");
   const [paidWith, setPaidWith] = useState("");
   const [branchId, setBranchId] = useState("");
@@ -115,6 +117,7 @@ export default function ExpensesPage() {
     setSpentOn(today());
     setCategory("");
     setAmount("");
+    setTaxAmount("");
     setDescription("");
     setPaidWith("");
     setBranchId("");
@@ -130,6 +133,7 @@ export default function ExpensesPage() {
         spentOn,
         category,
         amount: Number(amount),
+        taxAmount: taxAmount ? Number(taxAmount) : editingId ? 0 : undefined,
         description: description.trim() || undefined,
         paidWith: paidWith || undefined,
         branchId: branchId || undefined,
@@ -151,6 +155,7 @@ export default function ExpensesPage() {
     setSpentOn(x.spentOn);
     setCategory(x.category);
     setAmount(String(x.amount));
+    setTaxAmount(x.taxAmount ? String(x.taxAmount) : "");
     setDescription(x.description ?? "");
     setPaidWith(x.paidWith ?? "");
     setBranchId(x.branchId ?? "");
@@ -209,6 +214,10 @@ export default function ExpensesPage() {
               <label className="text-sm">
                 Amount (KES)
                 <input required type="number" inputMode="decimal" min={1} step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} className={field} />
+              </label>
+              <label className="text-sm">
+                VAT included (KES) <span className="text-secondary-500">(optional, from a VAT receipt)</span>
+                <input type="number" inputMode="decimal" min={0} step="0.01" value={taxAmount} onChange={(e) => setTaxAmount(e.target.value)} className={field} />
               </label>
               <label className="text-sm">
                 Date it was spent

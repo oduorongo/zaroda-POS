@@ -2,13 +2,18 @@ import { BadRequestException, ConflictException, ForbiddenException, Injectable,
 import { JournalKind, Prisma, Role } from '@prisma/client';
 import { TenantScopedPrismaService, TenantTx } from '../common/prisma/tenant-scoped-prisma.service';
 import { getTenantStore } from '../common/tenant/tenant-context';
-import { AsOfQueryDto, CreateAccountDto, CreateJournalDto, JournalListQueryDto, LedgerSettingsDto, PayOffDto, RangeQueryDto, ReverseJournalDto, UpdateAccountDto } from './dto/accounting.dto';
+import { AsOfQueryDto, CreateAccountDto, CreateJournalDto, JournalListQueryDto, LedgerSettingsDto, PayOffDto, RangeQueryDto, ReverseJournalDto, UpdateAccountDto, VatQueryDto } from './dto/accounting.dto';
+import { addDays, ageOwed, Bucket, BUCKETS, OwedDoc } from './ledger-aging.util';
+import { AccountKey } from './ledger-chart';
+import { nairobiDayOf } from '../reports/profit.util';
 import { dateOf, dayOf, LedgerBooksService, todayKey } from './ledger-books.service';
 import { LedgerPosterService } from './ledger-poster.service';
 import { manualProblem, PAYABLE_ACCOUNTS, payOffDraft, postingDate } from './ledger-posting.util';
-import { AccountInfo, balanceSheet, profitAndLoss, Sums, trialBalance, withRunningBalance } from './ledger-reports.util';
+import { AccountInfo, balanceSheet, cashFlow, isMoneyAccount, profitAndLoss, Row, Sums, trialBalance, withRunningBalance } from './ledger-reports.util';
 
 const PAGE = 50;
+/** Aged debtors / creditors: a certified IPC or subcontractor valuation falls due this many days after certification. */
+const CERTIFICATE_PAYMENT_DAYS = 30;
 
 /**
  * What an entry is worth on the list: its debits, leaving out the cost of goods moving out of stock (a sale of 6,240 whose goods
@@ -307,11 +312,18 @@ export class AccountingService {
       await this.books.settings(tx);
       const ids = await this.books.accountIds(tx);
       const sums = await this.sums(tx, { to: todayKey() });
+      const input = AccountingService.inputVat(sums, ids);
       return Object.entries(PAYABLE_ACCOUNTS).map(([key, label]) => {
         const s = sums.get(ids.get(key) ?? '') ?? { debit: 0, credit: 0 };
-        return { account: key, label, owed: money(s.credit - s.debit) };
+        return { account: key, label, owed: money(s.credit - s.debit - (key === 'VAT_OUTPUT' ? input : 0)) };
       });
     });
+  }
+
+  /** The claimable VAT paid on purchases (never below nothing). */
+  private static inputVat(sums: Sums, ids: Map<string, string>) {
+    const s = sums.get(ids.get('VAT_INPUT') ?? '') ?? { debit: 0, credit: 0 };
+    return Math.max(0, s.debit - s.credit);
   }
 
   /** Records a payment of something owed (VAT, PAYE, tips handed to staff...): it comes off what is owed and out of the money account. */
@@ -319,7 +331,8 @@ export class AccountingService {
     if (dto.date > todayKey()) throw new BadRequestException('A payment cannot be dated in the future.');
     const id = await this.tenantPrisma.run(async (tx) => {
       await this.books.lock(tx);
-      const d = payOffDraft({ date: dto.date, account: dto.account, amountCents: cents(dto.amount), paidFrom: dto.paidFrom, reference: dto.reference?.trim() || null });
+      const offsetCents = dto.account === 'VAT_OUTPUT' ? AccountingService.inputVat(await this.sums(tx, { to: dto.date }), await this.books.accountIds(tx)) : 0;
+      const d = payOffDraft({ date: dto.date, account: dto.account, amountCents: cents(dto.amount), paidFrom: dto.paidFrom, reference: dto.reference?.trim() || null, offsetCents });
       const entry = await this.books.write(tx, { date: d.date, kind: JournalKind.MANUAL, memo: d.memo, sourceType: 'PAY_OFF', lines: d.lines, by: await this.me(tx) });
       return entry.id;
     });
@@ -399,6 +412,199 @@ export class AccountingService {
         profitToDate: money(bs.profitToDate),
         totalEquity: money(bs.totalEquity),
         balanced: bs.balanced,
+      };
+    });
+  }
+
+  /** Where the money came from and went over a period: opening cash, operating / investing / financing, closing cash. */
+  async cashFlow(q: RangeQueryDto) {
+    const to = q.to ?? todayKey();
+    const from = q.from ?? `${to.slice(0, 7)}-01`;
+    if (from > to) throw new BadRequestException('The start day is after the end day.');
+    return this.tenantPrisma.run(async (tx) => {
+      const accounts = await this.accountInfo(tx);
+      const moneyIds = accounts.filter(isMoneyAccount).map((a) => a.id);
+      const cash = (s: Sums) => moneyIds.reduce((t, id) => t + (s.get(id)?.debit ?? 0) - (s.get(id)?.credit ?? 0), 0);
+      const effects = new Map<string, number>();
+      if (moneyIds.length) {
+        const rows = await tx.$queryRaw<{ accountId: string; amount: Prisma.Decimal }[]>(Prisma.sql`
+          SELECT l."accountId", SUM(l.credit - l.debit) AS amount FROM journal_lines l
+          WHERE l."accountId" NOT IN (${Prisma.join(moneyIds)}) AND l."entryId" IN (
+            SELECT m."entryId" FROM journal_lines m JOIN journal_entries e ON e.id = m."entryId"
+            WHERE m."accountId" IN (${Prisma.join(moneyIds)}) AND e."entryDate" >= ${from}::date AND e."entryDate" <= ${to}::date)
+          GROUP BY l."accountId"`);
+        for (const r of rows) effects.set(r.accountId, cents(r.amount));
+      }
+      const cf = cashFlow(accounts, effects, cash(await this.sums(tx, { before: from })), cash(await this.sums(tx, { to })));
+      const part = (p: { rows: Row[]; total: number }) => ({ rows: AccountingService.moneyRows(p.rows), total: money(p.total) });
+      return { from, to, opening: money(cf.opening), operating: part(cf.operating), investing: part(cf.investing), financing: part(cf.financing), net: money(cf.net), closing: money(cf.closing), reconciles: cf.reconciles };
+    });
+  }
+
+  /** Who owes us, by how late: school invoices, construction IPCs and retention, rent. Compared with the debtor accounts in the books. */
+  async debtors() {
+    const today = todayKey();
+    return this.tenantPrisma.run(async (tx) => {
+      const docs: OwedDoc[] = [];
+      const schools = await tx.supplierInvoice.findMany({ where: { status: { in: ['ISSUED', 'PARTIALLY_PAID'] } }, include: { school: { select: { name: true } } } });
+      for (const i of schools) {
+        const owed = cents(i.total) - cents(i.creditAmount) - cents(i.amountPaid) - cents(i.writtenOffAmount);
+        const held = Math.min(owed, cents(i.retentionHeld));
+        docs.push({ party: i.school.name, kind: 'Invoice', reference: i.invoiceNumber, date: dayOf(i.issueDate)!, dueDate: dayOf(i.dueDate), owedCents: owed - held });
+        if (held > 0) docs.push({ party: i.school.name, kind: 'Retention', reference: i.invoiceNumber, date: dayOf(i.issueDate)!, dueDate: null, owedCents: held });
+      }
+      const ipcs = await tx.conValuation.findMany({
+        where: { saleId: { not: null } },
+        include: { project: { select: { code: true, name: true, client: { select: { name: true } } } }, receipts: { select: { amount: true } } },
+      });
+      const sales = new Map(
+        (await tx.sale.findMany({ where: { id: { in: ipcs.map((v) => v.saleId!) } }, select: { id: true, total: true, createdAt: true, refunds: { select: { amount: true } } } })).map((s) => [s.id, s]),
+      );
+      for (const v of ipcs) {
+        const s = sales.get(v.saleId!);
+        if (!s) continue;
+        const owed = cents(s.total) - s.refunds.reduce((t, r) => t + cents(r.amount), 0) - v.receipts.reduce((t, r) => t + cents(r.amount), 0);
+        const date = dayOf(v.certifiedAt) ?? nairobiDayOf(s.createdAt);
+        docs.push({ party: v.project.client?.name ?? v.project.name, kind: 'IPC', reference: `${v.project.code} IPC ${v.number}`, date, dueDate: addDays(date, CERTIFICATE_PAYMENT_DAYS), owedCents: owed });
+      }
+      const held = await tx.$queryRaw<{ projectId: string; held: Prisma.Decimal }[]>(
+        Prisma.sql`SELECT "projectId", SUM(CASE type WHEN 'DEDUCT' THEN amount ELSE -amount END) AS held FROM con_retention_ledger GROUP BY "projectId"`,
+      );
+      if (held.length) {
+        const projects = new Map((await tx.conProject.findMany({ where: { id: { in: held.map((h) => h.projectId) } }, select: { id: true, code: true, name: true, startDate: true, client: { select: { name: true } } } })).map((p) => [p.id, p]));
+        for (const h of held) {
+          const p = projects.get(h.projectId);
+          if (p) docs.push({ party: p.client?.name ?? p.name, kind: 'Retention', reference: p.code, date: dayOf(p.startDate) ?? today, dueDate: null, owedCents: cents(h.held) });
+        }
+      }
+      const rent = await tx.rentalInvoice.findMany({ where: { amountDue: { gt: 0 } }, include: { lease: { select: { tenant: { select: { name: true } }, unit: { select: { label: true } } } } } });
+      for (const r of rent) {
+        const due = dayOf(r.dueDate)!;
+        docs.push({ party: r.lease.tenant.name, kind: r.kind === 'RENT' ? 'Rent' : r.kind === 'DEPOSIT' ? 'Deposit' : 'Charge', reference: `${r.lease.unit.label}${r.periodMonth ? ` ${dayOf(r.periodMonth)!.slice(0, 7)}` : ''}`, date: due, dueDate: due, owedCents: cents(r.amountDue) - cents(r.amountPaid) });
+      }
+      return this.agedView(tx, ageOwed(docs, today), today, ['AR', 'RENT_AR', 'RETENTION_RECEIVABLE'], 1);
+    });
+  }
+
+  /** Who we owe, by how late: supplier bills, approved subcontractor valuations and the retention we hold from subcontractors. */
+  async creditors() {
+    const today = todayKey();
+    return this.tenantPrisma.run(async (tx) => {
+      const docs: OwedDoc[] = [];
+      const bills = await tx.supplierBill.findMany({ where: { status: { notIn: ['VOID', 'PAID'] } }, include: { supplier: { select: { name: true } } } });
+      for (const b of bills) docs.push({ party: b.supplier.name, kind: 'Bill', reference: b.billNumber, date: dayOf(b.billDate)!, dueDate: dayOf(b.dueDate), owedCents: cents(b.total) - cents(b.creditAmount) - cents(b.amountPaid) });
+      const subs = await tx.conSubValuation.findMany({
+        where: { status: { in: ['APPROVED', 'PAID'] } },
+        orderBy: { number: 'asc' },
+        include: { subcontract: { select: { ref: true, party: { select: { name: true } } } } },
+      });
+      const retention = new Map<string, { party: string; ref: string; date: string; cents: number }>();
+      for (const v of subs) {
+        const party = v.subcontract.party.name;
+        const date = dayOf(v.approvedAt) ?? today;
+        if (v.status === 'APPROVED') docs.push({ party, kind: 'Subcontract valuation', reference: `${v.subcontract.ref} no. ${v.number}`, date, dueDate: addDays(date, CERTIFICATE_PAYMENT_DAYS), owedCents: cents(v.netDue) });
+        retention.set(v.subcontractId, { party, ref: v.subcontract.ref, date, cents: cents(v.retention) });
+      }
+      for (const r of retention.values()) docs.push({ party: r.party, kind: 'Retention', reference: r.ref, date: r.date, dueDate: null, owedCents: r.cents });
+      return this.agedView(tx, ageOwed(docs, today), today, ['AP', 'RETENTION_PAYABLE'], -1);
+    });
+  }
+
+  /** The aged list in shillings, with what the matching accounts hold in the books (sign: 1 for assets, -1 for liabilities). */
+  private async agedView(tx: TenantTx, aged: ReturnType<typeof ageOwed>, today: string, keys: string[], sign: 1 | -1) {
+    const ids = await this.books.accountIds(tx);
+    const sums = await this.sums(tx, { to: today });
+    const books = keys
+      .filter((k) => ids.has(k as AccountKey))
+      .map((k) => {
+        const s = sums.get(ids.get(k as AccountKey)!) ?? { debit: 0, credit: 0 };
+        return { account: k, balance: money(sign * (s.debit - s.credit)) };
+      });
+    const amounts = <T extends Record<Bucket | 'total', number>>(r: T) => ({ ...r, ...Object.fromEntries([...BUCKETS, 'total'].map((b) => [b, money(r[b as Bucket])])) });
+    return {
+      asOf: today,
+      rows: aged.rows.map(amounts),
+      totals: amounts(aged.totals),
+      documents: aged.documents.map(({ owedCents, ...d }) => ({ ...d, owed: money(owedCents) })),
+      books,
+      booksTotal: money(books.reduce((t, b) => t + cents(b.balance), 0)),
+    };
+  }
+
+  /**
+   * The VAT return for a month: output VAT on sales (by VAT class), less refunds, input VAT on bills and expenses, and withholding VAT
+   * certificates received. Totals are the VAT accounts in the books; documents give the detail.
+   */
+  async vatReturn(q: VatQueryDto) {
+    const month = q.month ?? todayKey().slice(0, 7);
+    const from = `${month}-01`;
+    const next = new Date(Date.parse(`${from}T00:00:00Z`));
+    next.setUTCMonth(next.getUTCMonth() + 1);
+    const to = addDays(next.toISOString().slice(0, 10), -1);
+    const start = new Date(`${from}T00:00:00+03:00`);
+    const end = new Date(`${next.toISOString().slice(0, 10)}T00:00:00+03:00`);
+    return this.tenantPrisma.run(async (tx) => {
+      const ids = await this.books.accountIds(tx);
+      const vatMove = async (key: AccountKey) => {
+        const id = ids.get(key);
+        if (!id) return 0;
+        const r = await tx.$queryRaw<{ v: Prisma.Decimal | null }[]>(Prisma.sql`
+          SELECT SUM(l.debit - l.credit) AS v FROM journal_lines l JOIN journal_entries e ON e.id = l."entryId"
+          WHERE l."accountId" = ${id} AND e."entryDate" >= ${from}::date AND e."entryDate" <= ${to}::date AND COALESCE(e."sourceType", '') <> 'PAY_OFF'`);
+        return cents(r[0]?.v);
+      };
+      const classes = await tx.$queryRaw<{ name: string | null; rate: Prisma.Decimal | null; isExempt: boolean | null; net: Prisma.Decimal; tax: Prisma.Decimal }[]>(Prisma.sql`
+        SELECT tc.name, tc.rate, tc."isExempt", SUM(li.quantity * li."unitPrice") AS net, SUM(li."taxAmount") AS tax
+        FROM sale_line_items li JOIN sales s ON s.id = li."saleId" JOIN product_variants v ON v.id = li."variantId" JOIN products p ON p.id = v."productId"
+        LEFT JOIN tax_classes tc ON tc.id = p."taxClassId"
+        WHERE s.status::text = 'COMPLETED' AND s."createdAt" >= ${start} AND s."createdAt" < ${end}
+        GROUP BY tc.id, tc.name, tc.rate, tc."isExempt"`);
+      const sales = classes
+        .map((c) => ({
+          label: c.name === null ? 'No VAT class set' : c.isExempt ? `${c.name} (exempt)` : `${c.name} (${Math.round(Number(c.rate) * 10000) / 100}%)`,
+          rate: c.rate === null || c.isExempt ? null : Number(c.rate),
+          netCents: cents(c.net),
+          vatCents: cents(c.tax),
+        }))
+        .sort((a, b) => (b.rate ?? -1) - (a.rate ?? -1));
+      const refundRows = await tx.$queryRaw<{ amount: Prisma.Decimal; total: Prisma.Decimal; tax: Prisma.Decimal | null }[]>(Prisma.sql`
+        SELECT r.amount, s.total, (SELECT SUM(li."taxAmount") FROM sale_line_items li WHERE li."saleId" = s.id) AS tax
+        FROM refunds r JOIN sales s ON s.id = r."saleId" WHERE r."createdAt" >= ${start} AND r."createdAt" < ${end}`);
+      const refundVat = refundRows.reduce((t, r) => t + (cents(r.total) > 0 ? Math.round((cents(r.amount) * cents(r.tax)) / cents(r.total)) : 0), 0);
+      const refundGross = refundRows.reduce((t, r) => t + cents(r.amount), 0);
+      const outputVat = -(await vatMove('VAT_OUTPUT'));
+      const salesVat = sales.reduce((t, s) => t + s.vatCents, 0);
+
+      const bills = await tx.supplierBill.findMany({ where: { status: { not: 'VOID' }, billDate: { gte: dateOf(from), lte: dateOf(to) } }, select: { total: true, taxAmount: true } });
+      const expenses = await tx.expense.findMany({ where: { spentOn: { gte: dateOf(from), lte: dateOf(to) } }, select: { amount: true, taxAmount: true } });
+      const part = (rows: { gross: number; vat: number }[]) => ({ count: rows.filter((r) => r.vat > 0).length, net: money(rows.reduce((t, r) => t + r.gross - r.vat, 0)), vat: money(rows.reduce((t, r) => t + r.vat, 0)) });
+      const billPart = part(bills.map((b) => ({ gross: cents(b.total), vat: cents(b.taxAmount) })));
+      const expensePart = part(expenses.map((e) => ({ gross: cents(e.amount), vat: cents(e.taxAmount) })));
+      const inputVat = await vatMove('VAT_INPUT');
+
+      const wht = await tx.conValuationReceipt.findMany({
+        where: { kind: 'WHT_VAT', receivedAt: { gte: dateOf(from), lte: dateOf(to) } },
+        include: { valuation: { select: { number: true, project: { select: { code: true } } } } },
+        orderBy: { receivedAt: 'asc' },
+      });
+      const whtVat = wht.reduce((t, w) => t + cents(w.amount), 0);
+      const payable = outputVat - inputVat - whtVat;
+      return {
+        month,
+        from,
+        to,
+        sales: sales.map((s) => ({ label: s.label, rate: s.rate, net: money(s.netCents), vat: money(s.vatCents) })),
+        salesNet: money(sales.reduce((t, s) => t + s.netCents, 0)),
+        salesVat: money(salesVat),
+        refunds: { count: refundRows.length, gross: money(refundGross), vat: money(refundVat) },
+        otherOutputVat: money(outputVat - (salesVat - refundVat)),
+        outputVat: money(outputVat),
+        purchases: { bills: billPart, expenses: expensePart },
+        otherInputVat: money(inputVat - cents(billPart.vat) - cents(expensePart.vat)),
+        inputVat: money(inputVat),
+        withholdingVat: { total: money(whtVat), certificates: wht.map((w) => ({ date: dayOf(w.receivedAt), reference: `${w.valuation.project.code} IPC ${w.valuation.number}`, certificateNo: w.certificateNo, amount: money(cents(w.amount)) })) },
+        payable: money(Math.max(0, payable)),
+        creditCarriedForward: money(Math.max(0, -payable)),
       };
     });
   }

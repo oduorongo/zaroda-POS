@@ -294,7 +294,7 @@ function CreditModal({ bill, onClose, onDone }: { bill: Bill; onClose: () => voi
 }
 
 function AddBillModal({ suppliers, onClose, onDone }: { suppliers: Supplier[]; onClose: () => void; onDone: (message: string) => void }) {
-  const [f, setF] = useState({ supplierId: suppliers[0]?.id ?? "", billNumber: "", total: "", billDate: "", dueDate: "", notes: "" });
+  const [f, setF] = useState({ supplierId: suppliers[0]?.id ?? "", billNumber: "", total: "", taxAmount: "", billDate: "", dueDate: "", notes: "" });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const set = (k: keyof typeof f, v: string) => setF((x) => ({ ...x, [k]: v }));
@@ -303,7 +303,7 @@ function AddBillModal({ suppliers, onClose, onDone }: { suppliers: Supplier[]; o
     setBusy(true);
     setError(null);
     try {
-      await apiPost("/supplier-bills", { supplierId: f.supplierId, billNumber: f.billNumber.trim(), total: Number(f.total), billDate: f.billDate || undefined, dueDate: f.dueDate || undefined, notes: f.notes.trim() || undefined });
+      await apiPost("/supplier-bills", { supplierId: f.supplierId, billNumber: f.billNumber.trim(), total: Number(f.total), taxAmount: f.taxAmount ? Number(f.taxAmount) : undefined, billDate: f.billDate || undefined, dueDate: f.dueDate || undefined, notes: f.notes.trim() || undefined });
       onDone("Bill added.");
     } catch (e) {
       setError(explain(e, "Could not add the bill."));
@@ -321,6 +321,7 @@ function AddBillModal({ suppliers, onClose, onDone }: { suppliers: Supplier[]; o
       </label>
       <label className="block text-sm">Supplier&apos;s invoice number<input className={field} value={f.billNumber} onChange={(e) => set("billNumber", e.target.value)} /></label>
       <label className="block text-sm">Amount (KES)<input type="number" min={0.01} step="0.01" className={field} value={f.total} onChange={(e) => set("total", e.target.value)} /></label>
+      <label className="block text-sm">VAT included in the amount (KES, optional)<input type="number" min={0} step="0.01" className={field} value={f.taxAmount} onChange={(e) => set("taxAmount", e.target.value)} /></label>
       <div className="grid grid-cols-2 gap-3">
         <label className="block text-sm">Bill date <span className="text-secondary-500">(today)</span><input type="date" className={field} value={f.billDate} onChange={(e) => set("billDate", e.target.value)} /></label>
         <label className="block text-sm">Due <span className="text-secondary-500">(by terms)</span><input type="date" className={field} value={f.dueDate} onChange={(e) => set("dueDate", e.target.value)} /></label>

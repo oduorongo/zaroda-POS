@@ -21,6 +21,7 @@ export function toExpenseView(e: Expense & { branch?: { name: string } | null })
     categoryLabel: EXPENSE_CATEGORIES.find((c) => c.key === e.category)?.label ?? e.category,
     description: e.description,
     amount: Number(e.amount),
+    taxAmount: Number(e.taxAmount),
     paidWith: e.paidWith,
     branchId: e.branchId,
     branchName: e.branch?.name ?? null,
@@ -53,6 +54,7 @@ export class ExpensesService {
   async create(dto: CreateExpenseDto) {
     const { organizationId, orgUserId } = getTenantStore();
     checkDay(dto.spentOn);
+    if ((dto.taxAmount ?? 0) > dto.amount) throw new BadRequestException('The VAT cannot be more than the amount');
     return this.tenantPrisma.run(async (tx) => {
       if (dto.branchId && !(await tx.branch.findUnique({ where: { id: dto.branchId } }))) throw new BadRequestException('Branch not found');
       const expense = await tx.expense.create({
@@ -63,6 +65,7 @@ export class ExpensesService {
           category: dto.category,
           description: dto.description?.trim() || null,
           amount: round2(dto.amount),
+          taxAmount: round2(dto.taxAmount ?? 0),
           paidWith: dto.paidWith ?? null,
           recordedById: orgUserId,
         },
@@ -106,6 +109,7 @@ export class ExpensesService {
     return this.tenantPrisma.run(async (tx) => {
       const before = await tx.expense.findUnique({ where: { id }, include: { branch: { select: { name: true } } } });
       if (!before) throw new NotFoundException('Expense not found');
+      if ((dto.taxAmount ?? Number(before.taxAmount)) > (dto.amount ?? Number(before.amount))) throw new BadRequestException('The VAT cannot be more than the amount');
       if (dto.branchId && !(await tx.branch.findUnique({ where: { id: dto.branchId } }))) throw new BadRequestException('Branch not found');
       const after = await tx.expense.update({
         where: { id },
@@ -113,6 +117,7 @@ export class ExpensesService {
           spentOn: dto.spentOn ? toDate(dto.spentOn) : undefined,
           category: dto.category,
           amount: dto.amount === undefined ? undefined : round2(dto.amount),
+          taxAmount: dto.taxAmount === undefined ? undefined : round2(dto.taxAmount),
           description: dto.description === undefined ? undefined : dto.description.trim() || null,
           paidWith: dto.paidWith,
           branchId: dto.branchId,

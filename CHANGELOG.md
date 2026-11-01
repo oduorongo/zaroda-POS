@@ -1,5 +1,11 @@
 # Changelog
 
+## Accounts: cash flow, aged debtors and creditors, VAT return (2026-11-01)
+
+- Statements gain four tabs: Cash flow (money in and out by trading / investing / financing, reconciled to cash at the start and end), Aged debtors (school invoices, construction IPCs due 30 days after certification, retention, rent) and Aged creditors (supplier bills, approved subcontractor valuations, retention we hold), each compared with the books, and the VAT return for a month (output VAT by VAT class, refunds, input VAT, withholding VAT certificates, what to pay KRA or carry forward). All download as CSV.
+- Supplier bills, bills made when goods are received, and expenses can carry the VAT on their invoice or receipt. That VAT goes to a new account "VAT paid on purchases (claimable)" (1165) and not to stock or cost. "What you owe" shows VAT less what is claimable, and paying VAT uses up the claimable VAT.
+- Migration `20261220100000_vat_on_purchases` (existing bills and expenses: no VAT). The new account is added to every business's chart on first use. e2e-ledger now 141 checks.
+
 ## Construction C8: add-ons, construction in the general ledger, Enterprise (2026-11-01)
 
 - Extra project slots bought by M-Pesa from the Plan page (and offered right where a project is refused for the limit, on plans that sell them): the first period is pro-rated to the paid-up date, then slots renew with the plan. Slots can be given back while open projects still fit. Buying add-ons never moves the plan's paid-up date.

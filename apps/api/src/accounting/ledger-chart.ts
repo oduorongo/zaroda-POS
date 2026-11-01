@@ -14,6 +14,7 @@ export const SYSTEM_ACCOUNTS = [
   { key: 'RENT_AR', code: '1110', name: 'Rent owed by tenants', type: 'ASSET' },
   { key: 'BAD_DEBT_ALLOWANCE', code: '1150', name: 'Set aside for debts that may not be paid', type: 'ASSET' },
   { key: 'WHT_RECEIVABLE', code: '1160', name: 'Withholding tax deducted by customers', type: 'ASSET' },
+  { key: 'VAT_INPUT', code: '1165', name: 'VAT paid on purchases (claimable)', type: 'ASSET' },
   { key: 'INVENTORY', code: '1200', name: 'Stock', type: 'ASSET' },
   { key: 'AP', code: '2000', name: 'Suppliers we owe (creditors)', type: 'LIABILITY' },
   { key: 'AP_ZARODA', code: '2010', name: 'Owed to ZARODA', type: 'LIABILITY' },

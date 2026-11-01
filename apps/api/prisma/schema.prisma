@@ -1275,6 +1275,8 @@ model Expense {
   category       String
   description    String?
   amount         Decimal  @db.Decimal(12, 2)
+  /// The VAT included in the amount (claimable as input VAT on the VAT return).
+  taxAmount      Decimal  @default(0) @db.Decimal(12, 2)
   // CASH | MPESA | BANK | CARD, informational.
   paidWith       String?
   recordedById   String?
@@ -4882,6 +4884,8 @@ model SupplierBill {
   billDate        DateTime           @db.Date
   dueDate         DateTime           @db.Date
   total           Decimal            @db.Decimal(12, 2)
+  /// The VAT included in the total (claimable as input VAT on the VAT return).
+  taxAmount       Decimal            @default(0) @db.Decimal(12, 2)
   amountPaid      Decimal            @default(0) @db.Decimal(12, 2)
   /// Taken off what is owed by credit notes (damaged goods, a price correction...). Owed = total - credits - paid.
   creditAmount    Decimal            @default(0) @db.Decimal(12, 2)

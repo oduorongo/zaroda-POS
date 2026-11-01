@@ -33,6 +33,13 @@ export class CreateSupplierBillDto {
   @Max(1_000_000_000)
   total!: number;
 
+  /** The VAT included in the total (input VAT you can claim from KRA). Left out: none. */
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  @Max(1_000_000_000)
+  @IsOptional()
+  taxAmount?: number;
+
   @IsDateString()
   @IsOptional()
   billDate?: string;
