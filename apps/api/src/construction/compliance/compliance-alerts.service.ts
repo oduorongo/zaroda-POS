@@ -10,6 +10,8 @@ import { asOrg } from '../common/con-access';
 import { constructionUrl } from '../common/con-domain';
 import { WORKS_CLASS_LABELS, alertKey, alertStage, alertText, todayKey } from './compliance.util';
 import { PERMIT_LABELS } from '../projects/projects.util';
+import { smsParts } from '../plans/con-addons.util';
+import { ConUsageService } from '../plans/con-usage.service';
 
 const FIRST_RUN_DELAY_MS = 2 * 60_000;
 const INTERVAL_MS = 6 * 60 * 60_000;
@@ -36,6 +38,7 @@ export class ComplianceAlertsService implements OnModuleInit, OnModuleDestroy {
     private readonly email: ResendEmailProvider,
     private readonly sms: AfricasTalkingSmsProvider,
     private readonly config: ConfigService,
+    private readonly usage: ConUsageService,
   ) {}
 
   onModuleInit() {
@@ -54,7 +57,10 @@ export class ComplianceAlertsService implements OnModuleInit, OnModuleDestroy {
   async tick(now: Date = new Date()) {
     const orgs = await this.prisma.organization.findMany({ where: { industryType: 'CONSTRUCTION', isActive: true }, select: { id: true } });
     let raised = 0;
-    for (const org of orgs) raised += await this.runForOrganization(org.id, todayKey(now)).catch((e) => (this.logger.warn({ err: e, organizationId: org.id }, 'Compliance alerts failed'), 0));
+    for (const org of orgs) {
+      raised += await this.runForOrganization(org.id, todayKey(now)).catch((e) => (this.logger.warn({ err: e, organizationId: org.id }, 'Compliance alerts failed'), 0));
+      await asOrg(this.prisma, org.id, (tx) => this.usage.closeMonths(tx, org.id, now)).catch((e) => this.logger.warn({ err: e, organizationId: org.id }, 'Closing fee months failed'));
+    }
     if (raised > 0) this.logger.log({ raised }, 'Construction compliance alerts raised');
     return raised;
   }
@@ -124,7 +130,11 @@ export class ComplianceAlertsService implements OnModuleInit, OnModuleDestroy {
     }
     if (org.phone) {
       const message = `${org.name}: ${alerts.map((a) => a.title).join('; ')}.${link ? ` ${link}` : ''}`.slice(0, 300);
-      await this.sms.sendSms({ to: org.phone, message });
+      const parts = smsParts(message);
+      if (await this.usage.takeSms(organizationId, parts)) {
+        const sent = await this.sms.sendSms({ to: org.phone, message }).catch(() => ({ sent: false }));
+        if (!sent.sent) await this.usage.returnSms(organizationId, parts);
+      }
     }
   }
 

@@ -6,6 +6,7 @@ import { apiGet, apiPatch, apiPost, ApiError } from "../../lib/api";
 import { getSession, type Session } from "../../lib/auth";
 import { Nav } from "../../components/nav";
 import { BillingReport } from "./billing-report";
+import { PriceLists } from "./price-lists";
 
 type Limits = { activeProjects: number | null; workers: number | null; users: number | null };
 interface Plan { id: string; code: string; name: string; fits: string | null; monthlyPrice: string; annualPrice: string | null; quoteOnly: boolean; setupFee: string | null; setupFeeOptional: boolean; limits: Limits; features: string[]; sortOrder: number; isActive: boolean }
@@ -71,6 +72,7 @@ export default function ConstructionAdminPage() {
         {notice && <p className="rounded border border-green-300 bg-green-50 px-3 py-2 text-sm text-green-800">{notice}</p>}
 
         <BillingReport refresh={loads} />
+        <PriceLists />
 
         <section className="space-y-3">
           <h2 className="font-semibold">Plans</h2>

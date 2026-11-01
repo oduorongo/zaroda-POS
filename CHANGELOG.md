@@ -1,5 +1,16 @@
 # Changelog
 
+## Construction C8: add-ons, construction in the general ledger, Enterprise (2026-11-01)
+
+- Extra project slots bought by M-Pesa from the Plan page (and offered right where a project is refused for the limit, on plans that sell them): the first period is pro-rated to the paid-up date, then slots renew with the plan. Slots can be given back while open projects still fit. Buying add-ons never moves the plan's paid-up date.
+- SMS credit (100 to start): payslips and expiry alerts use one text each (two for long ones); a text that fails is given back; when credit runs out texting stops and the Director gets a notice. SMS bundles bought by M-Pesa.
+- ZARODA payout fee on every M-Pesa wage payout (Daraja cost + markup, by amount band), shown on the pay run; each finished month's fees become an invoice paid by M-Pesa from the Plan page. Accounts or the Director pay add-ons.
+- ZARODA admin: Construction > Price lists edits the SMS bundles and the payout fee bands (placeholder figures to replace); the billing report shows fees owed.
+- General ledger: certified IPC invoices with retention held by the client in its own account, IPC payments and withholding certificates (tax credits), retention release, paid site pay runs (wages, NSSF / SHIF / Housing Levy / PAYE owed), subcontractor work approved and paid (with retention we hold), and every payment to ZARODA. Entries are tagged with the project. ZARODA's own books record plan, SMS and payout-fee income.
+- Enterprise: branch offices (office staff see only their office's projects; new projects belong to the creator's office), custom roles made from company jobs with their own approval limit, and read-only API keys (projects, certified IPCs, reports as JSON; hash stored only, revocable, 60 requests a minute) at `/construction-api/v1`. Director only, all audited; new "Offices & API" screen.
+- Fix: recording a staff member's NCA card expiry was always refused (date check was broken).
+- Migration `20261218100000_construction_addons` (+ `rls.sql`); seed adds 500 texts bought, last month's payout-fee invoice (unpaid) and a Kisumu office (used once on Enterprise). e2e now 632 checks; unit 1566.
+
 ## Construction C7: reports, dashboards and hardening (2026-11-01)
 
 - Reports screen with eight reports: project cost vs BQ budget, cash flow, IPC & retention, material reconciliation, labour cost, compliance expiries, safety statistics (with LTIFR) and NCA category utilisation. Each can be filtered by project and dates, downloaded as Excel and printed / saved as PDF. Basic reports are on every plan; cash flow, labour, NCA and exports need Contractor or higher (402 with an upgrade prompt). A read-only (lapsed) account can still run and export them.

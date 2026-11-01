@@ -53,6 +53,12 @@ export const SOURCE_LABELS: Record<string, string> = {
   ZARODA_RENTAL_INVOICE_PAID: 'ZARODA rental plan invoice paid',
   ZARODA_ADVERT: 'House advert fee',
   PAY_OFF: 'Paid what was owed',
+  CON_RETENTION: 'Retention (construction)',
+  CON_IPC_RECEIPT: 'Received against an IPC',
+  CON_PAYROLL: 'Site payroll',
+  CON_SUB_VALUATION: 'Subcontractor valuation',
+  CON_SUB_PAID: 'Paid a subcontractor',
+  ZARODA_CON_PAYMENT: 'Paid ZARODA (construction)',
 };
 
 /**

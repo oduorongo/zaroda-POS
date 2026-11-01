@@ -8,6 +8,7 @@ import { previousCertified, valuation } from "../src/construction/commercial/val
 import { casualDeductions, payrollRates, PAYROLL_KEYS } from "../src/construction/payroll/payroll.util";
 import { dayValue } from "../src/construction/site/site.util";
 import { nextCode } from "../src/construction/projects/projects.util";
+import { payoutFee } from "../src/construction/plans/con-addons.util";
 
 const prisma = new PrismaClient();
 const DAY = 86_400_000;
@@ -30,6 +31,38 @@ async function main() {
   await seedCommercial(orgId);
   await seedPayrollPortal(orgId);
   await seedSecondProject(orgId);
+  await seedAddons(orgId);
+}
+
+/** C8: an SMS bundle bought, last month's payout fees invoiced (unpaid), and a branch office ready for an Enterprise upgrade. */
+async function seedAddons(orgId: string) {
+  const bands = (await prisma.conPayoutFeeBand.findMany()).map((b) => ({ upTo: b.upTo === null ? null : Number(b.upTo), darajaCost: Number(b.darajaCost), markup: Number(b.markup) }));
+  await prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT set_config('app.current_tenant', ${orgId}, true)`;
+    if (await tx.conFeeInvoice.count()) {
+      console.log("Add-ons already seeded - nothing to do.");
+      return;
+    }
+    const sub = await tx.conSubscription.findUniqueOrThrow({ where: { organizationId: orgId } });
+    const accounts = await tx.orgUser.findFirst({ where: { user: { email: "accounts@uriri.demo" } } });
+    await tx.conSubscriptionPayment.create({
+      data: { organizationId: orgId, planCode: sub.planCode, cycle: "MONTHLY", months: 0, amount: 500, status: "PAID", phone: "254711000001", receipt: "SKD7Q2M4LP", paidAt: inDays(-12), purpose: "SMS", details: { bundleCode: "SMS_500", sms: 500 }, createdBy: accounts?.id },
+    });
+    await tx.conSubscription.update({ where: { id: sub.id }, data: { smsCredits: { increment: 500 } } });
+
+    const lm = new Date(Date.now() + 3 * 3600_000);
+    lm.setUTCDate(1);
+    lm.setUTCMonth(lm.getUTCMonth() - 1);
+    const month = lm.toISOString().slice(0, 7);
+    const project = await tx.conProject.findFirst({ where: { name: "Uriri Day Secondary Classrooms" } });
+    const charges = [2400, 4800, 12600].map((net, i) => ({ ...payoutFee(bands, net), net, i }));
+    const invoice = await tx.conFeeInvoice.create({ data: { organizationId: orgId, periodMonth: month, total: charges.reduce((a, c) => a + c.amount, 0) } });
+    await tx.conFeeCharge.createMany({
+      data: charges.map((c) => ({ organizationId: orgId, kind: "PAYOUT", sourceId: `seed-payout:${orgId}:${c.i}`, projectId: project?.id ?? null, amount: c.amount, darajaCost: c.darajaCost, markup: c.markup, description: `M-Pesa wage payout of KES ${c.net.toLocaleString("en-KE")}`, periodMonth: month, invoiceId: invoice.id })),
+    });
+    await tx.conOffice.create({ data: { organizationId: orgId, name: "Kisumu office", county: "Kisumu" } });
+    console.log(`Seeded 500 texts bought, ${month} payout fees invoice (KES ${Number(invoice.total)}, unpaid) and a Kisumu office (Enterprise only).`);
+  });
 }
 
 const hashed = bcrypt.hash("password123", 10);

@@ -36,6 +36,11 @@ export interface ConContext {
   projectRoles: { projectId: string; role: ConRoleCode }[];
   plan: PlanLike;
   status: ConSubscriptionStatus;
+  /** Enterprise branch office: the projects an office-bound person may see (null = no office limit). */
+  officeId?: string | null;
+  officeProjectIds?: string[] | null;
+  /** Enterprise custom roles held: the jobs each acts as and its own approval limit. */
+  customLimits?: { grants: ConRoleCode[]; limit: number | null }[];
 }
 export type ConRequest = Request & { user?: AuthenticatedUser; con?: ConContext };
 
@@ -59,7 +64,7 @@ export function hasRole(con: ConContext, roles: ConRoleCode[], projectId?: strin
 }
 
 /** Company-wide roles see every project; project-only staff see the projects they are on. */
-export const canSeeAllProjects = (con: ConContext) => con.isOwner || con.companyRoles.length > 0;
+export const canSeeAllProjects = (con: ConContext) => con.isOwner || (con.companyRoles.length > 0 && !con.officeProjectIds);
 export const isDirector = (con: ConContext) => con.isOwner || con.companyRoles.includes('CON_DIRECTOR');
 
 export function upgradeError(message: string, extra: Record<string, unknown> = {}) {

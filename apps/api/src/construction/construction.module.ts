@@ -12,6 +12,8 @@ import { ConBillingCallbackController, ConPublicController, ConstructionControll
 import { ConstructionService } from './construction.service';
 import { ConLimitsListener } from './plans/con-limits.listener';
 import { ConPlansService } from './plans/con-plans.service';
+import { ConAddonsService } from './plans/con-addons.service';
+import { ConUsageService } from './plans/con-usage.service';
 import { BqService } from './projects/bq.service';
 import { ProjectsController, TendersController } from './projects/projects.controller';
 import { ProjectsService } from './projects/projects.service';
@@ -40,6 +42,9 @@ import { PortalService } from './portal/portal.service';
 import { DashboardsService } from './reports/dashboards.service';
 import { ReportsController } from './reports/reports.controller';
 import { ReportsService } from './reports/reports.service';
+import { ConApiKeyGuard } from './enterprise/api-key.guard';
+import { ConstructionApiController, EnterpriseController } from './enterprise/enterprise.controller';
+import { EnterpriseService } from './enterprise/enterprise.service';
 
 /** Construction contractors (industryType "CONSTRUCTION", served at CONSTRUCTION_DOMAIN). See docs/construction. */
 @Module({
@@ -56,12 +61,14 @@ import { ReportsService } from './reports/reports.service';
       useFactory: (config: ConfigService) => ({ secret: config.getOrThrow<string>('BUYER_JWT_SECRET'), signOptions: { expiresIn: '12h' } }),
     }),
   ],
-  controllers: [ConstructionController, TendersController, ProjectsController, SiteController, MaterialsController, CommercialController, PayrollController, PayrollCallbackController, PortalAuthController, PortalController, PortalUsersController, ReportsController, ConBillingCallbackController, ConPublicController],
+  controllers: [ConstructionController, TendersController, ProjectsController, SiteController, MaterialsController, CommercialController, PayrollController, PayrollCallbackController, PortalAuthController, PortalController, PortalUsersController, ReportsController, EnterpriseController, ConstructionApiController, ConBillingCallbackController, ConPublicController],
   providers: [
     ConSetupService,
     ConstructionGuard,
     ConProjectGuard,
     ConPlansService,
+    ConAddonsService,
+    ConUsageService,
     ConLimitsListener,
     ComplianceService,
     ComplianceAlertsService,
@@ -82,11 +89,13 @@ import { ReportsService } from './reports/reports.service';
     PortalService,
     ConPortalGuard,
     ReportsService,
+    EnterpriseService,
+    ConApiKeyGuard,
     DashboardsService,
     PrivateObjectStorageService,
   ],
   // Platform admin edits plans and coupons, extends trials and records payments.
-  exports: [ConPlansService, ConSetupService, ComplianceAlertsService],
+  exports: [ConPlansService, ConAddonsService, ConSetupService, ComplianceAlertsService],
 })
 export class ConstructionModule implements OnModuleInit {
   constructor(private readonly registry: ModuleRegistryService) {}
@@ -146,6 +155,15 @@ export class ConstructionModule implements OnModuleInit {
         { tableName: 'con_payout_settings', description: 'The business\x27s own M-Pesa B2C account for wages (secrets encrypted)' },
         { tableName: 'con_portal_users', description: 'Clients, consultants and subcontractors who use the portal (free)' },
         { tableName: 'con_portal_access', description: 'Which projects each portal user can see' },
+        { tableName: 'con_payout_fee_bands', description: 'ZARODA fee per M-Pesa wage payout, by amount (global)' },
+        { tableName: 'con_sms_bundles', description: 'SMS bundles on sale (global)' },
+        { tableName: 'con_fee_charges', description: 'ZARODA fees owed by a business (M-Pesa wage payouts)' },
+        { tableName: 'con_fee_invoices', description: 'Monthly ZARODA fee invoices, paid by M-Pesa' },
+        { tableName: 'con_offices', description: 'Branch offices (Enterprise)' },
+        { tableName: 'con_user_offices', description: 'Which office a staff member belongs to' },
+        { tableName: 'con_custom_roles', description: 'Roles the Director makes from company jobs, with approval limits (Enterprise)' },
+        { tableName: 'con_user_custom_roles', description: 'Custom roles held by staff' },
+        { tableName: 'con_api_keys', description: 'Read-only API keys (hash only; Enterprise)' },
       ],
     });
   }

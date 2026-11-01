@@ -44,7 +44,7 @@ export function ErrorBox({ message }: { message: string | null }) {
 }
 
 /** Shown in place of a feature the plan does not include (API answered 402) - never a silent failure. */
-export function UpgradeCard({ message }: { message: string }) {
+export function UpgradeCard({ message, buyExtra = false }: { message: string; buyExtra?: boolean }) {
   return (
     <div className="rounded-xl border-2 p-4" style={{ borderColor: CON_BRAND.gold, background: "#fffbeb" }}>
       <p className="font-semibold" style={{ color: CON_BRAND.navy }}>Upgrade to use this</p>
@@ -52,6 +52,11 @@ export function UpgradeCard({ message }: { message: string }) {
       <Link href="/construction/plan" className="mt-3 inline-block rounded-lg px-4 py-2 text-sm font-semibold text-white no-underline" style={{ background: CON_BRAND.orange }}>
         See plans
       </Link>
+      {buyExtra && (
+        <Link href="/construction/plan" className="ml-2 mt-3 inline-block rounded-lg border-2 px-4 py-1.5 text-sm font-semibold no-underline" style={{ borderColor: CON_BRAND.orange, color: CON_BRAND.navy }}>
+          Buy an extra project slot
+        </Link>
+      )}
     </div>
   );
 }

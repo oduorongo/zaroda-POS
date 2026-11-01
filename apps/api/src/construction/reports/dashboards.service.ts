@@ -24,11 +24,11 @@ export class DashboardsService {
     private readonly materials: MaterialsService,
   ) {}
 
-  async director() {
+  async director(con: ConContext) {
     const today = todayKey();
     const health = await this.compliance.health();
     return this.tenantPrisma.run(async (tx) => {
-      const projects = await tx.conProject.findMany({ where: { status: { not: 'CLOSED' } }, orderBy: { code: 'asc' }, include: { milestones: true } });
+      const projects = await tx.conProject.findMany({ where: { status: { not: 'CLOSED' }, ...(con.officeProjectIds ? { id: { in: con.officeProjectIds } } : {}) }, orderBy: { code: 'asc' }, include: { milestones: true } });
       const ids = projects.map((p) => p.id);
       const [costs, vals, retention, muster, incidents, reqs, lpos, submitted, variations, payroll, diaries] = await Promise.all([
         this.reports.costs(tx, projects),

@@ -53,6 +53,7 @@ export class ProjectsService {
       status: p.status,
       client: p.client ?? null,
       tenderId: p.tenderId,
+      officeId: p.officeId,
       worksClass: p.worksClass,
       contractSum: Number(p.contractSum),
       revisedSum: num(p.revisedSum),
@@ -90,6 +91,7 @@ export class ProjectsService {
         name: dto.name.trim(),
         clientId: dto.clientId ?? null,
         tenderId: dto.tenderId ?? null,
+        officeId: con.officeId ?? null,
         worksClass: dto.worksClass,
         contractSum: dto.contractSum,
         formOfContract: dto.formOfContract ?? 'JBC',
@@ -118,7 +120,7 @@ export class ProjectsService {
 
   async list(con: ConContext) {
     return this.tenantPrisma.run(async (tx) => {
-      const where = canSeeAllProjects(con) ? {} : { members: { some: { orgUserId: con.orgUserId } } };
+      const where = canSeeAllProjects(con) ? {} : { id: { in: [...new Set(con.projectRoles.map((r) => r.projectId))] } };
       const rows = await tx.conProject.findMany({ where, orderBy: [{ status: 'asc' }, { createdAt: 'desc' }], include: { client: { select: { id: true, name: true } }, milestones: true } });
       const totals = await tx.conBqItem.groupBy({ by: ['projectId'], _sum: { amount: true }, where: { projectId: { in: rows.map((r) => r.id) } } });
       const byId = new Map(totals.map((t) => [t.projectId, Number(t._sum.amount ?? 0)]));

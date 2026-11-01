@@ -3,6 +3,8 @@ import { Request } from 'express';
 import { Public } from '../auth/public.decorator';
 import { ApplyCouponDto, CouponDto, ExtendTrialDto, RecordConPaymentDto, UpdateConPlanDto } from '../construction/dto/construction.dto';
 import { ConPlansService } from '../construction/plans/con-plans.service';
+import { ConAddonsService } from '../construction/plans/con-addons.service';
+import { FeeBandsDto, SmsBundleDto } from '../construction/dto/addons.dto';
 import { ComplianceAlertsService } from '../construction/compliance/compliance-alerts.service';
 import { PlatformAdminAuthGuard } from './platform-admin-auth.guard';
 import { PlatformAuditLogService } from './platform-audit-log.service';
@@ -18,6 +20,7 @@ interface PlatformAdminRequest extends Request {
 export class PlatformConstructionController {
   constructor(
     private readonly plans: ConPlansService,
+    private readonly addons: ConAddonsService,
     private readonly alerts: ComplianceAlertsService,
     private readonly auditLog: PlatformAuditLogService,
   ) {}
@@ -67,7 +70,27 @@ export class PlatformConstructionController {
   @Get('billing')
   async billing(@Req() req: PlatformAdminRequest) {
     await this.log(req, 'viewed_con_billing', 'ConSubscription');
-    return this.plans.billing();
+    const [report, fees] = await Promise.all([this.plans.billing(), this.addons.feesOwed()]);
+    return { ...report, fees };
+  }
+
+  @Get('price-lists')
+  priceLists() {
+    return this.addons.adminLists();
+  }
+
+  @Post('sms-bundles')
+  async saveBundle(@Req() req: PlatformAdminRequest, @Body() dto: SmsBundleDto) {
+    const row = await this.addons.saveBundle(dto);
+    await this.log(req, 'saved_con_sms_bundle', 'ConSmsBundle', row.id);
+    return row;
+  }
+
+  @Post('payout-fees')
+  async saveBands(@Req() req: PlatformAdminRequest, @Body() dto: FeeBandsDto) {
+    const rows = await this.addons.saveBands(dto);
+    await this.log(req, 'saved_con_payout_fees', 'ConPayoutFeeBand');
+    return rows;
   }
 
   @Post('tenants/:id/extend-trial')

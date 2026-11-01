@@ -12,6 +12,7 @@ interface Billing {
   suspended: TenantRow[];
   commissions: { organizationId: string; tenant: string; agent: string; team: string; rate: number; payments: number; firstYear: number; commission: number; payable: boolean }[];
   commissionDue: number;
+  fees: { unpaidInvoices: number; total: number };
 }
 
 const kes = (n: number) => `KES ${Math.round(n).toLocaleString("en-KE")}`;
@@ -32,6 +33,7 @@ export function BillingReport({ refresh }: { refresh: number }) {
   return (
     <section className="space-y-4 rounded-lg border border-border bg-surface p-4">
       <h2 className="font-semibold">Billing report · MRR {kes(b.mrr)}</h2>
+      <p className="text-sm text-secondary-600">Payout fees not yet paid: {kes(b.fees.total)} on {b.fees.unpaidInvoices} monthly invoice{b.fees.unpaidInvoices === 1 ? "" : "s"}.</p>
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead><tr className="border-b border-border text-left text-secondary-600"><th className="py-1">Plan</th><th className="text-right">Paying</th><th className="text-right">Trial</th><th className="text-right">Grace</th><th className="text-right">Suspended</th><th className="text-right">MRR</th></tr></thead>

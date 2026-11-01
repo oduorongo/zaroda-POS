@@ -36,8 +36,8 @@ export class ReportsController {
 
   @ConRoles('CON_CONTRACTS_MGR')
   @Get('dashboard/director')
-  director() {
-    return this.dashboards.director();
+  director(@Req() req: ConRequest) {
+    return this.dashboards.director(req.con!);
   }
 
   @ConRoles(...SITE_VIEW)

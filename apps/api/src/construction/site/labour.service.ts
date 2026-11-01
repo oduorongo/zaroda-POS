@@ -27,11 +27,12 @@ export class LabourService {
 
   /** Company-wide labour roles see every worker; anyone else only the workers on projects where they do site work. */
   private seesAll(con: ConContext) {
-    return con.isOwner || ALL_WORKERS.some((r) => con.companyRoles.includes(r));
+    return con.isOwner || (!con.officeProjectIds && ALL_WORKERS.some((r) => con.companyRoles.includes(r)));
   }
 
   private myProjects(con: ConContext) {
-    return [...new Set(con.projectRoles.filter((r) => SITE_LABOUR.includes(r.role)).map((r) => r.projectId))];
+    const office = con.officeProjectIds && ALL_WORKERS.some((r) => con.companyRoles.includes(r)) ? con.officeProjectIds : [];
+    return [...new Set([...con.projectRoles.filter((r) => SITE_LABOUR.includes(r.role)).map((r) => r.projectId), ...office])];
   }
 
   private view(w: ConWorker & { project?: { id: string; code: string; name: string } | null }, full: boolean, today = todayKey()) {

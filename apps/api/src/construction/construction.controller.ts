@@ -38,6 +38,8 @@ import {
   TaxSettingDto,
 } from './dto/construction.dto';
 import { ConPlansService } from './plans/con-plans.service';
+import { ConAddonsService } from './plans/con-addons.service';
+import { BuyExtraProjectsDto, BuySmsDto, PayFeesDto, RemoveExtraProjectsDto } from './dto/addons.dto';
 import { AccreditationDto, RulesDto } from './dto/projects.dto';
 import { ConSetupService } from './common/con-setup.service';
 import { TRIAL_DAYS, TRIAL_PLAN } from './common/con-defaults';
@@ -56,6 +58,7 @@ export class ConstructionController {
     private readonly compliance: ComplianceService,
     private readonly alerts: ComplianceAlertsService,
     private readonly plans: ConPlansService,
+    private readonly addons: ConAddonsService,
   ) {}
 
   @Get('me')
@@ -293,6 +296,39 @@ export class ConstructionController {
   @HttpCode(200)
   check(@Param('id', ParseUUIDPipe) id: string) {
     return this.plans.checkPayment(id);
+  }
+
+  // ── Add-ons: extra project slots, SMS bundles, fees ──
+
+  @Get('plan/addons')
+  addonsOverview() {
+    return this.addons.overview();
+  }
+
+  @ConRoles('CON_ACCOUNTANT')
+  @Post('plan/extra-projects')
+  buyExtraProjects(@Body() dto: BuyExtraProjectsDto) {
+    return this.addons.buyExtraProjects(dto);
+  }
+
+  @ConRoles('CON_ACCOUNTANT')
+  @Post('plan/extra-projects/remove')
+  @HttpCode(200)
+  removeExtraProjects(@Body() dto: RemoveExtraProjectsDto) {
+    return this.addons.removeExtraProjects(dto);
+  }
+
+  @ConRoles('CON_ACCOUNTANT')
+  @Post('plan/sms')
+  buySms(@Body() dto: BuySmsDto) {
+    return this.addons.buySms(dto);
+  }
+
+  @ConRoles('CON_ACCOUNTANT')
+  @ConWriteWhenSuspended()
+  @Post('plan/fees/:id/pay')
+  payFees(@Param('id', ParseUUIDPipe) id: string, @Body() dto: PayFeesDto) {
+    return this.addons.payFees(id, dto);
   }
 }
 

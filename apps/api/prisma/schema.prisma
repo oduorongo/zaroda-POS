@@ -219,6 +219,13 @@ model Organization {
   conPayrollLines           ConPayrollLine[]
   conPayoutSettings         ConPayoutSettings?
   conPortalUsers            ConPortalUser[]
+  conFeeCharges             ConFeeCharge[]
+  conFeeInvoices            ConFeeInvoice[]
+  conOffices                ConOffice[]
+  conUserOffices            ConUserOffice[]
+  conCustomRoles            ConCustomRole[]
+  conUserCustomRoles        ConUserCustomRole[]
+  conApiKeys                ConApiKey[]
   conPortalAccess           ConPortalAccess[]
 
   @@map("organizations")
@@ -346,6 +353,8 @@ model OrgUser {
   rosterShifts        RosterShift[]             @relation("RosterShiftFor")
   rosterShiftsCreated RosterShift[]             @relation("RosterShiftCreatedBy")
   conUserRoles        ConUserRole[]
+  conOffice           ConUserOffice?
+  conCustomRoles      ConUserCustomRole[]
   conProjectMembers   ConProjectMember[]
   conAccreditation    ConStaffAccreditation?
 
@@ -5523,6 +5532,13 @@ enum ConSubscriptionStatus {
   CANCELLED
 }
 
+enum ConPaymentPurpose {
+  PLAN
+  EXTRA_PROJECTS
+  FEES
+  SMS
+}
+
 enum ConPaymentStatus {
   PENDING
   PAID
@@ -5580,6 +5596,8 @@ model ConSubscription {
   couponCode        String?
   couponMonthsLeft  Int                   @default(0)
   paidPaymentsCount Int                   @default(0)
+  // Texts left (payslips, alerts). Bought in bundles; new and existing businesses start with a free 100.
+  smsCredits        Int                   @default(100)
   createdAt         DateTime              @default(now())
   updatedAt         DateTime              @updatedAt
 
@@ -5607,6 +5625,9 @@ model ConSubscriptionPayment {
   paidAt                    DateTime?
   periodEndAfter            DateTime?
   recordedByPlatformAdminId String?
+  // What the money is for: the plan (extends the paid-up date) or a purchase that leaves the date alone. details: { extraProjects } | { invoiceId } | { bundleCode, sms }.
+  purpose                   ConPaymentPurpose @default(PLAN)
+  details                   Json?
   createdBy                 String?
   createdAt                 DateTime         @default(now())
   updatedAt                 DateTime         @updatedAt
@@ -5928,6 +5949,7 @@ model ConProject {
   status            ConProjectStatus  @default(PLANNING)
   capOverrideReason String?
   capOverrideBy     String?
+  officeId          String?
   createdBy         String?
   createdAt         DateTime          @default(now())
   updatedAt         DateTime          @updatedAt
@@ -5962,11 +5984,13 @@ model ConProject {
   subcontracts ConSubcontract[]
   payrollRuns  ConPayrollRun[]
   portalAccess ConPortalAccess[]
+  office       ConOffice?         @relation(fields: [officeId], references: [id], onDelete: SetNull)
   siteBranch   Branch?            @relation(fields: [branchId], references: [id], onDelete: SetNull)
 
   @@unique([organizationId, code])
   @@index([organizationId, status])
   @@index([clientId])
+  @@index([officeId])
   @@map("con_projects")
 }
 
@@ -6948,4 +6972,167 @@ model ConPortalOtp {
 
   @@index([email, createdAt])
   @@map("con_portal_otps")
+}
+
+// ── Construction C8: payout fees, SMS bundles ──
+
+/// ZARODA price list for M-Pesa wage payouts (global, edited by super-admin): Safaricom's cost for amounts up to upTo (null = above the last band), plus ZARODA's markup.
+model ConPayoutFeeBand {
+  id         String   @id @default(uuid())
+  upTo       Decimal? @db.Decimal(14, 2)
+  darajaCost Decimal  @db.Decimal(10, 2)
+  markup     Decimal  @default(10) @db.Decimal(10, 2)
+  sortOrder  Int      @default(0)
+  updatedAt  DateTime @updatedAt
+
+  @@map("con_payout_fee_bands")
+}
+
+/// SMS bundles a business can buy (global, edited by super-admin).
+model ConSmsBundle {
+  id        String   @id @default(uuid())
+  code      String   @unique
+  name      String
+  sms       Int
+  price     Decimal  @db.Decimal(10, 2)
+  isActive  Boolean  @default(true)
+  sortOrder Int      @default(0)
+  updatedAt DateTime @updatedAt
+
+  @@map("con_sms_bundles")
+}
+
+enum ConFeeInvoiceStatus {
+  UNPAID
+  PAID
+}
+
+/// A ZARODA fee owed by a business (an M-Pesa wage payout), rolled into that month's fee invoice.
+model ConFeeCharge {
+  id             String   @id @default(uuid())
+  organizationId String
+  kind           String
+  sourceId       String   @unique
+  projectId      String?
+  amount         Decimal  @db.Decimal(10, 2)
+  darajaCost     Decimal  @db.Decimal(10, 2)
+  markup         Decimal  @db.Decimal(10, 2)
+  description    String
+  periodMonth    String
+  invoiceId      String?
+  createdAt      DateTime @default(now())
+
+  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  invoice      ConFeeInvoice? @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, periodMonth])
+  @@index([invoiceId])
+  @@map("con_fee_charges")
+}
+
+/// One month's ZARODA fees for a business, paid by M-Pesa like the plan.
+model ConFeeInvoice {
+  id             String              @id @default(uuid())
+  organizationId String
+  periodMonth    String
+  total          Decimal             @db.Decimal(12, 2)
+  status         ConFeeInvoiceStatus @default(UNPAID)
+  paymentId      String?
+  paidAt         DateTime?
+  createdAt      DateTime            @default(now())
+
+  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  charges      ConFeeCharge[]
+
+  @@unique([organizationId, periodMonth])
+  @@map("con_fee_invoices")
+}
+
+// ── Construction C8: Enterprise (branch offices, custom roles, API keys) ──
+
+/// A company branch office (Enterprise). Staff placed in an office see only its projects; the Director sees all.
+model ConOffice {
+  id             String   @id @default(uuid())
+  organizationId String
+  name           String
+  county         String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  projects     ConProject[]
+  staff        ConUserOffice[]
+
+  @@unique([organizationId, name])
+  @@map("con_offices")
+}
+
+/// The office a staff member belongs to (at most one).
+model ConUserOffice {
+  id             String   @id @default(uuid())
+  organizationId String
+  orgUserId      String   @unique
+  officeId       String
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  orgUser      OrgUser      @relation(fields: [orgUserId], references: [id], onDelete: Cascade)
+  office       ConOffice    @relation(fields: [officeId], references: [id], onDelete: Cascade)
+
+  @@index([officeId])
+  @@map("con_user_offices")
+}
+
+/// A role the Director makes (Enterprise): a name, the company jobs it acts as, and its own approval limit.
+model ConCustomRole {
+  id             String   @id @default(uuid())
+  organizationId String
+  name           String
+  grants         Json     @default("[]")
+  approvalLimit  Decimal? @db.Decimal(16, 2)
+  createdBy      String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  holders      ConUserCustomRole[]
+
+  @@unique([organizationId, name])
+  @@map("con_custom_roles")
+}
+
+model ConUserCustomRole {
+  id             String   @id @default(uuid())
+  organizationId String
+  orgUserId      String
+  customRoleId   String
+  createdAt      DateTime @default(now())
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  orgUser      OrgUser       @relation(fields: [orgUserId], references: [id], onDelete: Cascade)
+  customRole   ConCustomRole @relation(fields: [customRoleId], references: [id], onDelete: Cascade)
+
+  @@unique([orgUserId, customRoleId])
+  @@index([customRoleId])
+  @@map("con_user_custom_roles")
+}
+
+/// Read-only API keys (Enterprise). Only a hash is kept; the key is shown once. prefix is the public part used to find it.
+model ConApiKey {
+  id             String    @id @default(uuid())
+  organizationId String
+  name           String
+  prefix         String    @unique
+  keyHash        String
+  scopes         Json      @default("[]")
+  lastUsedAt     DateTime?
+  requests       Int       @default(0)
+  revokedAt      DateTime?
+  createdBy      String?
+  createdAt      DateTime  @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@map("con_api_keys")
 }

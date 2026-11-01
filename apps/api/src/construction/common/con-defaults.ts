@@ -23,6 +23,9 @@ export const CON_ROLES: { code: ConRoleCode; name: string; scope: ConRoleScope }
   { code: 'CON_SUBCONTRACTOR', name: 'Subcontractor', scope: 'EXTERNAL' },
 ];
 
+/** What a custom role may grant: the company-level jobs except Director. */
+export const CUSTOM_ROLE_GRANTS: ConRoleCode[] = CON_ROLES.filter((r) => r.scope === 'COMPANY' && r.code !== 'CON_DIRECTOR').map((r) => r.code);
+
 /** Starting approval limits (KES). Director has none (unlimited). */
 export const CON_APPROVAL_LIMITS: Partial<Record<ConRoleCode, number>> = {
   CON_CONTRACTS_MGR: 5_000_000,

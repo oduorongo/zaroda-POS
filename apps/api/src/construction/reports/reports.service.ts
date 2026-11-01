@@ -43,7 +43,7 @@ export class ReportsService {
   /** Company-wide holders of the report's roles see every project; project roles see only theirs. */
   private scope(con: ConContext, key: ReportKey): string[] | 'ALL' {
     const roles = REPORTS[key].roles as readonly ConRoleCode[];
-    if (isDirector(con) || con.companyRoles.some((r) => roles.includes(r))) return 'ALL';
+    if (isDirector(con) || (!con.officeProjectIds && con.companyRoles.some((r) => roles.includes(r)))) return 'ALL';
     return [...new Set(con.projectRoles.filter((p) => roles.includes(p.role)).map((p) => p.projectId))];
   }
 

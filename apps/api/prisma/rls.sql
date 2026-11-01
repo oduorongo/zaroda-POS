@@ -1878,3 +1878,69 @@ DROP POLICY IF EXISTS portal_email_access ON con_portal_users;
 CREATE POLICY portal_email_access ON con_portal_users
   FOR SELECT
   USING (email = current_setting('app.current_portal_email', true));
+
+-- ── Construction C8: add-ons ─────────────────────────────────────────────
+-- con_payout_fee_bands / con_sms_bundles: deliberately NO RLS - global price lists edited by ZARODA, like con_plans.
+-- con_fee_charges: the business's own fees only.
+-- con_fee_invoices: same shape as con_subscription_payments - the business itself, or no tenant set (ZARODA billing report).
+
+ALTER TABLE con_fee_charges ENABLE ROW LEVEL SECURITY;
+ALTER TABLE con_fee_charges FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON con_fee_charges;
+CREATE POLICY tenant_isolation ON con_fee_charges
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+ALTER TABLE con_fee_invoices ENABLE ROW LEVEL SECURITY;
+ALTER TABLE con_fee_invoices FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON con_fee_invoices;
+CREATE POLICY tenant_isolation ON con_fee_invoices
+  USING (
+    "organizationId" = current_setting('app.current_tenant', true)
+    OR NULLIF(current_setting('app.current_tenant', true), '') IS NULL
+  )
+  WITH CHECK (
+    "organizationId" = current_setting('app.current_tenant', true)
+    OR NULLIF(current_setting('app.current_tenant', true), '') IS NULL
+  );
+
+-- ── Construction C8: Enterprise ──────────────────────────────────────────
+ALTER TABLE con_offices ENABLE ROW LEVEL SECURITY;
+ALTER TABLE con_offices FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON con_offices;
+CREATE POLICY tenant_isolation ON con_offices
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+ALTER TABLE con_user_offices ENABLE ROW LEVEL SECURITY;
+ALTER TABLE con_user_offices FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON con_user_offices;
+CREATE POLICY tenant_isolation ON con_user_offices
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+ALTER TABLE con_custom_roles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE con_custom_roles FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON con_custom_roles;
+CREATE POLICY tenant_isolation ON con_custom_roles
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+ALTER TABLE con_user_custom_roles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE con_user_custom_roles FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON con_user_custom_roles;
+CREATE POLICY tenant_isolation ON con_user_custom_roles
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+-- con_api_keys: the business's own keys, plus one narrow cross-business read - the key whose public prefix the API request
+-- carries (app.current_api_key_prefix, set by ConApiKeyGuard before the tenant is known). The hash is then checked in code.
+ALTER TABLE con_api_keys ENABLE ROW LEVEL SECURITY;
+ALTER TABLE con_api_keys FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON con_api_keys;
+CREATE POLICY tenant_isolation ON con_api_keys
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+DROP POLICY IF EXISTS api_key_lookup ON con_api_keys;
+CREATE POLICY api_key_lookup ON con_api_keys FOR SELECT
+  USING ("prefix" = current_setting('app.current_api_key_prefix', true));

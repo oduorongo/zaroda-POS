@@ -77,7 +77,7 @@ function Staff() {
     const cardNo = window.prompt(`NCA accreditation card number for ${s.fullName}`, s.ncaCard?.cardNo ?? "");
     if (!cardNo?.trim()) return;
     const expiresAt = window.prompt("Card expiry date (YYYY-MM-DD)", s.ncaCard?.expiresAt ?? "");
-    if (!expiresAt || !/^d{4}-d{2}-d{2}$/.test(expiresAt)) return setError("Enter the expiry as YYYY-MM-DD, e.g. 2028-03-31");
+    if (!expiresAt || !/^\d{4}-\d{2}-\d{2}$/.test(expiresAt)) return setError("Enter the expiry as YYYY-MM-DD, e.g. 2028-03-31");
     try {
       await apiPut(`/construction/staff/${s.orgUserId}/accreditation`, { cardNo: cardNo.trim(), expiresAt });
       await load();

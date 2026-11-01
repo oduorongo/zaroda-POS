@@ -1,13 +1,16 @@
 import { Injectable } from '@nestjs/common';
-import { ConPlan, Prisma, Role } from '@prisma/client';
+import { ConPlan, ConRoleCode, Prisma, Role } from '@prisma/client';
 import { AuthenticatedUser } from '../../auth/authenticated-user.interface';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { PlanLike, parseFeatures, parseLimits, subscriptionStatus } from '../plans/con-plans.util';
-import { CON_APPROVAL_LIMITS, CON_ROLES, NCA_CAPS, TAX_DEFAULTS, TAX_EFFECTIVE_FROM, TRIAL_DAYS, TRIAL_PLAN } from './con-defaults';
+import { CON_APPROVAL_LIMITS, CON_ROLES, CUSTOM_ROLE_GRANTS, NCA_CAPS, TAX_DEFAULTS, TAX_EFFECTIVE_FROM, TRIAL_DAYS, TRIAL_PLAN } from './con-defaults';
 import type { ConContext } from './con-access';
 
 type Tx = Prisma.TransactionClient;
 const PLAN_CACHE_MS = 60_000;
+
+/** The company jobs a custom role may act as (never Director: users and roles stay the Director's). */
+export const parseGrants = (raw: Prisma.JsonValue): ConRoleCode[] => (Array.isArray(raw) ? raw.filter((r): r is ConRoleCode => typeof r === 'string' && CUSTOM_ROLE_GRANTS.includes(r as ConRoleCode)) : []);
 
 export const toPlan = (p: ConPlan): PlanLike => ({
   code: p.code,
@@ -80,21 +83,36 @@ export class ConSetupService {
   }
 
   async context(tx: Tx, user: AuthenticatedUser): Promise<ConContext> {
-    const [sub, companyRoles, projectRoles] = await Promise.all([
+    const [sub, direct, members, office, custom] = await Promise.all([
       tx.conSubscription.findUniqueOrThrow({ where: { organizationId: user.organizationId } }),
       tx.conUserRole.findMany({ where: { orgUserId: user.orgUserId }, select: { role: true } }),
       tx.conProjectMember.findMany({ where: { orgUserId: user.orgUserId }, select: { projectId: true, role: true } }),
+      tx.conUserOffice.findUnique({ where: { orgUserId: user.orgUserId } }),
+      tx.conUserCustomRole.findMany({ where: { orgUserId: user.orgUserId }, include: { customRole: { select: { grants: true, approvalLimit: true } } } }),
     ]);
     const plans = await this.activePlans();
     const row = plans.find((p) => p.code === sub.planCode) ?? toPlan((await tx.conPlan.findUniqueOrThrow({ where: { code: sub.planCode } })));
+    const isOwner = user.role === Role.OWNER;
+    // Enterprise custom roles act as the company jobs they grant; office staff see only their office's projects
+    const customLimits = row.features.includes('custom_roles') ? custom.map((c) => ({ grants: parseGrants(c.customRole.grants), limit: c.customRole.approvalLimit === null ? null : Number(c.customRole.approvalLimit) })) : [];
+    const companyRoles = [...new Set([...direct.map((r) => r.role), ...customLimits.flatMap((c) => c.grants)])];
+    let projectRoles = members;
+    let officeProjectIds: string[] | null = null;
+    if (office && row.features.includes('multi_branch') && !isOwner && !companyRoles.includes('CON_DIRECTOR')) {
+      officeProjectIds = (await tx.conProject.findMany({ where: { officeId: office.officeId }, select: { id: true } })).map((p) => p.id);
+      projectRoles = [...members, ...officeProjectIds.flatMap((projectId) => companyRoles.map((role) => ({ projectId, role })))];
+    }
     return {
       organizationId: user.organizationId,
       orgUserId: user.orgUserId,
-      isOwner: user.role === Role.OWNER,
-      companyRoles: companyRoles.map((r) => r.role),
+      isOwner,
+      companyRoles,
       projectRoles,
       plan: row,
       status: subscriptionStatus(sub),
+      officeId: office && officeProjectIds ? office.officeId : null,
+      officeProjectIds,
+      customLimits,
     };
   }
 }

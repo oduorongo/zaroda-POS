@@ -11,7 +11,7 @@ import type { TabProps } from "./types";
 
 interface RunRow { id: string; number: string; periodStart: string; periodEnd: string; status: string; workers: number; gross: number; deductions: number; net: number }
 interface Line { id: string; name: string; trade: string; phone: string | null; canMpesa: boolean; days: number; dailyRate: number; gross: number; nssf: number; shif: number; housingLevy: number; paye: number; net: number; status: string; method: string | null; reference: string | null; failureReason: string | null; smsSent: boolean }
-interface Run extends RunRow { createdBy: string; mpesaReady: boolean; lines: Line[] }
+interface Run extends RunRow { createdBy: string; mpesaReady: boolean; lines: Line[]; payoutFees: { count: number; total: number }; smsCredits: number }
 
 const COLOUR: Record<string, string> = { DRAFT: "#6b7280", APPROVED: "#2563eb", PAID: "#16a34a", UNPAID: "#6b7280", SENDING: CON_BRAND.orange, FAILED: "#dc2626" };
 const back = (days: number) => new Date(Date.now() + 3 * 3_600_000 - days * 86_400_000).toISOString().slice(0, 10);
@@ -134,6 +134,10 @@ export function PayrollTab({ project: p }: TabProps) {
               </>
             )}
             {open.status === "APPROVED" && !open.mpesaReady && isAcc && <p className="w-full text-xs text-secondary-500">To pay by M-Pesa from here, add your business&apos;s B2C account under Settings.</p>}
+            <p className="w-full text-xs text-secondary-500">
+              {open.payoutFees.count > 0 && `ZARODA payout fees on this run: ${kes(open.payoutFees.total)} (${open.payoutFees.count} M-Pesa payouts), billed next month. `}
+              Payslip texts left: <span style={open.smsCredits < open.lines.length ? { color: "#dc2626", fontWeight: 600 } : undefined}>{open.smsCredits}</span>{open.smsCredits < open.lines.length ? " - top up under Plan so every worker gets a payslip." : ""}
+            </p>
             {open.lines.some((l) => l.status === "SENDING") && <button type="button" className="text-sm underline" onClick={() => void show(open.id)}>Refresh</button>}
           </div>
         </Panel>

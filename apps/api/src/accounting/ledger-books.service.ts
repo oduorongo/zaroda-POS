@@ -3,7 +3,7 @@ import { JournalKind, Prisma } from '@prisma/client';
 import { TenantTx } from '../common/prisma/tenant-scoped-prisma.service';
 import { getTenantStore } from '../common/tenant/tenant-context';
 import { nairobiDayOf } from '../reports/profit.util';
-import { AccountKey, SYSTEM_ACCOUNTS } from './ledger-chart';
+import { AccountKey, systemAccountsFor } from './ledger-chart';
 import { DraftLine, isBalanced, tidy } from './ledger-posting.util';
 
 export const dateOf = (day: string) => new Date(`${day}T00:00:00.000Z`);
@@ -51,7 +51,8 @@ export class LedgerBooksService {
     const have = await tx.ledgerAccount.findMany({ select: { code: true, systemKey: true } });
     const keys = new Set(have.map((a) => a.systemKey));
     const codes = new Set(have.map((a) => a.code));
-    const missing = SYSTEM_ACCOUNTS.filter((a) => !keys.has(a.key));
+    const org = await tx.organization.findUnique({ where: { id: organizationId }, select: { industryType: true } });
+    const missing = systemAccountsFor(org?.industryType).filter((a) => !keys.has(a.key));
     if (missing.length === 0) return;
     await tx.ledgerAccount.createMany({
       data: missing.map((a) => {

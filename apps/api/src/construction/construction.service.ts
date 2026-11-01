@@ -78,14 +78,15 @@ export class ConstructionService {
   async approvalLimitFor(con: ConContext, roles: ConRoleCode[]): Promise<number | null> {
     if (con.isOwner || con.companyRoles.includes('CON_DIRECTOR')) return null;
     const rows = await this.tenantPrisma.run((tx) => tx.conRole.findMany({ where: { code: { in: roles } } }));
-    const limits = rows.filter((r) => r.approvalLimit !== null).map((r) => Number(r.approvalLimit));
+    const custom = (con.customLimits ?? []).filter((c) => c.limit !== null && c.grants.some((g) => roles.includes(g))).map((c) => c.limit!);
+    const limits = [...rows.filter((r) => r.approvalLimit !== null).map((r) => Number(r.approvalLimit)), ...custom];
     return limits.length ? Math.max(...limits) : 0;
   }
 
   async listStaff() {
     const rows = await this.tenantPrisma.run((tx) =>
       tx.orgUser.findMany({
-        select: { id: true, role: true, isActive: true, user: { select: { fullName: true, email: true } }, conUserRoles: { select: { role: true } }, conProjectMembers: { select: { projectId: true, role: true, project: { select: { code: true, name: true } } } }, conAccreditation: { select: { cardNo: true, expiresAt: true } } },
+        select: { id: true, role: true, isActive: true, user: { select: { fullName: true, email: true } }, conUserRoles: { select: { role: true } }, conProjectMembers: { select: { projectId: true, role: true, project: { select: { code: true, name: true } } } }, conAccreditation: { select: { cardNo: true, expiresAt: true } }, conOffice: { select: { officeId: true } }, conCustomRoles: { select: { customRoleId: true } } },
         orderBy: { createdAt: 'asc' },
       }),
     );
@@ -98,6 +99,8 @@ export class ConstructionService {
       roles: u.conUserRoles.map((r) => r.role),
       projectRoles: u.conProjectMembers,
       ncaCard: u.conAccreditation ? { cardNo: u.conAccreditation.cardNo, expiresAt: u.conAccreditation.expiresAt.toISOString().slice(0, 10) } : null,
+      officeId: u.conOffice?.officeId ?? null,
+      customRoleIds: u.conCustomRoles.map((r) => r.customRoleId),
     }));
   }
 

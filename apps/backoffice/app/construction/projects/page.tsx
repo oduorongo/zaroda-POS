@@ -44,7 +44,7 @@ function Projects() {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [upgrade, setUpgrade] = useState<string | null>(null);
+  const [upgrade, setUpgrade] = useState<{ message: string; buyExtra: boolean } | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -74,7 +74,7 @@ function Projects() {
       );
       if (p) router.push(`/construction/projects/${p.id}`);
     } catch (e) {
-      if (isUpgrade(e)) setUpgrade(errorText(e, ""));
+      if (isUpgrade(e)) setUpgrade({ message: errorText(e, ""), buyExtra: !!(e as { data?: { buyExtra?: boolean } }).data?.buyExtra });
       else setError(errorText(e, "Could not create the project."));
     } finally {
       setBusy(false);
@@ -84,7 +84,7 @@ function Projects() {
   return (
     <div className="space-y-4">
       <ErrorBox message={error} />
-      {upgrade && <UpgradeCard message={upgrade} />}
+      {upgrade && <UpgradeCard message={upgrade.message} buyExtra={upgrade.buyExtra} />}
       {canCreate && !open && <PrimaryButton onClick={() => setOpen(true)}>New project</PrimaryButton>}
 
       {open && (

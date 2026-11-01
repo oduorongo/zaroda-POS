@@ -17,6 +17,8 @@ import { r2 } from '../commercial/valuation.util';
 import { dayValue, maskPhone } from '../site/site.util';
 import { PAYROLL_KEYS, casualDeductions, mpesaPhone, payrollRates, payslipText, periodDays } from './payroll.util';
 import { PageQueryDto, pageOf } from '../dto/query.dto';
+import { smsParts } from '../plans/con-addons.util';
+import { ConUsageService } from '../plans/con-usage.service';
 
 const n = (v: Prisma.Decimal | number | null | undefined) => (v === null || v === undefined ? 0 : Number(v));
 const day = (d: Date | null) => (d ? d.toISOString().slice(0, 10) : null);
@@ -40,6 +42,7 @@ export class PayrollService {
     private readonly b2c: MpesaB2cClient,
     private readonly sms: AfricasTalkingSmsProvider,
     private readonly config: ConfigService,
+    private readonly usage: ConUsageService,
   ) {}
 
   private key() {
@@ -61,8 +64,13 @@ export class PayrollService {
 
   private async view(tx: Tx, id: string) {
     const r = await tx.conPayrollRun.findUniqueOrThrow({ where: { id }, include: { lines: { include: { worker: { select: { name: true, trade: true, phone: true } } }, orderBy: { worker: { name: 'asc' } } } } });
-    const settings = await tx.conPayoutSettings.findUnique({ where: { organizationId: r.organizationId } });
+    const [settings, fees, sub] = await Promise.all([
+      tx.conPayoutSettings.findUnique({ where: { organizationId: r.organizationId } }),
+      tx.conFeeCharge.aggregate({ where: { sourceId: { in: r.lines.map((l) => `payout:${l.id}`) } }, _sum: { amount: true }, _count: { _all: true } }),
+      tx.conSubscription.findUnique({ where: { organizationId: r.organizationId }, select: { smsCredits: true } }),
+    ]);
     return {
+      payoutFees: { count: fees._count._all, total: n(fees._sum.amount) }, smsCredits: sub?.smsCredits ?? 0,
       id: r.id, number: r.number, periodStart: day(r.periodStart), periodEnd: day(r.periodEnd), status: r.status, workers: r.workers, gross: n(r.gross), deductions: n(r.deductions), net: n(r.net), notes: r.notes,
       createdBy: r.createdBy, approvedBy: r.approvedBy, approvedAt: r.approvedAt, paidAt: r.paidAt, mpesaReady: payoutReady(settings),
       lines: r.lines.map((l) => ({
@@ -223,7 +231,11 @@ export class PayrollService {
         const ok = !timeout && parsed.resultCode === 0;
         await tx.conPayrollLine.update({ where: { id: line.id }, data: ok ? { status: 'PAID', reference: parsed.receipt ?? null, paidAt: new Date() } : { status: 'FAILED', failureReason: timeout ? 'M-Pesa timed out' : (parsed.resultDesc ?? 'M-Pesa refused the payment').slice(0, 200) } });
         await this.audit.logInTx(tx, { action: ok ? 'con_payroll.mpesa_paid' : 'con_payroll.mpesa_failed', entityType: 'ConPayrollLine', entityId: line.id, after: { receipt: parsed.receipt ?? null, resultCode: parsed.resultCode ?? null, resultDesc: parsed.resultDesc ?? null } });
-        if (ok) await this.settleRun(tx, line.runId);
+        if (ok) {
+          const run = await tx.conPayrollRun.findUniqueOrThrow({ where: { id: line.runId }, select: { projectId: true } });
+          await this.usage.chargePayout(tx, organizationId, line, run.projectId);
+          await this.settleRun(tx, line.runId);
+        }
         return ok ? line.runId : null;
       });
       if (done) await this.sendPayslips(organizationId, done);
@@ -245,9 +257,14 @@ export class PayrollService {
         company: run.organization.name, worker: l.worker.name, from: day(run.periodStart)!, to: day(run.periodEnd)!, days: n(l.days), rate: n(l.dailyRate), gross: n(l.gross),
         d: { nssf: n(l.nssf), shif: n(l.shif), housingLevy: n(l.housingLevy), paye: n(l.paye), deductions: n(l.deductions), net: n(l.net) }, method: METHOD_LABEL[l.method ?? 'CASH'], reference: l.reference,
       });
+      const parts = smsParts(message);
+      if (!(await this.usage.takeSms(organizationId, parts))) break;
       const sent = await this.sms.sendSms({ to: `+${phone}`, message }).catch(() => ({ sent: false }));
       if (sent.sent) await asOrg(this.prisma, organizationId, (tx) => tx.conPayrollLine.update({ where: { id: l.id }, data: { smsSentAt: new Date() } }));
-      else this.logger.warn(`Payslip text not sent for line ${l.id}`);
+      else {
+        await this.usage.returnSms(organizationId, parts);
+        this.logger.warn(`Payslip text not sent for line ${l.id}`);
+      }
     }
   }
 

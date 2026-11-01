@@ -5,10 +5,11 @@ import { apiGet, apiPost } from "../../../lib/api";
 import { CON_BRAND, errorText, hasConRole, kes, type ConStatus } from "../../../lib/construction";
 import { ConShell, useConMe } from "../../../components/construction/con-shell";
 import { ErrorBox, Field, Panel, PrimaryButton, inputClass } from "../../../components/construction/ui";
+import { AddonsPanel } from "./addons";
 
 type Limits = { activeProjects: number | null; workers: number | null; users: number | null };
 interface Plan { code: string; name: string; monthlyPrice: number; annualPrice: number | null; quoteOnly: boolean; setupFee: number | null; setupFeeOptional: boolean; limits: Limits; features: string[] }
-interface Payment { id: string; planCode: string; cycle: string; amount: number; discount: number; status: "PENDING" | "PAID" | "FAILED"; method: string; receipt: string | null; error: string | null; createdAt: string; periodEndAfter: string | null }
+interface Payment { id: string; planCode: string; cycle: string; amount: number; discount: number; status: "PENDING" | "PAID" | "FAILED"; method: string; receipt: string | null; error: string | null; createdAt: string; periodEndAfter: string | null; purpose: "PLAN" | "EXTRA_PROJECTS" | "FEES" | "SMS" }
 interface Mine {
   planCode: string; planName: string; cycle: string; status: ConStatus; currentPeriodEnd: string; daysLeft: number; graceEndsAt: string;
   extraProjects: number; couponCode: string | null; couponMonthsLeft: number; limits: Limits; usage: Limits; plans: Plan[]; payments: Payment[]; canPayOnline: boolean;
@@ -16,6 +17,7 @@ interface Mine {
 interface Quote { months: number; gross: number; discount: number; amount: number; coupon: string | null }
 
 const limit = (n: number | null) => (n === null ? "Unlimited" : n);
+const FOR: Record<string, string> = { EXTRA_PROJECTS: "extra project slots", FEES: "ZARODA fees", SMS: "SMS bundle" };
 
 export default function PlanPage() {
   return (
@@ -164,6 +166,8 @@ function PlanScreen() {
         )
       )}
 
+      <AddonsPanel canPay={canPay} canPayOnline={mine.canPayOnline} renews={mine.currentPeriodEnd} onPaid={load} />
+
       <Panel title="Payments">
         {mine.payments.length === 0 ? (
           <p className="text-sm text-secondary-500">No payments yet.</p>
@@ -172,7 +176,7 @@ function PlanScreen() {
             {mine.payments.map((p) => (
               <li key={p.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
                 <div>
-                  <p className="font-medium">{kes(p.amount)} · {p.planCode.replace("CON_", "")} {p.cycle.toLowerCase()}</p>
+                  <p className="font-medium">{kes(p.amount)} · {p.purpose === "PLAN" ? `${p.planCode.replace("CON_", "")} ${p.cycle.toLowerCase()}` : FOR[p.purpose]}</p>
                   <p className="text-xs text-secondary-500">{new Date(p.createdAt).toLocaleString("en-KE")} · {p.method}{p.receipt ? ` · ${p.receipt}` : ""}{p.error ? ` · ${p.error}` : ""}</p>
                 </div>
                 <div className="flex items-center gap-2">

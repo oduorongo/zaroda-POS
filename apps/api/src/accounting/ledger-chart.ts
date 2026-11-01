@@ -54,7 +54,17 @@ export const SYSTEM_ACCOUNTS = [
   { key: 'EXP_OTHER', code: '6900', name: 'Other expenses', type: 'EXPENSE' },
 ] as const satisfies readonly { key: string; code: string; name: string; type: LedgerAccountType }[];
 
-export type AccountKey = (typeof SYSTEM_ACCOUNTS)[number]['key'];
+/** Extra accounts only construction businesses get (docs/construction): retention both ways and subcontractor costs. */
+export const CONSTRUCTION_ACCOUNTS = [
+  { key: 'RETENTION_RECEIVABLE', code: '1170', name: 'Retention held by clients', type: 'ASSET' },
+  { key: 'RETENTION_PAYABLE', code: '2220', name: 'Retention held from subcontractors', type: 'LIABILITY' },
+  { key: 'SUBCONTRACTORS', code: '5200', name: 'Subcontractor costs', type: 'EXPENSE' },
+] as const satisfies readonly { key: string; code: string; name: string; type: LedgerAccountType }[];
+
+/** The keyed accounts a business of this type has. */
+export const systemAccountsFor = (industryType: string | null | undefined) => (industryType === 'CONSTRUCTION' ? [...SYSTEM_ACCOUNTS, ...CONSTRUCTION_ACCOUNTS] : [...SYSTEM_ACCOUNTS]);
+
+export type AccountKey = (typeof SYSTEM_ACCOUNTS)[number]['key'] | (typeof CONSTRUCTION_ACCOUNTS)[number]['key'];
 
 /** Where an expense of each category is posted (Salaries recorded as an expense go with payroll). */
 export function expenseAccount(category: string): AccountKey {
@@ -81,6 +91,9 @@ export const PLATFORM_ACCOUNTS = [
   { key: 'RENTAL_PLAN_INCOME', code: '4030', name: 'Rental plan subscriptions', type: 'INCOME' },
   { key: 'COLLECTION_FEE_INCOME', code: '4040', name: 'Rent collection fees', type: 'INCOME' },
   { key: 'ADVERT_INCOME', code: '4050', name: 'House advert fees', type: 'INCOME' },
+  { key: 'CONSTRUCTION_PLAN_INCOME', code: '4060', name: 'Construction plans and extra projects', type: 'INCOME' },
+  { key: 'SMS_INCOME', code: '4070', name: 'SMS bundles', type: 'INCOME' },
+  { key: 'PAYOUT_FEE_INCOME', code: '4080', name: 'Wage payout fees', type: 'INCOME' },
   { key: 'OTHER_INCOME', code: '4200', name: 'Other income', type: 'INCOME' },
   { key: 'SALES_COMMISSIONS', code: '6000', name: 'Commission paid to sales agents', type: 'EXPENSE' },
   { key: 'HOSTING', code: '6010', name: 'Hosting and software', type: 'EXPENSE' },

@@ -5,6 +5,8 @@ import { GUARDS_METADATA } from '@nestjs/common/constants';
 import { ConRoleCode } from '@prisma/client';
 import { CommercialController } from '../commercial/commercial.controller';
 import { ConBillingCallbackController, ConPublicController, ConstructionController } from '../construction.controller';
+import { ConApiKeyGuard } from '../enterprise/api-key.guard';
+import { ConstructionApiController, EnterpriseController } from '../enterprise/enterprise.controller';
 import { MaterialsController } from '../materials/materials.controller';
 import { PayrollCallbackController, PayrollController } from '../payroll/payroll.controller';
 import { ConPortalGuard } from '../portal/portal-access';
@@ -15,7 +17,7 @@ import { SiteController } from '../site/site.controller';
 import { conRoutes } from './con-routes';
 import { conMethods, conSourceFiles } from './con-source';
 
-const CONTROLLERS = [ConstructionController, ConBillingCallbackController, ConPublicController, TendersController, ProjectsController, SiteController, MaterialsController, CommercialController, PayrollController, PayrollCallbackController, PortalAuthController, PortalController, PortalUsersController, ReportsController];
+const CONTROLLERS = [ConstructionController, ConBillingCallbackController, ConPublicController, TendersController, ProjectsController, SiteController, MaterialsController, CommercialController, PayrollController, PayrollCallbackController, PortalAuthController, PortalController, PortalUsersController, ReportsController, EnterpriseController, ConstructionApiController];
 const routes = conRoutes(CONTROLLERS);
 const key = (r: { method: string; path: string }) => `${r.method} ${r.path}`;
 
@@ -32,6 +34,7 @@ const ALL_INTERNAL = Object.keys(R) as Ab[];
  */
 const AREAS: { name: string; match: RegExp; view: Ab[]; write: Ab[]; feature?: string }[] = [
   { name: 'users & roles', match: /^\/construction\/(staff|roles\/:code|settings\/rules)/, view: ALL_INTERNAL, write: [] },
+  { name: 'enterprise settings', match: /^\/construction\/(offices|custom-roles|api-keys)/, view: [], write: [] },
   { name: 'compliance', match: /^\/construction\/compliance\/(?!cap-check)/, view: ['CM', 'PM', 'QS', 'ACC', 'PROC', 'COMP', 'SHE'], write: ['COMP'], feature: 'compliance' },
   { name: 'tenders', match: /^\/construction\/tenders/, view: ['CM', 'PM', 'QS', 'ACC', 'PROC', 'COMP'], write: ['CM', 'QS', 'COMP'], feature: 'tenders' },
   { name: 'reports', match: /^\/construction\/(reports|dashboard\/director|projects\/:projectId\/dashboard)/, view: ['CM', 'PM', 'QS', 'ACC', 'PROC', 'COMP', 'SHE', 'ENG'], write: [] },
@@ -79,7 +82,7 @@ const EXCEPTIONS: Record<string, { roles: Ab[]; why: string }> = {
   'GET /construction/projects/:projectId/dashboard': { roles: ['SUP', 'STORE', 'TIME'], why: 'site staff see their project today (money is hidden from them)' },
 };
 /** Routes any internal construction user may call (no @ConRoles). */
-const OPEN = ['GET /construction/me', 'GET /construction/dashboard', 'GET /construction/plan', 'GET /construction/plan/quote'];
+const OPEN = ['GET /construction/me', 'GET /construction/dashboard', 'GET /construction/plan', 'GET /construction/plan/quote', 'GET /construction/plan/addons'];
 
 const ab = (roles: ConRoleCode[]) => roles.filter((r) => r !== 'CON_DIRECTOR').map((r) => (Object.keys(R) as Ab[]).find((k) => R[k] === r) ?? r);
 const isWrite = (m: string) => m !== 'GET';
@@ -102,12 +105,15 @@ describe('construction hardening', () => {
     expect(internal.filter((r) => r.path.includes(':projectId') && !r.project).map(key)).toEqual([]);
   });
 
-  it('routes outside the staff guard are only portal (own guard), sign-in, callbacks or the public price list', () => {
+  it('routes outside the staff guard are only portal (own guard), the API (key guard), sign-in, callbacks or the public price list', () => {
     for (const r of external) {
       expect(r.isPublic).toBe(true);
       if (r.path.startsWith('/construction-portal/') && !r.path.startsWith('/construction-portal/auth/')) {
         const guards: unknown[] = [...(Reflect.getMetadata(GUARDS_METADATA, PortalController) ?? [])];
         expect(guards).toContain(ConPortalGuard);
+      } else if (r.path.startsWith('/construction-api/')) {
+        expect(r.method).toBe('GET');
+        expect(Reflect.getMetadata(GUARDS_METADATA, ConstructionApiController)).toContain(ConApiKeyGuard);
       } else {
         expect(r.path).toMatch(/^\/(construction-portal\/auth\/|public\/)/);
       }
@@ -163,7 +169,13 @@ describe('construction hardening', () => {
       'compliance/compliance-alerts.service.ts markRead': 'read flags on alerts',
       'payroll/payroll.service.ts settleRun': 'run status follows its lines, each audited',
       'payroll/payroll.service.ts sendPayslips': 'SMS sent time',
-      'plans/con-plans.service.ts stashExtras': 'add-ons waiting for the payment, audited when settled',
+      'enterprise/api-key.guard.ts canActivate': 'last-used time and request count on the key',
+      'plans/con-addons.service.ts saveBundle': 'platform admin: PlatformAuditLogService',
+      'plans/con-addons.service.ts saveBands': 'platform admin: PlatformAuditLogService',
+      'plans/con-usage.service.ts takeSms': 'SMS credit spent, and the "credit ran out" notification',
+      'plans/con-usage.service.ts returnSms': 'SMS credit given back for a text that failed',
+      'plans/con-usage.service.ts chargePayout': 'fee line for a payout whose payment is audited',
+      'plans/con-usage.service.ts closeMonths': 'groups fee lines into the month\'s invoice',
       'plans/con-plans.service.ts fail': 'a failed M-Pesa prompt',
       'plans/con-plans.service.ts updatePlan': 'platform admin: PlatformAuditLogService',
       'plans/con-plans.service.ts saveCoupon': 'platform admin: PlatformAuditLogService',
@@ -182,7 +194,7 @@ describe('construction hardening', () => {
   });
 
   it('tenant isolation: construction code only uses the unscoped client for global tables, guards and jobs that set the tenant', () => {
-    const ALLOWED = /this\.prisma\.(conPlan|conCoupon|conPortalOtp)\b|this\.prisma\.\$transaction\(|this\.prisma\.(organization|conSubscription|conSubscriptionPayment)\.findMany\(\{ where: \{ (industryType|organizationId: \{ in)/;
+    const ALLOWED = /this\.prisma\.(conPlan|conCoupon|conPortalOtp|conSmsBundle|conPayoutFeeBand)\b|this\.prisma\.conFeeInvoice\.findMany\(\{ where: \{ status|this\.prisma\.\$transaction\(|this\.prisma\.(organization|conSubscription|conSubscriptionPayment)\.findMany\(\{ where: \{ (industryType|organizationId: \{ in)/;
     const bad: string[] = [];
     for (const f of conSourceFiles()) {
       readFileSync(f, 'utf8').split('\n').forEach((line, i) => {

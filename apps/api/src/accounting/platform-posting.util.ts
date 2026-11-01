@@ -39,3 +39,8 @@ export function platformPayoutDraft(p: { date: string; agent: string; amountCent
     lines: tidy([dr('SALES_COMMISSIONS', p.amountCents), cr(from, p.amountCents - tax), cr('WHT_PAYABLE', tax)]),
   };
 }
+
+/** A construction business paid ZARODA: its plan or extra projects, an SMS bundle, or a month's wage payout fees. */
+export function platformConPaymentDraft(p: { date: string; business: string; label: string; income: string; amountCents: number; method: string | null }): Draft {
+  return { date: p.date, memo: `${p.business}: ${p.label}`, lines: tidy([dr(moneyAccount(p.method), p.amountCents), cr(p.income, p.amountCents)]) };
+}

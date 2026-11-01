@@ -32,7 +32,7 @@ const PAY_RETRY_MS = 60_000;
 const CHECK_COOLDOWN_MS = 30_000;
 const DAY = 86_400_000;
 
-const extraProjectsOf = (addons: Prisma.JsonValue) => {
+export const extraProjectsOf = (addons: Prisma.JsonValue) => {
   const n = (addons as { extraProjects?: unknown } | null)?.extraProjects;
   return typeof n === 'number' && n > 0 ? n : 0;
 };
@@ -56,8 +56,12 @@ const paymentView = (p: ConSubscriptionPayment) => ({
   error: p.error,
   paidAt: p.paidAt,
   periodEndAfter: p.periodEndAfter,
+  purpose: p.purpose,
+  details: p.details,
   createdAt: p.createdAt,
 });
+
+export type PaymentDraft = Omit<Prisma.ConSubscriptionPaymentUncheckedCreateInput, 'organizationId' | 'phone' | 'createdBy'>;
 
 /**
  * The construction plan a business is on (docs/construction/05): trial, limits, features, paying by M-Pesa through ZARODA's
@@ -99,7 +103,7 @@ export class ConPlansService {
     if (!plan) return;
     const limit = effectiveLimits(plan, sub)[kind];
     if (withinLimit(limit, current)) return;
-    throw upgradeError(limitMessage(plan, plans, kind, limit, EXTRA_PROJECT_PRICE), { limit: kind, requiredPlan: nextPlanUp(plans, plan.code)?.code ?? null });
+    throw upgradeError(limitMessage(plan, plans, kind, limit, EXTRA_PROJECT_PRICE), { limit: kind, requiredPlan: nextPlanUp(plans, plan.code)?.code ?? null, buyExtra: kind === 'activeProjects' && plan.features.includes('extra_projects') });
   }
 
   async mine() {
@@ -187,56 +191,47 @@ export class ConPlansService {
   }
 
   async pay(dto: PayPlanDto) {
-    const { organizationId, orgUserId } = getTenantStore();
-    const phone = normalizeKenyanPhone(dto.phone);
-    if (!phone) throw new BadRequestException('Enter a valid M-Pesa number, e.g. 0712 345 678');
-    const credentials = this.tuma.platformCredentials();
-
-    const payment = await this.tenantPrisma.run(async (tx) => {
-      const sub = await tx.conSubscription.findUniqueOrThrow({ where: { organizationId } });
-      const recent = await tx.conSubscriptionPayment.findFirst({ where: { status: 'PENDING', error: null, createdAt: { gt: new Date(Date.now() - PAY_RETRY_MS) } } });
-      if (recent) throw new BadRequestException('Check your phone for the M-Pesa prompt - you can retry in a minute');
+    return this.startPayment(dto.phone, async (tx, sub) => {
       const p = await this.price(tx, sub, dto);
       const problems = downgradeProblems(await this.usage(tx), effectiveLimits(p.plan, { addons: { extraProjects: p.extraProjects } }));
       if (problems.length) throw new BadRequestException(`Your current use does not fit the ${p.plan.name} plan: ${problems.join('; ')}.`);
-      if (p.amount < 1) throw new BadRequestException('There is nothing to pay');
-      const created = await tx.conSubscriptionPayment.create({
-        data: {
-          organizationId,
-          planCode: p.plan.code,
-          cycle: dto.cycle,
-          months: p.months,
-          amount: p.amount,
-          discount: p.discount,
-          couponCode: p.coupon?.code ?? null,
-          phone,
-          createdBy: orgUserId,
-        },
-      });
-      await this.audit.logInTx(tx, { action: 'con_payment.started', entityType: 'ConSubscriptionPayment', entityId: created.id, after: { ...paymentView(created), extraProjects: p.extraProjects } });
-      return { created, extraProjects: p.extraProjects };
+      return {
+        data: { planCode: p.plan.code, cycle: dto.cycle, months: p.months, amount: p.amount, discount: p.discount, couponCode: p.coupon?.code ?? null, details: { extraProjects: p.extraProjects } },
+        description: `ZARODA construction ${p.plan.code}`,
+      };
+    });
+  }
+
+  /** Records a PENDING payment, then sends ZARODA's M-Pesa prompt (Tuma). The plan and every add-on purchase start here. */
+  async startPayment(rawPhone: string, build: (tx: Tx, sub: ConSubscription) => Promise<{ data: PaymentDraft; description: string }>) {
+    const { organizationId, orgUserId } = getTenantStore();
+    const phone = normalizeKenyanPhone(rawPhone);
+    if (!phone) throw new BadRequestException('Enter a valid M-Pesa number, e.g. 0712 345 678');
+    const credentials = this.tuma.platformCredentials();
+
+    const { created, description } = await this.tenantPrisma.run(async (tx) => {
+      const sub = await tx.conSubscription.findUniqueOrThrow({ where: { organizationId } });
+      const recent = await tx.conSubscriptionPayment.findFirst({ where: { status: 'PENDING', error: null, createdAt: { gt: new Date(Date.now() - PAY_RETRY_MS) } } });
+      if (recent) throw new BadRequestException('Check your phone for the M-Pesa prompt - you can retry in a minute');
+      const b = await build(tx, sub);
+      if (Number(b.data.amount) < 1) throw new BadRequestException('There is nothing to pay');
+      const row = await tx.conSubscriptionPayment.create({ data: { ...b.data, organizationId, phone, createdBy: orgUserId } });
+      await this.audit.logInTx(tx, { action: 'con_payment.started', entityType: 'ConSubscriptionPayment', entityId: row.id, after: paymentView(row) });
+      return { created: row, description: b.description };
     });
 
     let merchantRequestId: string | null = null;
     let error: string | null = null;
     try {
-      merchantRequestId = (await this.tuma.stkPush(credentials, { amount: Number(payment.created.amount), phone, description: `ZARODA construction ${payment.created.planCode}`, callbackUrl: this.callbackUrl(organizationId, payment.created.id) })).merchantRequestId;
+      merchantRequestId = (await this.tuma.stkPush(credentials, { amount: Number(created.amount), phone, description, callbackUrl: this.callbackUrl(organizationId, created.id) })).merchantRequestId;
     } catch (e) {
       error = e instanceof Error ? e.message : 'Could not start the payment';
-      this.logger.warn({ err: e, paymentId: payment.created.id }, 'Construction plan STK push failed');
+      this.logger.warn({ err: e, paymentId: created.id }, 'Construction STK push failed');
     }
     const updated = await this.tenantPrisma.run((tx) =>
-      tx.conSubscriptionPayment.update({ where: { id: payment.created.id }, data: { tumaMerchantRequestId: merchantRequestId, error, status: error ? 'FAILED' : 'PENDING' } }),
+      tx.conSubscriptionPayment.update({ where: { id: created.id }, data: { tumaMerchantRequestId: merchantRequestId, error, status: error ? 'FAILED' : 'PENDING' } }),
     );
-    if (payment.extraProjects !== undefined) await this.tenantPrisma.run((tx) => this.stashExtras(tx, organizationId, updated.id, payment.extraProjects));
     return paymentView(updated);
-  }
-
-  // The extra-project count chosen at payment time is applied on settlement; kept on the subscription's addons until then.
-  private async stashExtras(tx: Tx, organizationId: string, paymentId: string, extraProjects: number) {
-    const sub = await tx.conSubscription.findUniqueOrThrow({ where: { organizationId } });
-    const addons = { ...((sub.addons as Record<string, unknown>) ?? {}), pending: { [paymentId]: extraProjects } };
-    await tx.conSubscription.update({ where: { organizationId }, data: { addons: addons as Prisma.InputJsonValue } });
   }
 
   async checkPayment(paymentId: string) {
@@ -288,12 +283,13 @@ export class ConPlansService {
       if (done.count === 0) return false;
       const p = await tx.conSubscriptionPayment.findUniqueOrThrow({ where: { id: paymentId } });
       const sub = await tx.conSubscription.findUniqueOrThrow({ where: { organizationId } });
+      if (p.purpose !== 'PLAN') {
+        await this.applyPurchase(tx, sub, p, now);
+        return true;
+      }
       const addons = { ...((sub.addons as Record<string, unknown>) ?? {}) };
-      const pending = (addons.pending ?? {}) as Record<string, number>;
-      const extraProjects = pending[paymentId] ?? extraProjectsOf(sub.addons);
-      delete pending[paymentId];
-      addons.pending = pending;
-      addons.extraProjects = extraProjects;
+      const chosen = (p.details as { extraProjects?: unknown } | null)?.extraProjects;
+      addons.extraProjects = typeof chosen === 'number' ? chosen : extraProjectsOf(sub.addons);
       const newCoupon = p.couponCode && p.couponCode !== sub.couponCode;
       const coupon = newCoupon ? await tx.conCoupon.findUnique({ where: { code: p.couponCode! } }) : null;
       const monthsLeft = newCoupon ? Math.max((coupon?.months ?? 0) - p.months, 0) : Math.max(sub.couponMonthsLeft - (p.couponCode ? p.months : 0), 0);
@@ -324,6 +320,27 @@ export class ConPlansService {
         },
       });
       return true;
+    });
+  }
+
+  /** Extra project slots, an SMS bundle or a month's fees: applied once, the paid-up date is not touched. */
+  private async applyPurchase(tx: Tx, sub: ConSubscription, p: ConSubscriptionPayment, now: Date) {
+    const d = (p.details ?? {}) as { extraProjects?: number; sms?: number; invoiceId?: string };
+    const before = { extraProjects: extraProjectsOf(sub.addons), smsCredits: sub.smsCredits };
+    if (p.purpose === 'EXTRA_PROJECTS') {
+      const addons = { ...((sub.addons as Record<string, unknown>) ?? {}), extraProjects: before.extraProjects + (d.extraProjects ?? 0) };
+      await tx.conSubscription.update({ where: { id: sub.id }, data: { addons: addons as Prisma.InputJsonValue } });
+    } else if (p.purpose === 'SMS') {
+      await tx.conSubscription.update({ where: { id: sub.id }, data: { smsCredits: { increment: d.sms ?? 0 } } });
+    } else if (p.purpose === 'FEES' && d.invoiceId) {
+      await tx.conFeeInvoice.updateMany({ where: { id: d.invoiceId, status: 'UNPAID' }, data: { status: 'PAID', paidAt: now, paymentId: p.id } });
+    }
+    const after = await tx.conSubscription.findUniqueOrThrow({ where: { id: sub.id } });
+    await tx.auditLog.create({
+      data: {
+        organizationId: sub.organizationId, action: 'con_purchase.paid', entityType: 'ConSubscriptionPayment', entityId: p.id,
+        before, after: { purpose: p.purpose, details: p.details as Prisma.InputJsonValue, amount: Number(p.amount), extraProjects: extraProjectsOf(after.addons), smsCredits: after.smsCredits },
+      },
     });
   }
 
@@ -384,7 +401,7 @@ export class ConPlansService {
     const ids = tenants.map((t) => t.id);
     const [orgs, payments] = await Promise.all([
       this.prisma.organization.findMany({ where: { industryType: 'CONSTRUCTION', salesAgentId: { not: null } }, select: { id: true, salesAgent: { select: { fullName: true, team: { select: { name: true, conCommissionRate: true } } } } } }),
-      this.prisma.conSubscriptionPayment.findMany({ where: { organizationId: { in: ids }, status: 'PAID' }, select: { organizationId: true, amount: true, paidAt: true } }),
+      this.prisma.conSubscriptionPayment.findMany({ where: { organizationId: { in: ids }, status: 'PAID', purpose: { in: ['PLAN', 'EXTRA_PROJECTS'] } }, select: { organizationId: true, amount: true, paidAt: true } }),
     ]);
     const week = now.getTime() + 7 * DAY;
     const count = (code: string, status: string) => tenants.filter((t) => t.planCode === code && t.status === status).length;
