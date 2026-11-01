@@ -11,6 +11,8 @@ import { BqTab } from "./bq";
 import { CommercialTab } from "./commercial";
 import { MaterialsTab } from "./materials";
 import { PlantTab } from "./plant";
+import { PayrollTab } from "./payroll";
+import { PortalTab } from "./portal";
 import { OverviewTab } from "./overview";
 import { PermitsTab } from "./permits";
 import { ProgrammeTab } from "./programme";
@@ -26,6 +28,8 @@ const TABS = [
   { key: "materials", label: "Materials" },
   { key: "plant", label: "Plant" },
   { key: "commercial", label: "Commercial" },
+  { key: "payroll", label: "Payroll" },
+  { key: "portal", label: "Portal" },
 ] as const;
 type Tab = (typeof TABS)[number]["key"];
 
@@ -77,6 +81,8 @@ export default function ProjectPage() {
           {tab === "materials" && <MaterialsTab project={project} reload={load} />}
           {tab === "plant" && <PlantTab project={project} reload={load} />}
           {tab === "commercial" && <CommercialTab project={project} reload={load} />}
+          {tab === "payroll" && <PayrollTab project={project} reload={load} />}
+          {tab === "portal" && <PortalTab project={project} reload={load} />}
         </>
       )}
     </ConShell>

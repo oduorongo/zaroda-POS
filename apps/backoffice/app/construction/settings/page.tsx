@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { apiGet, apiPatch, apiPost } from "../../../lib/api";
-import { errorText, hasConRole, isDirector, kes } from "../../../lib/construction";
+import { conSend, errorText, hasConRole, isDirector, kes } from "../../../lib/construction";
 import { ConShell, useConMe } from "../../../components/construction/con-shell";
 import { ErrorBox, Field, Panel, PrimaryButton, inputClass } from "../../../components/construction/ui";
 
@@ -10,7 +10,7 @@ interface Tax { id: string; key: string; rate: number; threshold: number | null;
 interface Cap { id: string; worksClass: string; ncaCategory: number; maxValue: number | null }
 interface RoleRow { code: string; name: string; scope: string; approvalLimit: number | null }
 
-const TAX_KEYS = ["VAT", "WHT_CONTRACTOR", "WHT_VAT", "NCA_LEVY", "RETENTION_DEFAULT", "RETENTION_LIMIT", "SHIF", "HOUSING_LEVY", "NSSF"];
+const TAX_KEYS = ["VAT", "WHT_CONTRACTOR", "WHT_VAT", "NCA_LEVY", "RETENTION_DEFAULT", "RETENTION_LIMIT", "SHIF", "HOUSING_LEVY", "NSSF", "PAYE_BAND_1", "PAYE_BAND_2", "PAYE_BAND_3", "PAYE_BAND_4", "PAYE_BAND_5", "PERSONAL_RELIEF"];
 const WORKS: Record<string, string> = { BUILDING: "Building", ELEC_MECH: "Elec/Mech", ROADS_CIVIL: "Roads & civil" };
 
 export default function SettingsPage() {
@@ -57,6 +57,7 @@ function Settings() {
     <div className="space-y-4">
       <ErrorBox message={error} />
       <RulesPanel canEdit={isDirector(me)} onError={setError} />
+      {hasConRole(me, "CON_ACCOUNTANT") && <PayoutPanel onError={setError} />}
       <Panel title="Tax and statutory rates">
         <p className="mb-3 text-xs text-secondary-500">The law changes these. A change is a new rate from its effective date; earlier rates stay for past documents. Check figures with KRA/NCA before relying on them.</p>
         <div className="overflow-x-auto">
@@ -181,5 +182,57 @@ function RulesPanel({ canEdit, onError }: { canEdit: boolean; onError: (m: strin
       </div>
       {!canEdit && <p className="mt-1 text-xs text-secondary-500">Only the Director can change this.</p>}
     </Panel>
+  );
+}
+
+interface Payout { ready: boolean; environment: string; shortcode: string; initiator: string; hasKeys: boolean }
+
+/** The business's own M-Pesa B2C account that pays workers' wages. Keys are sent once and never shown again. */
+function PayoutPanel({ onError }: { onError: (m: string | null) => void }) {
+  const [p, setP] = useState<Payout | null>(null);
+  const [f, setF] = useState({ environment: "production", shortcode: "", initiator: "", consumerKey: "", consumerSecret: "", securityCredential: "" });
+  const [saved, setSaved] = useState(false);
+  useEffect(() => {
+    apiGet<Payout>("/construction/payroll/settings")
+      .then((x) => {
+        setP(x);
+        setF((v) => ({ ...v, environment: x.environment, shortcode: x.shortcode, initiator: x.initiator }));
+      })
+      .catch(() => setP(null));
+  }, []);
+  if (!p) return null;
+  const save = () =>
+    conSend<Payout>("PUT", "/construction/payroll/settings", { ...f, consumerKey: f.consumerKey || undefined, consumerSecret: f.consumerSecret || undefined, securityCredential: f.securityCredential || undefined })
+      .then((x) => {
+        setP(x);
+        setF({ ...f, consumerKey: "", consumerSecret: "", securityCredential: "" });
+        setSaved(true);
+        onError(null);
+      })
+      .catch((e) => onError(errorText(e, "Could not save the payout account.")));
+  return (
+    <div id="payout">
+      <Panel title="M-Pesa payout account (wages)">
+        <p className="mb-2 text-sm">{p.ready ? "Set up - pay runs can be paid by M-Pesa from your account." : "Not set up - you can still mark wages paid in cash or by M-Pesa you sent yourself."}</p>
+        <p className="mb-2 text-xs text-secondary-500">Your own B2C shortcode from Safaricom (Daraja: consumer key and secret, initiator name and security credential). Wages are paid from your account, not ZARODA&apos;s. Keys are stored encrypted and never shown again.</p>
+        <div className="grid gap-2 sm:grid-cols-3">
+          <Field label="Environment">
+            <select className={inputClass} value={f.environment} onChange={(e) => setF({ ...f, environment: e.target.value })}>
+              <option value="production">Live</option>
+              <option value="sandbox">Sandbox (testing)</option>
+            </select>
+          </Field>
+          <Field label="B2C shortcode"><input className={inputClass} value={f.shortcode} onChange={(e) => setF({ ...f, shortcode: e.target.value })} /></Field>
+          <Field label="Initiator name"><input className={inputClass} value={f.initiator} onChange={(e) => setF({ ...f, initiator: e.target.value })} /></Field>
+          <Field label={p.hasKeys ? "Consumer key (leave empty to keep)" : "Consumer key"}><input className={inputClass} value={f.consumerKey} onChange={(e) => setF({ ...f, consumerKey: e.target.value })} /></Field>
+          <Field label={p.hasKeys ? "Consumer secret (leave empty to keep)" : "Consumer secret"}><input type="password" className={inputClass} value={f.consumerSecret} onChange={(e) => setF({ ...f, consumerSecret: e.target.value })} /></Field>
+          <Field label={p.hasKeys ? "Security credential (leave empty to keep)" : "Security credential"}><input type="password" className={inputClass} value={f.securityCredential} onChange={(e) => setF({ ...f, securityCredential: e.target.value })} /></Field>
+        </div>
+        <div className="mt-3 flex items-center gap-3">
+          <PrimaryButton disabled={f.shortcode.length < 4 || f.initiator.length < 2} onClick={save}>Save</PrimaryButton>
+          {saved && <span className="text-sm text-green-700">Saved.</span>}
+        </div>
+      </Panel>
+    </div>
   );
 }

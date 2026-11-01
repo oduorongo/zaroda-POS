@@ -215,6 +215,11 @@ model Organization {
   conRetentionEntries       ConRetentionEntry[]
   conSubcontracts           ConSubcontract[]
   conSubValuations          ConSubValuation[]
+  conPayrollRuns            ConPayrollRun[]
+  conPayrollLines           ConPayrollLine[]
+  conPayoutSettings         ConPayoutSettings?
+  conPortalUsers            ConPortalUser[]
+  conPortalAccess           ConPortalAccess[]
 
   @@map("organizations")
 }
@@ -5860,6 +5865,7 @@ model ConParty {
   projectLinks   ConProjectParty[]
   instructions   ConSiteInstruction[]
   subcontracts   ConSubcontract[]
+  portalUsers    ConPortalUser[]
 
   @@index([organizationId, kind])
   @@map("con_parties")
@@ -5950,6 +5956,8 @@ model ConProject {
   valuations   ConValuation[]
   retention    ConRetentionEntry[]
   subcontracts ConSubcontract[]
+  payrollRuns  ConPayrollRun[]
+  portalAccess ConPortalAccess[]
   siteBranch   Branch?            @relation(fields: [branchId], references: [id], onDelete: SetNull)
 
   @@unique([organizationId, code])
@@ -6202,6 +6210,7 @@ model ConWorker {
   muster       ConMuster[]
   ppeIssues    ConPpeIssue[]
   incidents    ConIncident[]
+  payrollLines ConPayrollLine[]
 
   @@unique([organizationId, idNo])
   @@index([organizationId, projectId])
@@ -6753,4 +6762,161 @@ model ConSubValuation {
   @@unique([subcontractId, number])
   @@index([organizationId])
   @@map("con_sub_valuations")
+}
+
+// ── Construction C6: casual payroll and the external portal ──
+
+enum ConPayrollStatus {
+  DRAFT
+  APPROVED
+  PAID
+}
+
+enum ConPayLineStatus {
+  UNPAID
+  SENDING
+  PAID
+  FAILED
+}
+
+enum ConPayMethod {
+  MPESA
+  MPESA_MANUAL
+  CASH
+}
+
+/// A pay run for a project's casual workers over a period, worked out from the muster roll. Never approved by whoever made it.
+model ConPayrollRun {
+  id             String           @id @default(uuid())
+  organizationId String
+  projectId      String
+  number         String
+  periodStart    DateTime         @db.Date
+  periodEnd      DateTime         @db.Date
+  status         ConPayrollStatus @default(DRAFT)
+  workers        Int              @default(0)
+  gross          Decimal          @default(0) @db.Decimal(14, 2)
+  deductions     Decimal          @default(0) @db.Decimal(14, 2)
+  net            Decimal          @default(0) @db.Decimal(14, 2)
+  notes          String?
+  createdBy      String
+  approvedBy     String?
+  approvedAt     DateTime?
+  paidAt         DateTime?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project      ConProject       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  lines        ConPayrollLine[]
+
+  @@unique([projectId, number])
+  @@index([organizationId])
+  @@map("con_payroll_runs")
+}
+
+/// One worker's pay in a run: days from the muster, statutory deductions from con_tax_settings, and how it was paid.
+model ConPayrollLine {
+  id             String           @id @default(uuid())
+  organizationId String
+  runId          String
+  workerId       String
+  days           Decimal          @db.Decimal(5, 1)
+  dailyRate      Decimal          @db.Decimal(12, 2)
+  gross          Decimal          @db.Decimal(12, 2)
+  nssf           Decimal          @default(0) @db.Decimal(12, 2)
+  shif           Decimal          @default(0) @db.Decimal(12, 2)
+  housingLevy    Decimal          @default(0) @db.Decimal(12, 2)
+  paye           Decimal          @default(0) @db.Decimal(12, 2)
+  deductions     Decimal          @default(0) @db.Decimal(12, 2)
+  net            Decimal          @db.Decimal(12, 2)
+  status         ConPayLineStatus @default(UNPAID)
+  method         ConPayMethod?
+  reference      String?
+  requestId      String?          @unique
+  failureReason  String?
+  paidAt         DateTime?
+  paidBy         String?
+  smsSentAt      DateTime?
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  run          ConPayrollRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  worker       ConWorker     @relation(fields: [workerId], references: [id], onDelete: Restrict)
+
+  @@unique([runId, workerId])
+  @@index([organizationId])
+  @@map("con_payroll_lines")
+}
+
+/// The business's own M-Pesa B2C account that pays its workers. Secrets are stored encrypted.
+model ConPayoutSettings {
+  organizationId              String   @id
+  environment                 String   @default("production")
+  shortcode                   String?
+  initiator                   String?
+  consumerKeyEncrypted        String?
+  consumerSecretEncrypted     String?
+  securityCredentialEncrypted String?
+  callbackSecret              String
+  updatedBy                   String?
+  updatedAt                   DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("con_payout_settings")
+}
+
+/// Someone outside the business (client, client's consultants, subcontractor) who signs in to the portal with an emailed code.
+/// Free: never counts toward the plan's users.
+model ConPortalUser {
+  id             String      @id @default(uuid())
+  organizationId String
+  partyId        String?
+  name           String
+  email          String
+  phone          String?
+  role           ConRoleCode
+  isActive       Boolean     @default(true)
+  invitedBy      String?
+  lastLoginAt    DateTime?
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  party        ConParty?         @relation(fields: [partyId], references: [id], onDelete: SetNull)
+  access       ConPortalAccess[]
+
+  @@unique([organizationId, email])
+  @@map("con_portal_users")
+}
+
+/// The only projects a portal user can see.
+model ConPortalAccess {
+  id             String   @id @default(uuid())
+  organizationId String
+  portalUserId   String
+  projectId      String
+  createdAt      DateTime @default(now())
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  portalUser   ConPortalUser @relation(fields: [portalUserId], references: [id], onDelete: Cascade)
+  project      ConProject    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([portalUserId, projectId])
+  @@index([organizationId])
+  @@map("con_portal_access")
+}
+
+/// Portal sign-in codes (hash only). No row-level security: a sign-in has no business behind it yet.
+model ConPortalOtp {
+  id         String    @id @default(uuid())
+  email      String
+  codeHash   String
+  attempts   Int       @default(0)
+  consumedAt DateTime?
+  expiresAt  DateTime
+  createdAt  DateTime  @default(now())
+
+  @@index([email, createdAt])
+  @@map("con_portal_otps")
 }

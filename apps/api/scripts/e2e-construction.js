@@ -251,7 +251,7 @@ async function main() {
   const freshPlan = await fresh.get('/construction/plan');
   check('trial ends in 14 days', freshPlan.json.daysLeft === 14, freshPlan.json.daysLeft);
   check('no POS device subscription was made', Number((await sql.query('SELECT count(*) FROM subscriptions WHERE "organizationId" = $1', [signup.json.organizationId])).rows[0].count) === 0);
-  check('roles, caps and taxes are seeded for it', (await fresh.get('/construction/roles')).json.length === 17 && (await fresh.get('/construction/compliance/limits')).json.length === 24 && (await fresh.get('/construction/settings/tax')).json.length === 9);
+  check('roles, caps and taxes are seeded for it', (await fresh.get('/construction/roles')).json.length === 17 && (await fresh.get('/construction/compliance/limits')).json.length === 24 && (await fresh.get('/construction/settings/tax')).json.length === 15);
 
   section('13. Tenant isolation');
   check("a new business sees none of Uriri's documents", (await fresh.get('/construction/compliance/docs')).json.length === 0);
@@ -607,7 +607,7 @@ async function main() {
     await sql.query(`UPDATE con_site_instructions SET "variationId" = NULL WHERE "variationId" IN (SELECT id FROM con_variations WHERE "projectId" = $1 AND ref <> 'VO-001')`, [sid]);
     await sql.query(`DELETE FROM con_variations WHERE "projectId" = $1 AND ref <> 'VO-001'`, [sid]);
     await sql.query(`UPDATE con_projects SET "revisedSum" = "contractSum" + 85000, status = 'ACTIVE' WHERE id = $1`, [sid]);
-    await sql.query(`DELETE FROM con_subcontracts WHERE "projectId" = $1`, [sid]);
+    await sql.query(`DELETE FROM con_subcontracts WHERE "projectId" = $1 AND "partyId" IN (SELECT id FROM con_parties WHERE name LIKE 'Okoth Plumbing %')`, [sid]);
   };
   await resetC5();
   const V = `/construction/projects/${sid}`;
@@ -742,7 +742,7 @@ async function main() {
   const clientParty = (await dir.get('/construction/parties')).json.find((p) => p.kind === 'CLIENT');
   check('only a subcontractor can hold a subcontract', (await qs.post(`${V}/subcontracts`, { partyId: clientParty.id, scope: 'x', sum: 1000 })).status === 400);
   const sc = await qs.post(`${V}/subcontracts`, { partyId: subParty.json.id, scope: 'Plumbing and drainage', sum: 1000000 });
-  check('the QS lets a subcontract (SC-001, 10% retention, 5% cap)', sc.status === 201 && sc.json.ref === 'SC-001' && Number(sc.json.retentionRate) === 10, sc.json);
+  check('the QS lets a subcontract (SC-00n, 10% retention, 5% cap)', sc.status === 201 && /^SC-\d{3}$/.test(sc.json.ref) && Number(sc.json.retentionRate) === 10, sc.json);
   const sv1 = await qs.post(`${V}/subcontracts/${sc.json.id}/valuations`, { grossToDate: 300000 });
   check('subcontract valuation 1: 300,000 less 10% retention = 270,000', near(Number(sv1.json.retention), 30000) && near(Number(sv1.json.netDue), 270000), sv1.json);
   check('one draft at a time', (await qs.post(`${V}/subcontracts/${sc.json.id}/valuations`, { grossToDate: 1 })).status === 409);
@@ -762,6 +762,156 @@ async function main() {
   const c5audit = (await sql.query(`SELECT DISTINCT action FROM audit_log WHERE "organizationId" = $1 AND action LIKE 'con_%'`, [orgId])).rows.map((r) => r.action);
   for (const a of ['con_variation.created', 'con_variation.updated', 'con_variation.approved', 'con_variation.rejected', 'con_project.revised_sum_changed', 'con_valuation.created', 'con_valuation.updated', 'con_valuation.submitted', 'con_valuation.certified', 'con_valuation.reversal_raised', 'con_valuation.invoiced', 'con_valuation.receipt_recorded', 'con_retention.released', 'con_subcontract.created', 'con_sub_valuation.approved', 'con_sub_valuation.paid', 'con_sub_valuation.deleted']) {
     check(`audit: ${a}`, c5audit.includes(a));
+  }
+
+  section('13f. Casual payroll and the external portal (C6)');
+  await sql.query(`DELETE FROM con_payroll_runs WHERE "projectId" = $1 AND number <> 'PAY-001'`, [sid]);
+  await sql.query('DELETE FROM con_payout_settings WHERE "organizationId" = $1', [orgId]);
+  await sql.query(`DELETE FROM con_tax_settings WHERE "organizationId" = $1 AND notes = 'e2e'`, [orgId]);
+  await sql.query(`DELETE FROM con_portal_users WHERE "organizationId" = $1 AND email LIKE '%@e2e.test'`, [orgId]);
+  await sql.query(`UPDATE con_portal_users SET "isActive" = true WHERE "organizationId" = $1`, [orgId]);
+  const P = `/construction/projects/${sid}`;
+  const runs0 = (await pm.get(`${P}/payroll-runs`)).json;
+  check('seeded PAY-001 is paid for 15 workers', runs0.some((r) => r.number === 'PAY-001' && r.status === 'PAID' && r.workers === 15), runs0);
+  check('the site supervisor cannot see payroll', (await siteUser.get(`${P}/payroll-runs`)).status === 403);
+  check('the PM can see but not prepare a pay run', (await pm.post(`${P}/payroll-runs`, { periodStart: nairobi(-3), periodEnd: nairobi(-1) })).status === 403);
+  check('a pay run cannot include tomorrow', (await acc.post(`${P}/payroll-runs`, { periodStart: nairobi(-1), periodEnd: nairobi(1) })).status === 400);
+  check('a pay run covers at most 31 days', (await acc.post(`${P}/payroll-runs`, { periodStart: nairobi(-40), periodEnd: nairobi(-1) })).status === 400);
+  check('days already paid in PAY-001 cannot be paid again', (await acc.post(`${P}/payroll-runs`, { periodStart: nairobi(-5), periodEnd: nairobi(-1) })).status === 409);
+  await sql.query(`INSERT INTO con_tax_settings (id, "organizationId", key, rate, active, "effectiveFrom", notes) VALUES ($1, $2, 'HOUSING_LEVY', 2, true, $3, 'e2e')`, [randomUUIDish(), orgId, nairobi(-2)]);
+  const run = await acc.post(`${P}/payroll-runs`, { periodStart: nairobi(-3), periodEnd: nairobi(-1) });
+  check('accounts makes PAY-002 from the muster roll', run.status === 201 && run.json.number === 'PAY-002' && run.json.status === 'DRAFT' && run.json.workers >= 10, run.json);
+  const line0 = run.json.lines?.[0] ?? {};
+  check('pay = days present x daily rate (half days count half)', run.json.lines.every((l) => near(l.gross, r2(l.days * l.dailyRate))) && run.json.lines.some((l) => l.days % 1 === 0.5));
+  check('NSSF 6% up to the ceiling scaled to 3 days, SHIF 2.75% (min scaled), housing levy at the new 2% rate', run.json.lines.every((l) => near(l.nssf, r2(Math.min(l.gross, 7200) * 0.06)) && near(l.shif, r2(Math.max(l.gross * 0.0275, 30))) && near(l.housingLevy, r2(l.gross * 0.02))), line0);
+  check('net = gross - deductions, and the totals add up', run.json.lines.every((l) => near(l.net, r2(l.gross - l.nssf - l.shif - l.housingLevy - l.paye))) && near(run.json.net, r2(run.json.lines.reduce((a, l) => a + l.net, 0))));
+  check('worker phone numbers are masked', run.json.lines.every((l) => !l.phone || l.phone.includes('*')));
+  check('whoever prepared the run cannot approve it', (await acc.post(`${P}/payroll-runs/${run.json.id}/approve`, {})).status === 403);
+  check('it cannot be paid before approval', (await acc.post(`${P}/payroll-runs/${run.json.id}/pay`, { method: 'CASH' })).status === 409);
+  check('the Director approves it', (await dir.post(`${P}/payroll-runs/${run.json.id}/approve`, {})).json.status === 'APPROVED');
+  check('an approved run cannot be deleted', (await acc.del(`${P}/payroll-runs/${run.json.id}`)).status === 409);
+  check('M-Pesa needs the payout account set up first', (await acc.post(`${P}/payroll-runs/${run.json.id}/pay`, { method: 'MPESA' })).status === 409);
+  check('a hand-made M-Pesa payment needs its code', (await acc.post(`${P}/payroll-runs/${run.json.id}/pay`, { method: 'MPESA_MANUAL' })).status === 400);
+  check('the PM cannot set the payout account', (await pm.put('/construction/payroll/settings', { environment: 'sandbox', shortcode: '600000', initiator: 'testapi' })).status === 403);
+  const payout = await acc.put('/construction/payroll/settings', { environment: 'sandbox', shortcode: '600000', initiator: 'testapi', consumerKey: `ck-${tag}`, consumerSecret: 'cs-secret', securityCredential: 'sec-cred' });
+  check('accounts saves the business\'s own B2C account', payout.status === 200 && payout.json.ready === true && !JSON.stringify(payout.json).includes(`ck-${tag}`), payout.json);
+  const stored = (await sql.query('SELECT "consumerKeyEncrypted" FROM con_payout_settings WHERE "organizationId" = $1', [orgId])).rows[0];
+  check('the keys are stored encrypted', stored.consumerKeyEncrypted.startsWith('v1:') && !stored.consumerKeyEncrypted.includes(`ck-${tag}`));
+  const [failW, noPhoneW] = [run.json.lines[1], run.json.lines[2]];
+  const oldPhones = (await sql.query('SELECT id, phone FROM con_workers WHERE id = ANY($1)', [[failW.workerId, noPhoneW.workerId]])).rows;
+  await sql.query(`UPDATE con_workers SET phone = '0712000999' WHERE id = $1`, [failW.workerId]);
+  await sql.query('UPDATE con_workers SET phone = NULL WHERE id = $1', [noPhoneW.workerId]);
+  const sent = await acc.post(`${P}/payroll-runs/${run.json.id}/pay`, { method: 'MPESA' });
+  check('accounts pays by M-Pesa: sent to everyone with a number', sent.status === 200 && sent.json.skipped?.length === 1 && sent.json.lines.filter((l) => l.status === 'SENDING').length === run.json.lines.length - 1, sent.json.skipped);
+  await sleep(2500);
+  const runAfter = (await acc.get(`${P}/payroll-runs/${run.json.id}`)).json;
+  const paidM = runAfter.lines.filter((l) => l.status === 'PAID');
+  check('Safaricom\'s results settle the payments with M-Pesa receipts', paidM.length === run.json.lines.length - 2 && paidM.every((l) => l.method === 'MPESA' && /^[A-Z0-9]{10}$/.test(l.reference ?? '')), runAfter.lines.map((l) => [l.status, l.reference]));
+  check('a refused payment and a missing number show as failed, the run stays open', runAfter.status === 'APPROVED' && runAfter.lines.find((l) => l.id === failW.id)?.failureReason && runAfter.lines.find((l) => l.id === noPhoneW.id)?.failureReason === 'No valid M-Pesa number on file', runAfter.lines.filter((l) => l.status !== 'PAID'));
+  check('a result with the wrong secret is refused', (await call('POST', `/public/construction/payroll/mpesa-b2c/${orgId}/wrong-secret/result`, { body: {} })).status === 403);
+  const cash = await acc.post(`${P}/payroll-runs/${run.json.id}/pay`, { method: 'CASH', reference: 'PV-0100', lineIds: [failW.id, noPhoneW.id] });
+  check('the two left are paid in cash: the run is PAID', cash.json.status === 'PAID' && cash.json.lines.every((l) => l.status === 'PAID'), cash.json.status);
+  check('nothing more to pay', (await acc.post(`${P}/payroll-runs/${run.json.id}/pay`, { method: 'CASH' })).status === 409);
+  for (const w of oldPhones) await sql.query('UPDATE con_workers SET phone = $2 WHERE id = $1', [w.id, w.phone]);
+  await sql.query(`DELETE FROM con_tax_settings WHERE "organizationId" = $1 AND notes = 'e2e'`, [orgId]);
+  await sql.query(`UPDATE con_subscriptions SET "planCode" = 'CON_MJENGO' WHERE "organizationId" = $1`, [orgId]);
+  const mjPay = await acc.get(`${P}/payroll-runs`);
+  check('Mjengo has no M-Pesa payroll (upgrade prompt)', mjPay.status === 402 && mjPay.json.feature === 'payroll', mjPay.json);
+  await sql.query(`UPDATE con_subscriptions SET "planCode" = 'CON_CONTRACTOR' WHERE "organizationId" = $1`, [orgId]);
+
+  const staffBefore = Number((await sql.query('SELECT count(*) FROM org_users WHERE "organizationId" = $1', [orgId])).rows[0].count);
+  check('the QS cannot give portal access', (await qs.post('/construction/portal-users', { name: 'X Y', email: `x-${tag}@e2e.test`, role: 'CON_CLIENT', projectIds: [sid] })).status === 403);
+  const invited = await pm.post('/construction/portal-users', { name: 'Client Rep', email: `Client-${tag}@e2e.test`, role: 'CON_CLIENT', projectIds: [sid] });
+  check('the PM invites the client\'s representative to the portal', invited.status === 201 && invited.json.email === `client-${tag}@e2e.test`, invited.json);
+  check('the same email cannot be invited twice', (await pm.post('/construction/portal-users', { name: 'Client Rep', email: `client-${tag}@e2e.test`, role: 'CON_CLIENT', projectIds: [sid] })).status === 409);
+  check('a subcontractor login must belong to a subcontractor', (await pm.post('/construction/portal-users', { name: 'Sub Guy', email: `sub-${tag}@e2e.test`, role: 'CON_SUBCONTRACTOR', projectIds: [sid] })).status === 409);
+  const otherProject = (await sql.query(`SELECT id FROM con_projects WHERE "organizationId" = $1 AND id <> $2 AND id NOT IN (SELECT m."projectId" FROM con_project_members m JOIN org_users ou ON ou.id = m."orgUserId" JOIN users u ON u.id = ou."userId" WHERE u.email = 'pm@uriri.demo') LIMIT 1`, [orgId, sid])).rows[0].id;
+  check('the PM cannot give access to a project they do not manage', (await pm.post('/construction/portal-users', { name: 'Other Rep', email: `other-${tag}@e2e.test`, role: 'CON_CLIENT', projectIds: [otherProject] })).status === 403);
+  check('portal users are free: no staff login was added', Number((await sql.query('SELECT count(*) FROM org_users WHERE "organizationId" = $1', [orgId])).rows[0].count) === staffBefore);
+
+  check('an unknown email gets the same answer and no code', JSON.stringify((await call('POST', '/construction-portal/auth/request-code', { body: { email: `nobody-${tag}@e2e.test` } })).json) === '{"sent":true}');
+  const asked = await call('POST', '/construction-portal/auth/request-code', { body: { email: 'CQS@uriri.demo' } });
+  check('the client\'s QS asks for a code (shown on screen when email is not set up)', asked.status === 200 && /^\d{6}$/.test(asked.json.devCode ?? ''), asked.json);
+  check('a wrong code is refused', (await call('POST', '/construction-portal/auth/verify', { body: { email: 'cqs@uriri.demo', code: asked.json.devCode === '000000' ? '111111' : '000000' } })).status === 401);
+  const signedIn = await call('POST', '/construction-portal/auth/verify', { body: { email: 'cqs@uriri.demo', code: asked.json.devCode } });
+  check('the right code signs them in to Uriri Builders', signedIn.status === 200 && signedIn.json.accounts?.[0]?.organization === 'Uriri Builders Ltd', signedIn.json);
+  check('a code works once', (await call('POST', '/construction-portal/auth/verify', { body: { email: 'cqs@uriri.demo', code: asked.json.devCode } })).status === 401);
+  const portalSecret = readEnv(path.join(API_DIR, '.env.con-test')).BUYER_JWT_SECRET || live.BUYER_JWT_SECRET;
+  const b64u = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
+  const mint = (sub) => {
+    const head = `${b64u({ alg: 'HS256', typ: 'JWT' })}.${b64u({ sub, org: orgId, scope: 'con-portal', iat: Math.floor(Date.now() / 1000), exp: Math.floor(Date.now() / 1000) + 3600 })}`;
+    return `${head}.${require('crypto').createHmac('sha256', portalSecret).update(head).digest('base64url')}`;
+  };
+  const portalIds = Object.fromEntries((await sql.query('SELECT email, id FROM con_portal_users WHERE "organizationId" = $1', [orgId])).rows.map((r) => [r.email, r.id]));
+  const cqs = as(signedIn.json.accounts[0].token);
+  const client = as(mint(portalIds[`client-${tag}@e2e.test`]));
+  const arch = as(mint(portalIds['arch@uriri.demo']));
+  const sub = as(mint(portalIds['sub@uriri.demo']));
+  const PP = `/construction-portal/projects/${sid}`;
+
+  const cme = await client.get('/construction-portal/me');
+  check('the client sees only the project they were given', cme.status === 200 && cme.json.projects.length === 1 && cme.json.projects[0].id === sid && cme.json.organization.name === 'Uriri Builders Ltd', cme.json);
+  const cOver = await client.get(PP);
+  check('progress, milestones and the contract sum', cOver.status === 200 && cOver.json.milestones.length > 0 && cOver.json.progress >= 0 && cOver.json.contractSum > 0, cOver.json);
+  for (const [what, url] of [['project', `/construction-portal/projects/${otherProject}`], ['photos', `/construction-portal/projects/${otherProject}/photos`], ['IPCs', `/construction-portal/projects/${otherProject}/valuations`], ['variations', `/construction-portal/projects/${otherProject}/variations`]]) {
+    check(`another project's ${what} are not found for the client (404)`, (await client.get(url)).status === 404);
+  }
+  check("another project's subcontracts are not found for the subcontractor (404)", (await sub.get(`/construction-portal/projects/${otherProject}/subcontracts`)).status === 404);
+  const freshProject = (await fresh.get('/construction/projects')).json?.[0];
+  if (freshProject) check("another builder's project is not found (404)", (await client.get(`/construction-portal/projects/${freshProject.id}`)).status === 404);
+  check('a staff token does not open the portal', (await call('GET', '/construction-portal/me', { token: dir._token })).status === 401);
+  check('a portal token does not open staff screens', (await call('GET', '/construction/me', { token: client._token })).status === 401);
+  const forged = mint(portalIds['arch@uriri.demo']).replace(/.$/, (c) => (c === 'A' ? 'B' : 'A'));
+  check('a tampered token is refused', (await call('GET', '/construction-portal/me', { token: forged })).status === 401);
+
+  const cPhotos = await client.get(`${PP}/photos`);
+  check('the client sees site photos', cPhotos.status === 200 && Array.isArray(cPhotos.json), cPhotos.json);
+  if (cPhotos.json[0]) check('...and can open one', (await call('GET', `${PP}/photos/${cPhotos.json[0].id}/file`, { token: client._token })).type?.startsWith('image/'));
+  const cVals = (await client.get(`${PP}/valuations`)).json;
+  check('the client sees IPCs but never a draft', cVals.length >= 2 && cVals.every((v) => v.status !== 'DRAFT'), cVals.map((v) => [v.number, v.status]));
+  const everything = JSON.stringify([cme.json, cOver.json, cPhotos.json, cVals, (await client.get(`${PP}/variations`)).json, (await client.get(`${PP}/instructions`)).json]);
+  const someWorker = (await sql.query('SELECT name, "idNo", phone FROM con_workers WHERE "projectId" = $1 LIMIT 1', [sid])).rows[0];
+  check('no worker personal data or internal costs reach the portal', !everything.includes(someWorker.name) && !everything.includes(someWorker.idNo) && !everything.includes(someWorker.phone) && !/dailyRate|idNo|"rate"|lpo|plant|payroll/i.test(everything));
+  check('the subcontractor does not see the main contract sum or IPCs', (await sub.get(PP)).json.contractSum === null && (await sub.get(`${PP}/valuations`)).status === 403);
+  check('the client cannot certify', (await client.post(`${PP}/valuations/${cVals[0].id}/certify`, {})).status === 403);
+
+  const draft5 = (await qs.get(`${P}/valuations`)).json.find((v) => v.status === 'DRAFT');
+  check('the Director sends draft IPC 5 to the client\'s QS', draft5 && (await dir.post(`${P}/valuations/${draft5.id}/submit`, {})).json.status === 'SUBMITTED');
+  const seen = await cqs.get(`${PP}/valuations/${draft5.id}`);
+  check('the client\'s QS opens it with its lines and can certify it', seen.status === 200 && seen.json.canCertify && seen.json.lines.length > 5, seen.json.canCertify);
+  const certified = await cqs.post(`${PP}/valuations/${draft5.id}/certify`, { certifiedRef: `LQS/${tag}` });
+  check('the client\'s QS certifies it from the portal, in their own name', certified.status === 200 && certified.json.status === 'CERTIFIED' && certified.json.certifiedByName === 'QS M. Akinyi', certified.json);
+  const certAudit = (await sql.query(`SELECT "actorId", after FROM audit_log WHERE "organizationId" = $1 AND action = 'con_valuation.certified' AND "entityId" = $2`, [orgId, draft5.id])).rows[0];
+  check('the audit log names the portal user', certAudit && certAudit.actorId === null && certAudit.after.externalActor === `portal:${portalIds['cqs@uriri.demo']}`, certAudit);
+  check('a certified IPC cannot be certified again', (await cqs.post(`${PP}/valuations/${draft5.id}/certify`, {})).status === 409);
+
+  const voP = await pm.post(`${P}/variations`, { description: `Portal VO ${tag}`, amount: 45000 });
+  check('the client cannot approve variations', (await client.post(`${PP}/variations/${voP.json.id}/decision`, { decision: 'APPROVE' })).status === 403);
+  const archOk = await arch.post(`${PP}/variations/${voP.json.id}/decision`, { decision: 'APPROVE' });
+  check('the client\'s architect approves a variation from the portal', archOk.status === 200 && archOk.json.status === 'APPROVED', archOk.json);
+  check('...recorded as approved by the architect', (await pm.get(`${P}/variations`)).json.find((v) => v.id === voP.json.id)?.approvedByName === 'Arch. P. Ochieng');
+  const si = await arch.post(`${PP}/instructions`, { description: `Provide extra vent blocks ${tag}` });
+  check('the architect issues a site instruction', si.status === 201 && /^SI-\d{3}$/.test(si.json.number), si.json);
+  check('...which the site team sees, from the architect\'s firm', (await pm.get(`${P}/instructions`)).json.find((i) => i.id === si.json.id)?.issuedBy === 'Ochieng & Associates Architects');
+  check('the client\'s QS cannot issue instructions', (await cqs.post(`${PP}/instructions`, { description: 'Nope nope' })).status === 403);
+
+  const subs = (await sub.get(`${PP}/subcontracts`)).json;
+  check('the subcontractor sees only their own subcontract and payments', subs.length === 1 && subs[0].paid === 288000 && subs[0].valuations[0].paymentRef === 'EFT/NPW/0013', subs);
+  const sv = await sub.post(`${PP}/subcontracts/${subs[0].id}/valuations`, { grossToDate: 500000, notes: 'First fix complete' });
+  check('the subcontractor submits valuation 2: 500,000 less 50,000 retention less 288,000 paid', sv.status === 201 && sv.json.netDue === 162000 && sv.json.status === 'DRAFT', sv.json);
+  const okothSub = (await sql.query(`SELECT s.id FROM con_subcontracts s JOIN con_parties p ON p.id = s."partyId" WHERE s."projectId" = $1 AND p.name LIKE 'Okoth Plumbing %' LIMIT 1`, [sid])).rows[0];
+  if (okothSub) check("they cannot value someone else's subcontract", (await sub.post(`${PP}/subcontracts/${okothSub.id}/valuations`, { grossToDate: 1 })).status === 404);
+  await sql.query('UPDATE con_subscriptions SET "planCode" = \'CON_PRO\' WHERE "organizationId" = $1', [orgId]);
+  check('the Director approves the subcontractor\'s valuation', (await dir.post(`${P}/subcontracts/${subs[0].id}/valuations/${sv.json.id}/approve`, {})).json.status === 'APPROVED');
+  await sql.query('DELETE FROM con_sub_valuations WHERE id = $1', [sv.json.id]);
+  await sql.query('UPDATE con_subscriptions SET "planCode" = \'CON_FUNDI\' WHERE "organizationId" = $1', [orgId]);
+  check('on a plan without the portal it is switched off', (await client.get('/construction-portal/me')).status === 403);
+  await sql.query('UPDATE con_subscriptions SET "planCode" = \'CON_CONTRACTOR\' WHERE "organizationId" = $1', [orgId]);
+  check('the PM removes the client rep\'s access', (await pm.put(`/construction/portal-users/${invited.json.id}`, { isActive: false })).json.isActive === false);
+  check('their token stops working at once', (await client.get('/construction-portal/me')).status === 401);
+  const c6audit = (await sql.query(`SELECT DISTINCT action FROM audit_log WHERE "organizationId" = $1 AND action LIKE 'con_%'`, [orgId])).rows.map((r) => r.action);
+  for (const a of ['con_payroll.created', 'con_payroll.approved', 'con_payroll.mpesa_sent', 'con_payroll.mpesa_paid', 'con_payroll.mpesa_failed', 'con_payroll.paid', 'con_payout_settings.updated', 'con_portal_user.invited', 'con_portal_user.updated', 'con_instruction.created']) {
+    check(`audit: ${a}`, c6audit.includes(a));
   }
 
   section('14. Super-admin');

@@ -1831,3 +1831,50 @@ DROP POLICY IF EXISTS tenant_isolation ON con_sub_valuations;
 CREATE POLICY tenant_isolation ON con_sub_valuations
   USING ("organizationId" = current_setting('app.current_tenant', true))
   WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+-- Construction C6
+
+ALTER TABLE con_payroll_runs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE con_payroll_runs FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON con_payroll_runs;
+CREATE POLICY tenant_isolation ON con_payroll_runs
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+ALTER TABLE con_payroll_lines ENABLE ROW LEVEL SECURITY;
+ALTER TABLE con_payroll_lines FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON con_payroll_lines;
+CREATE POLICY tenant_isolation ON con_payroll_lines
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+ALTER TABLE con_payout_settings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE con_payout_settings FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON con_payout_settings;
+CREATE POLICY tenant_isolation ON con_payout_settings
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+ALTER TABLE con_portal_users ENABLE ROW LEVEL SECURITY;
+ALTER TABLE con_portal_users FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON con_portal_users;
+CREATE POLICY tenant_isolation ON con_portal_users
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+ALTER TABLE con_portal_access ENABLE ROW LEVEL SECURITY;
+ALTER TABLE con_portal_access FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON con_portal_access;
+CREATE POLICY tenant_isolation ON con_portal_access
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+-- Construction portal sign-in: con_portal_otps has NO row-level security, like rental_tenant_otps (listed in
+-- rls-coverage.spec.ts's exclusions): a sign-in has no business behind it yet. One person may be invited by several
+-- builders, so finding "my portal accounts" crosses businesses - allowed ONLY by this extra read-only rule, matching rows
+-- whose email equals app.current_portal_email, which the API sets only while handling that email's own sign-in
+-- (PortalAuthService). Alongside tenant_isolation, never instead of it. Everything after sign-in runs in the builder's context.
+DROP POLICY IF EXISTS portal_email_access ON con_portal_users;
+CREATE POLICY portal_email_access ON con_portal_users
+  FOR SELECT
+  USING (email = current_setting('app.current_portal_email', true));

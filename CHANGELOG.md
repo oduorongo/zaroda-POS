@@ -1,5 +1,14 @@
 # Changelog
 
+## Construction C6: casual payroll and the external portal (2026-10-31)
+
+- Pay runs per project and period, worked out from the muster roll (days present x daily rate, half days count half). NSSF (up to the ceiling), SHIF (with its minimum), Housing Levy and PAYE bands with personal relief all come from `con_tax_settings` in force on the last day, scaled to the pay period. New settings keys: PAYE_BAND_1-5, PERSONAL_RELIEF; NSSF and SHIF now carry their ceiling / minimum. Missing keys are added automatically for existing businesses.
+- Accounts prepares, someone else approves (never the preparer). Paid by M-Pesa B2C from the business's **own** Daraja account (saved encrypted under Settings), or marked paid in cash / by an M-Pesa payment made by hand. Safaricom's results settle each line; failures are shown and can be paid again. Payslip by SMS after payment. Overlapping pay periods are refused.
+- Core: `MpesaB2cClient.sendFrom()` pays from a given account (commission payouts unchanged); `MPESA_B2C_BASE_URL` points it at a test double. `AuditLogService` names non-staff actors (`portal:<id>`, `system:mpesa`) in the entry instead of `actorId`.
+- External portal at `/portal` on CONSTRUCTION_DOMAIN: clients, client's QS / architect / engineer and subcontractors sign in with an emailed code (no password, free, never counted as users). They see only projects they were given. Client: progress, milestones, photos, IPCs, variations, instructions. Client's QS: certifies submitted valuations in their own name. Architect: approves or rejects variations and issues site instructions (engineer: instructions). Subcontractor: their own subcontract, valuations and payments, and submits valuations. No worker data, materials, plant, payroll or internal costs are ever returned.
+- Staff (Contracts Manager, Project Manager for their projects, Director) invite and remove portal users from the project's Portal tab. New project tabs: Payroll, Portal.
+- Migration `20261216100000_construction_payroll_portal` (+ `rls.sql`, with a narrow email-only read rule for portal sign-in), seed: PAY-001 paid for 15 workers, a plumbing subcontract with a paid valuation, and portal users client@, cqs@, arch@ and sub@uriri.demo. Test double `scripts/mock-daraja-b2c.js`; e2e now 470 checks.
+
 ## Construction C5: commercial - variations, valuations, IPCs, retention (2026-10-31)
 
 - Variations register (VO-001...) linked to site instructions; priced, then approved or rejected by the Contracts Manager / Director (never by whoever raised it). Approved variations update the revised contract sum.

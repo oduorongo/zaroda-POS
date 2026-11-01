@@ -28,11 +28,32 @@ import { PlantService } from './materials/plant.service';
 import { PurchasingModule } from '../purchasing/purchasing.module';
 import { InventoryModule } from '../inventory/inventory.module';
 import { SiteService } from './site/site.service';
+import { ConfigModule, ConfigService } from '@nestjs/config';
+import { JwtModule } from '@nestjs/jwt';
+import { MpesaB2cClient } from '../sales-teams/mpesa-b2c.client';
+import { PayrollCallbackController, PayrollController } from './payroll/payroll.controller';
+import { PayrollService } from './payroll/payroll.service';
+import { ConPortalGuard } from './portal/portal-access';
+import { PortalAuthService } from './portal/portal-auth.service';
+import { PortalAuthController, PortalController, PortalUsersController } from './portal/portal.controller';
+import { PortalService } from './portal/portal.service';
 
 /** Construction contractors (industryType "CONSTRUCTION", served at CONSTRUCTION_DOMAIN). See docs/construction. */
 @Module({
-  imports: [ModuleRegistryModule, OnlineStoreModule, OrgUsersModule, PurchasingModule, InventoryModule],
-  controllers: [ConstructionController, TendersController, ProjectsController, SiteController, MaterialsController, CommercialController, ConBillingCallbackController, ConPublicController],
+  imports: [
+    ModuleRegistryModule,
+    OnlineStoreModule,
+    OrgUsersModule,
+    PurchasingModule,
+    InventoryModule,
+    // Portal tokens share the buyer secret and are told apart by their scope claim (see portal/portal-access.ts).
+    JwtModule.registerAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => ({ secret: config.getOrThrow<string>('BUYER_JWT_SECRET'), signOptions: { expiresIn: '12h' } }),
+    }),
+  ],
+  controllers: [ConstructionController, TendersController, ProjectsController, SiteController, MaterialsController, CommercialController, PayrollController, PayrollCallbackController, PortalAuthController, PortalController, PortalUsersController, ConBillingCallbackController, ConPublicController],
   providers: [
     ConSetupService,
     ConstructionGuard,
@@ -52,6 +73,11 @@ import { SiteService } from './site/site.service';
     PlantService,
     CommercialService,
     SubcontractsService,
+    PayrollService,
+    MpesaB2cClient,
+    PortalAuthService,
+    PortalService,
+    ConPortalGuard,
     PrivateObjectStorageService,
   ],
   // Platform admin edits plans and coupons, extends trials and records payments.
@@ -110,6 +136,11 @@ export class ConstructionModule implements OnModuleInit {
         { tableName: 'con_retention_ledger', description: 'Retention deducted per IPC and released' },
         { tableName: 'con_subcontracts', description: 'Subcontracts on a project' },
         { tableName: 'con_sub_valuations', description: 'Subcontractor valuations, retention and payments' },
+        { tableName: 'con_payroll_runs', description: 'Casual payroll runs per project and period, from the muster roll' },
+        { tableName: 'con_payroll_lines', description: 'Pay, statutory deductions and payment per worker in a run' },
+        { tableName: 'con_payout_settings', description: 'The business\x27s own M-Pesa B2C account for wages (secrets encrypted)' },
+        { tableName: 'con_portal_users', description: 'Clients, consultants and subcontractors who use the portal (free)' },
+        { tableName: 'con_portal_access', description: 'Which projects each portal user can see' },
       ],
     });
   }

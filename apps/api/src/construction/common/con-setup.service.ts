@@ -50,9 +50,11 @@ export class ConSetupService {
       ),
       skipDuplicates: true,
     });
-    if ((await tx.conTaxSetting.count()) === 0) {
+    const haveKeys = new Set((await tx.conTaxSetting.findMany({ select: { key: true }, distinct: ['key'] })).map((r) => r.key));
+    const missing = TAX_DEFAULTS.filter((t) => !haveKeys.has(t.key));
+    if (missing.length) {
       await tx.conTaxSetting.createMany({
-        data: TAX_DEFAULTS.map((t) => ({ organizationId, key: t.key, rate: t.rate, threshold: t.threshold ?? null, active: t.active ?? true, effectiveFrom: TAX_EFFECTIVE_FROM, notes: t.notes })),
+        data: missing.map((t) => ({ organizationId, key: t.key, rate: t.rate, threshold: t.threshold ?? null, active: t.active ?? true, effectiveFrom: TAX_EFFECTIVE_FROM, notes: t.notes })),
         skipDuplicates: true,
       });
     }

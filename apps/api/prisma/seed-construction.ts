@@ -5,6 +5,9 @@ import { ConSetupService } from "../src/construction/common/con-setup.service";
 import { PrismaService } from "../src/common/prisma/prisma.service";
 import { recordIpcSale } from "../src/construction/commercial/ipc-sale";
 import { previousCertified, valuation } from "../src/construction/commercial/valuation.util";
+import { casualDeductions, payrollRates, PAYROLL_KEYS } from "../src/construction/payroll/payroll.util";
+import { dayValue } from "../src/construction/site/site.util";
+import { nextCode } from "../src/construction/projects/projects.util";
 
 const prisma = new PrismaClient();
 const DAY = 86_400_000;
@@ -15,6 +18,7 @@ const inDays = (n: number) => new Date(Date.UTC(new Date().getUTCFullYear(), new
  * roles and a compliance vault showing green, amber and red documents. Dev/demo only. Run after the construction migration:
  *   npx ts-node prisma/seed-construction.ts
  * Sign in with director@uriri.demo / password123 (also compliance@, qs@, accounts@, pm@, site@, procurement@, store@).
+ * Portal (emailed code; shown on screen when email is not set up): client@, cqs@, arch@, sub@uriri.demo.
  */
 async function main() {
   const existing = await prisma.organization.findFirst({ where: { name: "Uriri Builders Ltd", industryType: "CONSTRUCTION" } });
@@ -23,6 +27,7 @@ async function main() {
   await seedSite(orgId);
   await seedMaterials(orgId);
   await seedCommercial(orgId);
+  await seedPayrollPortal(orgId);
 }
 
 const hashed = bcrypt.hash("password123", 10);
@@ -503,6 +508,70 @@ async function seedCommercial(orgId: string) {
         }
       }
       console.log(`Seeded VO-001 and IPC 1 (paid) and IPC 2 (certified) on ${project.code}.`);
+    },
+    { timeout: 120_000, maxWait: 30_000 },
+  );
+}
+
+/** C6: payroll rates in settings, a paid pay run for the first three muster days, a subcontract, and four portal users. */
+async function seedPayrollPortal(orgId: string) {
+  await prisma.$transaction(
+    async (tx) => {
+      await tx.$executeRaw`SELECT set_config('app.current_tenant', ${orgId}, true)`;
+      await new ConSetupService(prisma as unknown as PrismaService).ensure(tx, orgId);
+      await tx.conTaxSetting.updateMany({ where: { key: "NSSF", threshold: null }, data: { threshold: 72000 } });
+      await tx.conTaxSetting.updateMany({ where: { key: "SHIF", threshold: null }, data: { threshold: 300 } });
+      const project = await tx.conProject.findFirst({ where: { name: "Uriri Day Secondary Classrooms" } });
+      if (!project) return;
+      if (await tx.conPortalUser.count()) {
+        console.log("Payroll and portal already seeded - nothing to do.");
+        return;
+      }
+      const pid = project.id;
+      const by = (email: string) => tx.orgUser.findFirst({ where: { user: { email } } });
+      const [accounts, director, qsUser] = await Promise.all([by("accounts@uriri.demo"), by("director@uriri.demo"), by("qs@uriri.demo")]);
+
+      const settings = await tx.conTaxSetting.findMany({ where: { key: { in: PAYROLL_KEYS }, active: true } });
+      const rates = payrollRates(new Map(settings.map((r) => [r.key, { rate: Number(r.rate), threshold: r.threshold === null ? null : Number(r.threshold) }])));
+      const muster = await tx.conMuster.findMany({ where: { projectId: pid, date: { gte: inDays(-6), lte: inDays(-4) }, status: { not: "ABSENT" } }, include: { worker: true } });
+      const byWorker = new Map<string, { days: number; rate: number }>();
+      for (const m of muster) {
+        const w = byWorker.get(m.workerId) ?? { days: 0, rate: Number(m.worker.dailyRate) };
+        w.days += dayValue(m.status);
+        byWorker.set(m.workerId, w);
+      }
+      const lines = Array.from(byWorker.entries()).map(([workerId, w], i) => {
+        const gross = Math.round(w.days * w.rate * 100) / 100;
+        const d = casualDeductions(gross, 3, rates);
+        return { organizationId: orgId, workerId, days: w.days, dailyRate: w.rate, gross, ...d, status: "PAID" as const, method: i % 3 === 0 ? ("CASH" as const) : ("MPESA_MANUAL" as const), reference: i % 3 === 0 ? "PV-0042" : `SJ${String(4471 + i)}XK`, paidAt: inDays(-3), paidBy: accounts!.id, smsSentAt: inDays(-3) };
+      });
+      if (lines.length) {
+        const sum = (k: "gross" | "deductions" | "net") => Math.round(lines.reduce((a, l) => a + l[k], 0) * 100) / 100;
+        await tx.conPayrollRun.create({
+          data: {
+            organizationId: orgId, projectId: pid, number: "PAY-001", periodStart: inDays(-6), periodEnd: inDays(-4), status: "PAID", workers: lines.length, gross: sum("gross"), deductions: sum("deductions"), net: sum("net"),
+            createdBy: accounts!.id, approvedBy: director!.id, approvedAt: inDays(-3), paidAt: inDays(-3), lines: { create: lines },
+          },
+        });
+      }
+
+      const sub = await tx.conParty.create({ data: { organizationId: orgId, kind: "SUBCONTRACTOR", name: "Nyanza Plumbing Works Ltd", contactPerson: "Mr. S. Odhiambo", phone: "0711000005", email: "sub@uriri.demo" } });
+      await tx.conProjectParty.create({ data: { organizationId: orgId, projectId: pid, partyId: sub.id, role: "SUBCONTRACTOR" } });
+      const sc = await tx.conSubcontract.create({ data: { organizationId: orgId, projectId: pid, partyId: sub.id, ref: nextCode("SC", (await tx.conSubcontract.findMany({ where: { projectId: pid }, select: { ref: true } })).map((r) => r.ref)), scope: "Plumbing, drainage and rainwater goods", sum: 1200000, createdBy: qsUser!.id } });
+      await tx.conSubValuation.create({ data: { organizationId: orgId, subcontractId: sc.id, number: 1, grossToDate: 320000, retention: 32000, previousPaid: 0, netDue: 288000, status: "PAID", createdBy: qsUser!.id, approvedBy: director!.id, approvedAt: inDays(-10), paidAt: inDays(-8), paymentRef: "EFT/NPW/0013" } });
+
+      const parties = await tx.conParty.findMany({ where: { kind: { in: ["CLIENT", "QS", "ARCHITECT"] } } });
+      const party = (kind: string) => parties.find((p) => p.kind === kind && (kind !== "CLIENT" || p.id === project.clientId))?.id ?? null;
+      const people: { email: string; name: string; role: ConRoleCode; partyId: string | null }[] = [
+        { email: "client@uriri.demo", name: "The Principal, Uriri Day Secondary", role: "CON_CLIENT", partyId: party("CLIENT") },
+        { email: "cqs@uriri.demo", name: "QS M. Akinyi", role: "CON_CONSULTANT_QS", partyId: party("QS") },
+        { email: "arch@uriri.demo", name: "Arch. P. Ochieng", role: "CON_CONSULTANT_ARCH", partyId: party("ARCHITECT") },
+        { email: "sub@uriri.demo", name: "Nyanza Plumbing Works", role: "CON_SUBCONTRACTOR", partyId: sub.id },
+      ];
+      for (const p of people) {
+        await tx.conPortalUser.create({ data: { organizationId: orgId, ...p, invitedBy: director!.id, access: { create: [{ organizationId: orgId, projectId: pid }] } } });
+      }
+      console.log(`Seeded PAY-001 (${lines.length} workers, paid), ${sc.ref} and 4 portal users on ${project.code}.`);
     },
     { timeout: 120_000, maxWait: 30_000 },
   );
