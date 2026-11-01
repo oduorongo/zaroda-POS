@@ -67,7 +67,7 @@ export class SalesEarningsService {
         salesTeamId: true,
         salesAgentId: true,
         salesAssignedAt: true,
-        subscription: { select: { currentPeriodEnd: true, graceDays: true, isTrial: true, manuallySuspended: true } },
+        subscription: { select: { currentPeriodEnd: true, graceDays: true, isTrial: true, manuallySuspended: true, plan: { select: { billingCycle: true } } } },
       },
     });
 
@@ -81,7 +81,7 @@ export class SalesEarningsService {
         (await this.prisma.salesAgent.findMany({ where: { id: { in: [...new Set(orgs.map((o) => o.salesAgentId as string))] } }, select: { id: true, status: true } })).map((m) => [m.id, m.status]),
       );
       const payments = await this.prisma.subscriptionPayment.findMany({
-        where: { amount: { gt: 0 }, subscription: { organizationId: { in: orgs.map((o) => o.id) } } },
+        where: { amount: { gt: 0 }, commissionable: true, subscription: { organizationId: { in: orgs.map((o) => o.id) } } },
         orderBy: { paidAt: 'asc' },
         select: { id: true, amount: true, paidAt: true, subscription: { select: { organizationId: true } } },
       });
@@ -92,7 +92,7 @@ export class SalesEarningsService {
         const team = teams.get(org.salesTeamId as string);
         if (!team) continue;
         const subscriptionStatus = org.subscription ? effectiveStatus(org.subscription) : null;
-        const blocked = !org.isActive ? 'The shop was suspended' : subscriptionStatus === 'SUSPENDED' ? 'The shop subscription was unpaid' : members.get(org.salesAgentId as string) !== SalesAgentStatus.ACTIVE ? 'The member was no longer active' : null;
+        const blocked = !org.isActive ? 'The shop was suspended' : subscriptionStatus === 'SUSPENDED' || subscriptionStatus === 'READ_ONLY' ? 'The shop subscription was unpaid' : members.get(org.salesAgentId as string) !== SalesAgentStatus.ACTIVE ? 'The member was no longer active' : null;
         const result = await this.accrueShop({
           org,
           team,
