@@ -113,6 +113,7 @@ export default function EtimsSettingsPage() {
             <Link href="/settings/etims/documents" className={ghost}>Sales sent to KRA</Link>
             <Link href="/settings/etims/reports" className={ghost}>X, Z and item reports</Link>
             <Link href="/settings/etims/kra" className={ghost}>From KRA (notices, imports)</Link>
+            <Link href="/settings/etims/purchases" className={ghost}>Purchases</Link>
             <Link href="/settings/tax" className={ghost}>Tax settings</Link>
           </div>
         </div>
@@ -178,7 +179,7 @@ export default function EtimsSettingsPage() {
 
             <section className="space-y-3 rounded-xl border border-border bg-surface p-4">
               <h2 className="font-semibold">Send sales to KRA</h2>
-              <p className="text-sm text-secondary-500">When this is on, each finished sale is sent to KRA with the stock it used, and a refund of a whole sale is sent as a credit note. Only sales made <strong>after you switch it on</strong> are sent. Every product on a sale must be registered with KRA first (Products and KRA); a sale with an unregistered product waits until it is.</p>
+              <p className="text-sm text-secondary-500">When this is on, each finished sale is sent to KRA with the stock it used, a refund of a whole sale is sent as a credit note, and stock changes that are not sales (adjustments, waste, transfers, repacking, production, deliveries) are reported too. Only sales made <strong>after you switch it on</strong> are sent. Every product on a sale must be registered with KRA first (Products and KRA); a sale with an unregistered product waits until it is.</p>
               <label className="flex items-center gap-2 text-sm">
                 <input type="checkbox" disabled={!canWrite || busy !== null || !data.enabled || !anyActive} checked={data.sendSales} onChange={(e) => void run("send", () => apiPut("/etims/settings", { sendSales: e.target.checked }), e.target.checked ? "Sales are now sent to KRA (the test system), starting from now." : "Sales are no longer sent to KRA.")} />
                 Send my sales to KRA
