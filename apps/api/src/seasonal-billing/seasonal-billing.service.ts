@@ -1,5 +1,4 @@
 import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../common/prisma/prisma.service';
 import { TenantScopedPrismaService } from '../common/prisma/tenant-scoped-prisma.service';
@@ -32,7 +31,6 @@ export class SeasonalBillingService {
     private readonly prisma: PrismaService,
     private readonly tenantPrisma: TenantScopedPrismaService,
     private readonly sms: AfricasTalkingSmsProvider,
-    private readonly config: ConfigService,
   ) {}
 
   private asTenant<T>(organizationId: string, fn: (tx: Tx) => Promise<T>): Promise<T> {
@@ -121,15 +119,14 @@ export class SeasonalBillingService {
         status: effectiveStatus(sub),
         instalments,
         payInFull: full.available ? { schoolYear: offerYear, ...full, discountRate: rules.payInFullDiscountRate } : null,
-        payHow: this.payHow(organizationId),
+        payHow: this.payHow(),
       };
     });
   }
 
-  /** How to pay outside the app, for screens and texts. */
-  payHow(organizationId: string) {
-    const paybill = this.config.get<string>('ZARODA_PAYBILL');
-    return paybill ? `Pay via Paybill ${paybill}, account ${organizationId.slice(0, 8).toUpperCase()}, or in ZARODA POS under My subscription.` : 'Pay in ZARODA POS under My subscription.';
+  /** How to pay, for screens and texts: by M-Pesa in the app (ZARODA collects through its Tuma account). */
+  payHow() {
+    return 'Pay by M-Pesa in ZARODA POS under My subscription.';
   }
 
   // ── Settling ────────────────────────────────────────────────────────────
@@ -287,7 +284,7 @@ export class SeasonalBillingService {
     let sent = 0;
     for (const { kind, inst } of todo.list) {
       const label = rules.terms.find((t) => t.term === inst.term)?.label ?? `Term ${inst.term}`;
-      const text = reminderText(kind!, { label, amount: num(inst.amount), dueDate: dayKey(inst.dueDate), graceDays: inst.graceDays }, this.payHow(organizationId));
+      const text = reminderText(kind!, { label, amount: num(inst.amount), dueDate: dayKey(inst.dueDate), graceDays: inst.graceDays }, this.payHow());
       if (!todo.phone) {
         this.logger.warn({ organizationId }, 'Seasonal reminder not texted: the business has no phone number');
         continue;

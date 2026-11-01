@@ -98,8 +98,8 @@ describe('seasonal billing: reminders', () => {
   });
 
   it('reads like the example', () => {
-    expect(reminderText('BEFORE_DUE', { label: 'Term 1', amount: 6000, dueDate: '2027-01-15', graceDays: 30 }, 'Pay via Paybill 123456, account ZAR1.')).toBe(
-      'ZARODA POS: Your Term 1 instalment of KES 6,000 is due 15 Jan. Pay via Paybill 123456, account ZAR1.',
+    expect(reminderText('BEFORE_DUE', { label: 'Term 1', amount: 6000, dueDate: '2027-01-15', graceDays: 30 }, 'Pay by M-Pesa in ZARODA POS under My subscription.')).toBe(
+      'ZARODA POS: Your Term 1 instalment of KES 6,000 is due 15 Jan. Pay by M-Pesa in ZARODA POS under My subscription.',
     );
   });
 });

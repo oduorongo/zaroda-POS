@@ -41,7 +41,7 @@ const sel = "rounded-md border border-border bg-background p-1 text-sm";
 /**
  * Seasonal (school-term) billing: the terms and their shares, due dates and grace, the pay-in-full discount, the minimum first payment
  * and setup fee; moving a term's due date for every school supplier at once (logged); and each business's instalments, with
- * "record payment" for money that came by bank, cash or Paybill.
+ * "record payment" for money that reached ZARODA another way (bank, cash, an M-Pesa payment the app did not see).
  */
 export default function SeasonalBillingPage() {
   const router = useRouter();
@@ -205,7 +205,7 @@ export default function SeasonalBillingPage() {
                   <div className="flex flex-wrap items-end gap-2 rounded-md border border-border p-3">
                     <p className="w-full text-sm">Record a payment for {paying.label}</p>
                     <label className="text-sm">How
-                      <select className={`${sel} block p-2`} value={method} onChange={(e) => setMethod(e.target.value)}><option value="MPESA">M-Pesa (Paybill)</option><option value="BANK">Bank</option><option value="CASH">Cash</option></select>
+                      <select className={`${sel} block p-2`} value={method} onChange={(e) => setMethod(e.target.value)}><option value="MPESA">M-Pesa</option><option value="BANK">Bank</option><option value="CASH">Cash</option></select>
                     </label>
                     <label className="text-sm">Reference<Input value={reference} onChange={(e) => setReference(e.target.value)} /></label>
                     <Button disabled={busy} onClick={() => void act(async () => {
