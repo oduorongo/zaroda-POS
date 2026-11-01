@@ -6,6 +6,7 @@ import { apiGet } from "../../../../../lib/api";
 import { getSession } from "../../../../../lib/auth";
 import { CON_BRAND, errorText } from "../../../../../lib/construction";
 import { type ConReport, ReportTable } from "../../../../../components/construction/report-table";
+import { PoweredByFootnote } from "@zaroda/ui";
 
 /** A report on the letterhead, landscape: print or save as PDF from the browser. */
 function ReportPrint() {
@@ -43,6 +44,7 @@ function ReportPrint() {
         <div className="border border-t-0 border-gray-300 p-3">
           <ReportTable report={report} print />
         </div>
+        <PoweredByFootnote product="Zaroda Build" />
       </div>
     </div>
   );

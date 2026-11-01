@@ -8,6 +8,7 @@ import { ConBillingCallbackController, ConPublicController, ConstructionControll
 import { ConApiKeyGuard } from '../enterprise/api-key.guard';
 import { ConstructionApiController, EnterpriseController } from '../enterprise/enterprise.controller';
 import { MaterialsController } from '../materials/materials.controller';
+import { MessagesController } from '../messages/messages.controller';
 import { PayrollCallbackController, PayrollController } from '../payroll/payroll.controller';
 import { ConPortalGuard } from '../portal/portal-access';
 import { PortalAuthController, PortalController, PortalUsersController } from '../portal/portal.controller';
@@ -17,7 +18,7 @@ import { SiteController } from '../site/site.controller';
 import { conRoutes } from './con-routes';
 import { conMethods, conSourceFiles } from './con-source';
 
-const CONTROLLERS = [ConstructionController, ConBillingCallbackController, ConPublicController, TendersController, ProjectsController, SiteController, MaterialsController, CommercialController, PayrollController, PayrollCallbackController, PortalAuthController, PortalController, PortalUsersController, ReportsController, EnterpriseController, ConstructionApiController];
+const CONTROLLERS = [ConstructionController, ConBillingCallbackController, ConPublicController, TendersController, ProjectsController, SiteController, MaterialsController, CommercialController, PayrollController, PayrollCallbackController, PortalAuthController, PortalController, PortalUsersController, ReportsController, EnterpriseController, ConstructionApiController, MessagesController];
 const routes = conRoutes(CONTROLLERS);
 const key = (r: { method: string; path: string }) => `${r.method} ${r.path}`;
 
@@ -53,7 +54,7 @@ const AREAS: { name: string; match: RegExp; view: Ab[]; write: Ab[]; feature?: s
   { name: 'payroll', match: /\/(payroll-runs|payroll\/settings)/, view: ['CM', 'PM', 'ACC'], write: ['ACC'], feature: 'payroll' },
   { name: 'portal users', match: /^\/construction\/portal-users/, view: ['CM', 'PM'], write: ['CM', 'PM'], feature: 'portal' },
   { name: 'projects & contracts', match: /^\/construction\/(projects|parties)/, view: ['CM', 'PM', 'QS', 'ACC', 'PROC', 'COMP', 'SHE', 'ENG', 'SUP'], write: ['CM', 'PM', 'QS'] },
-  { name: 'general', match: /^\/construction\/(me|dashboard|alerts|people|roles|settings\/tax|compliance\/cap-check|plan)/, view: ALL_INTERNAL, write: ALL_INTERNAL },
+  { name: 'general', match: /^\/construction\/(me|dashboard|alerts|messages|people|roles|settings\/tax|compliance\/cap-check|plan)/, view: ALL_INTERNAL, write: ALL_INTERNAL },
 ];
 
 /** Deliberate differences from the matrix, with the reason. Anything else that differs fails. */
@@ -167,6 +168,7 @@ describe('construction hardening', () => {
     const SYSTEM: Record<string, string> = {
       'compliance/compliance-alerts.service.ts runForOrganization': 'in-app alerts are notifications, not records',
       'compliance/compliance-alerts.service.ts markRead': 'read flags on alerts',
+      'messages/messages.service.ts thread': 'read flags on messages (sending is audited)',
       'payroll/payroll.service.ts settleRun': 'run status follows its lines, each audited',
       'payroll/payroll.service.ts sendPayslips': 'SMS sent time',
       'enterprise/api-key.guard.ts canActivate': 'last-used time and request count on the key',

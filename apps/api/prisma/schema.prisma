@@ -7230,3 +7230,38 @@ model EtimsSupplierItem {
   @@index([variantId])
   @@map("etims_supplier_items")
 }
+
+/// A message between people in a construction company (in-app). A reply carries threadId = the first message's id.
+model ConMessage {
+  id              String   @id @default(uuid())
+  organizationId  String
+  senderOrgUserId String
+  subject         String
+  body            String
+  /// Sent to a project's team (or about a project).
+  projectId       String?
+  threadId        String?
+  createdAt       DateTime @default(now())
+
+  recipients ConMessageRecipient[]
+
+  @@index([organizationId, threadId])
+  @@index([organizationId, senderOrgUserId, createdAt])
+  @@map("con_messages")
+}
+
+/// One person's copy of a message: unread until readAt.
+model ConMessageRecipient {
+  id             String    @id @default(uuid())
+  organizationId String
+  messageId      String
+  orgUserId      String
+  readAt         DateTime?
+  createdAt      DateTime  @default(now())
+
+  message ConMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, orgUserId])
+  @@index([organizationId, orgUserId, readAt])
+  @@map("con_message_recipients")
+}

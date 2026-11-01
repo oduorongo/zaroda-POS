@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { apiGet } from "../../../../../../lib/api";
 import { getSession } from "../../../../../../lib/auth";
 import { CON_BRAND, errorText } from "../../../../../../lib/construction";
+import { PoweredByFootnote } from "@zaroda/ui";
 
 interface LpoPrint {
   number: string; status: string; total: number; deliverBy: string | null; createdAt: string; approvedAt: string | null; notes: string | null;
@@ -91,7 +92,7 @@ export default function LpoPrintPage() {
           <div><div className="border-t border-gray-400 pt-1">Authorised by</div></div>
           <div><div className="border-t border-gray-400 pt-1">Supplier&apos;s acceptance</div></div>
         </div>
-        <p className="mt-8 text-center text-[10px] text-gray-400" style={{ color: CON_BRAND.orange }}>Zaroda Build</p>
+        <PoweredByFootnote product="Zaroda Build" />
       </div>
     </div>
   );

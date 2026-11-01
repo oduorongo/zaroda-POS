@@ -4,9 +4,10 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { ThemeToggle } from "@zaroda/ui";
+import { Bell } from "lucide-react";
 import { apiGet } from "../../lib/api";
 import { clearSession, type Session } from "../../lib/auth";
-import { CON_BRAND, hasConRole, isDirector, useConSession, type ConMe } from "../../lib/construction";
+import { CON_BRAND, hasConRole, isDirector, useConSession, type ConMe, conBackdropCss } from "../../lib/construction";
 import { useIdleLogout } from "../../hooks/use-idle-logout";
 
 const MeContext = createContext<ConMe | null>(null);
@@ -21,6 +22,7 @@ const LINKS = [
   { href: "/construction/tenders", label: "Tenders" },
   { href: "/construction/compliance", label: "Compliance" },
   { href: "/construction/reports", label: "Reports" },
+  { href: "/construction/messages", label: "Messages" },
   { href: "/construction/plan", label: "Plan" },
   { href: "/construction/settings", label: "Settings" },
 ];
@@ -41,6 +43,7 @@ export function ConHeader({ session, me }: { session: Session; me: ConMe | null 
 
   return (
     <header className="sticky top-0 z-40 text-white shadow" style={{ background: CON_BRAND.navy }}>
+      <style>{conBackdropCss(0.62)}</style>
       <div className="flex items-center justify-between gap-3 px-3 py-2 sm:px-5">
         <Link href="/construction" className="flex min-w-0 items-center gap-2 no-underline">
           {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -50,6 +53,7 @@ export function ConHeader({ session, me }: { session: Session; me: ConMe | null 
           </span>
         </Link>
         <div className="flex shrink-0 items-center gap-2">
+          <MessagesBell />
           <ThemeToggle className="text-white hover:bg-white/10 hover:text-white" />
           <button
             type="button"
@@ -79,6 +83,35 @@ export function ConHeader({ session, me }: { session: Session; me: ConMe | null 
         })}
       </nav>
     </header>
+  );
+}
+
+/** The bell: unread messages, checked every minute and when the tab comes back into view. */
+function MessagesBell() {
+  const pathname = usePathname();
+  const [unread, setUnread] = useState(0);
+  useEffect(() => {
+    const check = () => apiGet<{ unread: number }>("/construction/messages/unread").then((r) => setUnread(r.unread)).catch(() => undefined);
+    void check();
+    const every = setInterval(check, 60_000);
+    const onShow = () => document.visibilityState === "visible" && void check();
+    document.addEventListener("visibilitychange", onShow);
+    window.addEventListener("con-messages-read", check);
+    return () => {
+      clearInterval(every);
+      document.removeEventListener("visibilitychange", onShow);
+      window.removeEventListener("con-messages-read", check);
+    };
+  }, [pathname]);
+  return (
+    <Link href="/construction/messages" title={unread ? `${unread} unread message${unread === 1 ? "" : "s"}` : "Messages"} className="relative rounded-md p-1.5 text-white no-underline hover:bg-white/10">
+      <Bell size={18} />
+      {unread > 0 && (
+        <span className="absolute -right-1 -top-1 min-w-[1.1rem] rounded-full px-1 text-center text-[10px] font-bold leading-[1.1rem]" style={{ background: CON_BRAND.orange, color: "white" }}>
+          {unread > 99 ? "99+" : unread}
+        </span>
+      )}
+    </Link>
   );
 }
 

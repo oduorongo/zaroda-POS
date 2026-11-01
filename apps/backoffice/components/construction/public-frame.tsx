@@ -3,13 +3,13 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { ThemeToggle } from "@zaroda/ui";
-import { CON_BRAND } from "../../lib/construction";
+import { CON_BRAND, conBackdrop } from "../../lib/construction";
 
 /** Construction's public pages (landing, pricing, login, signup). Links use the paths middleware maps on CONSTRUCTION_DOMAIN. */
-export function PublicFrame({ children }: { children: ReactNode }) {
+export function PublicFrame({ children, backdrop }: { children: ReactNode; backdrop?: boolean }) {
   return (
-    <div className="min-h-screen bg-background text-foreground">
-      <header className="text-white" style={{ background: CON_BRAND.navy }}>
+    <div className="min-h-screen bg-background text-foreground" style={backdrop ? conBackdrop(0.5) : undefined}>
+      <header className="sticky top-0 z-40 text-white shadow" style={{ background: CON_BRAND.navy }}>
         <div className="mx-auto flex max-w-5xl items-center justify-between gap-3 px-4 py-3">
           <Link href="/construction/welcome" className="flex items-center gap-2 no-underline">
             {/* eslint-disable-next-line @next/next/no-img-element */}

@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { apiGet } from "../../../../../../lib/api";
 import { getSession } from "../../../../../../lib/auth";
 import { CON_BRAND, errorText } from "../../../../../../lib/construction";
+import { PoweredByFootnote } from "@zaroda/ui";
 
 interface IpcLine { id: string; bqItemId?: string; variationId?: string; section?: string; code?: string | null; ref?: string; description: string; unit?: string; qty?: number; rate?: number; qtyToDate?: number; approvedAmount?: number; amountToDate: number }
 interface IpcPrint {
@@ -133,7 +134,7 @@ export default function IpcPrintPage() {
           <div><div className="border-t border-gray-400 pt-1">Contractor</div></div>
           <div><div className="border-t border-gray-400 pt-1">Certified by (Quantity Surveyor){ipc.certifiedByName ? `: ${ipc.certifiedByName}` : ""}</div></div>
         </div>
-        <p className="mt-8 text-center text-[10px]" style={{ color: CON_BRAND.orange }}>Zaroda Build</p>
+        <PoweredByFootnote product="Zaroda Build" />
       </div>
     </div>
   );

@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { CreditNoteDocument, DeliveryNoteDocument, InvoiceDocument, QuoteDocument, ReceiptDocument, StatementDocument, type DocInvoice, type DocCreditNote,
   type DocDelivery,
-  type DocQuote, type DocReceipt, type DocStatement } from "@zaroda/ui";
+  type DocQuote, type DocReceipt, type DocStatement, PoweredByFootnote } from "@zaroda/ui";
 import { apiGet, ApiError } from "../../../../lib/api";
 import { getSession } from "../../../../lib/auth";
 
@@ -62,6 +62,7 @@ export default function SchoolPrintPage() {
         {creditNote && <CreditNoteDocument creditNote={creditNote} />}
         {receipt && <ReceiptDocument receipt={receipt} />}
         {statement && <StatementDocument statement={statement} />}
+        {(invoice || delivery || quote || creditNote || receipt || statement) && <PoweredByFootnote />}
       </div>
     </div>
   );

@@ -1958,3 +1958,19 @@ DROP POLICY IF EXISTS tenant_isolation ON etims_supplier_items;
 CREATE POLICY tenant_isolation ON etims_supplier_items
   USING ("organizationId" = current_setting('app.current_tenant', true))
   WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+-- Construction: in-app messages between staff
+
+ALTER TABLE con_messages ENABLE ROW LEVEL SECURITY;
+ALTER TABLE con_messages FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON con_messages;
+CREATE POLICY tenant_isolation ON con_messages
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+ALTER TABLE con_message_recipients ENABLE ROW LEVEL SECURITY;
+ALTER TABLE con_message_recipients FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON con_message_recipients;
+CREATE POLICY tenant_isolation ON con_message_recipients
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));

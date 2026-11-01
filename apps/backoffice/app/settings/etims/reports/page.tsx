@@ -7,6 +7,7 @@ import { apiGet, apiPost, ApiError } from "../../../../lib/api";
 import { getSession, clearSession, isBackofficeRole, type Session } from "../../../../lib/auth";
 import { Nav } from "../../../../components/nav";
 import { PageHeader } from "../../../../components/page-header";
+import { PoweredByFootnote } from "@zaroda/ui";
 
 interface Branch {
   id: string;
@@ -360,6 +361,7 @@ export default function EtimsReportsPage() {
             )}
           </>
         )}
+        <PoweredByFootnote className="hidden print:block" />
       </main>
     </div>
   );

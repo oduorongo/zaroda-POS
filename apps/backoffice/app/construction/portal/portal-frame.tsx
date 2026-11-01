@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { type ReactNode, useEffect, useState } from "react";
 import { ThemeToggle } from "@zaroda/ui";
-import { CON_BRAND } from "../../../lib/construction";
+import { CON_BRAND, conBackdrop } from "../../../lib/construction";
 import { PORTAL_ROLE, type PortalAccount, portalAccount, setPortalAccount } from "../../../lib/con-portal";
 
 /** The portal's own frame: the builder's name, who is signed in, sign out. Phone-first. */
@@ -11,8 +11,8 @@ export function PortalFrame({ children }: { children: ReactNode }) {
   const [a, setA] = useState<PortalAccount | null>(null);
   useEffect(() => setA(portalAccount()), [children]);
   return (
-    <div className="min-h-screen bg-background text-foreground">
-      <header className="text-white" style={{ background: CON_BRAND.navy, borderBottom: `3px solid ${CON_BRAND.gold}` }}>
+    <div className="min-h-screen bg-background text-foreground" style={conBackdrop(0.6)}>
+      <header className="sticky top-0 z-40 text-white shadow" style={{ background: CON_BRAND.navy, borderBottom: `3px solid ${CON_BRAND.gold}` }}>
         <div className="mx-auto flex max-w-4xl items-center justify-between gap-3 px-4 py-3">
           <Link href="/construction/portal" className="no-underline">
             <span className="block text-xs font-extrabold uppercase tracking-widest" style={{ color: CON_BRAND.gold }}>Project portal</span>

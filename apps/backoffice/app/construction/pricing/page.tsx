@@ -23,7 +23,7 @@ export default function ConstructionPricing() {
   }, []);
 
   return (
-    <PublicFrame>
+    <PublicFrame backdrop>
       <main className="mx-auto max-w-5xl px-4 py-10">
         <h1 className="text-3xl font-bold" style={{ color: "var(--con-ink)" }}>Pricing</h1>
         <p className="mt-2 text-secondary-600">Every plan starts with a {data?.trialDays ?? 14}-day free trial - no M-Pesa needed. Pay annually and get 12 months for the price of 10. Client, consultant and subcontractor portal users are always free.</p>

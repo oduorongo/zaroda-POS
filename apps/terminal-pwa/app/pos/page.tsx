@@ -16,7 +16,7 @@ import {
 import { apiGet, apiPost, ApiError, OfflineError } from "../../lib/api";
 import { useSyncEngine } from "../../hooks/use-sync-engine";
 import { BarcodeScanner } from "../../components/barcode-scanner";
-import { Button, Badge } from "@zaroda/ui";
+import { Button, Badge, PoweredByFootnote } from "@zaroda/ui";
 
 interface CartEntry {
   variant: CachedVariant;
@@ -1450,6 +1450,8 @@ export default function PosPage() {
                 Control unit invoice #: not yet assigned - eTIMS sync is not configured for this org.
               </p>
             </div>
+
+            <PoweredByFootnote className="mt-3 pt-2" />
 
             <div className="mt-5 flex gap-3 print:hidden">
               <Button onClick={() => setReceipt(null)} variant="secondary" size="touch" className="flex-1">

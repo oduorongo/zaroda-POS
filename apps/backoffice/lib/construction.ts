@@ -7,6 +7,26 @@ import { getSession, type Session } from "./auth";
 
 export const CON_BRAND = { navy: "#1a2e5a", gold: "#d4af37", orange: "#f5820a" };
 
+/**
+ * The site photo (public/con-guide.jpg) behind a page, under a veil of the page colour so tables and forms stay readable in either
+ * theme: veil 0.9 lets a tenth of the photo through. It stays still while the page scrolls.
+ */
+export const conBackdrop = (veil: number) => {
+  const tint = `color-mix(in srgb, var(--background) ${Math.round(veil * 100)}%, transparent)`;
+  return {
+    backgroundImage: `linear-gradient(${tint}, ${tint}), url(/con-guide.jpg)`,
+    backgroundSize: "cover",
+    backgroundPosition: "center",
+    backgroundAttachment: "fixed",
+  } as const;
+};
+
+/** The same photo for every full-page screen under the construction top bar, the shared back-office ones (Accounts, Suppliers) too. */
+export const conBackdropCss = (veil: number) => {
+  const tint = `color-mix(in srgb, var(--background) ${Math.round(veil * 100)}%, transparent)`;
+  return `.min-h-screen.bg-background { background-image: linear-gradient(${tint}, ${tint}), url(/con-guide.jpg); background-size: cover; background-position: center; background-attachment: fixed; }`;
+};
+
 /** Roles that may sign in on the construction site (site supervisors are SUPERVISOR in core; cashiers belong at the till). */
 export const CON_LOGIN_ROLES = ["OWNER", "MANAGER", "AUDITOR", "SUPERVISOR"];
 
