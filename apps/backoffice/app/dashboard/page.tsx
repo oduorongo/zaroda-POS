@@ -39,7 +39,7 @@ import {
   FileText,
   Tags,
 } from "lucide-react";
-import { getSession, clearSession, isBackofficeRole, type Session } from "../../lib/auth";
+import { getSession, clearSession, isBackofficeRole, homePath, type Session } from "../../lib/auth";
 import { useIdleLogout } from "../../hooks/use-idle-logout";
 import { Nav } from "../../components/nav";
 
@@ -202,8 +202,8 @@ export default function DashboardPage() {
       router.replace("/login");
       return;
     }
-    if (s.industryType === "CONSTRUCTION") {
-      router.replace("/construction");
+    if (s.industryType === "CONSTRUCTION" || s.industryType === "RENTAL") {
+      router.replace(homePath(s.role, s.industryType));
       return;
     }
     if (!isBackofficeRole(s.role)) {
