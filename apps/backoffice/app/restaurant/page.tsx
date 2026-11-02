@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { apiGet, apiPost, ApiError } from "../../lib/api";
 import { getSession, clearSession, isBackofficeRole, type Session } from "../../lib/auth";
 import { Nav } from "../../components/nav";
@@ -173,7 +174,10 @@ export default function RestaurantPage() {
       </div>
       <main className="mx-auto max-w-5xl p-6 print:max-w-none print:p-0">
         <div className="mb-4 flex items-center justify-between print:hidden">
-          <h1 className="text-xl font-bold">Restaurant floor</h1>
+          <div className="flex flex-wrap items-baseline gap-3">
+            <h1 className="text-xl font-bold">Restaurant floor</h1>
+            <Link href="/reports/menu-engineering" className="text-sm text-primary-600 hover:underline">Menu engineering</Link>
+          </div>
           <select
             value={branchId}
             onChange={(e) => setBranchId(e.target.value)}

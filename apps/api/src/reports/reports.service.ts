@@ -6,6 +6,8 @@ import {
 } from '../common/prisma/tenant-scoped-prisma.service';
 import { ReportFiltersDto } from './dto/report-filters.dto';
 import { variantTitle } from '../catalog/variant-title';
+import { MenuEngineeringQueryDto } from './dto/menu-engineering-query.dto';
+import { DishSales, engineerMenu } from './menu-engineering.util';
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
@@ -116,6 +118,55 @@ export class ReportsService {
         margin: row.cost === null ? null : round2(row.revenue - row.cost),
       }))
       .sort((a, b) => b.revenue - a.revenue);
+  }
+
+  /**
+   * Menu engineering: every item sold in the period (or one category of them, or only recipe items) placed as a star, plowhorse,
+   * puzzle or dog. Sales are before tax; cost is what the recipe actually used (or the item's own cost) at today's costs, the same
+   * convention as salesByProduct.
+   */
+  async menuEngineering(q: MenuEngineeringQueryDto) {
+    const sales = await this.tenantPrisma.run((tx) => this.loadCompletedSales(tx, q));
+    const byVariant = new Map<string, DishSales & { categoryId: string | null }>();
+    const categoryIds = new Set<string>();
+    for (const sale of sales) {
+      for (const line of sale.lineItems) {
+        const isRecipeLine = line.ingredients.length > 0;
+        const categoryId = line.variant.product.categoryId;
+        if (categoryId) categoryIds.add(categoryId);
+        if (q.categoryId && categoryId !== q.categoryId) continue;
+        if (q.recipesOnly === '1' && !isRecipeLine) continue;
+        const quantity = Number(line.quantity);
+        const known = isRecipeLine
+          ? line.ingredients.every((i) => i.ingredientVariant.cost !== null)
+          : line.variant.cost !== null;
+        const lineCost = !known
+          ? 0
+          : isRecipeLine
+            ? line.ingredients.reduce((s, i) => s + Number(i.quantity) * Number(i.ingredientVariant.cost), 0)
+            : Number(line.variant.cost) * quantity;
+        const row = byVariant.get(line.variantId) ?? {
+          variantId: line.variantId,
+          name: variantTitle(line.variant.product.name, line.variant.name),
+          categoryId,
+          quantity: 0,
+          revenue: 0,
+          cost: 0,
+        };
+        row.quantity += quantity;
+        row.revenue += Number(line.unitPrice) * quantity;
+        row.cost = row.cost === null || !known ? null : row.cost + lineCost;
+        byVariant.set(line.variantId, row);
+      }
+    }
+    const categories = await this.tenantPrisma.run((tx) =>
+      tx.category.findMany({
+        where: { id: { in: [...categoryIds] } },
+        select: { id: true, name: true },
+        orderBy: { name: 'asc' },
+      }),
+    );
+    return { ...engineerMenu([...byVariant.values()]), categories };
   }
 
   async salesByBranch(filters: ReportFiltersDto) {

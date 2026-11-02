@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { apiGet, ApiError } from "../../lib/api";
 import { getSession, clearSession, isBackofficeRole, type Session } from "../../lib/auth";
 import { Nav } from "../../components/nav";
@@ -150,7 +151,10 @@ export default function ReportsPage() {
       <Nav session={session} />
       <PageHeader />
       <main className="mx-auto max-w-5xl p-6">
-        <h1 className="mb-4 text-xl font-bold">Reports</h1>
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+          <h1 className="text-xl font-bold">Reports</h1>
+          <Link href="/reports/menu-engineering" className="text-sm text-primary-600 hover:underline">Menu engineering: which dishes make money</Link>
+        </div>
 
         <div className="mb-4 flex flex-wrap items-end gap-3">
           <div>

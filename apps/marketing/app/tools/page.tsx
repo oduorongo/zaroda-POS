@@ -120,6 +120,14 @@ const ACCOUNT_TOOLS: Tool[] = [
     inAccount: true,
   },
   {
+    icon: ChefHat,
+    color: "bg-accent-500",
+    title: "Menu Engineering",
+    description: "See which dishes actually make money: stars, plowhorses, puzzles and dogs, with what to do about each.",
+    href: "/signup",
+    inAccount: true,
+  },
+  {
     icon: CalendarClock,
     color: "bg-primary-600",
     title: "Schedule Manager",
@@ -130,14 +138,6 @@ const ACCOUNT_TOOLS: Tool[] = [
 ];
 
 const COMING_SOON_TOOLS: Tool[] = [
-  {
-    icon: ChefHat,
-    color: "bg-secondary-400",
-    title: "Menu Engineering",
-    description: "See which dishes actually make money.",
-    href: "#",
-    comingSoon: true,
-  },
   {
     icon: MessageSquareText,
     color: "bg-secondary-400",
