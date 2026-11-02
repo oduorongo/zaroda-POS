@@ -9,7 +9,7 @@ import { ErrorBox, Field, Panel, PrimaryButton, UpgradeCard, inputClass } from "
 
 type Status = "PREPARING" | "SUBMITTED" | "WON" | "LOST" | "WITHDRAWN";
 interface Tender {
-  id: string; ref: string | null; title: string; procuringEntity: string; isPublic: boolean; agpoReserved: boolean; worksClass: string; worksClassLabel: string;
+  id: string; ref: string | null; title: string; procuringEntity: string; isPublic: boolean; agpoReserved: boolean; worksClass: string; worksClassLabel: string; voltageKv: number | null;
   estValue: number; closingAt: string | null; bidBond: number | null; bidBondExpiresAt: string | null; status: Status; capOverrideReason: string | null;
   outcomeNote: string | null; notes: string | null; project: { id: string; code: string } | null; closed: boolean;
 }
@@ -20,7 +20,7 @@ const WORKS = [
   { value: "ELEC_MECH", label: "Electrical & mechanical" },
 ];
 const STATUS_COLOUR: Record<Status, string> = { PREPARING: CON_BRAND.orange, SUBMITTED: "#2563eb", WON: "#16a34a", LOST: "#6b7280", WITHDRAWN: "#6b7280" };
-const blank = { ref: "", title: "", procuringEntity: "", worksClass: "BUILDING", estValue: "", closingAt: "", bidBond: "", bidBondExpiresAt: "", isPublic: true, agpoReserved: false, notes: "" };
+const blank = { ref: "", title: "", procuringEntity: "", worksClass: "BUILDING", voltageKv: "", estValue: "", closingAt: "", bidBond: "", bidBondExpiresAt: "", isPublic: true, agpoReserved: false, notes: "" };
 
 export default function TendersPage() {
   return (
@@ -74,7 +74,7 @@ function Tenders() {
     run(() =>
       withChecks((extra) => {
         const body = {
-          ref: form.ref || undefined, title: form.title.trim(), procuringEntity: form.procuringEntity.trim(), worksClass: form.worksClass, estValue: Number(form.estValue),
+          ref: form.ref || undefined, title: form.title.trim(), procuringEntity: form.procuringEntity.trim(), worksClass: form.worksClass, voltageKv: form.worksClass === "ELEC_MECH" && form.voltageKv ? Number(form.voltageKv) : undefined, estValue: Number(form.estValue),
           closingAt: form.closingAt ? new Date(form.closingAt).toISOString() : undefined, bidBond: form.bidBond ? Number(form.bidBond) : undefined,
           bidBondExpiresAt: form.bidBondExpiresAt || undefined, isPublic: form.isPublic, agpoReserved: form.agpoReserved, notes: form.notes || undefined, ...extra,
         };
@@ -114,7 +114,7 @@ function Tenders() {
                 <div className="min-w-0">
                   <p className="font-semibold">{t.title}</p>
                   <p className="text-xs text-secondary-500">
-                    {t.ref ? `${t.ref} · ` : ""}{t.procuringEntity} · {t.worksClassLabel}{t.agpoReserved ? " · AGPO" : ""}{t.isPublic ? "" : " · private"}
+                    {t.ref ? `${t.ref} · ` : ""}{t.procuringEntity} · {t.worksClassLabel}{t.voltageKv ? ` ${t.voltageKv} kV` : ""}{t.agpoReserved ? " · AGPO" : ""}{t.isPublic ? "" : " · private"}
                   </p>
                   <p className="text-xs text-secondary-500">
                     {kes(t.estValue)}{t.closingAt ? ` · closes ${new Date(t.closingAt).toLocaleString("en-KE", { dateStyle: "medium", timeStyle: "short" })}` : ""}{t.bidBond ? ` · bid bond ${kes(t.bidBond)}` : ""}
@@ -128,7 +128,7 @@ function Tenders() {
                 {t.project && <Link href={`/construction/projects/${t.project.id}`} style={{ color: CON_BRAND.orange }}>Open project {t.project.code}</Link>}
                 {canEdit && t.status === "PREPARING" && (
                   <>
-                    <button type="button" className="underline" onClick={() => (setEditing(t.id), setForm({ ref: t.ref ?? "", title: t.title, procuringEntity: t.procuringEntity, worksClass: t.worksClass, estValue: String(t.estValue), closingAt: t.closingAt ? t.closingAt.slice(0, 16) : "", bidBond: t.bidBond ? String(t.bidBond) : "", bidBondExpiresAt: t.bidBondExpiresAt ?? "", isPublic: t.isPublic, agpoReserved: t.agpoReserved, notes: t.notes ?? "" }), window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" }))}>Edit</button>
+                    <button type="button" className="underline" onClick={() => (setEditing(t.id), setForm({ ref: t.ref ?? "", title: t.title, procuringEntity: t.procuringEntity, worksClass: t.worksClass, voltageKv: t.voltageKv ? String(t.voltageKv) : "", estValue: String(t.estValue), closingAt: t.closingAt ? t.closingAt.slice(0, 16) : "", bidBond: t.bidBond ? String(t.bidBond) : "", bidBondExpiresAt: t.bidBondExpiresAt ?? "", isPublic: t.isPublic, agpoReserved: t.agpoReserved, notes: t.notes ?? "" }), window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" }))}>Edit</button>
                     <button type="button" className="font-semibold" style={{ color: "#2563eb" }} disabled={busy} onClick={() => outcome(t, "SUBMITTED")}>Mark submitted</button>
                   </>
                 )}
@@ -158,6 +158,9 @@ function Tenders() {
                 {WORKS.map((w) => <option key={w.value} value={w.value}>{w.label}</option>)}
               </select>
             </Field>
+{form.worksClass === "ELEC_MECH" && (
+              <Field label="Line voltage (kV, for power lines)"><input className={inputClass} inputMode="decimal" placeholder="e.g. 11 or 33" value={form.voltageKv} onChange={(e) => setForm({ ...form, voltageKv: e.target.value })} /></Field>
+            )}
             <Field label="Estimated value (KES)"><input className={inputClass} inputMode="decimal" value={form.estValue} onChange={(e) => setForm({ ...form, estValue: e.target.value })} /></Field>
             <Field label="Closing date and time"><input type="datetime-local" className={inputClass} value={form.closingAt} onChange={(e) => setForm({ ...form, closingAt: e.target.value })} /></Field>
             <Field label="Bid bond (KES)"><input className={inputClass} inputMode="decimal" value={form.bidBond} onChange={(e) => setForm({ ...form, bidBond: e.target.value })} /></Field>

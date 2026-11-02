@@ -12,6 +12,7 @@ import { CommercialTab } from "./commercial";
 import { DashboardTab } from "./dashboard";
 import { MaterialsTab } from "./materials";
 import { PlantTab } from "./plant";
+import { PowerLineTab } from "./power-line";
 import { PayrollTab } from "./payroll";
 import { PortalTab } from "./portal";
 import { OverviewTab } from "./overview";
@@ -29,6 +30,7 @@ const TABS = [
   { key: "programme", label: "Programme" },
   { key: "materials", label: "Materials" },
   { key: "plant", label: "Plant" },
+  { key: "line", label: "Power line" },
   { key: "commercial", label: "Commercial" },
   { key: "payroll", label: "Payroll" },
   { key: "portal", label: "Portal" },
@@ -83,6 +85,7 @@ export default function ProjectPage() {
           {tab === "programme" && <ProgrammeTab project={project} reload={load} />}
           {tab === "materials" && <MaterialsTab project={project} reload={load} />}
           {tab === "plant" && <PlantTab project={project} reload={load} />}
+          {tab === "line" && <PowerLineTab project={project} reload={load} />}
           {tab === "commercial" && <CommercialTab project={project} reload={load} />}
           {tab === "payroll" && <PayrollTab project={project} reload={load} />}
           {tab === "portal" && <PortalTab project={project} reload={load} />}

@@ -46,6 +46,13 @@ export class TenderDto {
   @IsEnum(ConWorksClass)
   worksClass!: ConWorksClass;
 
+  /** Line voltage (kV), for Electrical & mechanical works: checked against the EPRA licence class. */
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0.01)
+  @Max(1000)
+  @IsOptional()
+  voltageKv?: number;
+
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0)
   estValue!: number;
@@ -142,6 +149,13 @@ export class ProjectDto {
 
   @IsEnum(ConWorksClass)
   worksClass!: ConWorksClass;
+
+  /** Line voltage (kV), for Electrical & mechanical works: checked against the EPRA licence class. */
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0.01)
+  @Max(1000)
+  @IsOptional()
+  voltageKv?: number;
 
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0)

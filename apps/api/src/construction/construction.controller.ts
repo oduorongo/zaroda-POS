@@ -29,6 +29,7 @@ import {
   AddConStaffDto,
   CapCheckDto,
   CategoryLimitDto,
+  EpraClassDto,
   ComplianceDocDto,
   PayPlanDto,
   QuoteQueryDto,
@@ -249,6 +250,20 @@ export class ConstructionController {
   @Patch('compliance/limits/:id')
   updateLimit(@Param('id', ParseUUIDPipe) id: string, @Body() dto: CategoryLimitDto) {
     return this.compliance.updateLimit(id, dto);
+  }
+
+  @ConFeature('compliance')
+  @ConRoles(...VIEW_COMPLIANCE)
+  @Get('compliance/epra-classes')
+  epraClasses() {
+    return this.compliance.listEpraClasses();
+  }
+
+  @ConFeature('compliance')
+  @ConRoles('CON_COMPLIANCE')
+  @Put('compliance/epra-classes/:code')
+  updateEpraClass(@Param('code', new ParseEnumPipe({ A1: 'A1', A2: 'A2', B: 'B', C1: 'C1', C2: 'C2' })) code: string, @Body() dto: EpraClassDto) {
+    return this.compliance.updateEpraClass(code, dto);
   }
 
   @ConRoles(...INTERNAL)

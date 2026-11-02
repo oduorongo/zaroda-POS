@@ -2,13 +2,14 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { PasswordInput } from "@zaroda/ui";
-import { apiGet, apiPost, apiPut } from "../../../lib/api";
+import { apiDelete, apiGet, apiPost, apiPut } from "../../../lib/api";
 import { CON_BRAND, errorText, isDirector } from "../../../lib/construction";
 import { ConShell, useConMe } from "../../../components/construction/con-shell";
 import { ErrorBox, Field, Panel, PrimaryButton, inputClass } from "../../../components/construction/ui";
 
 interface Staff { orgUserId: string; fullName: string; email: string; coreRole: string; isActive: boolean; roles: string[]; projectRoles: { projectId: string; role: string; project: { code: string; name: string } }[]; ncaCard: { cardNo: string; expiresAt: string } | null }
 interface RoleRow { code: string; name: string; scope: string }
+interface Licence { id: string; orgUserId: string; body: string; licenceClass: string; licenceNo: string; expiresAt: string; state: string; daysLeft: number }
 
 const ACCESS: Record<string, string> = { OWNER: "Director (full access)", MANAGER: "Office", SUPERVISOR: "Site", AUDITOR: "View only" };
 const SITE = { code: "SITE", name: "Site staff (engineer, supervisor, storekeeper, timekeeper - roles given per project)" };
@@ -31,12 +32,14 @@ function Staff() {
   const [saving, setSaving] = useState<string | null>(null);
   const [form, setForm] = useState(blank);
   const [adding, setAdding] = useState(false);
+  const [licences, setLicences] = useState<Licence[]>([]);
 
   const load = useCallback(async () => {
     try {
       const [s, r] = await Promise.all([apiGet<Staff[]>("/construction/staff"), apiGet<RoleRow[]>("/construction/roles")]);
       setStaff(s);
       setRoles(r.filter((x) => x.scope === "COMPANY"));
+      setLicences(await apiGet<Licence[]>("/construction/staff-licences").catch(() => []));
     } catch (e) {
       setError(errorText(e, "Could not load staff."));
     }
@@ -84,6 +87,23 @@ function Staff() {
       setError(null);
     } catch (e) {
       setError(errorText(e, "Could not save the card."));
+    }
+  }
+
+  // Electricians' EPRA licences (docs/construction/07), with expiry alerts like NCA cards.
+  async function addLicence(s: Staff) {
+    const licenceClass = window.prompt(`${s.fullName}'s EPRA licence class (for example "Electrician A1")`, "");
+    if (!licenceClass?.trim()) return;
+    const licenceNo = window.prompt("Licence number", "");
+    if (!licenceNo?.trim()) return;
+    const expiresAt = window.prompt("Expiry date (YYYY-MM-DD)", "");
+    if (!expiresAt || !/^\d{4}-\d{2}-\d{2}$/.test(expiresAt)) return setError("Enter the expiry as YYYY-MM-DD, e.g. 2028-03-31");
+    try {
+      await apiPost("/construction/staff-licences", { orgUserId: s.orgUserId, licenceClass: licenceClass.trim(), licenceNo: licenceNo.trim(), expiresAt });
+      await load();
+      setError(null);
+    } catch (e) {
+      setError(errorText(e, "Could not save the licence."));
     }
   }
 
@@ -136,6 +156,15 @@ function Staff() {
               NCA accreditation: {s.ncaCard ? `${s.ncaCard.cardNo}, expires ${s.ncaCard.expiresAt}` : "none recorded"}
               <button type="button" className="font-medium underline" style={{ color: CON_BRAND.orange }} onClick={() => card(s)}>{s.ncaCard ? "Update" : "Record card"}</button>
             </p>
+            <div className="mt-1 text-xs text-secondary-500">
+              {licences.filter((l) => l.orgUserId === s.orgUserId).map((l) => (
+                <p key={l.id} className={l.state === "EXPIRED" ? "text-red-600" : l.state === "EXPIRING" ? "text-amber-600" : ""}>
+                  {l.body} licence {l.licenceClass}, {l.licenceNo}, expires {l.expiresAt}
+                  <button type="button" className="ml-2 underline" onClick={() => confirm("Remove this licence?") && void apiDelete(`/construction/staff-licences/${l.id}`).then(load).catch((e) => setError(errorText(e, "Could not remove it.")))}>remove</button>
+                </p>
+              ))}
+              <button type="button" className="font-medium underline" style={{ color: CON_BRAND.orange }} onClick={() => addLicence(s)}>Add EPRA licence</button>
+            </div>
           </Panel>
         ))}
       </div>

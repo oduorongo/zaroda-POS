@@ -9,6 +9,7 @@ import { ConApiKeyGuard } from '../enterprise/api-key.guard';
 import { ConstructionApiController, EnterpriseController } from '../enterprise/enterprise.controller';
 import { MaterialsController } from '../materials/materials.controller';
 import { MessagesController } from '../messages/messages.controller';
+import { LinesController, StaffLicencesController } from '../lines/lines.controller';
 import { PayrollCallbackController, PayrollController } from '../payroll/payroll.controller';
 import { ConPortalGuard } from '../portal/portal-access';
 import { PortalAuthController, PortalController, PortalUsersController } from '../portal/portal.controller';
@@ -18,7 +19,7 @@ import { SiteController } from '../site/site.controller';
 import { conRoutes } from './con-routes';
 import { conMethods, conSourceFiles } from './con-source';
 
-const CONTROLLERS = [ConstructionController, ConBillingCallbackController, ConPublicController, TendersController, ProjectsController, SiteController, MaterialsController, CommercialController, PayrollController, PayrollCallbackController, PortalAuthController, PortalController, PortalUsersController, ReportsController, EnterpriseController, ConstructionApiController, MessagesController];
+const CONTROLLERS = [ConstructionController, ConBillingCallbackController, ConPublicController, TendersController, ProjectsController, SiteController, MaterialsController, CommercialController, PayrollController, PayrollCallbackController, PortalAuthController, PortalController, PortalUsersController, ReportsController, EnterpriseController, ConstructionApiController, MessagesController, LinesController, StaffLicencesController];
 const routes = conRoutes(CONTROLLERS);
 const key = (r: { method: string; path: string }) => `${r.method} ${r.path}`;
 
@@ -39,6 +40,12 @@ const AREAS: { name: string; match: RegExp; view: Ab[]; write: Ab[]; feature?: s
   { name: 'compliance', match: /^\/construction\/compliance\/(?!cap-check)/, view: ['CM', 'PM', 'QS', 'ACC', 'PROC', 'COMP', 'SHE'], write: ['COMP'], feature: 'compliance' },
   { name: 'tenders', match: /^\/construction\/tenders/, view: ['CM', 'PM', 'QS', 'ACC', 'PROC', 'COMP'], write: ['CM', 'QS', 'COMP'], feature: 'tenders' },
   { name: 'reports', match: /^\/construction\/(reports|dashboard\/director|projects\/:projectId\/dashboard)/, view: ['CM', 'PM', 'QS', 'ACC', 'PROC', 'COMP', 'SHE', 'ENG'], write: [] },
+  // docs/construction/07 s5 (power lines)
+  { name: 'power line', match: /\/power-line$/, view: ['CM', 'PM', 'QS', 'COMP', 'SHE', 'ENG', 'SUP'], write: [], feature: 'projects' },
+  { name: 'sections & progress', match: /\/projects\/:projectId\/sections/, view: ['CM', 'PM', 'QS', 'SHE', 'ENG', 'SUP'], write: ['PM', 'ENG', 'SUP'], feature: 'projects' },
+  { name: 'wayleaves & crossings', match: /\/(wayleaves|crossings)/, view: ['CM', 'PM', 'QS', 'COMP', 'ENG', 'SUP'], write: ['CM', 'PM', 'COMP'], feature: 'projects' },
+  { name: 'as-built assets', match: /\/line-assets/, view: ['CM', 'PM', 'QS', 'ENG', 'SUP'], write: ['PM', 'ENG', 'SUP'], feature: 'projects' },
+  { name: 'client materials', match: /\/client-materials/, view: ['CM', 'PM', 'QS', 'ACC', 'PROC', 'ENG', 'SUP', 'STORE'], write: ['PM', 'SUP', 'STORE'], feature: 'procurement' },
   { name: 'bq', match: /\/bq/, view: ['CM', 'PM', 'QS', 'ACC', 'PROC', 'ENG', 'SUP'], write: ['CM', 'QS'] },
   { name: 'site diary & photos', match: /\/(diaries|photos|instructions)/, view: ['CM', 'PM', 'QS', 'SHE', 'ENG', 'SUP'], write: ['PM', 'ENG', 'SUP'], feature: 'projects' },
   { name: 'labour & muster', match: /^\/construction\/(workers|projects\/:projectId\/muster)/, view: ['CM', 'PM', 'ACC', 'COMP', 'SHE', 'ENG', 'SUP', 'TIME'], write: ['PM', 'SUP', 'TIME'], feature: 'labour' },
@@ -61,6 +68,9 @@ const AREAS: { name: string; match: RegExp; view: Ab[]; write: Ab[]; feature?: s
 const EXCEPTIONS: Record<string, { roles: Ab[]; why: string }> = {
   'GET /construction/staff': { roles: ['COMP'], why: 'Compliance records staff NCA accreditation cards' },
   'PUT /construction/staff/:orgUserId/accreditation': { roles: ['COMP'], why: 'Compliance records staff NCA accreditation cards' },
+  'POST /construction/staff-licences': { roles: ['COMP'], why: "Compliance records electricians' EPRA licences (docs/construction/07)" },
+  'PUT /construction/staff-licences/:id': { roles: ['COMP'], why: "Compliance records electricians' EPRA licences (docs/construction/07)" },
+  'DELETE /construction/staff-licences/:id': { roles: ['COMP'], why: "Compliance records electricians' EPRA licences (docs/construction/07)" },
   'GET /construction/projects': { roles: ['STORE', 'TIME'], why: 'site screens list their projects; contract money and client are hidden from them' },
   'GET /construction/projects/:projectId': { roles: ['STORE', 'TIME'], why: 'site screens open their project; contract money and client are hidden from them' },
   'PUT /construction/projects/:projectId/permits/:type': { roles: ['COMP'], why: 'permits are compliance documents' },
@@ -169,6 +179,7 @@ describe('construction hardening', () => {
       'compliance/compliance-alerts.service.ts runForOrganization': 'in-app alerts are notifications, not records',
       'compliance/compliance-alerts.service.ts markRead': 'read flags on alerts',
       'messages/messages.service.ts thread': 'read flags on messages (sending is audited)',
+      'compliance/compliance.service.ts epraClassesIn': 'seeds the default EPRA classes on first use (changes to them are audited)',
       'payroll/payroll.service.ts settleRun': 'run status follows its lines, each audited',
       'payroll/payroll.service.ts sendPayslips': 'SMS sent time',
       'enterprise/api-key.guard.ts canActivate': 'last-used time and request count on the key',

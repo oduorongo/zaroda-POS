@@ -1,5 +1,14 @@
 # Changelog
 
+## Construction C9: power-line contractors (2026-11-02)
+
+- EPRA licences: the company's EPRA electrical contractor licence is a compliance document with its class (A1, A2, B, C1, C2). The highest line voltage each class covers is a company setting on the Compliance page (confirm with EPRA). Electrical tenders and projects take the line voltage; saving one without a valid EPRA licence that covers it is refused, unless the Director overrides with a reason (like the NCA cap). Electricians' EPRA licences are recorded per person on Staff, with expiry alerts at 60/30/7 days.
+- Free-issue (client-supplied) materials per project: items, received / issued / returned / damaged moves, balances on hand; issuing more than is on hand is refused. Kept apart from the company's own stock. CSV download.
+- Line sections (chainage from-to km) with targets for poles, stays, conductor km, transformers and services, and daily progress per section with percentages per section and for the whole line.
+- Wayleaves (landowner, parcel, chainage, compensation, status, signed consent file), crossings (road, rail, river, pipeline, power line; authority approvals with expiry alerts and file), and the as-built asset register (poles, stays, transformers, switchgear, services with tag, serial and GPS; CSV for handover).
+- Project page gains a "Power line" tab; the site screens gain "Line work" for phones (today's progress, record a pole with the phone's GPS, client materials). All writes audited; tables carry RLS.
+- Migration `20261224100000_construction_power_lines` then apply-rls. Demo: Uriri Builders gets the Rongo-Kamagambo 11 kV REREC line. e2e-con-powerlines 55 checks.
+
 ## VAT on purchases follows eTIMS (2026-11-01)
 
 - KRA only allows VAT on purchases to be claimed from the supplier's eTIMS invoice. VAT on a bill or expense now counts as claimable only with the supplier's KRA PIN and the eTIMS invoice number, or when the bill or expense is linked to the invoice KRA holds (then KRA's VAT figure is used and it is marked "checked with KRA"). Without them the VAT is a cost, in the books and on the VAT return.

@@ -77,12 +77,21 @@ export class ComplianceAlertsService implements OnModuleInit, OnModuleDestroy {
         tx.conWorker.findMany({ where: { isActive: true, ncaExpiresAt: { not: null } }, select: { id: true, name: true, ncaExpiresAt: true } }),
         tx.conIncident.findMany({ where: { reportedToDoshs: false, reportDueAt: { not: null } }, include: { project: { select: { id: true, code: true } } } }),
       ]);
+      // Power lines (docs/construction/07): electricians' licences and approved crossing permits.
+      const [licences, crossings] = await Promise.all([
+        tx.conStaffLicence.findMany(),
+        tx.conCrossing.findMany({ where: { status: 'APPROVED', expiresAt: { not: null } } }),
+      ]);
+      const holders = new Map((await tx.orgUser.findMany({ where: { id: { in: licences.map((l) => l.orgUserId) }, isActive: true }, select: { id: true, user: { select: { fullName: true } } } })).map((u) => [u.id, u.user.fullName]));
+      const codes = new Map((await tx.conProject.findMany({ where: { id: { in: crossings.map((c) => c.projectId) }, status: { not: 'CLOSED' } }, select: { id: true, code: true } })).map((p) => [p.id, p.code]));
       const items = [
         ...docs.map((d) => ({ kind: 'doc', id: d.id, name: d.title, expires: d.expiresAt!.toISOString().slice(0, 10) })),
         ...regs.map((r) => ({ kind: 'nca', id: r.id, name: `NCA${r.ncaCategory} licence (${WORKS_CLASS_LABELS[r.worksClass]})`, expires: r.licenceExpiresAt!.toISOString().slice(0, 10) })),
         ...permits.map((p) => ({ kind: 'permit', id: p.id, name: `${p.project.code} ${PERMIT_LABELS[p.type]}`, expires: p.expiresAt!.toISOString().slice(0, 10) })),
         ...cards.map((c) => ({ kind: 'card', id: c.id, name: `${c.orgUser.user.fullName}'s NCA accreditation card`, expires: c.expiresAt.toISOString().slice(0, 10) })),
         ...workers.map((w) => ({ kind: 'worker', id: w.id, name: `${w.name}'s NCA card`, expires: w.ncaExpiresAt!.toISOString().slice(0, 10) })),
+        ...licences.filter((l) => holders.has(l.orgUserId)).map((l) => ({ kind: 'licence', id: l.id, name: `${holders.get(l.orgUserId)}'s ${l.body} licence (${l.licenceClass})`, expires: l.expiresAt.toISOString().slice(0, 10) })),
+        ...crossings.filter((c) => codes.has(c.projectId)).map((c) => ({ kind: 'crossing', id: c.id, name: `${codes.get(c.projectId)} ${c.kind.toLowerCase().replace('_', ' ')} crossing permit (${c.authority})`, expires: c.expiresAt!.toISOString().slice(0, 10) })),
       ];
       const out: NewAlert[] = [];
       for (const item of items) {

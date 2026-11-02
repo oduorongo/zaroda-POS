@@ -9,6 +9,7 @@ export interface ProjectDetail {
   client: { id: string; name: string } | null;
   tenderId: string | null;
   worksClass: string;
+  voltageKv: number | null;
   contractSum: number;
   revisedSum: number | null;
   formOfContract: string;

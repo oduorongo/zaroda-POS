@@ -52,7 +52,7 @@ export async function readBody(req: Request, max: number, what: string) {
   return Buffer.concat(chunks);
 }
 export const mime = (h?: string) => (h ?? '').split(';')[0].trim().toLowerCase();
-const fileNameOf = (h?: string) => (h ? decodeURIComponent(h) : undefined);
+export const fileNameOf = (h?: string) => (h ? decodeURIComponent(h) : undefined);
 
 @Controller('construction')
 @UseGuards(ConstructionGuard)
