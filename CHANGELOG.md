@@ -1,5 +1,15 @@
 # Changelog
 
+## ZARODA RENTALS: short stays (Airbnb-style lets) (2026-11-02)
+
+- A vacant unit can be let by the night: nightly and Friday/Saturday rates, cleaning fee, fewest nights, most guests, check-in/out times, directions, door code (encrypted), cleaner, and an owner when managed for someone else. While on, it cannot take a lease or a Houses to let advert. Comes with Starter and Pay-as-you-collect.
+- Bookings direct or from Airbnb / Booking.com / other sites (their price, fee and confirmation code typed as shown). No double bookings: clashes with other bookings, hand-made blocks and booking-site calendars are refused. Check in, check out (early check-out moves the cleaning), change dates, no-show, cancel. Payments and refunds with receipt numbers, voided not deleted; payouts from the booking sites.
+- Calendar sync both ways by iCal: each unit reads its Airbnb / Booking.com calendars every hour (booking sites' addresses only, https, redirects checked) and offers its own calendar link per site (busy dates only, no guest details; a new link cuts off the old).
+- Night-by-night calendar for all units, cleaning list (made with each booking, due on check-out day, marked done by the caretaker or cleaner), owners with commission and monthly owner statements (nights shared across months, booking-site fees, commission, unit expenses, payable; CSV).
+- Guest messages for direct bookings (confirmation, directions and door code the day before, thank-you) and a text to the cleaner at check-out: text when switched on, else email; each sent once.
+- Caretakers work the calendar, bookings, payments and cleaning for their properties only. New Short stays tab in Rentals; rentals guide, welcome page and POS marketing advert updated.
+- Migration `20261225100000_rental_short_stays` then apply-rls. e2e-rental-stays 69 checks.
+
 ## Construction C9: power-line contractors (2026-11-02)
 
 - EPRA licences: the company's EPRA electrical contractor licence is a compliance document with its class (A1, A2, B, C1, C2). The highest line voltage each class covers is a company setting on the Compliance page (confirm with EPRA). Electrical tenders and projects take the line voltage; saving one without a valid EPRA licence that covers it is refused, unless the Director overrides with a reason (like the NCA cap). Electricians' EPRA licences are recorded per person on Staff, with expiry alerts at 60/30/7 days.

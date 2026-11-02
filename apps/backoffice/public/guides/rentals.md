@@ -204,6 +204,49 @@ Advertise a vacant unit on Zaroda's **houses to let** listings, where people loo
 
 ---
 
+## Short stays (Airbnb-style lets)
+
+Let a furnished unit **by the night** instead of on a lease: bookings you take yourself, and bookings from **Airbnb** and **Booking.com**, all on one calendar with no double bookings. Short stays come with **Starter** and **Pay-as-you-collect**. A unit let by the night cannot also have a lease or a Houses to let advert.
+
+### Set up a unit
+1. Open **Short stays**, then **Units & calendars**, and press **Let by the night** on a vacant unit.
+2. Enter the **price per night**, a **Friday & Saturday** price if it is higher, the **cleaning fee** per stay, the fewest nights, the most guests, check-in and check-out times, **directions**, the **door or lockbox code**, and the **cleaner's** name and phone.
+3. If you manage the unit for someone else, choose its **owner** (add owners under **Owners & statements**).
+
+### Keep Airbnb and Booking.com in step
+Each site and ZARODA swap a **calendar link** (iCal), so a booking made in one place blocks the dates in the others.
+- **Into ZARODA:** in Airbnb (Calendar > Availability > Connect calendars > Export) or Booking.com (Rates & availability > Sync calendars > Export), copy the link, then on the unit press **Link calendar** and paste it. It is read straight away and then every hour. **Read now** reads it again.
+- **Out of ZARODA:** press **Copy link for Airbnb** (or **for Booking.com**) and paste it into that site's **Import calendar**. Each site gets its own link, which leaves out that site's own bookings.
+- **New links** makes fresh links and stops the old ones (if a link was shared by mistake). Paste the new ones into the sites.
+
+### The calendar
+**Calendar** shows each unit night by night: navy for your own (direct) bookings, orange for Airbnb, gold for Booking.com, striped for dates taken on a site or blocked by you. A dot means the guest still owes money; the broom means a cleaning is due. A **red outline** means a booking-site booking clashes with one here: sort it out on the site at once.
+- Tap a free night to **book** it, or choose to **block** it (owner staying, repairs). Tap a blocked night to free it.
+- Tap a booking to open it.
+
+### Bookings
+**New booking** asks for the unit, dates (check-out is the day they leave), guest, phone and email. For a direct booking the price comes from the unit's rates and is shown before you save; the fewest nights and most guests are checked. For an Airbnb or Booking.com booking, type the **price of the nights** and the **site's fee** as the site shows them, and its confirmation code.
+
+Open a booking to:
+- **Check in** (from the arrival day) and **Check out**. Leaving early moves the cleaning to today.
+- **Change dates**; the price is worked out again for direct bookings.
+- Mark a **No-show** (from the arrival day), or **Cancel** a booking not yet checked in (owners and managers only). Cancelled dates can be booked again.
+- **Record a payment** (cash, M-Pesa with its code, bank, card, or **Paid out by Airbnb / Booking.com**), each with a receipt number, or a **refund**. A booking site pays you the price less its fee, so that fee is not shown as owing.
+
+### Cleaning
+Every booking makes a cleaning job for its check-out day. **Cleaning** lists the next 7 days, overdue first, with when the next guest arrives. The caretaker or cleaner taps **Cleaned** and can add a note (linen changed, something broken). Add a one-off job (deep clean) at the bottom.
+
+### Guest messages
+For direct bookings the guest gets a **confirmation**, then the **day before** arrival the directions and door code, and a **thank-you** after check-out. The **cleaner** is texted when a guest checks out. Tick **Text guests and the cleaner** on **Units & calendars** to use text messages; email is used whenever the guest gave an address. Airbnb and Booking.com guests are messaged by those sites.
+
+### Owners and statements
+Under **Owners & statements**, add each owner with their **commission %**. The **monthly statement** shows, per unit: nights let, how full it was, income from nights and cleaning, the booking sites' fees, your commission (on income after those fees), expenses recorded against the unit that month (on the **Expenses** tab), and what is **payable to the owner**. A stay across two months is shared night by night. Choose an owner or **My own units**, then **Download CSV** or **Print**.
+
+### Caretakers on short stays
+A caretaker sees the calendar, bookings and cleaning for their properties: they can book guests, check them in and out, record payments and mark cleanings done. Prices, calendar links, owners, statements, cancelling and voiding payments stay with you.
+
+---
+
 ## Caretakers
 
 A caretaker can collect and record rent, log repairs and enter meter readings for the properties you choose, without seeing the rest of your business. Caretakers come with **Starter** (1) and **Pay-as-you-collect** (up to 5).
@@ -211,7 +254,7 @@ A caretaker can collect and record rent, log repairs and enter meter readings fo
 1. Open **Staff** (top menu) and add the person with the role **Caretaker**.
 2. On **Caretakers**, tick the **properties** they look after. Until you tick at least one, they cannot see anything.
 
-A caretaker sees only **Rent**, **Maintenance** and **Meters**, and only for their properties. They can record payments and see statements and receipts, but cannot void payments, add charges, send reminders, change M-Pesa settings or see expenses, reports or your plan.
+A caretaker sees only **Rent**, **Short stays**, **Maintenance** and **Meters**, and only for their properties. They can record payments and see statements and receipts, but cannot void payments, add charges, send reminders, change M-Pesa settings or see expenses, reports or your plan.
 
 How many caretakers you can have depends on your plan (see **Plans and paying Zaroda**).
 
@@ -231,7 +274,7 @@ From **Statements** you get the **profit and loss**, **balance sheet**, **trial 
 | Plan | Price | Occupied units | Caretakers | Includes |
 |---|---|---|---|---|
 | **Bure** | Free | Up to 5 | None | Tenant records and monthly rent invoices |
-| **Starter** | KES 1,000 a month, or KES 10,000 a year (12 months for the price of 10) | Up to 30 | 1 | Tenant portal, printable receipts and statements, rent reminders |
+| **Starter** | KES 1,000 a month, or KES 10,000 a year (12 months for the price of 10) | Up to 30 | 1 | Tenant portal, printable receipts and statements, rent reminders, short stays |
 | **Pay-as-you-collect** | 1% of rent matched through the app, no monthly fee | Unlimited | Up to 5 | Everything in Starter, plus automatic M-Pesa: prompts from you, payments from the tenant portal, matched and receipted for you |
 
 Change plan on the **Plan** tab. Pay-as-you-collect needs automatic M-Pesa connected first (Rent tab). If you have more occupied units than a plan covers, it tells you before you switch.

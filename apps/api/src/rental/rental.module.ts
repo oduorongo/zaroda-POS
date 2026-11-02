@@ -33,6 +33,8 @@ import { PublicHousesService } from './public-houses.service';
 import { PublicHousesController, RentalListingCallbackController, RentalListingsController } from './rental-listings.controller';
 import { RentalListingPaymentsService } from './rental-listing-payments.service';
 import { RentalListingAdminService } from './rental-listing-admin.service';
+import { RentalStaysCalendarController, RentalStaysController } from './stays/stays.controller';
+import { RentalStaysService } from './stays/stays.service';
 
 /**
  * Rental / property management for landlords (industryType "RENTAL").
@@ -56,7 +58,7 @@ import { RentalListingAdminService } from './rental-listing-admin.service';
   ],
   // Platform admin records and waives the landlords' ZARODA invoices.
   exports: [RentalPlatformPaymentsService, RentalListingAdminService],
-  controllers: [RentalPlatformCallbackController, RentalSubscriptionController, RentalController, RentalListingsController, RentalListingCallbackController, PublicHousesController, RentalTenantAuthController, RentalTenantPortalController, RentalOpsController, RentalMpesaController, RentalCallbackController, RentalPublicPlansController],
+  controllers: [RentalPlatformCallbackController, RentalSubscriptionController, RentalController, RentalListingsController, RentalListingCallbackController, PublicHousesController, RentalTenantAuthController, RentalTenantPortalController, RentalOpsController, RentalMpesaController, RentalCallbackController, RentalPublicPlansController, RentalStaysController, RentalStaysCalendarController],
   providers: [
     RentalService,
     RentalListingsService,
@@ -78,6 +80,7 @@ import { RentalListingAdminService } from './rental-listing-admin.service';
     RentalTenantJwtStrategy,
     RentalTenantAuthService,
     RentalTenantPortalService,
+    RentalStaysService,
   ],
 })
 export class RentalModule implements OnModuleInit {
@@ -107,6 +110,14 @@ export class RentalModule implements OnModuleInit {
         { tableName: 'rental_listing_payments', description: 'KES 100 M-Pesa payments by landlords to advertise a unit for 30 days' },
         { tableName: 'rental_listing_photos', description: 'Photos on a Houses to let advert' },
         { tableName: 'rental_payment_allocations', description: 'Which invoice each payment was applied to' },
+        { tableName: 'rental_unit_owners', description: 'Owners a manager lets units for, with their commission' },
+        { tableName: 'rental_stay_units', description: 'Units let by the night: rates, cleaning fee, door code (encrypted), calendar link' },
+        { tableName: 'rental_stays', description: 'Short-stay bookings, direct or from Airbnb / Booking.com' },
+        { tableName: 'rental_stay_payments', description: 'Money in from guests and refunds, with receipt numbers' },
+        { tableName: 'rental_stay_blocks', description: 'Dates a unit cannot be booked: from booking-site calendars or set by hand' },
+        { tableName: 'rental_stay_feeds', description: 'Airbnb / Booking.com calendar links read every hour' },
+        { tableName: 'rental_stay_cleanings', description: 'Cleaning after each stay, and who did it' },
+        { tableName: 'rental_stay_notifications', description: 'Which guest and cleaner messages were sent, so none repeats' },
       ],
     });
   }

@@ -3420,6 +3420,7 @@ model RentalUnit {
   expenses      RentalExpense[]
   meterReadings RentalMeterReading[]
   listing       RentalListing?
+  stayUnit      RentalStayUnit?
 
   @@unique([propertyId, label])
   @@index([organizationId])
@@ -3670,6 +3671,8 @@ model RentalSettings {
   mpesaEnvironment             String    @default("production")
   remindersEnabled             Boolean   @default(false)
   smsReminders                 Boolean   @default(false)
+  // Short stays: text guests (confirmation, arrival details, thank-you) and the cleaner. Email is always used when there is an address.
+  stayTexts                    Boolean   @default(false)
   paymentInstructions          String?
   // The landlord's ZARODA plan (see rental-plans.util.ts). A landlord with no row yet is on 'bure'. Strings, not enums,
   // so the later 'growth' and 'agency' plans need no migration.
@@ -3911,6 +3914,229 @@ model RentalCaretakerProperty {
   @@unique([orgUserId, propertyId])
   @@index([organizationId])
   @@map("rental_caretaker_properties")
+}
+
+// ── ZARODA RENTALS: short stays (Airbnb-style nightly lets) ───────────────
+// A unit let by the night instead of on a lease. Bookings come in directly or from Airbnb / Booking.com; their calendars
+// are kept in step both ways by iCal feeds. Money stays in the landlord's books here, never in the POS till.
+
+enum RentalStayStatus {
+  CONFIRMED
+  CHECKED_IN
+  CHECKED_OUT
+  CANCELLED
+  NO_SHOW
+}
+
+enum RentalStaySource {
+  DIRECT
+  AIRBNB
+  BOOKING_COM
+  OTHER
+}
+
+enum RentalCleaningStatus {
+  PENDING
+  DONE
+}
+
+/// Someone a manager lets units for. Their units' income less commission and costs is their monthly statement.
+model RentalUnitOwner {
+  id                String   @id @default(uuid())
+  organizationId    String
+  name              String
+  phone             String?
+  email             String?
+  commissionPercent Decimal  @default(0) @db.Decimal(5, 2)
+  notes             String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  stayUnits RentalStayUnit[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
+  @@map("rental_unit_owners")
+}
+
+/// A unit set up for short stays. While active it cannot take a lease or a Houses to let advert.
+model RentalStayUnit {
+  id                String   @id @default(uuid())
+  organizationId    String
+  unitId            String   @unique
+  ownerId           String?
+  nightlyRate       Decimal  @db.Decimal(12, 2)
+  weekendRate       Decimal? @db.Decimal(12, 2) // Friday and Saturday nights; null = the nightly rate
+  minNights         Int      @default(1)
+  maxGuests         Int      @default(2)
+  cleaningFee       Decimal  @default(0) @db.Decimal(12, 2)
+  checkInTime       String   @default("14:00")
+  checkOutTime      String   @default("10:00")
+  directions        String?
+  doorCodeEncrypted String?
+  cleanerName       String?
+  cleanerPhone      String?
+  // Secret in the calendar address Airbnb and Booking.com read; a new one cuts off the old address.
+  calendarToken     String   @unique
+  active            Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  unit      RentalUnit           @relation(fields: [unitId], references: [id], onDelete: Cascade)
+  owner     RentalUnitOwner?     @relation(fields: [ownerId], references: [id], onDelete: SetNull)
+  stays     RentalStay[]
+  blocks    RentalStayBlock[]
+  feeds     RentalStayFeed[]
+  cleanings RentalStayCleaning[]
+
+  @@index([organizationId])
+  @@map("rental_stay_units")
+}
+
+model RentalStay {
+  id                   String           @id @default(uuid())
+  organizationId       String
+  unitId               String
+  code                 String
+  source               RentalStaySource @default(DIRECT)
+  externalRef          String? // the Airbnb / Booking.com confirmation code
+  guestName            String
+  guestPhone           String?
+  guestEmail           String?
+  guests               Int              @default(1)
+  checkIn              DateTime         @db.Date
+  checkOut             DateTime         @db.Date // the day they leave: not a night
+  nights               Int
+  accommodation        Decimal          @db.Decimal(12, 2)
+  cleaningFee          Decimal          @default(0) @db.Decimal(12, 2)
+  channelFee           Decimal          @default(0) @db.Decimal(12, 2) // what Airbnb / Booking.com keeps
+  total                Decimal          @db.Decimal(12, 2) // accommodation + cleaning fee: what the guest owes
+  status               RentalStayStatus @default(CONFIRMED)
+  notes                String?
+  checkedInAt          DateTime?
+  checkedOutAt         DateTime?
+  cancelledAt          DateTime?
+  cancelReason         String?
+  createdAt            DateTime         @default(now())
+  updatedAt            DateTime         @updatedAt
+
+  stayUnit      RentalStayUnit           @relation(fields: [unitId], references: [unitId], onDelete: Cascade)
+  payments      RentalStayPayment[]
+  cleaning      RentalStayCleaning?
+  notifications RentalStayNotification[]
+
+  @@unique([organizationId, code])
+  @@index([organizationId, checkIn])
+  @@index([unitId, checkIn])
+  @@map("rental_stays")
+}
+
+/// Money in from a guest (or paid out by the channel), or a refund back. Voided, never deleted.
+model RentalStayPayment {
+  id             String    @id @default(uuid())
+  organizationId String
+  stayId         String
+  kind           String    @default("PAYMENT") // PAYMENT | REFUND
+  amount         Decimal   @db.Decimal(12, 2)
+  method         String // CASH | MPESA | BANK | CARD | CHANNEL | OTHER
+  reference      String?
+  paidAt         DateTime  @db.Date
+  note           String?
+  receiptNumber  String
+  voidedAt       DateTime?
+  voidReason     String?
+  createdAt      DateTime  @default(now())
+
+  stay RentalStay @relation(fields: [stayId], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, reference])
+  @@unique([organizationId, receiptNumber])
+  @@index([organizationId])
+  @@index([stayId])
+  @@map("rental_stay_payments")
+}
+
+/// Dates a unit cannot be booked: read from an Airbnb / Booking.com calendar (feedId), or set by hand (owner use, repairs).
+model RentalStayBlock {
+  id             String   @id @default(uuid())
+  organizationId String
+  unitId         String
+  feedId         String?
+  source         String // MANUAL | AIRBNB | BOOKING_COM | OTHER
+  uid            String?
+  startDate      DateTime @db.Date
+  endDate        DateTime @db.Date // first free day
+  summary        String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  stayUnit RentalStayUnit  @relation(fields: [unitId], references: [unitId], onDelete: Cascade)
+  feed     RentalStayFeed? @relation(fields: [feedId], references: [id], onDelete: Cascade)
+
+  @@unique([feedId, uid])
+  @@index([organizationId])
+  @@index([unitId, startDate])
+  @@map("rental_stay_blocks")
+}
+
+/// An Airbnb / Booking.com calendar address read every hour.
+model RentalStayFeed {
+  id             String           @id @default(uuid())
+  organizationId String
+  unitId         String
+  source         RentalStaySource
+  url            String
+  lastSyncedAt   DateTime?
+  lastError      String?
+  eventCount     Int              @default(0)
+  createdAt      DateTime         @default(now())
+
+  stayUnit RentalStayUnit    @relation(fields: [unitId], references: [unitId], onDelete: Cascade)
+  blocks   RentalStayBlock[]
+
+  @@unique([unitId, url])
+  @@index([organizationId])
+  @@map("rental_stay_feeds")
+}
+
+/// Cleaning a unit after a stay (made with the booking, due on the check-out day) or on its own.
+model RentalStayCleaning {
+  id             String               @id @default(uuid())
+  organizationId String
+  unitId         String
+  stayId         String?              @unique
+  dueDate        DateTime             @db.Date
+  status         RentalCleaningStatus @default(PENDING)
+  cleanerName    String?
+  cleanerPhone   String?
+  notes          String?
+  doneAt         DateTime?
+  doneById       String?
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+
+  stayUnit RentalStayUnit @relation(fields: [unitId], references: [unitId], onDelete: Cascade)
+  stay     RentalStay?    @relation(fields: [stayId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, dueDate])
+  @@index([unitId])
+  @@map("rental_stay_cleanings")
+}
+
+/// Each guest or cleaner message sent once per stay and kind (claimed before sending).
+model RentalStayNotification {
+  id             String   @id @default(uuid())
+  organizationId String
+  stayId         String
+  kind           String // CONFIRMATION | ARRIVAL | THANK_YOU | CLEANER
+  channel        String // SMS | EMAIL
+  createdAt      DateTime @default(now())
+
+  stay RentalStay @relation(fields: [stayId], references: [id], onDelete: Cascade)
+
+  @@unique([stayId, kind])
+  @@index([organizationId])
+  @@map("rental_stay_notifications")
 }
 
 // ── Rental module, phase 4: the tenant's own sign-in ─────────────────────

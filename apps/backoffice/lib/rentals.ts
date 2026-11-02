@@ -19,4 +19,5 @@ export const RENTAL_FEATURE_LABELS: Record<string, string> = {
   reminders: "Rent reminders by SMS and email",
   caretaker: "Caretaker logins",
   collect: "Rent collected and matched for you",
+  stays: "Short stays: nightly bookings, Airbnb & Booking.com calendar sync, cleaning, owner statements",
 };

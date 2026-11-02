@@ -14,6 +14,7 @@ const POINTS = [
   "M-Pesa rent to your own Paybill or Till, matched to the right tenant",
   "Receipts, statements and SMS / email reminders",
   "A tenant portal, caretaker logins and houses-to-let adverts",
+  "Short stays: Airbnb and Booking.com calendars in one place, cleaning and owner statements",
 ];
 
 /** The ZARODA RENTALS advert on the POS marketing pages: a separate product on its own site, sold alongside the POS. */

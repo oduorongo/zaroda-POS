@@ -10,6 +10,7 @@ const POINTS = [
   { title: "M-Pesa rent, matched for you", text: "Tenants pay to your own Paybill or Till; each payment is matched to the right tenant and a receipt goes out." },
   { title: "Reminders and a tenant portal", text: "SMS and email reminders before and after the due day, and a portal where tenants see their statement and pay." },
   { title: "Caretakers", text: "Give a caretaker a login for the properties you choose, without showing them the rest of your business." },
+  { title: "Short stays (Airbnb)", text: "Let furnished units by the night: one calendar with Airbnb and Booking.com, payments, cleaning after each guest, door codes sent the day before, and owner statements." },
   { title: "Houses to let", text: "Advertise a vacant unit on Zaroda's houses-to-let listings for KES 100 for 30 days, and take it down when it is let." },
   { title: "Deposits and moving out", text: "Hold deposits, and at the end of a lease refund them or keep part for damage, with it all on the tenant's statement." },
   { title: "Expenses and accounts", text: "Repairs and running costs per property, and books that keep themselves: rent owed, collected, deposits held and profit." },
