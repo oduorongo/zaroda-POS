@@ -84,6 +84,8 @@ function setup(
     org?: Record<string, unknown>;
     payments?: any[];
     invoices?: any[];
+    conPayments?: any[];
+    rentalInvoices?: any[];
     existing?: any[];
   } = {},
 ) {
@@ -102,6 +104,8 @@ function setup(
   const tx: any = {
     $executeRaw: jest.fn(),
     commissionInvoice: { findMany: jest.fn().mockResolvedValue(opts.invoices ?? []) },
+    conSubscriptionPayment: { findMany: jest.fn().mockResolvedValue(opts.conPayments ?? []) },
+    rentalPlatformInvoice: { findMany: jest.fn().mockResolvedValue(opts.rentalInvoices ?? []) },
     salesEarning: {
       findMany: jest.fn().mockResolvedValue(opts.existing ?? []),
       createMany: jest.fn().mockImplementation(({ data }) => {
@@ -252,6 +256,60 @@ describe('SalesEarningsService.accrue - rules', () => {
     const again = await service.accrue();
     expect(again.skipped).toBe(true);
     expect(prisma.organization.findMany).toHaveBeenCalledTimes(1);
+  });
+});
+
+const conPay = (id: string, amount: number, purpose = 'PLAN', paidAt = '2026-10-12T08:00:00Z') => ({ id, amount, purpose, paidAt: new Date(paidAt) });
+const rentInv = (id: string, amountDue: number, kind = 'SUBSCRIPTION', paidAt = '2026-10-14T08:00:00Z') => ({ id, amountDue, kind, paidAt: new Date(paidAt) });
+
+describe('SalesEarningsService.accrue - every app', () => {
+  it('pays the same team rates on construction and rentals: plans at the subscription rate, fees at the commission rate', async () => {
+    const { service, created } = setup({
+      team: { leaderOverrideRate: 0, onboardingBonusKes: 0 },
+      conPayments: [conPay('con-plan', 4000), conPay('con-fees', 2000, 'FEES')],
+      rentalInvoices: [rentInv('rent-sub', 1500), rentInv('rent-fee', 800, 'COLLECTION_FEE')],
+    });
+    await service.accrue(true);
+    expect(created).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ sourceId: 'con-plan', kind: 'SUBSCRIPTION_SHARE', sourceApp: 'CONSTRUCTION', rate: 0.1, amountKes: 400 }),
+        expect.objectContaining({ sourceId: 'con-fees', kind: 'COMMISSION_SHARE', sourceApp: 'CONSTRUCTION', rate: 0.25, amountKes: 500 }),
+        expect.objectContaining({ sourceId: 'rent-sub', kind: 'SUBSCRIPTION_SHARE', sourceApp: 'RENTALS', amountKes: 150 }),
+        expect.objectContaining({ sourceId: 'rent-fee', kind: 'COMMISSION_SHARE', sourceApp: 'RENTALS', amountKes: 200 }),
+      ]),
+    );
+  });
+
+  it('tags POS subscriptions and online shop fees with their app', async () => {
+    const { service, created } = setup({ team: { onboardingBonusKes: 0 }, invoices: [invoice('inv-1', 1000)], payments: [payment('p1', '2026-10-05T08:00:00Z')] });
+    await service.accrue(true);
+    expect(created.filter((c) => c.sourceId === 'inv-1').every((c) => c.sourceApp === 'ONLINE_SHOP')).toBe(true);
+    expect(created.filter((c) => c.sourceId === 'p1').every((c) => c.sourceApp === 'POS')).toBe(true);
+  });
+
+  it('only reads paid construction plan, extra-project and fee payments (never SMS bundles) for that business', async () => {
+    const { service, tx } = setup({ conPayments: [conPay('c1', 1000)] });
+    await service.accrue(true);
+    expect(tx.conSubscriptionPayment.findMany.mock.calls[0][0].where).toMatchObject({ organizationId: 'org-1', status: 'PAID', purpose: { in: ['PLAN', 'EXTRA_PROJECTS', 'FEES'] } });
+    expect(tx.rentalPlatformInvoice.findMany.mock.calls[0][0].where).toMatchObject({ organizationId: 'org-1', status: 'PAID' });
+  });
+
+  it('an unpaid POS plan does not stop construction earnings, but a suspended construction plan does', async () => {
+    const posUnpaid = setup({
+      org: { subscription: { currentPeriodEnd: new Date('2026-01-01T00:00:00Z'), graceDays: 7, isTrial: false, manuallySuspended: false } },
+      conPayments: [conPay('c1', 1000)],
+    });
+    await posUnpaid.service.accrue(true);
+    expect(posUnpaid.created.every((c) => c.status === 'PENDING')).toBe(true);
+    const conSuspended = setup({ org: { conSubscription: { status: 'SUSPENDED' } }, conPayments: [conPay('c1', 1000)] });
+    await conSuspended.service.accrue(true);
+    expect(conSuspended.created.every((c) => c.status === 'VOID' && /construction/.test(c.note))).toBe(true);
+  });
+
+  it('pays the bonus on the second plan payment even when it is in another app', async () => {
+    const { service, created } = setup({ team: { subscriptionShareRate: 0, leaderOverrideRate: 0 }, payments: [payment('p1', '2026-10-05T08:00:00Z')], conPayments: [conPay('c1', 1000)] });
+    await service.accrue(true);
+    expect(created.filter((c) => c.kind === 'ONBOARDING_BONUS')).toEqual([expect.objectContaining({ sourceId: 'c1', sourceApp: 'CONSTRUCTION', amountKes: 500 })]);
   });
 });
 

@@ -3316,6 +3316,8 @@ model SalesEarning {
   periodMonth      String
   status           SalesEarningStatus @default(PENDING)
   payoutId         String?
+  // POS | ONLINE_SHOP | CONSTRUCTION | RENTALS - which app the money came from.
+  sourceApp        String             @default("POS")
   createdAt        DateTime           @default(now())
 
   team   SalesTeam    @relation(fields: [teamId], references: [id], onDelete: Cascade)
@@ -3326,6 +3328,7 @@ model SalesEarning {
   @@index([agentId, status])
   @@index([teamId, periodMonth])
   @@index([organizationId, periodMonth])
+  @@index([sourceApp, periodMonth])
   @@map("sales_earnings")
 }
 

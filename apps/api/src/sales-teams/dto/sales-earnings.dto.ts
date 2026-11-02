@@ -8,6 +8,12 @@ export class EarningsMonthQueryDto {
   month?: string;
 }
 
+export class EarningsOverviewQueryDto extends EarningsMonthQueryDto {
+  @IsOptional()
+  @IsIn(['POS', 'ONLINE_SHOP', 'CONSTRUCTION', 'RENTALS'])
+  app?: 'POS' | 'ONLINE_SHOP' | 'CONSTRUCTION' | 'RENTALS';
+}
+
 /** The admin recording a payment they made by hand (M-Pesa app, bank, cash). */
 export class ManualPayoutDto {
   @IsUUID()
