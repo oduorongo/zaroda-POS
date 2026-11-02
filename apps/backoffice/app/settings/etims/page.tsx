@@ -39,6 +39,8 @@ const ghost = "rounded-md border border-border px-3 py-2 text-sm hover:bg-second
 const explain = (e: unknown, fallback: string) => (e instanceof ApiError ? e.message : fallback);
 
 /** Connecting the business to KRA's eTIMS: the switch, the PIN, one device per branch, and KRA's code lists. */
+const KRA_WARNING = "KRA requires businesses to issue eTIMS invoices for their sales. While this is off, your sales are not reported to KRA, which may lead to penalties. Your customers who are businesses may also refuse receipts that are not from eTIMS.";
+
 export default function EtimsSettingsPage() {
   const router = useRouter();
   const [session, setSession] = useState<Session | null>(null);
@@ -181,9 +183,13 @@ export default function EtimsSettingsPage() {
               <h2 className="font-semibold">Send sales to KRA</h2>
               <p className="text-sm text-secondary-500">When this is on, each finished sale is sent to KRA with the stock it used, a refund of a whole sale is sent as a credit note, and stock changes that are not sales (adjustments, waste, transfers, repacking, production, deliveries) are reported too. Only sales made <strong>after you switch it on</strong> are sent. Every product on a sale must be registered with KRA first (Products and KRA); a sale with an unregistered product waits until it is.</p>
               <label className="flex items-center gap-2 text-sm">
-                <input type="checkbox" disabled={!canWrite || busy !== null || !data.enabled || !anyActive} checked={data.sendSales} onChange={(e) => void run("send", () => apiPut("/etims/settings", { sendSales: e.target.checked }), e.target.checked ? "Sales are now sent to KRA (the test system), starting from now." : "Sales are no longer sent to KRA.")} />
+                <input type="checkbox" disabled={!canWrite || busy !== null || !data.enabled || !anyActive} checked={data.sendSales} onChange={(e) => {
+                  if (!e.target.checked && !window.confirm(`${KRA_WARNING}\n\nStop sending sales to KRA?`)) return;
+                  void run("send", () => apiPut("/etims/settings", { sendSales: e.target.checked }), e.target.checked ? "Sales are now sent to KRA (the test system), starting from now." : "Sales are no longer sent to KRA.");
+                }} />
                 Send my sales to KRA
               </label>
+              {!data.sendSales && <p className="rounded-md border border-amber-500/40 bg-amber-500/10 p-2 text-xs text-amber-500">{KRA_WARNING}</p>}
               {data.sendSales && data.salesStartAt && <p className="text-xs text-secondary-500">Sending started on {new Date(data.salesStartAt).toLocaleString()}.</p>}
               {(!data.enabled || !anyActive) && <p className="text-xs text-secondary-500">Turn eTIMS on and connect a branch first.</p>}
               <Link href="/settings/etims/documents" className={`${ghost} inline-block`}>See what has been sent</Link>

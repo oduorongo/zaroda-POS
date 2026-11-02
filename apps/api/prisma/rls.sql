@@ -674,6 +674,21 @@ CREATE POLICY tenant_isolation ON subscriptions
     OR NULLIF(current_setting('app.current_tenant', true), '') IS NULL
   );
 
+-- subscription_instalments (seasonal plans): the same shape as subscriptions - a business sees only its own; the platform
+-- admin and the billing scheduler work with no tenant set.
+ALTER TABLE subscription_instalments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE subscription_instalments FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON subscription_instalments;
+CREATE POLICY tenant_isolation ON subscription_instalments
+  USING (
+    "organizationId" = current_setting('app.current_tenant', true)
+    OR NULLIF(current_setting('app.current_tenant', true), '') IS NULL
+  )
+  WITH CHECK (
+    "organizationId" = current_setting('app.current_tenant', true)
+    OR NULLIF(current_setting('app.current_tenant', true), '') IS NULL
+  );
+
 ALTER TABLE subscription_payments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE subscription_payments FORCE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS tenant_isolation ON subscription_payments;

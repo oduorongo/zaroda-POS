@@ -41,3 +41,50 @@ export function stampBefore(resultDt: string): string | null {
   const t = Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]) - 1000;
   return new Date(t).toISOString().slice(0, 19).replace(/[-T:]/g, '');
 }
+
+export interface Component {
+  itemCd: string;
+  qty: number;
+}
+
+/** What KRA was last told about a recipe; the order the ingredients were added in does not matter. */
+export const compositionKey = (components: Component[]): string =>
+  components
+    .map((c) => `${c.itemCd}:${Number(c.qty.toFixed(3))}`)
+    .sort()
+    .join('|');
+
+/**
+ * The /saveItemComposition bodies for one recipe: one per ingredient, each saying how much of it goes into one of the finished item.
+ * The field names are those of KRA's OSCU code (cpstItemCd, cpstQty); KRA's written spec has none, so confirm them in the sandbox.
+ */
+export function compositionBodies(
+  creds: { tin: string; bhfId: string; cmcKey: string },
+  itemCd: string,
+  components: Component[],
+  registrant: { id: string; name: string },
+): Record<string, unknown>[] {
+  return components.map((c) => ({
+    tin: creds.tin,
+    bhfId: creds.bhfId,
+    cmcKey: creds.cmcKey,
+    itemCd,
+    cpstItemCd: c.itemCd,
+    cpstQty: Number(c.qty.toFixed(3)),
+    regrId: registrant.id.slice(0, 20),
+    regrNm: registrant.name.slice(0, 60),
+  }));
+}
+
+/** Why a recipe cannot go to KRA yet, or null: the finished item and every ingredient must be registered with KRA. */
+export function compositionProblem(
+  parent: { status: string; itemCd: string | null },
+  ingredients: { name: string; itemCd: string | null; status: string | null }[],
+): string | null {
+  if (parent.status !== 'REGISTERED' || !parent.itemCd) return 'The item itself is not registered with KRA yet.';
+  if (ingredients.length === 0) return 'The recipe has no ingredients.';
+  const missing = ingredients.filter((i) => i.status !== 'REGISTERED' || !i.itemCd).map((i) => i.name);
+  return missing.length
+    ? `Ingredients not registered with KRA yet: ${missing.slice(0, 5).join(', ')}${missing.length > 5 ? '...' : ''}`
+    : null;
+}

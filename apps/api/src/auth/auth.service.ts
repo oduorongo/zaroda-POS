@@ -16,6 +16,7 @@ import { RegisterOrganizationDto } from './dto/register-organization.dto';
 import { JwtPayload } from './jwt.strategy';
 import { PinLockoutService } from './pin-lockout.service';
 import { needsDeviceSubscription } from '../platform-admin/subscriptions.util';
+import { SeasonalBillingService } from '../seasonal-billing/seasonal-billing.service';
 
 const SALT_ROUNDS = 10;
 
@@ -25,6 +26,7 @@ export class AuthService {
     private readonly prisma: PrismaService,
     private readonly jwt: JwtService,
     private readonly pinLockout: PinLockoutService,
+    private readonly seasonal: SeasonalBillingService,
   ) {}
 
   /**
@@ -254,7 +256,11 @@ export class AuthService {
           // which platform-admin's billing screen has no way to represent.
           // A rental landlord is the exception: their plan is the rental plan (free Bure to start), billed from the
           // rentals screens, so they get no device subscription or trial.
-          if (needsDeviceSubscription(dto.industryType)) {
+          // A school supplier starts on the seasonal (school-term) plan instead, billed from this term on.
+          const seasonalPlan = needsDeviceSubscription(dto.industryType) ? await this.seasonal.defaultPlanFor(tx, dto.industryType) : null;
+          if (seasonalPlan) {
+            await this.seasonal.startSubscription(tx, organizationId, seasonalPlan);
+          } else if (needsDeviceSubscription(dto.industryType)) {
             const basicPlan = await tx.plan.findUniqueOrThrow({
               where: { tier: 'BASIC' },
             });

@@ -16,6 +16,8 @@ import { AccountingModule } from '../accounting/accounting.module';
 import { PlatformAccountingController } from './platform-accounting.controller';
 import { PlatformConstructionController } from './platform-construction.controller';
 import { ConstructionModule } from '../construction/construction.module';
+import { PlatformSeasonalController } from './platform-seasonal.controller';
+import { SeasonalBillingModule } from '../seasonal-billing/seasonal-billing.module';
 
 @Module({
   imports: [
@@ -34,6 +36,8 @@ import { ConstructionModule } from '../construction/construction.module';
     AccountingModule,
     // ConPlansService - construction plans, coupons, trials and payments are a platform-admin job.
     ConstructionModule,
+    // Seasonal (school-term) plans: onboarding onto one, and the settings, due-date shifts and payments screens.
+    SeasonalBillingModule,
     // A second, independent JwtModule registration (separate from
     // AuthModule's) - its own secret (PLATFORM_ADMIN_JWT_SECRET), its
     // own JwtService instance. Deliberately not sharing JWT_SECRET with
@@ -50,7 +54,7 @@ import { ConstructionModule } from '../construction/construction.module';
       }),
     }),
   ],
-  controllers: [PlatformAdminController, PlatformAccountingController, PlatformConstructionController],
+  controllers: [PlatformAdminController, PlatformAccountingController, PlatformConstructionController, PlatformSeasonalController],
   providers: [
     PlatformAdminAuthService,
     PlatformAdminService,
