@@ -12,6 +12,8 @@ import { ConBillingCallbackController, ConPublicController, ConstructionControll
 import { ConstructionService } from './construction.service';
 import { MessagesController } from './messages/messages.controller';
 import { MessagesService } from './messages/messages.service';
+import { LinesController, StaffLicencesController } from './lines/lines.controller';
+import { LinesService } from './lines/lines.service';
 import { ConLimitsListener } from './plans/con-limits.listener';
 import { ConPlansService } from './plans/con-plans.service';
 import { ConAddonsService } from './plans/con-addons.service';
@@ -63,9 +65,10 @@ import { EnterpriseService } from './enterprise/enterprise.service';
       useFactory: (config: ConfigService) => ({ secret: config.getOrThrow<string>('BUYER_JWT_SECRET'), signOptions: { expiresIn: '12h' } }),
     }),
   ],
-  controllers: [ConstructionController, TendersController, ProjectsController, SiteController, MaterialsController, CommercialController, PayrollController, PayrollCallbackController, PortalAuthController, PortalController, PortalUsersController, ReportsController, EnterpriseController, ConstructionApiController, ConBillingCallbackController, ConPublicController, MessagesController],
+  controllers: [ConstructionController, TendersController, ProjectsController, SiteController, MaterialsController, CommercialController, PayrollController, PayrollCallbackController, PortalAuthController, PortalController, PortalUsersController, ReportsController, EnterpriseController, ConstructionApiController, ConBillingCallbackController, ConPublicController, MessagesController, LinesController, StaffLicencesController],
   providers: [
     MessagesService,
+    LinesService,
     ConSetupService,
     ConstructionGuard,
     ConProjectGuard,

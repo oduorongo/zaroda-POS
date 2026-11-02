@@ -23,6 +23,7 @@ interface Doc {
   typeLabel: string;
   title: string;
   refNo: string | null;
+  epraClass: string | null;
   issuedAt: string | null;
   expiresAt: string | null;
   notes: string | null;
@@ -46,10 +47,13 @@ const DOC_TYPES = [
   { value: "INSURANCE_CAR", label: "Contractor's all risks insurance" },
   { value: "INSURANCE_PL", label: "Public liability insurance" },
   { value: "WIBA", label: "WIBA insurance" },
+  { value: "EPRA_LICENCE", label: "EPRA electrical contractor licence" },
   { value: "OTHER", label: "Other" },
 ];
 const ACCEPT = "application/pdf,image/jpeg,image/png,image/webp";
-const emptyDoc = { type: "NCA_LICENCE", title: "", refNo: "", issuedAt: "", expiresAt: "", notes: "" };
+const emptyDoc = { type: "NCA_LICENCE", title: "", refNo: "", epraClass: "", issuedAt: "", expiresAt: "", notes: "" };
+const EPRA_CODES = ["A1", "A2", "B", "C1", "C2"];
+interface EpraClass { code: string; label: string; anyVoltage: boolean; maxVoltageKv: number | null }
 
 export default function CompliancePage() {
   return (
@@ -71,12 +75,14 @@ function Vault() {
   const [doc, setDoc] = useState(emptyDoc);
   const [editing, setEditing] = useState<string | null>(null);
   const [file, setFile] = useState<File | null>(null);
+  const [epra, setEpra] = useState<EpraClass[]>([]);
 
   const load = useCallback(async () => {
     try {
       const [r, d] = await Promise.all([apiGet<Registration[]>("/construction/compliance/registrations"), apiGet<Doc[]>("/construction/compliance/docs")]);
       setRegs(r);
       setDocs(d);
+      setEpra(await apiGet<EpraClass[]>("/construction/compliance/epra-classes").catch(() => []));
       setError(null);
     } catch (e) {
       if (isUpgrade(e)) setUpgrade(errorText(e, ""));
@@ -115,7 +121,7 @@ function Vault() {
 
   const saveDoc = () =>
     run(async () => {
-      const body = { type: doc.type, title: doc.title.trim() || DOC_TYPES.find((t) => t.value === doc.type)!.label, refNo: doc.refNo || undefined, issuedAt: doc.issuedAt || undefined, expiresAt: doc.expiresAt || undefined, notes: doc.notes || undefined };
+      const body = { type: doc.type, title: doc.title.trim() || DOC_TYPES.find((t) => t.value === doc.type)!.label, refNo: doc.refNo || undefined, epraClass: doc.type === "EPRA_LICENCE" ? doc.epraClass || undefined : undefined, issuedAt: doc.issuedAt || undefined, expiresAt: doc.expiresAt || undefined, notes: doc.notes || undefined };
       const saved = editing ? await apiPut<Doc>(`/construction/compliance/docs/${editing}`, body) : await apiPost<Doc>("/construction/compliance/docs", body);
       if (file) await conUpload(`/construction/compliance/docs/${saved.id}/file`, file);
     }).then((ok) => {
@@ -185,7 +191,7 @@ function Vault() {
                 <div className="min-w-0">
                   <p className="font-semibold">{d.title}</p>
                   <p className="text-xs text-secondary-500">
-                    {d.typeLabel}{d.refNo ? ` · ${d.refNo}` : ""}{d.expiresAt ? ` · expires ${d.expiresAt}` : ""}
+                    {d.typeLabel}{d.epraClass ? ` class ${d.epraClass}` : ""}{d.refNo ? ` · ${d.refNo}` : ""}{d.expiresAt ? ` · expires ${d.expiresAt}` : ""}
                   </p>
                 </div>
                 <ExpiryBadge state={d.state} daysLeft={d.daysLeft} />
@@ -205,7 +211,7 @@ function Vault() {
                       style={{ color: CON_BRAND.orange }}
                       onClick={() => {
                         setEditing(d.id);
-                        setDoc({ type: d.type, title: d.title, refNo: d.refNo ?? "", issuedAt: d.issuedAt ?? "", expiresAt: d.expiresAt ?? "", notes: d.notes ?? "" });
+                        setDoc({ type: d.type, title: d.title, refNo: d.refNo ?? "", epraClass: d.epraClass ?? "", issuedAt: d.issuedAt ?? "", expiresAt: d.expiresAt ?? "", notes: d.notes ?? "" });
                         window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" });
                       }}
                     >
@@ -222,6 +228,39 @@ function Vault() {
         </ul>
       </Panel>
 
+      {epra.length > 0 && (
+        <Panel title="EPRA licence classes (power lines)">
+          <p className="mb-2 text-xs text-secondary-500">
+            The highest line voltage each EPRA electrical contractor licence class allows. A tender or project for a line of a given voltage needs a valid EPRA licence whose class covers it. Confirm the limits with EPRA; they are your settings, not fixed in the system.
+          </p>
+          <ul className="divide-y divide-border text-sm">
+            {epra.map((c) => (
+              <li key={c.code} className="flex flex-wrap items-center justify-between gap-2 py-2">
+                <span className="font-semibold">{c.label}</span>
+                <span className="flex items-center gap-2">
+                  <span className="text-secondary-500">{c.anyVoltage ? "Any voltage" : c.maxVoltageKv !== null ? `Up to ${c.maxVoltageKv} kV` : "Not set (does not cover line work)"}</span>
+                  {canEdit && (
+                    <button
+                      type="button"
+                      className="text-xs"
+                      style={{ color: CON_BRAND.orange }}
+                      onClick={() => {
+                        const v = window.prompt(`Highest line voltage for ${c.label} in kV (for example 11 or 33). Type "any" for any voltage.`, c.anyVoltage ? "any" : String(c.maxVoltageKv ?? ""));
+                        if (v === null) return;
+                        const any = v.trim().toLowerCase() === "any";
+                        void run(() => apiPut(`/construction/compliance/epra-classes/${c.code}`, any ? { anyVoltage: true } : { anyVoltage: false, maxVoltageKv: Number(v) }));
+                      }}
+                    >
+                      Change
+                    </button>
+                  )}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </Panel>
+      )}
+
       {canEdit && (
         <Panel title={editing ? "Edit document" : "Upload a document"}>
           <div className="grid gap-3 sm:grid-cols-2">
@@ -236,6 +275,14 @@ function Vault() {
             <Field label="Reference no.">
               <input className={inputClass} value={doc.refNo} onChange={(e) => setDoc({ ...doc, refNo: e.target.value })} />
             </Field>
+            {doc.type === "EPRA_LICENCE" && (
+              <Field label="EPRA licence class">
+                <select className={inputClass} value={doc.epraClass} onChange={(e) => setDoc({ ...doc, epraClass: e.target.value })}>
+                  <option value="">Choose...</option>
+                  {EPRA_CODES.map((c) => <option key={c} value={c}>Class {c}</option>)}
+                </select>
+              </Field>
+            )}
             <Field label="File (PDF or photo, up to 10MB)">
               <input type="file" accept={ACCEPT} className="block w-full text-sm" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
             </Field>

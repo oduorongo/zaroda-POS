@@ -5553,6 +5553,7 @@ enum ConDocType {
   INSURANCE_CAR
   INSURANCE_PL
   WIBA
+  EPRA_LICENCE
   OTHER
 }
 
@@ -5761,6 +5762,8 @@ model ConComplianceDoc {
   issuedAt       DateTime?  @db.Date
   expiresAt      DateTime?  @db.Date
   projectId      String?
+  /// EPRA licence class (A1, A2, B, C1, C2) when type is EPRA_LICENCE.
+  epraClass      String?
   notes          String?
   createdBy      String?
   createdAt      DateTime   @default(now())
@@ -5942,6 +5945,8 @@ model ConTender {
   isPublic          Boolean         @default(true)
   agpoReserved      Boolean         @default(false)
   worksClass        ConWorksClass
+  /// Line voltage (kV) for Electrical & mechanical works: needs an EPRA licence class that covers it (docs/construction/07).
+  voltageKv         Decimal?        @db.Decimal(8, 2)
   estValue          Decimal         @db.Decimal(16, 2)
   closingAt         DateTime?
   bidBond           Decimal?        @db.Decimal(14, 2)
@@ -5971,6 +5976,7 @@ model ConProject {
   clientId          String?
   tenderId          String?           @unique
   worksClass        ConWorksClass
+  voltageKv         Decimal?          @db.Decimal(8, 2)
   contractSum       Decimal           @db.Decimal(16, 2)
   revisedSum        Decimal?          @db.Decimal(16, 2)
   formOfContract    ConFormOfContract @default(JBC)
@@ -7264,4 +7270,232 @@ model ConMessageRecipient {
   @@unique([messageId, orgUserId])
   @@index([organizationId, orgUserId, readAt])
   @@map("con_message_recipients")
+}
+
+// ── Construction C9: power-line contractors (docs/construction/07) ───────────
+
+/// What each EPRA licence class allows on a line: any voltage, or up to maxVoltageKv. Per company, edited by Compliance.
+model ConEpraClass {
+  id             String   @id @default(uuid())
+  organizationId String
+  code           String
+  label          String
+  anyVoltage     Boolean  @default(false)
+  maxVoltageKv   Decimal? @db.Decimal(8, 2)
+  updatedAt      DateTime @updatedAt
+
+  @@unique([organizationId, code])
+  @@map("con_epra_classes")
+}
+
+/// An electrician's own licence (EPRA by default), with expiry alerts.
+model ConStaffLicence {
+  id             String   @id @default(uuid())
+  organizationId String
+  orgUserId      String
+  body           String   @default("EPRA")
+  licenceClass   String
+  licenceNo      String
+  expiresAt      DateTime @db.Date
+  createdBy      String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([organizationId])
+  @@index([orgUserId])
+  @@map("con_staff_licences")
+}
+
+enum ConClientMoveKind {
+  RECEIVED
+  ISSUED
+  RETURNED
+  DAMAGED
+}
+
+/// A material the client supplies ("free-issue"): stays the client's property, never company stock or cost.
+model ConClientItem {
+  id             String   @id @default(uuid())
+  organizationId String
+  projectId      String
+  code           String
+  description    String
+  unit           String
+  createdAt      DateTime @default(now())
+
+  moves ConClientMaterialMove[]
+
+  @@unique([projectId, code])
+  @@index([organizationId])
+  @@map("con_client_items")
+}
+
+model ConClientMaterialMove {
+  id             String            @id @default(uuid())
+  organizationId String
+  projectId      String
+  itemId         String
+  kind           ConClientMoveKind
+  quantity       Decimal           @db.Decimal(14, 3)
+  sectionId      String?
+  moveDate       DateTime          @db.Date
+  reference      String?
+  note           String?
+  createdBy      String?
+  createdAt      DateTime          @default(now())
+
+  item ConClientItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([projectId, itemId])
+  @@map("con_client_material_moves")
+}
+
+/// A stretch of a line job (e.g. km 0-5), with what is to be built on it.
+model ConProjectSection {
+  id                 String   @id @default(uuid())
+  organizationId     String
+  projectId          String
+  code               String
+  name               String
+  fromKm             Decimal? @db.Decimal(9, 3)
+  toKm               Decimal? @db.Decimal(9, 3)
+  targetPoles        Int      @default(0)
+  targetStays        Int      @default(0)
+  targetConductorKm  Decimal  @default(0) @db.Decimal(9, 3)
+  targetTransformers Int      @default(0)
+  targetServices     Int      @default(0)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@unique([projectId, code])
+  @@index([organizationId])
+  @@map("con_project_sections")
+}
+
+/// What one section's crew built on one day.
+model ConSectionProgress {
+  id             String   @id @default(uuid())
+  organizationId String
+  projectId      String
+  sectionId      String
+  date           DateTime @db.Date
+  poles          Int      @default(0)
+  stays          Int      @default(0)
+  conductorKm    Decimal  @default(0) @db.Decimal(9, 3)
+  transformers   Int      @default(0)
+  services       Int      @default(0)
+  crew           String?
+  notes          String?
+  createdBy      String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([sectionId, date])
+  @@index([organizationId])
+  @@index([projectId, date])
+  @@map("con_section_progress")
+}
+
+enum ConWayleaveStatus {
+  PENDING
+  AGREED
+  REFUSED
+  PAID
+}
+
+model ConWayleave {
+  id             String            @id @default(uuid())
+  organizationId String
+  projectId      String
+  sectionId      String?
+  landowner      String
+  phone          String?
+  parcelNo       String?
+  chainageKm     Decimal?          @db.Decimal(9, 3)
+  status         ConWayleaveStatus @default(PENDING)
+  compensation   Decimal?          @db.Decimal(14, 2)
+  agreedAt       DateTime?         @db.Date
+  notes          String?
+  fileKey        String?
+  fileName       String?
+  fileType       String?
+  createdBy      String?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  @@index([organizationId])
+  @@index([projectId])
+  @@map("con_wayleaves")
+}
+
+enum ConCrossingKind {
+  ROAD
+  RAIL
+  RIVER
+  PIPELINE
+  POWER_LINE
+  OTHER
+}
+
+enum ConCrossingStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model ConCrossing {
+  id             String            @id @default(uuid())
+  organizationId String
+  projectId      String
+  sectionId      String?
+  kind           ConCrossingKind
+  authority      String
+  refNo          String?
+  status         ConCrossingStatus @default(PENDING)
+  approvedAt     DateTime?         @db.Date
+  expiresAt      DateTime?         @db.Date
+  notes          String?
+  fileKey        String?
+  fileName       String?
+  fileType       String?
+  createdBy      String?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  @@index([organizationId])
+  @@index([projectId])
+  @@map("con_crossings")
+}
+
+enum ConLineAssetKind {
+  POLE
+  STAY
+  TRANSFORMER
+  SWITCHGEAR
+  SERVICE
+  OTHER
+}
+
+/// As-built record of something installed on the line, with its position from the phone.
+model ConLineAsset {
+  id             String           @id @default(uuid())
+  organizationId String
+  projectId      String
+  sectionId      String?
+  kind           ConLineAssetKind
+  tag            String
+  serialNo       String?
+  spec           String?
+  lat            Decimal?         @db.Decimal(9, 6)
+  lng            Decimal?         @db.Decimal(9, 6)
+  installedAt    DateTime?        @db.Date
+  note           String?
+  createdBy      String?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  @@unique([projectId, kind, tag])
+  @@index([organizationId])
+  @@map("con_line_assets")
 }

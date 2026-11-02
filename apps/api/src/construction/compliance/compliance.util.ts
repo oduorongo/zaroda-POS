@@ -13,6 +13,7 @@ export const DOC_LABELS: Record<ConDocType, string> = {
   INSURANCE_CAR: "Contractor's all risks insurance",
   INSURANCE_PL: 'Public liability insurance',
   WIBA: 'WIBA insurance',
+  EPRA_LICENCE: 'EPRA electrical contractor licence',
   OTHER: 'Other document',
 };
 
@@ -72,3 +73,25 @@ export function capCheck(value: number, cap: number | null, category: number | n
 }
 
 export const todayKey = (now: Date = new Date()) => new Date(now.getTime() + 3 * 3_600_000).toISOString().slice(0, 10);
+
+/** EPRA electrical contractor licence classes. What each allows on a line is a company setting (con_epra_classes), seeded here: A1 any voltage, the rest unset until confirmed with EPRA. */
+export const EPRA_CLASSES: { code: string; label: string; anyVoltage: boolean }[] = [
+  { code: 'A1', label: 'Class A1 (high voltage installations)', anyVoltage: true },
+  { code: 'A2', label: 'Class A2', anyVoltage: false },
+  { code: 'B', label: 'Class B', anyVoltage: false },
+  { code: 'C1', label: 'Class C1', anyVoltage: false },
+  { code: 'C2', label: 'Class C2', anyVoltage: false },
+];
+
+/** Whether the company's valid EPRA licences cover a line of this voltage (docs/construction/07 s1). */
+export function epraCheck(voltageKv: number, licences: { epraClass: string | null; expiresAt: string | null }[], classes: { code: string; anyVoltage: boolean; maxVoltageKv: number | null }[], today: string): { ok: boolean; reason?: string } {
+  const valid = licences.filter((l) => l.epraClass && (!l.expiresAt || l.expiresAt >= today));
+  if (valid.length === 0) return { ok: false, reason: `A ${voltageKv} kV line needs a valid EPRA electrical contractor licence. Add it in the compliance vault first.` };
+  const covers = valid.some((l) => {
+    const c = classes.find((x) => x.code === l.epraClass);
+    return !!c && (c.anyVoltage || (c.maxVoltageKv !== null && c.maxVoltageKv >= voltageKv));
+  });
+  if (covers) return { ok: true };
+  const held = [...new Set(valid.map((l) => l.epraClass))].join(', ');
+  return { ok: false, reason: `Your EPRA licence (class ${held}) does not cover a ${voltageKv} kV line. Check the class limits under Compliance, EPRA classes.` };
+}

@@ -1974,3 +1974,68 @@ DROP POLICY IF EXISTS tenant_isolation ON con_message_recipients;
 CREATE POLICY tenant_isolation ON con_message_recipients
   USING ("organizationId" = current_setting('app.current_tenant', true))
   WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+-- Construction C9: power-line contractors
+
+ALTER TABLE con_epra_classes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE con_epra_classes FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON con_epra_classes;
+CREATE POLICY tenant_isolation ON con_epra_classes
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+ALTER TABLE con_staff_licences ENABLE ROW LEVEL SECURITY;
+ALTER TABLE con_staff_licences FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON con_staff_licences;
+CREATE POLICY tenant_isolation ON con_staff_licences
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+ALTER TABLE con_client_items ENABLE ROW LEVEL SECURITY;
+ALTER TABLE con_client_items FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON con_client_items;
+CREATE POLICY tenant_isolation ON con_client_items
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+ALTER TABLE con_client_material_moves ENABLE ROW LEVEL SECURITY;
+ALTER TABLE con_client_material_moves FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON con_client_material_moves;
+CREATE POLICY tenant_isolation ON con_client_material_moves
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+ALTER TABLE con_project_sections ENABLE ROW LEVEL SECURITY;
+ALTER TABLE con_project_sections FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON con_project_sections;
+CREATE POLICY tenant_isolation ON con_project_sections
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+ALTER TABLE con_section_progress ENABLE ROW LEVEL SECURITY;
+ALTER TABLE con_section_progress FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON con_section_progress;
+CREATE POLICY tenant_isolation ON con_section_progress
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+ALTER TABLE con_wayleaves ENABLE ROW LEVEL SECURITY;
+ALTER TABLE con_wayleaves FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON con_wayleaves;
+CREATE POLICY tenant_isolation ON con_wayleaves
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+ALTER TABLE con_crossings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE con_crossings FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON con_crossings;
+CREATE POLICY tenant_isolation ON con_crossings
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+ALTER TABLE con_line_assets ENABLE ROW LEVEL SECURITY;
+ALTER TABLE con_line_assets FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON con_line_assets;
+CREATE POLICY tenant_isolation ON con_line_assets
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));

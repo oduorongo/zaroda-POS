@@ -24,7 +24,7 @@ const FORMS = [
   { value: "PPADA", label: "Government (PPADA)" },
   { value: "SIMPLE", label: "Simple agreement" },
 ];
-const blank = { name: "", clientId: "", newClient: "", worksClass: "BUILDING", contractSum: "", formOfContract: "JBC", startDate: "", completionDate: "", county: "", location: "" };
+const blank = { name: "", clientId: "", newClient: "", worksClass: "BUILDING", voltageKv: "", contractSum: "", formOfContract: "JBC", startDate: "", completionDate: "", county: "", location: "" };
 
 export default function ProjectsPage() {
   return (
@@ -67,7 +67,7 @@ function Projects() {
       const p = await withChecks(
         (extra) =>
           conSend<{ id: string }>("POST", "/construction/projects", {
-            name: form.name.trim(), clientId, worksClass: form.worksClass, contractSum: Number(form.contractSum), formOfContract: form.formOfContract,
+            name: form.name.trim(), clientId, worksClass: form.worksClass, voltageKv: form.worksClass === "ELEC_MECH" && form.voltageKv ? Number(form.voltageKv) : undefined, contractSum: Number(form.contractSum), formOfContract: form.formOfContract,
             startDate: form.startDate || undefined, completionDate: form.completionDate || undefined, county: form.county || undefined, location: form.location || undefined, ...extra,
           }),
         isDirector(me),
@@ -103,6 +103,9 @@ function Projects() {
                 {WORKS.map((w) => <option key={w.value} value={w.value}>{w.label}</option>)}
               </select>
             </Field>
+{form.worksClass === "ELEC_MECH" && (
+              <Field label="Line voltage (kV, for power lines)"><input className={inputClass} inputMode="decimal" placeholder="e.g. 11 or 33" value={form.voltageKv} onChange={(e) => setForm({ ...form, voltageKv: e.target.value })} /></Field>
+            )}
             <Field label="Contract sum (KES)"><input className={inputClass} inputMode="decimal" value={form.contractSum} onChange={(e) => setForm({ ...form, contractSum: e.target.value })} /></Field>
             <Field label="Form of contract">
               <select className={inputClass} value={form.formOfContract} onChange={(e) => setForm({ ...form, formOfContract: e.target.value })}>

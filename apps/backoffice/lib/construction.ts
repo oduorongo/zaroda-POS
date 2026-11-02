@@ -147,7 +147,7 @@ export async function withChecks<T>(send: (extra: { confirm?: boolean; overrideR
         extra.confirm = true;
         continue;
       }
-      if (e.status === 400 && e.data.capExceeded && canOverride) {
+      if (e.status === 400 && (e.data.capExceeded || e.data.epraFailed) && canOverride) {
         const reason = window.prompt(`${e.message}\n\nAs Director you may go ahead. Give the reason (it is kept in the record):`);
         if (!reason?.trim()) return null;
         extra.overrideReason = reason.trim();

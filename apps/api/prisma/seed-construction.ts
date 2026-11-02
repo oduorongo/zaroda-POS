@@ -20,7 +20,7 @@ const inDays = (n: number) => new Date(Date.UTC(new Date().getUTCFullYear(), new
  *   npx ts-node prisma/seed-construction.ts
  * Sign in with director@uriri.demo / password123 (also compliance@, qs@, accounts@, pm@, site@, procurement@, store@).
  * Portal (emailed code; shown on screen when email is not set up): client@, cqs@, arch@, sub@uriri.demo.
- * Two projects: PRJ-001 (classrooms, on programme) and a smaller market job running late, for the dashboards and reports.
+ * Three projects: PRJ-001 (classrooms, on programme), a smaller market job running late, and an 11 kV REREC power line (C9).
  */
 async function main() {
   const existing = await prisma.organization.findFirst({ where: { name: "Uriri Builders Ltd", industryType: "CONSTRUCTION" } });
@@ -32,6 +32,7 @@ async function main() {
   await seedPayrollPortal(orgId);
   await seedSecondProject(orgId);
   await seedAddons(orgId);
+  await seedPowerLine(orgId);
 }
 
 /** C8: an SMS bundle bought, last month's payout fees invoiced (unpaid), and a branch office ready for an Enterprise upgrade. */
@@ -662,6 +663,113 @@ async function seedSecondProject(orgId: string) {
         data: { organizationId: orgId, projectId: pid, occurredAt: inDays(-40), severity: "LOST_TIME", description: "Fitter struck by a swinging purlin while lifting; bruised shoulder, off work 3 days.", actionTaken: "Tag lines used for every lift", reportDueAt: new Date(inDays(-40).getTime() + 7 * DAY), reportedToDoshs: true, reportedAt: inDays(-36), doshsRef: "DOSHS/MGR/2026/311", createdBy: pm?.id },
       });
       console.log(`Seeded ${project.code} ${name} (behind programme).`);
+    },
+    { timeout: 60_000 },
+  );
+}
+
+/** C9 (docs/construction/07): an 11 kV REREC line with an A1 EPRA licence, sections and progress, wayleaves, crossings, free-issue materials and pole records. */
+async function seedPowerLine(orgId: string) {
+  const name = "Rongo-Kamagambo 11kV Line Extension";
+  await prisma.$transaction(
+    async (tx) => {
+      await tx.$executeRaw`SELECT set_config('app.current_tenant', ${orgId}, true)`;
+      if (await tx.conProject.findFirst({ where: { name } })) {
+        console.log(`${name} already exists - nothing to do.`);
+        return;
+      }
+      const by = async (email: string) => tx.orgUser.findFirst({ where: { user: { email } } });
+      const [pm, site, store, comp] = await Promise.all([by("pm@uriri.demo"), by("site@uriri.demo"), by("store@uriri.demo"), by("compliance@uriri.demo")]);
+      await tx.conCompanyRegistration.upsert({
+        where: { organizationId_worksClass: { organizationId: orgId, worksClass: "ELEC_MECH" } },
+        create: { organizationId: orgId, worksClass: "ELEC_MECH", ncaCategory: 4, regNo: "NCA/EM/4/2026/01188", registeredAt: inDays(-400), licenceExpiresAt: inDays(240), createdBy: comp?.id },
+        update: {},
+      });
+      await tx.conEpraClass.createMany({
+        data: [
+          { organizationId: orgId, code: "A1", label: "Class A1 (high voltage installations)", anyVoltage: true },
+          { organizationId: orgId, code: "A2", label: "Class A2", anyVoltage: false },
+          { organizationId: orgId, code: "B", label: "Class B", anyVoltage: false },
+          { organizationId: orgId, code: "C1", label: "Class C1", anyVoltage: false },
+          { organizationId: orgId, code: "C2", label: "Class C2", anyVoltage: false },
+        ],
+        skipDuplicates: true,
+      });
+      await tx.conComplianceDoc.create({ data: { organizationId: orgId, type: ConDocType.EPRA_LICENCE, epraClass: "A1", title: "EPRA electrical contractor licence", refNo: "EPRA/ECL/A1/2026/0457", issuedAt: inDays(-200), expiresAt: inDays(165), createdBy: comp?.id } });
+      if (site) await tx.conStaffLicence.create({ data: { organizationId: orgId, orgUserId: site.id, licenceClass: "Electrician A1", licenceNo: "EPRA/EW/A1/88214", expiresAt: inDays(45), createdBy: comp?.id } });
+
+      const client = await tx.conParty.create({ data: { organizationId: orgId, kind: "CLIENT", name: "Rural Electrification and Renewable Energy Corporation (REREC)", contactPerson: "Regional Engineer, Nyanza", phone: "0711000030" } });
+      const codes = (await tx.conProject.findMany({ select: { code: true } })).map((p) => p.code);
+      const bq: [string, string, number, number][] = [
+        ["Survey, pegging and wayleave tracing", "km", 9, 38000],
+        ["Erect 11m wooden poles (client-supplied)", "no", 120, 6500],
+        ["Install stays complete", "no", 60, 4200],
+        ["String 100mm2 ACSR conductor, 3 phase", "km", 9, 210000],
+        ["Install 100 kVA pole-mounted transformer", "no", 3, 145000],
+        ["Service connections", "no", 80, 3500],
+      ];
+      const total = bq.reduce((a, [, , q, r]) => a + q * r, 0);
+      const project = await tx.conProject.create({
+        data: {
+          organizationId: orgId, code: nextCode("PRJ", codes), name, clientId: client.id, worksClass: "ELEC_MECH", voltageKv: 11, contractSum: total, formOfContract: "PPADA",
+          startDate: inDays(-40), completionDate: inDays(80), dlpMonths: 12, county: "Migori", location: "Rongo to Kamagambo", lat: -0.7584, lng: 34.5986, status: "ACTIVE",
+        },
+      });
+      const pid = project.id;
+      const members: [typeof pm, "CON_PROJECT_MGR" | "CON_SITE_SUPERVISOR" | "CON_STOREKEEPER"][] = [[pm, "CON_PROJECT_MGR"], [site, "CON_SITE_SUPERVISOR"], [store, "CON_STOREKEEPER"]];
+      for (const [u, role] of members) if (u) await tx.conProjectMember.create({ data: { organizationId: orgId, projectId: pid, orgUserId: u.id, role } });
+      const bill = await tx.conBqSection.create({ data: { organizationId: orgId, projectId: pid, code: "BILL 1", name: "11 kV line works", sortOrder: 0 } });
+      await tx.conBqItem.createMany({ data: bq.map(([description, unit, qty, rate], i) => ({ organizationId: orgId, projectId: pid, sectionId: bill.id, code: String.fromCharCode(65 + i), description, unit, qty, rate, amount: qty * rate, sortOrder: i })) });
+      await tx.conProjectPermit.create({ data: { organizationId: orgId, projectId: pid, type: "NCA_PROJECT_REG", status: "APPROVED", refNo: "NCA/PR/2026/50231", issuedAt: inDays(-45) } });
+
+      const sections = [
+        { code: "S1", name: "Rongo town to Ogembo junction", fromKm: 0, toKm: 3, targetPoles: 40, targetStays: 20, targetConductorKm: 3, targetTransformers: 1, targetServices: 30 },
+        { code: "S2", name: "Ogembo junction to Nyarach", fromKm: 3, toKm: 6, targetPoles: 40, targetStays: 20, targetConductorKm: 3, targetTransformers: 1, targetServices: 25 },
+        { code: "S3", name: "Nyarach to Kamagambo", fromKm: 6, toKm: 9, targetPoles: 40, targetStays: 20, targetConductorKm: 3, targetTransformers: 1, targetServices: 25 },
+      ];
+      const made = [];
+      for (const sec of sections) made.push(await tx.conProjectSection.create({ data: { organizationId: orgId, projectId: pid, ...sec } }));
+      const [s1, s2, s3] = made;
+      for (let d = 7; d >= 1; d--) {
+        await tx.conSectionProgress.create({ data: { organizationId: orgId, projectId: pid, sectionId: s1.id, date: inDays(-d), poles: 5, stays: 2, conductorKm: d <= 4 ? 0.5 : 0, transformers: d === 2 ? 1 : 0, services: d <= 2 ? 6 : 0, crew: "Crew A (Ouma)", createdBy: site?.id } });
+        if (d <= 3) await tx.conSectionProgress.create({ data: { organizationId: orgId, projectId: pid, sectionId: s2.id, date: inDays(-d), poles: 4, stays: 2, conductorKm: 0, crew: "Crew B", createdBy: site?.id } });
+      }
+
+      const wayleaves: [string, string, number, "AGREED" | "PAID" | "PENDING" | "REFUSED", number | null, typeof s1][] = [
+        ["Peter Odhiambo", "MIGORI/RONGO/1102", 0.6, "PAID", 12000, s1],
+        ["Grace Akinyi", "MIGORI/RONGO/1147", 1.4, "AGREED", 9000, s1],
+        ["Rongo Primary School (BOM)", "MIGORI/RONGO/1190", 2.2, "AGREED", 0, s1],
+        ["Samuel Owino", "MIGORI/OGEMBO/0331", 3.8, "PENDING", null, s2],
+        ["Esther Atieno", "MIGORI/OGEMBO/0359", 4.9, "REFUSED", null, s2],
+        ["Joseph Okoth", "MIGORI/NYARACH/0072", 6.7, "PENDING", null, s3],
+      ];
+      await tx.conWayleave.createMany({
+        data: wayleaves.map(([landowner, parcelNo, km, status, comp2, sec], i) => ({ organizationId: orgId, projectId: pid, sectionId: sec.id, landowner, phone: `07110003${String(10 + i)}`, parcelNo, chainageKm: km, status, compensation: comp2, agreedAt: status === "AGREED" || status === "PAID" ? inDays(-30 + i) : null, notes: status === "REFUSED" ? "Re-route around the homestead (survey to revise)" : null, createdBy: pm?.id })),
+      });
+      await tx.conCrossing.createMany({
+        data: [
+          { organizationId: orgId, projectId: pid, sectionId: s1.id, kind: "ROAD", authority: "KeNHA", refNo: "KeNHA/WL/MGR/2026/118", status: "APPROVED", approvedAt: inDays(-35), expiresAt: inDays(40), createdBy: pm?.id },
+          { organizationId: orgId, projectId: pid, sectionId: s3.id, kind: "RIVER", authority: "WRA (Water Resources Authority)", refNo: null, status: "PENDING", notes: "River Kuja crossing, application lodged", createdBy: pm?.id },
+        ],
+      });
+
+      const items = [
+        { code: "POLE-11M", description: "11m treated wooden pole", unit: "no", received: 80, issued: 55 },
+        { code: "ACSR-100", description: "100mm2 ACSR conductor", unit: "km", received: 9, issued: 2.5 },
+        { code: "TX-100KVA", description: "100 kVA 11/0.415 kV transformer", unit: "no", received: 2, issued: 1 },
+      ];
+      for (const it of items) {
+        const item = await tx.conClientItem.create({ data: { organizationId: orgId, projectId: pid, code: it.code, description: it.description, unit: it.unit } });
+        await tx.conClientMaterialMove.create({ data: { organizationId: orgId, projectId: pid, itemId: item.id, kind: "RECEIVED", quantity: it.received, moveDate: inDays(-20), reference: "REREC-DN-2026-0412", createdBy: store?.id } });
+        await tx.conClientMaterialMove.create({ data: { organizationId: orgId, projectId: pid, itemId: item.id, kind: "ISSUED", quantity: it.issued, sectionId: s1.id, moveDate: inDays(-6), createdBy: store?.id } });
+      }
+
+      const poles = Array.from({ length: 35 }, (_, i) => ({
+        organizationId: orgId, projectId: pid, sectionId: i < 27 ? s1.id : s2.id, kind: "POLE" as const, tag: `P-${String(i + 1).padStart(3, "0")}`, spec: "11m treated wooden pole",
+        lat: Number((-0.7584 - i * 0.00065).toFixed(6)), lng: Number((34.5986 + i * 0.00071).toFixed(6)), installedAt: inDays(-7 + Math.floor(i / 5)), createdBy: site?.id,
+      }));
+      await tx.conLineAsset.createMany({ data: [...poles, { organizationId: orgId, projectId: pid, sectionId: s1.id, kind: "TRANSFORMER", tag: "TX-01", serialNo: "ABB-100K-55821", spec: "100 kVA 11/0.415 kV pole-mounted", lat: -0.7712, lng: 34.6123, installedAt: inDays(-2), createdBy: site?.id }] });
+      console.log(`Seeded ${project.code} ${name}: A1 EPRA licence, 3 sections with a week of progress, 6 wayleaves, 2 crossings, 3 free-issue items, 35 poles and a transformer.`);
     },
     { timeout: 60_000 },
   );

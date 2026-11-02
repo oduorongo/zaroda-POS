@@ -46,7 +46,7 @@ export function OverviewTab({ project: p, reload }: TabProps) {
       withChecks(
         (extra) =>
           conSend("PUT", `/construction/projects/${p.id}`, {
-            code: f.code, name: f.name, clientId: p.client?.id, worksClass: f.worksClass, contractSum: Number(f.contractSum), formOfContract: f.formOfContract,
+            code: f.code, name: f.name, clientId: p.client?.id, worksClass: f.worksClass, voltageKv: f.worksClass === "ELEC_MECH" && f.voltageKv ? Number(f.voltageKv) : undefined, contractSum: Number(f.contractSum), formOfContract: f.formOfContract,
             startDate: f.startDate || undefined, completionDate: f.completionDate || undefined, dlpMonths: Number(f.dlpMonths), retentionRate: Number(f.retentionRate),
             retentionLimit: Number(f.retentionLimit), county: f.county || undefined, location: f.location || undefined, lat: f.lat ? Number(f.lat) : undefined, lng: f.lng ? Number(f.lng) : undefined, ...extra,
           }),
@@ -82,7 +82,7 @@ export function OverviewTab({ project: p, reload }: TabProps) {
             {/* Storekeepers and timekeepers get the project without its money (null). */}
             {(p.contractSum as number | null) !== null && <Row label="Contract sum" value={kes(p.contractSum)} />}
             {(p.contractSum as number | null) !== null && <Row label="BQ total" value={<span>{kes(p.bqTotal)}{Math.abs(diff) >= 1 && <span className="ml-1 text-xs font-semibold text-red-700">({diff > 0 ? "+" : ""}{diff.toLocaleString("en-KE")} vs contract)</span>}</span>} />}
-            <Row label="Works class" value={WORKS[p.worksClass] ?? p.worksClass} />
+            <Row label="Works class" value={`${WORKS[p.worksClass] ?? p.worksClass}${p.voltageKv ? ` (${p.voltageKv} kV line)` : ""}`} />
             <Row label="Form of contract" value={FORMS[p.formOfContract] ?? p.formOfContract} />
             <Row label="Start" value={p.startDate ?? "-"} />
             <Row label="Completion" value={p.completionDate ?? "-"} />
@@ -103,6 +103,9 @@ export function OverviewTab({ project: p, reload }: TabProps) {
                   {Object.entries(WORKS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
                 </select>
               </Field>
+              {f.worksClass === "ELEC_MECH" && (
+                <Field label="Line voltage (kV, for power lines)"><input className={inputClass} inputMode="decimal" placeholder="e.g. 11 or 33" value={f.voltageKv} onChange={(e) => setF({ ...f, voltageKv: e.target.value })} /></Field>
+              )}
               <Field label="Form of contract">
                 <select className={inputClass} value={f.formOfContract} onChange={(e) => setF({ ...f, formOfContract: e.target.value })}>
                   {Object.entries(FORMS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
@@ -161,7 +164,7 @@ function Row({ label, value }: { label: string; value: React.ReactNode }) {
 
 function toForm(p: TabProps["project"]) {
   return {
-    code: p.code, name: p.name, contractSum: String(p.contractSum), worksClass: p.worksClass, formOfContract: p.formOfContract, dlpMonths: String(p.dlpMonths),
+    code: p.code, name: p.name, contractSum: String(p.contractSum), worksClass: p.worksClass, voltageKv: p.voltageKv ? String(p.voltageKv) : "", formOfContract: p.formOfContract, dlpMonths: String(p.dlpMonths),
     startDate: p.startDate ?? "", completionDate: p.completionDate ?? "", retentionRate: String(p.retentionRate), retentionLimit: String(p.retentionLimit),
     county: p.county ?? "", location: p.location ?? "", lat: p.lat === null ? "" : String(p.lat), lng: p.lng === null ? "" : String(p.lng),
   };

@@ -71,10 +71,27 @@ export class ComplianceDocDto {
   @IsOptional()
   projectId?: string;
 
+  /** EPRA licence class, for an EPRA_LICENCE. */
+  @IsIn(['A1', 'A2', 'B', 'C1', 'C2'])
+  @IsOptional()
+  epraClass?: string;
+
   @IsString()
   @IsOptional()
   @MaxLength(300)
   notes?: string;
+}
+
+export class EpraClassDto {
+  @IsBoolean()
+  anyVoltage!: boolean;
+
+  /** The highest line voltage (kV) this class allows, when not any voltage. */
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0.01)
+  @Max(1000)
+  @IsOptional()
+  maxVoltageKv?: number;
 }
 
 export class CategoryLimitDto {
