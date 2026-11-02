@@ -1,5 +1,6 @@
 import { randomUUID } from 'crypto';
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { SeasonalBillingService } from '../seasonal-billing/seasonal-billing.service';
 import { OnlineStore, Prisma, Role } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '../common/prisma/prisma.service';
@@ -71,7 +72,10 @@ function toPlatformOnlineStoreView(store: OnlineStore | null) {
 
 @Injectable()
 export class PlatformAdminService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly seasonal: SeasonalBillingService,
+  ) {}
 
   async listOrganizations() {
     const organizations = await this.prisma.organization.findMany({
@@ -179,6 +183,7 @@ export class PlatformAdminService {
   }
 
   async createPlan(dto: CreatePlanDto) {
+    if (dto.billingCycle === 'SEASONAL' && !dto.annualPriceKes) throw new BadRequestException('A seasonal plan needs its annual price');
     try {
       return await this.prisma.plan.create({ data: dto });
     } catch (e) {
@@ -257,16 +262,19 @@ export class PlatformAdminService {
         }
 
         // No device subscription for a rental landlord - their plan is the rental plan (see needsDeviceSubscription).
-        const subscription = needsDeviceSubscription(dto.industryType)
-          ? await tx.subscription.create({
+        // A seasonal plan (school suppliers) starts with the rest of this school year's term instalments instead of a period.
+        const subscription = !needsDeviceSubscription(dto.industryType)
+          ? null
+          : plan.billingCycle === 'SEASONAL'
+            ? await this.seasonal.startSubscription(tx, organizationId, plan)
+            : await tx.subscription.create({
               data: {
                 organizationId,
                 planId: plan.id,
                 currentPeriodEnd: new Date(Date.now() + (options.trial ? 14 : plan.billingPeriodDays) * 24 * 60 * 60 * 1000),
                 isTrial: options.trial ?? false,
               },
-            })
-          : null;
+            });
 
         return { organizationId, branchId: branch.id, subscriptionId: subscription?.id ?? null };
       }, TX_OPTIONS);
@@ -297,6 +305,7 @@ export class PlatformAdminService {
       include: { plan: true },
     });
     if (!subscription) throw new NotFoundException('This tenant has no subscription');
+    if (subscription.plan.billingCycle === 'SEASONAL') throw new BadRequestException('This business is on a seasonal plan: record the payment against its instalment (Seasonal billing)');
 
     const base = subscription.currentPeriodEnd > new Date() ? subscription.currentPeriodEnd : new Date();
     const newPeriodEnd = new Date(base.getTime() + subscription.plan.billingPeriodDays * 24 * 60 * 60 * 1000);
@@ -437,14 +446,14 @@ export class PlatformAdminService {
       this.prisma.terminal.count(),
     ]);
 
-    const byStatus: Record<string, number> = { TRIAL: 0, ACTIVE: 0, GRACE: 0, SUSPENDED: 0 };
+    const byStatus: Record<string, number> = { TRIAL: 0, ACTIVE: 0, GRACE: 0, SUSPENDED: 0, READ_ONLY: 0 };
     let mrrKes = 0;
     for (const sub of subscriptions) {
       const status = effectiveStatus(sub);
       byStatus[status] = (byStatus[status] ?? 0) + 1;
       // MRR counts paying (non-trial), non-suspended subscriptions only -
       // a trial or a suspended tenant contributes no recurring revenue.
-      if (!sub.isTrial && status !== 'SUSPENDED') {
+      if (!sub.isTrial && status !== 'SUSPENDED' && status !== 'READ_ONLY') {
         const monthlyEquivalent = (Number(sub.plan.priceKes) / sub.plan.billingPeriodDays) * 30;
         mrrKes += monthlyEquivalent;
       }

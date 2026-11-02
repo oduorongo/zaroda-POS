@@ -145,7 +145,7 @@ export class SalesPortalService {
         total: tenants.length,
         onTrial: tenants.filter((t) => t.subscription?.status === 'TRIAL').length,
         paying: tenants.filter((t) => t.subscription?.status === 'ACTIVE').length,
-        lapsed: tenants.filter((t) => t.subscription && ['GRACE', 'SUSPENDED'].includes(t.subscription.status)).length,
+        lapsed: tenants.filter((t) => t.subscription && ['GRACE', 'SUSPENDED', 'READ_ONLY'].includes(t.subscription.status)).length,
         sellingOnline: tenants.filter((t) => t.onlineShop.isPublished).length,
       },
       riders: {
