@@ -9,7 +9,16 @@ import { getTenantStore } from '../common/tenant/tenant-context';
 import { EtimsClient } from './etims.client';
 import { EtimsSettingsService } from './etims-settings.service';
 import { classifyResult, explainResult, INITIAL_LAST_REQ } from './etims.util';
-import { customerKey, importDecisionProblem, normalizeCustPin, stampBefore } from './etims-extras.util';
+import {
+  compositionBodies,
+  compositionKey,
+  compositionProblem,
+  customerKey,
+  importDecisionProblem,
+  normalizeCustPin,
+  stampBefore,
+} from './etims-extras.util';
+import { itemName } from './etims-items.util';
 
 const REGISTRANT = { id: 'ZARODA', name: 'Zaroda POS' };
 
@@ -470,5 +479,109 @@ export class EtimsExtrasService {
       });
       return String(updated.custSeq).padStart(9, '0');
     });
+  }
+
+  // ── Recipes (saveItemComposition) ──
+  private async recipes(take?: number) {
+    return this.tenantPrisma.run((tx) =>
+      tx.productVariant.findMany({
+        where: { recipeIngredients: { some: {} } },
+        select: {
+          id: true,
+          name: true,
+          product: { select: { name: true } },
+          etimsItem: { select: { id: true, itemCd: true, status: true, cpstSentKey: true, cpstError: true } },
+          recipeIngredients: {
+            select: {
+              quantity: true,
+              ingredientVariant: {
+                select: {
+                  name: true,
+                  product: { select: { name: true } },
+                  etimsItem: { select: { itemCd: true, status: true } },
+                },
+              },
+            },
+          },
+        },
+        orderBy: { product: { name: 'asc' } },
+        take,
+      }),
+    );
+  }
+
+  private static shape(r: Awaited<ReturnType<EtimsExtrasService['recipes']>>[number]) {
+    const ingredients = r.recipeIngredients.map((i) => ({
+      name: itemName(i.ingredientVariant.product.name, i.ingredientVariant.name),
+      itemCd: i.ingredientVariant.etimsItem?.itemCd ?? null,
+      status: i.ingredientVariant.etimsItem?.status ?? null,
+      qty: Number(i.quantity),
+    }));
+    const problem = compositionProblem(
+      { status: r.etimsItem?.status ?? 'NOT_SENT', itemCd: r.etimsItem?.itemCd ?? null },
+      ingredients,
+    );
+    const key = problem ? null : compositionKey(ingredients.map((i) => ({ itemCd: i.itemCd!, qty: i.qty })));
+    return { r, ingredients, problem, key };
+  }
+
+  /** Every product made from a recipe, and whether KRA has its recipe. */
+  async compositions() {
+    return (await this.recipes(500)).map((row) => {
+      const { r, ingredients, problem, key } = EtimsExtrasService.shape(row);
+      const state = problem ? 'WAITING' : key === r.etimsItem?.cpstSentKey ? 'SENT' : r.etimsItem?.cpstError ? 'FAILED' : 'TO_SEND';
+      return {
+        variantId: r.id,
+        name: itemName(r.product.name, r.name),
+        itemCd: r.etimsItem?.itemCd ?? null,
+        state,
+        message: problem ?? (state === 'FAILED' ? r.etimsItem?.cpstError : null),
+        ingredients: ingredients.map(({ name, itemCd, qty }) => ({ name, itemCd, qty })),
+      };
+    });
+  }
+
+  /**
+   * Tells KRA what each recipe item is made of (how much of each registered ingredient goes into one), and again when the recipe
+   * changes. Only items whose ingredients are all registered are sent. A failure is kept on the item and tried at the next pass.
+   */
+  async syncCompositions() {
+    const c = await this.tenantPrisma.run((tx) => this.settings.credentials(tx));
+    if (!c) return { sent: 0, failed: 0 };
+    const pending = (await this.recipes(500))
+      .map(EtimsExtrasService.shape)
+      .filter((x) => x.key && x.key !== x.r.etimsItem?.cpstSentKey)
+      .slice(0, 100);
+    let sent = 0;
+    let failed = 0;
+    for (const { r, ingredients, key } of pending) {
+      const bodies = compositionBodies(
+        c,
+        r.etimsItem!.itemCd!,
+        ingredients.map((i) => ({ itemCd: i.itemCd!, qty: i.qty })),
+        REGISTRANT,
+      );
+      let error: string | null = null;
+      let stop = false;
+      for (const body of bodies) {
+        const res = await this.client.call(c.environment, 'saveItemComposition', body);
+        const k = classifyResult(res.resultCd);
+        if (k === 'OK' || k === 'DUPLICATE') continue;
+        error = explainResult(res.resultCd, res.resultMsg);
+        stop = k === 'RETRY';
+        break;
+      }
+      await this.tenantPrisma.run((tx) =>
+        tx.etimsItem.update({
+          where: { id: r.etimsItem!.id },
+          data: error ? { cpstError: error.slice(0, 500) } : { cpstSentKey: key, cpstError: null },
+        }),
+      );
+      if (error) failed += 1;
+      else sent += 1;
+      // the network being down stops the round: the rest would fail the same way
+      if (stop) break;
+    }
+    return { sent, failed };
   }
 }

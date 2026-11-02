@@ -1,4 +1,12 @@
-import { customerKey, importDecisionProblem, normalizeCustPin, stampBefore } from './etims-extras.util';
+import {
+  compositionBodies,
+  compositionKey,
+  compositionProblem,
+  customerKey,
+  importDecisionProblem,
+  normalizeCustPin,
+  stampBefore,
+} from './etims-extras.util';
 
 describe('normalizeCustPin', () => {
   it('accepts a PIN typed loosely and returns it in capitals', () => {
@@ -43,5 +51,28 @@ describe('stampBefore', () => {
   it('is null for something that is not a stamp', () => {
     expect(stampBefore('')).toBeNull();
     expect(stampBefore('2026-10-27')).toBeNull();
+  });
+});
+
+describe('recipes (item composition)', () => {
+  const creds = { tin: 'P051234567X', bhfId: '00', cmcKey: 'k' };
+  it('keys a recipe the same whatever order the ingredients are in', () => {
+    expect(compositionKey([{ itemCd: 'KE1A', qty: 0.2 }, { itemCd: 'KE1B', qty: 1 }])).toBe(
+      compositionKey([{ itemCd: 'KE1B', qty: 1 }, { itemCd: 'KE1A', qty: 0.2 }]),
+    );
+    expect(compositionKey([{ itemCd: 'KE1A', qty: 0.2 }])).not.toBe(compositionKey([{ itemCd: 'KE1A', qty: 0.25 }]));
+  });
+  it('sends one body per ingredient', () => {
+    const b = compositionBodies(creds, 'KE2X', [{ itemCd: 'KE1A', qty: 0.2 }, { itemCd: 'KE1B', qty: 1.23456 }], { id: 'ZARODA', name: 'Zaroda POS' });
+    expect(b).toHaveLength(2);
+    expect(b[0]).toMatchObject({ tin: 'P051234567X', itemCd: 'KE2X', cpstItemCd: 'KE1A', cpstQty: 0.2 });
+    expect(b[1].cpstQty).toBe(1.235);
+  });
+  it('waits until the item and every ingredient are registered', () => {
+    const reg = { status: 'REGISTERED', itemCd: 'KE2X' };
+    expect(compositionProblem(reg, [{ name: 'Rice', itemCd: 'KE1A', status: 'REGISTERED' }])).toBeNull();
+    expect(compositionProblem({ status: 'NOT_SENT', itemCd: null }, [])).toContain('item itself');
+    expect(compositionProblem(reg, [])).toContain('no ingredients');
+    expect(compositionProblem(reg, [{ name: 'Rice', itemCd: null, status: null }])).toContain('Rice');
   });
 });

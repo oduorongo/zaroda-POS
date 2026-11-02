@@ -2578,6 +2578,9 @@ model Plan {
   name              String
   priceKes          Decimal  @db.Decimal(12, 2)
   billingPeriodDays Int      @default(30)
+  /// MONTHLY (priceKes every billingPeriodDays) or SEASONAL (annualPriceKes in school-term instalments, see seasonal_terms).
+  billingCycle      String   @default("MONTHLY")
+  annualPriceKes    Decimal? @db.Decimal(12, 2)
   maxDevices        Int
   maxBranches       Int
   // Retiring a plan without deleting it - existing subscriptions on a
@@ -2618,6 +2621,7 @@ model Subscription {
   organization Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   plan         Plan                  @relation(fields: [planId], references: [id])
   payments     SubscriptionPayment[]
+  instalments  SubscriptionInstalment[]
 
   @@map("subscriptions")
 }
@@ -2633,8 +2637,11 @@ model SubscriptionPayment {
   periodEnd                 DateTime
   recordedByPlatformAdminId String?
   paidAt                    DateTime @default(now())
+  /// Whether a sales team earns its share on this payment. Monthly: always. Seasonal: only the first payment and January renewals.
+  commissionable            Boolean  @default(true)
 
   subscription Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  instalments  SubscriptionInstalment[]
 
   @@index([subscriptionId])
   @@map("subscription_payments")
@@ -5122,6 +5129,10 @@ model EtimsItem {
   sentHash       String?
   lastError      String?
   registeredAt   DateTime?
+  /// What KRA was last told about this item's recipe (ingredients and quantities), so a changed recipe is sent again.
+  cpstSentKey    String?
+  /// Why the recipe could not be sent, kept until it goes through.
+  cpstError      String?
   updatedAt      DateTime        @updatedAt
 
   organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
@@ -7264,4 +7275,85 @@ model ConMessageRecipient {
   @@unique([messageId, orgUserId])
   @@index([organizationId, orgUserId, readAt])
   @@map("con_message_recipients")
+}
+
+/// The school terms a SEASONAL plan is billed in (one row per term). Editable by the platform admin; whole terms only.
+model SeasonalTerm {
+  term      Int      @id
+  label     String
+  /// Share of the plan's annual price (0.5000 = 50%).
+  shareRate Decimal  @db.Decimal(5, 4)
+  dueMonth  Int
+  dueDay    Int
+  graceDays Int
+  /// The months a business joining mid-year counts as "in" this term (inclusive). Months in no term (Nov-Dec): no charge until January.
+  fromMonth Int
+  toMonth   Int
+  updatedAt DateTime @updatedAt
+
+  @@map("seasonal_terms")
+}
+
+/// One row ("default"): pay-in-full discount, minimum first payment, setup fee for Nov-Dec joiners.
+model SeasonalBillingSettings {
+  id                       String   @id @default("default")
+  payInFullDiscountRate    Decimal  @default(0.10) @db.Decimal(5, 4)
+  /// The whole year can be paid at the discount up to the end of this month (1 = January), while nothing of it is paid yet.
+  payInFullUntilMonth      Int      @default(1)
+  minFirstPaymentKes       Decimal  @default(1500) @db.Decimal(12, 2)
+  setupFeeKes              Decimal  @default(0) @db.Decimal(12, 2)
+  updatedByPlatformAdminId String?
+  updatedAt                DateTime @updatedAt
+
+  @@map("seasonal_billing_settings")
+}
+
+/// A term's instalment of a seasonal subscription. term 0 is the setup fee of a business joining in Nov-Dec.
+model SubscriptionInstalment {
+  id                    String    @id @default(uuid())
+  organizationId        String
+  subscriptionId        String
+  /// The calendar year the school year runs in (Term 1 is January of it).
+  schoolYear            Int
+  term                  Int
+  amount                Decimal   @db.Decimal(12, 2)
+  dueDate               DateTime  @db.Date
+  graceDays             Int
+  /// DUE | PAID | SETTLED (covered by paying the whole year) | WAIVED
+  status                String    @default("DUE")
+  paidAt                DateTime?
+  paymentId             String?
+  // The latest M-Pesa prompt; attemptFullYear when it was for the whole year at the discount.
+  payPhone              String?
+  payAttemptedAt        DateTime?
+  tumaMerchantRequestId String?
+  attemptFullYear       Boolean   @default(false)
+  attemptAmount         Decimal?  @db.Decimal(12, 2)
+  lastPaymentError      String?
+  /// Reminder texts already sent: BEFORE_DUE, DUE, BEFORE_LOCK.
+  reminders             String[]  @default([])
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  subscription Subscription         @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  payment      SubscriptionPayment? @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+
+  @@unique([subscriptionId, schoolYear, term])
+  @@index([organizationId, status])
+  @@index([schoolYear, term, status])
+  @@map("subscription_instalments")
+}
+
+/// A platform admin moving a term's due date for every seasonal business at once (capitation released late).
+model SeasonalDueShift {
+  id              String   @id @default(uuid())
+  schoolYear      Int
+  term            Int
+  newDueDate      DateTime @db.Date
+  instalments     Int
+  reason          String?
+  platformAdminId String
+  createdAt       DateTime @default(now())
+
+  @@map("seasonal_due_shifts")
 }
