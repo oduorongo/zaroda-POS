@@ -146,6 +146,8 @@ model Organization {
   etimsDevices              EtimsDevice[]
   etimsItems                EtimsItem[]
   etimsDocuments            EtimsDocument[]
+  etimsPurchaseInvoices     EtimsPurchaseInvoice[]
+  etimsSupplierItems        EtimsSupplierItem[]
   repackagings              Repackaging[]
   wasteLogs                 WasteLog[]
   expenses                  Expense[]
@@ -172,6 +174,61 @@ model Organization {
   deliveryJobs              DeliveryJob[]
   deliveryQuotes            DeliveryQuote[]
   deliveryJobContacts       DeliveryJobContact[]
+  conSubscription           ConSubscription?
+  conSubscriptionPayments   ConSubscriptionPayment[]
+  conRoles                  ConRole[]
+  conUserRoles              ConUserRole[]
+  conProjectMembers         ConProjectMember[]
+  conRegistrations          ConCompanyRegistration[]
+  conComplianceDocs         ConComplianceDoc[]
+  conCategoryLimits         ConCategoryLimit[]
+  conTaxSettings            ConTaxSetting[]
+  conAlerts                 ConAlert[]
+  conSettings               ConSettings?
+  conStaffAccreditations    ConStaffAccreditation[]
+  conParties                ConParty[]
+  conTenders                ConTender[]
+  conProjects               ConProject[]
+  conProjectParties         ConProjectParty[]
+  conProjectPermits         ConProjectPermit[]
+  conMilestones             ConMilestone[]
+  conBqSections             ConBqSection[]
+  conBqItems                ConBqItem[]
+  conSiteDiaries            ConSiteDiary[]
+  conSitePhotos             ConSitePhoto[]
+  conSiteInstructions       ConSiteInstruction[]
+  conWorkers                ConWorker[]
+  conMuster                 ConMuster[]
+  conToolboxTalks           ConToolboxTalk[]
+  conPpeIssues              ConPpeIssue[]
+  conPermitsToWork          ConPermitToWork[]
+  conIncidents              ConIncident[]
+  conRequisitions           ConRequisition[]
+  conRequisitionLines       ConRequisitionLine[]
+  conLpos                   ConLpo[]
+  conMaterialIssues         ConMaterialIssue[]
+  conMaterialBudgets        ConMaterialBudget[]
+  conPlant                  ConPlant[]
+  conPlantLogs              ConPlantLog[]
+  conVariations             ConVariation[]
+  conValuations             ConValuation[]
+  conValuationLines         ConValuationLine[]
+  conValuationReceipts      ConValuationReceipt[]
+  conRetentionEntries       ConRetentionEntry[]
+  conSubcontracts           ConSubcontract[]
+  conSubValuations          ConSubValuation[]
+  conPayrollRuns            ConPayrollRun[]
+  conPayrollLines           ConPayrollLine[]
+  conPayoutSettings         ConPayoutSettings?
+  conPortalUsers            ConPortalUser[]
+  conFeeCharges             ConFeeCharge[]
+  conFeeInvoices            ConFeeInvoice[]
+  conOffices                ConOffice[]
+  conUserOffices            ConUserOffice[]
+  conCustomRoles            ConCustomRole[]
+  conUserCustomRoles        ConUserCustomRole[]
+  conApiKeys                ConApiKey[]
+  conPortalAccess           ConPortalAccess[]
 
   @@map("organizations")
 }
@@ -214,6 +271,7 @@ model Branch {
   rosterShifts          RosterShift[]
   onlineStores          OnlineStore[]
   onlineOrders          OnlineOrder[]
+  conProject            ConProject?
 
   @@index([organizationId])
   @@map("branches")
@@ -296,6 +354,11 @@ model OrgUser {
   payrollRunsApproved PayrollRun[]              @relation("PayrollRunApprovedBy")
   rosterShifts        RosterShift[]             @relation("RosterShiftFor")
   rosterShiftsCreated RosterShift[]             @relation("RosterShiftCreatedBy")
+  conUserRoles        ConUserRole[]
+  conOffice           ConUserOffice?
+  conCustomRoles      ConUserCustomRole[]
+  conProjectMembers   ConProjectMember[]
+  conAccreditation    ConStaffAccreditation?
 
   @@unique([organizationId, userId])
   @@index([organizationId])
@@ -565,6 +628,7 @@ model ProductVariant {
   etimsItem              EtimsItem?
   schoolQuoteLines       SchoolQuoteLine[]
   schoolTenderLines      SchoolTenderLine[]
+  etimsSupplierItems     EtimsSupplierItem[]
   repackagedFrom         Repackaging[]            @relation("RepackagingFrom")
   repackagedInto         Repackaging[]            @relation("RepackagingTo")
   recipeIngredients      RecipeIngredient[]       @relation("RecipeFor")
@@ -582,6 +646,9 @@ model ProductVariant {
   @@index([barcode])
   schoolOrderLines   SchoolOrderLine[]
   supplierInvoiceLines SupplierInvoiceLine[]
+  conRequisitionLines  ConRequisitionLine[]
+  conMaterialIssues    ConMaterialIssue[]
+  conMaterialBudgets   ConMaterialBudget[]
 
   @@map("product_variants")
 }
@@ -707,6 +774,8 @@ enum InventoryTxnType {
   // Goods delivered to a school on credit (a school supplier's delivery note and invoice) - kept apart from SALE so the till and
   // the credit business can be told apart.
   CREDIT_SALE
+  // Construction: material taken from a project site store for the works (con_material_issues).
+  SITE_ISSUE
 }
 
 model InventoryTransaction {
@@ -1209,6 +1278,14 @@ model Expense {
   category       String
   description    String?
   amount         Decimal  @db.Decimal(12, 2)
+  /// The VAT included in the amount (claimable as input VAT on the VAT return).
+  taxAmount      Decimal  @default(0) @db.Decimal(12, 2)
+  /// Who it was bought from, and their eTIMS invoice number: needed for the VAT to be claimable (otherwise it is a cost).
+  supplierPin    String?
+  supplierName   String?
+  kraInvoiceNo   String?
+  /// The invoice KRA holds for it (downloaded from eTIMS): the VAT is then KRA's figure, checked.
+  etimsInvoiceId String?  @unique
   // CASH | MPESA | BANK | CARD, informational.
   paidWith       String?
   recordedById   String?
@@ -1217,6 +1294,7 @@ model Expense {
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   branch       Branch?      @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  etimsInvoice EtimsPurchaseInvoice? @relation(fields: [etimsInvoiceId], references: [id], onDelete: SetNull)
 
   @@index([organizationId, spentOn])
   @@map("expenses")
@@ -2369,6 +2447,8 @@ model Supplier {
   notes          String?
   /// Days after a bill's date that it falls due (30 unless set).
   paymentTermsDays Int    @default(30)
+  /// The supplier's KRA PIN, so their eTIMS invoices to us can be matched.
+  kraPin         String?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
@@ -2376,6 +2456,7 @@ model Supplier {
   purchaseOrders PurchaseOrder[]
   goodsReceipts  GoodsReceipt[]
   bills          SupplierBill[]
+  conPlant       ConPlant[]
 
   @@index([organizationId])
   @@map("suppliers")
@@ -2408,6 +2489,7 @@ model PurchaseOrder {
   lineItems    PurchaseOrderLineItem[]
   receipts     GoodsReceipt[]
   bills        SupplierBill[]
+  conLpo       ConLpo?
 
   @@index([organizationId])
   @@index([branchId])
@@ -3134,6 +3216,8 @@ model SalesTeam {
   leaderOverrideRate    Decimal         @default(0.05) @db.Decimal(5, 4)
   onboardingBonusKes    Decimal         @default(500) @db.Decimal(12, 2)
   payoutCapRate         Decimal         @default(0.35) @db.Decimal(5, 4)
+  // Construction plans (docs/construction/05): this share of a business's first-year plan payments, payable once it has paid twice.
+  conCommissionRate     Decimal         @default(0.15) @db.Decimal(5, 4)
   createdAt             DateTime        @default(now())
   updatedAt             DateTime        @updatedAt
 
@@ -3343,6 +3427,7 @@ model RentalUnit {
   expenses      RentalExpense[]
   meterReadings RentalMeterReading[]
   listing       RentalListing?
+  stayUnit      RentalStayUnit?
 
   @@unique([propertyId, label])
   @@index([organizationId])
@@ -3593,6 +3678,8 @@ model RentalSettings {
   mpesaEnvironment             String    @default("production")
   remindersEnabled             Boolean   @default(false)
   smsReminders                 Boolean   @default(false)
+  // Short stays: text guests (confirmation, arrival details, thank-you) and the cleaner. Email is always used when there is an address.
+  stayTexts                    Boolean   @default(false)
   paymentInstructions          String?
   // The landlord's ZARODA plan (see rental-plans.util.ts). A landlord with no row yet is on 'bure'. Strings, not enums,
   // so the later 'growth' and 'agency' plans need no migration.
@@ -3834,6 +3921,229 @@ model RentalCaretakerProperty {
   @@unique([orgUserId, propertyId])
   @@index([organizationId])
   @@map("rental_caretaker_properties")
+}
+
+// ── ZARODA RENTALS: short stays (Airbnb-style nightly lets) ───────────────
+// A unit let by the night instead of on a lease. Bookings come in directly or from Airbnb / Booking.com; their calendars
+// are kept in step both ways by iCal feeds. Money stays in the landlord's books here, never in the POS till.
+
+enum RentalStayStatus {
+  CONFIRMED
+  CHECKED_IN
+  CHECKED_OUT
+  CANCELLED
+  NO_SHOW
+}
+
+enum RentalStaySource {
+  DIRECT
+  AIRBNB
+  BOOKING_COM
+  OTHER
+}
+
+enum RentalCleaningStatus {
+  PENDING
+  DONE
+}
+
+/// Someone a manager lets units for. Their units' income less commission and costs is their monthly statement.
+model RentalUnitOwner {
+  id                String   @id @default(uuid())
+  organizationId    String
+  name              String
+  phone             String?
+  email             String?
+  commissionPercent Decimal  @default(0) @db.Decimal(5, 2)
+  notes             String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  stayUnits RentalStayUnit[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
+  @@map("rental_unit_owners")
+}
+
+/// A unit set up for short stays. While active it cannot take a lease or a Houses to let advert.
+model RentalStayUnit {
+  id                String   @id @default(uuid())
+  organizationId    String
+  unitId            String   @unique
+  ownerId           String?
+  nightlyRate       Decimal  @db.Decimal(12, 2)
+  weekendRate       Decimal? @db.Decimal(12, 2) // Friday and Saturday nights; null = the nightly rate
+  minNights         Int      @default(1)
+  maxGuests         Int      @default(2)
+  cleaningFee       Decimal  @default(0) @db.Decimal(12, 2)
+  checkInTime       String   @default("14:00")
+  checkOutTime      String   @default("10:00")
+  directions        String?
+  doorCodeEncrypted String?
+  cleanerName       String?
+  cleanerPhone      String?
+  // Secret in the calendar address Airbnb and Booking.com read; a new one cuts off the old address.
+  calendarToken     String   @unique
+  active            Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  unit      RentalUnit           @relation(fields: [unitId], references: [id], onDelete: Cascade)
+  owner     RentalUnitOwner?     @relation(fields: [ownerId], references: [id], onDelete: SetNull)
+  stays     RentalStay[]
+  blocks    RentalStayBlock[]
+  feeds     RentalStayFeed[]
+  cleanings RentalStayCleaning[]
+
+  @@index([organizationId])
+  @@map("rental_stay_units")
+}
+
+model RentalStay {
+  id                   String           @id @default(uuid())
+  organizationId       String
+  unitId               String
+  code                 String
+  source               RentalStaySource @default(DIRECT)
+  externalRef          String? // the Airbnb / Booking.com confirmation code
+  guestName            String
+  guestPhone           String?
+  guestEmail           String?
+  guests               Int              @default(1)
+  checkIn              DateTime         @db.Date
+  checkOut             DateTime         @db.Date // the day they leave: not a night
+  nights               Int
+  accommodation        Decimal          @db.Decimal(12, 2)
+  cleaningFee          Decimal          @default(0) @db.Decimal(12, 2)
+  channelFee           Decimal          @default(0) @db.Decimal(12, 2) // what Airbnb / Booking.com keeps
+  total                Decimal          @db.Decimal(12, 2) // accommodation + cleaning fee: what the guest owes
+  status               RentalStayStatus @default(CONFIRMED)
+  notes                String?
+  checkedInAt          DateTime?
+  checkedOutAt         DateTime?
+  cancelledAt          DateTime?
+  cancelReason         String?
+  createdAt            DateTime         @default(now())
+  updatedAt            DateTime         @updatedAt
+
+  stayUnit      RentalStayUnit           @relation(fields: [unitId], references: [unitId], onDelete: Cascade)
+  payments      RentalStayPayment[]
+  cleaning      RentalStayCleaning?
+  notifications RentalStayNotification[]
+
+  @@unique([organizationId, code])
+  @@index([organizationId, checkIn])
+  @@index([unitId, checkIn])
+  @@map("rental_stays")
+}
+
+/// Money in from a guest (or paid out by the channel), or a refund back. Voided, never deleted.
+model RentalStayPayment {
+  id             String    @id @default(uuid())
+  organizationId String
+  stayId         String
+  kind           String    @default("PAYMENT") // PAYMENT | REFUND
+  amount         Decimal   @db.Decimal(12, 2)
+  method         String // CASH | MPESA | BANK | CARD | CHANNEL | OTHER
+  reference      String?
+  paidAt         DateTime  @db.Date
+  note           String?
+  receiptNumber  String
+  voidedAt       DateTime?
+  voidReason     String?
+  createdAt      DateTime  @default(now())
+
+  stay RentalStay @relation(fields: [stayId], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, reference])
+  @@unique([organizationId, receiptNumber])
+  @@index([organizationId])
+  @@index([stayId])
+  @@map("rental_stay_payments")
+}
+
+/// Dates a unit cannot be booked: read from an Airbnb / Booking.com calendar (feedId), or set by hand (owner use, repairs).
+model RentalStayBlock {
+  id             String   @id @default(uuid())
+  organizationId String
+  unitId         String
+  feedId         String?
+  source         String // MANUAL | AIRBNB | BOOKING_COM | OTHER
+  uid            String?
+  startDate      DateTime @db.Date
+  endDate        DateTime @db.Date // first free day
+  summary        String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  stayUnit RentalStayUnit  @relation(fields: [unitId], references: [unitId], onDelete: Cascade)
+  feed     RentalStayFeed? @relation(fields: [feedId], references: [id], onDelete: Cascade)
+
+  @@unique([feedId, uid])
+  @@index([organizationId])
+  @@index([unitId, startDate])
+  @@map("rental_stay_blocks")
+}
+
+/// An Airbnb / Booking.com calendar address read every hour.
+model RentalStayFeed {
+  id             String           @id @default(uuid())
+  organizationId String
+  unitId         String
+  source         RentalStaySource
+  url            String
+  lastSyncedAt   DateTime?
+  lastError      String?
+  eventCount     Int              @default(0)
+  createdAt      DateTime         @default(now())
+
+  stayUnit RentalStayUnit    @relation(fields: [unitId], references: [unitId], onDelete: Cascade)
+  blocks   RentalStayBlock[]
+
+  @@unique([unitId, url])
+  @@index([organizationId])
+  @@map("rental_stay_feeds")
+}
+
+/// Cleaning a unit after a stay (made with the booking, due on the check-out day) or on its own.
+model RentalStayCleaning {
+  id             String               @id @default(uuid())
+  organizationId String
+  unitId         String
+  stayId         String?              @unique
+  dueDate        DateTime             @db.Date
+  status         RentalCleaningStatus @default(PENDING)
+  cleanerName    String?
+  cleanerPhone   String?
+  notes          String?
+  doneAt         DateTime?
+  doneById       String?
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+
+  stayUnit RentalStayUnit @relation(fields: [unitId], references: [unitId], onDelete: Cascade)
+  stay     RentalStay?    @relation(fields: [stayId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, dueDate])
+  @@index([unitId])
+  @@map("rental_stay_cleanings")
+}
+
+/// Each guest or cleaner message sent once per stay and kind (claimed before sending).
+model RentalStayNotification {
+  id             String   @id @default(uuid())
+  organizationId String
+  stayId         String
+  kind           String // CONFIRMATION | ARRIVAL | THANK_YOU | CLEANER
+  channel        String // SMS | EMAIL
+  createdAt      DateTime @default(now())
+
+  stay RentalStay @relation(fields: [stayId], references: [id], onDelete: Cascade)
+
+  @@unique([stayId, kind])
+  @@index([organizationId])
+  @@map("rental_stay_notifications")
 }
 
 // ── Rental module, phase 4: the tenant's own sign-in ─────────────────────
@@ -4819,6 +5129,12 @@ model SupplierBill {
   billDate        DateTime           @db.Date
   dueDate         DateTime           @db.Date
   total           Decimal            @db.Decimal(12, 2)
+  /// The VAT included in the total (claimable as input VAT on the VAT return).
+  taxAmount       Decimal            @default(0) @db.Decimal(12, 2)
+  /// The supplier's eTIMS invoice number. With the supplier's KRA PIN it makes the VAT claimable; without them the VAT is a cost.
+  kraInvoiceNo    String?
+  /// The invoice KRA holds for it (downloaded from eTIMS): the VAT is then KRA's figure, checked.
+  etimsInvoiceId  String?            @unique
   amountPaid      Decimal            @default(0) @db.Decimal(12, 2)
   /// Taken off what is owed by credit notes (damaged goods, a price correction...). Owed = total - credits - paid.
   creditAmount    Decimal            @default(0) @db.Decimal(12, 2)
@@ -4830,8 +5146,10 @@ model SupplierBill {
   createdAt       DateTime           @default(now())
   voidedAt        DateTime?
   voidReason      String?
+  updatedAt       DateTime           @default(now()) @updatedAt
 
   organization  Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  etimsInvoice  EtimsPurchaseInvoice? @relation(fields: [etimsInvoiceId], references: [id], onDelete: SetNull)
   supplier      Supplier          @relation(fields: [supplierId], references: [id], onDelete: Restrict)
   purchaseOrder PurchaseOrder?    @relation(fields: [purchaseOrderId], references: [id], onDelete: SetNull)
   receipt       GoodsReceipt?     @relation(fields: [goodsReceiptId], references: [id], onDelete: SetNull)
@@ -4920,6 +5238,8 @@ model EtimsSetting {
   importsSyncedAt String?
   /// The last customer number used when customers with a KRA PIN were sent to KRA (a 9-digit running number).
   custSeq        Int              @default(0)
+  /// How far the scan for stock movements (adjustments, waste, transfers...) to report has got.
+  stockScannedAt DateTime?
   updatedAt      DateTime         @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
@@ -4948,6 +5268,9 @@ model EtimsDevice {
   /// The last invoice number and stock-movement number used on this branch's device (KRA wants each to be a running number).
   invcSeq        Int               @default(0)
   sarSeq         Int               @default(0)
+  /// The last number used for a purchase reported to KRA, and where the download of suppliers' invoices to this branch has got to (KRA's own timestamp).
+  pchsSeq        Int               @default(0)
+  purchasesSyncedAt String?
   updatedAt      DateTime          @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
@@ -5049,6 +5372,10 @@ model EtimsItem {
 enum EtimsDocKind {
   SALE
   CREDIT_NOTE
+  /// A purchase confirmed to KRA (from a supplier's eTIMS invoice, or entered by hand for a delivery).
+  PURCHASE
+  /// Stock moved for a reason other than a sale or a delivery being bought: an adjustment, waste, a transfer, repacking, production.
+  STOCK_MOVE
 }
 
 /// A notice KRA put out for the taxpayer (new rules, downtime...), kept so it can be read in the back office.
@@ -5130,9 +5457,12 @@ model EtimsDocument {
   organizationId String
   branchId       String
   kind           EtimsDocKind
-  saleId         String
+  saleId         String?
   refundId       String?
-  /// "SALE:<id>" or "CREDIT:<id>": one document per sale or refund, ever.
+  /// For a purchase: the supplier invoice it confirms, or the goods-received note it reports.
+  purchaseInvoiceId String?
+  receiptId      String?
+  /// "SALE:<id>", "CREDIT:<id>", "PURCHASE:<id>", "STOCK:<...>": one document per thing, ever.
   sourceKey      String
   status         EtimsDocStatus @default(PENDING)
   /// The running numbers KRA was sent (made on the first attempt and kept for every retry).
@@ -5275,6 +5605,8 @@ model JournalEntry {
   sourceType     String?
   sourceId       String?
   branchId       String?
+  /// Construction: the project this entry belongs to, for a profit and loss per project.
+  projectId      String?
   /// The entry this one undoes.
   reversesId     String?     @unique
   createdById    String?
@@ -5289,6 +5621,7 @@ model JournalEntry {
   @@unique([organizationId, number])
   @@index([organizationId, entryDate])
   @@index([organizationId, sourceType, sourceId])
+  @@index([organizationId, projectId])
   @@map("journal_entries")
 }
 
@@ -5412,6 +5745,1996 @@ model PlatformLedgerPosting {
 
   @@unique([sourceType, sourceId])
   @@map("platform_ledger_postings")
+}
+
+// ── Construction (industryType "CONSTRUCTION", docs/construction) ─────────────
+
+enum ConWorksClass {
+  BUILDING
+  ROADS_CIVIL
+  ELEC_MECH
+}
+
+enum ConRoleCode {
+  CON_DIRECTOR
+  CON_CONTRACTS_MGR
+  CON_QS
+  CON_ACCOUNTANT
+  CON_PROCUREMENT
+  CON_COMPLIANCE
+  CON_SHE_OFFICER
+  CON_PROJECT_MGR
+  CON_SITE_ENGINEER
+  CON_SITE_SUPERVISOR
+  CON_STOREKEEPER
+  CON_TIMEKEEPER
+  CON_CLIENT
+  CON_CONSULTANT_ARCH
+  CON_CONSULTANT_QS
+  CON_CONSULTANT_ENG
+  CON_SUBCONTRACTOR
+}
+
+enum ConRoleScope {
+  COMPANY
+  PROJECT
+  EXTERNAL
+}
+
+enum ConDocType {
+  NCA_CERT
+  NCA_LICENCE
+  KRA_TCC
+  BUSINESS_PERMIT
+  AGPO
+  INSURANCE_CAR
+  INSURANCE_PL
+  WIBA
+  EPRA_LICENCE
+  OTHER
+}
+
+enum ConBillingCycle {
+  MONTHLY
+  ANNUAL
+}
+
+enum ConSubscriptionStatus {
+  TRIAL
+  ACTIVE
+  GRACE
+  SUSPENDED
+  CANCELLED
+}
+
+enum ConPaymentPurpose {
+  PLAN
+  EXTRA_PROJECTS
+  FEES
+  SMS
+}
+
+enum ConPaymentStatus {
+  PENDING
+  PAID
+  FAILED
+}
+
+/// Construction price list (global, edited by ZARODA super-admin). limits: { activeProjects, workers, users }, null = unlimited.
+model ConPlan {
+  id               String   @id @default(uuid())
+  code             String   @unique
+  name             String
+  fits             String?
+  monthlyPrice     Decimal  @db.Decimal(14, 2)
+  annualPrice      Decimal? @db.Decimal(14, 2)
+  quoteOnly        Boolean  @default(false)
+  setupFee         Decimal? @db.Decimal(14, 2)
+  setupFeeOptional Boolean  @default(false)
+  limits           Json
+  features         Json
+  sortOrder        Int      @default(0)
+  isActive         Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@map("con_plans")
+}
+
+/// Global discount codes, e.g. PILOT50 = 50% off for 2 months.
+model ConCoupon {
+  id          String    @id @default(uuid())
+  code        String    @unique
+  description String?
+  percentOff  Int
+  months      Int
+  validUntil  DateTime?
+  maxUses     Int?
+  uses        Int       @default(0)
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@map("con_coupons")
+}
+
+/// One per construction business. GRACE/SUSPENDED are worked out from currentPeriodEnd when read; stored status is TRIAL, ACTIVE or CANCELLED.
+model ConSubscription {
+  id                String                @id @default(uuid())
+  organizationId    String                @unique
+  planCode          String
+  cycle             ConBillingCycle       @default(MONTHLY)
+  status            ConSubscriptionStatus @default(TRIAL)
+  currentPeriodEnd  DateTime
+  graceDays         Int                   @default(7)
+  addons            Json                  @default("{}")
+  couponCode        String?
+  couponMonthsLeft  Int                   @default(0)
+  paidPaymentsCount Int                   @default(0)
+  // Texts left (payslips, alerts). Bought in bundles; new and existing businesses start with a free 100.
+  smsCredits        Int                   @default(100)
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("con_subscriptions")
+}
+
+/// A payment for the construction plan: an M-Pesa prompt (Tuma) or money a platform admin recorded by hand.
+model ConSubscriptionPayment {
+  id                        String           @id @default(uuid())
+  organizationId            String
+  planCode                  String
+  cycle                     ConBillingCycle
+  months                    Int
+  amount                    Decimal          @db.Decimal(14, 2)
+  discount                  Decimal          @default(0) @db.Decimal(14, 2)
+  couponCode                String?
+  status                    ConPaymentStatus @default(PENDING)
+  method                    String           @default("MPESA")
+  phone                     String?
+  tumaMerchantRequestId     String?
+  receipt                   String?
+  error                     String?
+  paidAt                    DateTime?
+  periodEndAfter            DateTime?
+  recordedByPlatformAdminId String?
+  // What the money is for: the plan (extends the paid-up date) or a purchase that leaves the date alone. details: { extraProjects } | { invoiceId } | { bundleCode, sms }.
+  purpose                   ConPaymentPurpose @default(PLAN)
+  details                   Json?
+  createdBy                 String?
+  createdAt                 DateTime         @default(now())
+  updatedAt                 DateTime         @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@map("con_subscription_payments")
+}
+
+/// The construction roles (docs/construction/02), seeded per business, with the most each role may approve.
+model ConRole {
+  id             String       @id @default(uuid())
+  organizationId String
+  code           ConRoleCode
+  name           String
+  scope          ConRoleScope
+  approvalLimit  Decimal?     @db.Decimal(14, 2)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, code])
+  @@map("con_roles")
+}
+
+/// Company-level construction roles held by a staff member (on top of their core OrgUser role).
+model ConUserRole {
+  id             String      @id @default(uuid())
+  organizationId String
+  orgUserId      String
+  role           ConRoleCode
+  createdBy      String?
+  createdAt      DateTime    @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  orgUser      OrgUser      @relation(fields: [orgUserId], references: [id], onDelete: Cascade)
+
+  @@unique([orgUserId, role])
+  @@index([organizationId])
+  @@map("con_user_roles")
+}
+
+/// Project-level roles (who works on which project, as what).
+model ConProjectMember {
+  id             String      @id @default(uuid())
+  organizationId String
+  projectId      String
+  orgUserId      String
+  role           ConRoleCode
+  createdBy      String?
+  createdAt      DateTime    @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  orgUser      OrgUser      @relation(fields: [orgUserId], references: [id], onDelete: Cascade)
+  project      ConProject   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, orgUserId, role])
+  @@index([organizationId])
+  @@index([orgUserId])
+  @@map("con_project_members")
+}
+
+/// The firm's NCA registration per works class.
+model ConCompanyRegistration {
+  id               String        @id @default(uuid())
+  organizationId   String
+  worksClass       ConWorksClass
+  ncaCategory      Int
+  regNo            String
+  registeredAt     DateTime?     @db.Date
+  licenceExpiresAt DateTime?     @db.Date
+  createdBy        String?
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, worksClass])
+  @@map("con_company_registrations")
+}
+
+/// Compliance vault: certificates, licences and insurance, with the file in private storage.
+model ConComplianceDoc {
+  id             String     @id @default(uuid())
+  organizationId String
+  type           ConDocType
+  title          String
+  refNo          String?
+  fileKey        String?
+  fileName       String?
+  fileType       String?
+  issuedAt       DateTime?  @db.Date
+  expiresAt      DateTime?  @db.Date
+  projectId      String?
+  /// EPRA licence class (A1, A2, B, C1, C2) when type is EPRA_LICENCE.
+  epraClass      String?
+  notes          String?
+  createdBy      String?
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, expiresAt])
+  @@index([projectId])
+  @@map("con_compliance_docs")
+}
+
+/// Most a firm may take on per works class and NCA category. maxValue null = unlimited (NCA1).
+model ConCategoryLimit {
+  id             String        @id @default(uuid())
+  organizationId String
+  worksClass     ConWorksClass
+  ncaCategory    Int
+  maxValue       Decimal?      @db.Decimal(16, 2)
+  updatedAt      DateTime      @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, worksClass, ncaCategory])
+  @@map("con_category_limits")
+}
+
+/// Rates the law can change (VAT, WHT, NCA levy, retention, SHIF...). The row with the latest effectiveFrom on or before a date applies.
+model ConTaxSetting {
+  id             String   @id @default(uuid())
+  organizationId String
+  key            String
+  rate           Decimal  @db.Decimal(9, 4)
+  threshold      Decimal? @db.Decimal(16, 2)
+  active         Boolean  @default(true)
+  effectiveFrom  DateTime @db.Date
+  notes          String?
+  createdBy      String?
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, key, effectiveFrom])
+  @@map("con_tax_settings")
+}
+
+/// In-app construction alerts (document expiry...). dedupeKey stops the same alert being raised twice.
+model ConAlert {
+  id             String    @id @default(uuid())
+  organizationId String
+  kind           String
+  title          String
+  body           String
+  href           String?
+  dedupeKey      String
+  readAt         DateTime?
+  createdAt      DateTime  @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, dedupeKey])
+  @@index([organizationId, readAt])
+  @@map("con_alerts")
+}
+
+// ── Construction C2: tenders, parties, projects, permits, programme, BQ ──────
+
+enum ConTenderStatus {
+  PREPARING
+  SUBMITTED
+  WON
+  LOST
+  WITHDRAWN
+}
+
+enum ConPartyKind {
+  CLIENT
+  ARCHITECT
+  QS
+  ENGINEER
+  SUBCONTRACTOR
+  OTHER
+}
+
+enum ConFormOfContract {
+  JBC
+  FIDIC
+  PPADA
+  SIMPLE
+}
+
+enum ConProjectStatus {
+  PLANNING
+  ACTIVE
+  PRACTICAL_COMPLETION
+  DLP
+  CLOSED
+}
+
+enum ConPermitType {
+  NCA_PROJECT_REG
+  COUNTY_APPROVAL
+  BUILDING_PERMIT
+  NEMA_EIA
+  DOSHS_REG
+  OCCUPANCY
+}
+
+enum ConPermitStatus {
+  PENDING
+  APPLIED
+  APPROVED
+  NOT_REQUIRED
+}
+
+enum ConRuleMode {
+  BLOCK
+  WARN
+}
+
+/// Per-business construction rules that can be a block or only a warning.
+model ConSettings {
+  organizationId    String      @id
+  ncaProjectRegRule ConRuleMode @default(BLOCK)
+  updatedAt         DateTime    @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("con_settings")
+}
+
+/// NCA site-supervisor / skilled-worker accreditation held by a staff member (needed for the Site Supervisor role).
+model ConStaffAccreditation {
+  id             String   @id @default(uuid())
+  organizationId String
+  orgUserId      String   @unique
+  cardNo         String
+  expiresAt      DateTime @db.Date
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  orgUser      OrgUser      @relation(fields: [orgUserId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@map("con_staff_accreditations")
+}
+
+/// Clients, consultants and subcontractors the business works with.
+model ConParty {
+  id             String       @id @default(uuid())
+  organizationId String
+  kind           ConPartyKind
+  name           String
+  contactPerson  String?
+  kraPin         String?
+  phone          String?
+  email          String?
+  createdBy      String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  organization   Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  clientProjects ConProject[]      @relation("ConProjectClient")
+  projectLinks   ConProjectParty[]
+  instructions   ConSiteInstruction[]
+  subcontracts   ConSubcontract[]
+  portalUsers    ConPortalUser[]
+
+  @@index([organizationId, kind])
+  @@map("con_parties")
+}
+
+model ConTender {
+  id                String          @id @default(uuid())
+  organizationId    String
+  ref               String?
+  title             String
+  procuringEntity   String
+  isPublic          Boolean         @default(true)
+  agpoReserved      Boolean         @default(false)
+  worksClass        ConWorksClass
+  /// Line voltage (kV) for Electrical & mechanical works: needs an EPRA licence class that covers it (docs/construction/07).
+  voltageKv         Decimal?        @db.Decimal(8, 2)
+  estValue          Decimal         @db.Decimal(16, 2)
+  closingAt         DateTime?
+  bidBond           Decimal?        @db.Decimal(14, 2)
+  bidBondExpiresAt  DateTime?       @db.Date
+  status            ConTenderStatus @default(PREPARING)
+  capOverrideReason String?
+  capOverrideBy     String?
+  outcomeNote       String?
+  notes             String?
+  createdBy         String?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project      ConProject?
+
+  @@index([organizationId, status])
+  @@map("con_tenders")
+}
+
+model ConProject {
+  id                String            @id @default(uuid())
+  organizationId    String
+  branchId          String?           @unique
+  code              String
+  name              String
+  clientId          String?
+  tenderId          String?           @unique
+  worksClass        ConWorksClass
+  voltageKv         Decimal?          @db.Decimal(8, 2)
+  contractSum       Decimal           @db.Decimal(16, 2)
+  revisedSum        Decimal?          @db.Decimal(16, 2)
+  formOfContract    ConFormOfContract @default(JBC)
+  startDate         DateTime?         @db.Date
+  completionDate    DateTime?         @db.Date
+  dlpMonths         Int               @default(12)
+  retentionRate     Decimal           @default(10) @db.Decimal(5, 2)
+  retentionLimit    Decimal           @default(5) @db.Decimal(5, 2)
+  county            String?
+  location          String?
+  lat               Decimal?          @db.Decimal(9, 6)
+  lng               Decimal?          @db.Decimal(9, 6)
+  status            ConProjectStatus  @default(PLANNING)
+  capOverrideReason String?
+  capOverrideBy     String?
+  officeId          String?
+  createdBy         String?
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+
+  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  client       ConParty?          @relation("ConProjectClient", fields: [clientId], references: [id], onDelete: SetNull)
+  tender       ConTender?         @relation(fields: [tenderId], references: [id], onDelete: SetNull)
+  parties      ConProjectParty[]
+  members      ConProjectMember[]
+  permits      ConProjectPermit[]
+  milestones   ConMilestone[]
+  bqSections   ConBqSection[]
+  bqItems      ConBqItem[]
+  diaries      ConSiteDiary[]
+  photos       ConSitePhoto[]
+  instructions ConSiteInstruction[]
+  workers      ConWorker[]
+  muster       ConMuster[]
+  toolboxTalks ConToolboxTalk[]
+  ppeIssues    ConPpeIssue[]
+  workPermits  ConPermitToWork[]
+  incidents    ConIncident[]
+  requisitions ConRequisition[]
+  lpos         ConLpo[]
+  issues       ConMaterialIssue[]
+  budgets      ConMaterialBudget[]
+  plant        ConPlant[]
+  plantLogs    ConPlantLog[]
+  variations   ConVariation[]
+  valuations   ConValuation[]
+  retention    ConRetentionEntry[]
+  subcontracts ConSubcontract[]
+  payrollRuns  ConPayrollRun[]
+  portalAccess ConPortalAccess[]
+  office       ConOffice?         @relation(fields: [officeId], references: [id], onDelete: SetNull)
+  siteBranch   Branch?            @relation(fields: [branchId], references: [id], onDelete: SetNull)
+
+  @@unique([organizationId, code])
+  @@index([organizationId, status])
+  @@index([clientId])
+  @@index([officeId])
+  @@map("con_projects")
+}
+
+/// Consultants and subcontractors on a project (the client is con_projects.clientId).
+model ConProjectParty {
+  id             String       @id @default(uuid())
+  organizationId String
+  projectId      String
+  partyId        String
+  role           ConPartyKind
+  createdAt      DateTime     @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project      ConProject   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  party        ConParty     @relation(fields: [partyId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, partyId, role])
+  @@index([organizationId])
+  @@index([partyId])
+  @@map("con_project_parties")
+}
+
+model ConProjectPermit {
+  id             String          @id @default(uuid())
+  organizationId String
+  projectId      String
+  type           ConPermitType
+  status         ConPermitStatus @default(PENDING)
+  refNo          String?
+  fileKey        String?
+  fileName       String?
+  fileType       String?
+  issuedAt       DateTime?       @db.Date
+  expiresAt      DateTime?       @db.Date
+  notes          String?
+  updatedAt      DateTime        @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project      ConProject   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, type])
+  @@index([organizationId])
+  @@map("con_project_permits")
+}
+
+model ConMilestone {
+  id              String    @id @default(uuid())
+  organizationId  String
+  projectId       String
+  name            String
+  startDate       DateTime  @db.Date
+  endDate         DateTime  @db.Date
+  percentComplete Int       @default(0)
+  sortOrder       Int       @default(0)
+  updatedAt       DateTime  @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project      ConProject   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([projectId])
+  @@map("con_milestones")
+}
+
+model ConBqSection {
+  id             String   @id @default(uuid())
+  organizationId String
+  projectId      String
+  code           String?
+  name           String
+  sortOrder      Int      @default(0)
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project      ConProject   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  items        ConBqItem[]
+
+  @@index([organizationId])
+  @@index([projectId])
+  @@map("con_bq_sections")
+}
+
+model ConBqItem {
+  id             String   @id @default(uuid())
+  organizationId String
+  projectId      String
+  sectionId      String
+  code           String?
+  description    String
+  unit           String
+  qty            Decimal  @db.Decimal(14, 3)
+  rate           Decimal  @db.Decimal(14, 2)
+  amount         Decimal  @db.Decimal(16, 2)
+  sortOrder      Int      @default(0)
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project      ConProject   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  section      ConBqSection @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  requisitionLines ConRequisitionLine[]
+  issues           ConMaterialIssue[]
+  valuationLines   ConValuationLine[]
+
+  @@index([organizationId])
+  @@index([sectionId])
+  @@index([projectId])
+  @@map("con_bq_items")
+}
+
+// ── Construction C3: site diary, photos, instructions, workers, muster, safety ──
+
+enum ConDiaryStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+}
+
+enum ConInstructionStatus {
+  OPEN
+  ACTIONED
+  CLOSED
+}
+
+enum ConMusterStatus {
+  PRESENT
+  HALF
+  ABSENT
+}
+
+enum ConWorkPermitType {
+  HEIGHT
+  HOT_WORK
+  EXCAVATION
+  CONFINED
+  ELECTRICAL
+}
+
+enum ConWorkPermitStatus {
+  OPEN
+  CLOSED
+  CANCELLED
+}
+
+enum ConIncidentSeverity {
+  NEAR_MISS
+  MINOR
+  LOST_TIME
+  FATAL
+}
+
+/// One per project per day: weather, works done, delays, visitors, labour and plant on site. Approved diaries are locked.
+model ConSiteDiary {
+  id             String         @id @default(uuid())
+  organizationId String
+  projectId      String
+  date           DateTime       @db.Date
+  weather        String?
+  worksDone      String?
+  delays         String?
+  visitors       String?
+  plantOnSite    String?
+  labourCount    Int?
+  status         ConDiaryStatus @default(DRAFT)
+  createdBy      String?
+  approvedBy     String?
+  approvedAt     DateTime?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project      ConProject     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  photos       ConSitePhoto[]
+
+  @@unique([projectId, date])
+  @@index([organizationId])
+  @@map("con_site_diaries")
+}
+
+/// Site photos (private files), geo-tagged when the phone allows.
+model ConSitePhoto {
+  id             String    @id @default(uuid())
+  organizationId String
+  projectId      String
+  diaryId        String?
+  fileKey        String
+  fileType       String
+  caption        String?
+  lat            Decimal?  @db.Decimal(9, 6)
+  lng            Decimal?  @db.Decimal(9, 6)
+  takenAt        DateTime
+  uploadedBy     String?
+  createdAt      DateTime  @default(now())
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project      ConProject    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  diary        ConSiteDiary? @relation(fields: [diaryId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([projectId, takenAt])
+  @@index([diaryId])
+  @@map("con_site_photos")
+}
+
+/// Instructions received from the client's consultants (may later become variations).
+model ConSiteInstruction {
+  id             String               @id @default(uuid())
+  organizationId String
+  projectId      String
+  number         String
+  partyId        String?
+  issuedByName   String?
+  date           DateTime             @db.Date
+  description    String
+  status         ConInstructionStatus @default(OPEN)
+  variationId    String?
+  createdBy      String?
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project      ConProject   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  party        ConParty?    @relation(fields: [partyId], references: [id], onDelete: SetNull)
+
+  @@unique([projectId, number])
+  @@index([organizationId])
+  @@index([variationId])
+  @@map("con_site_instructions")
+}
+
+/// Site workers (casuals and skilled), who do not sign in. ID number and phone are personal data: masked in lists.
+model ConWorker {
+  id             String    @id @default(uuid())
+  organizationId String
+  projectId      String?
+  name           String
+  idNo           String?
+  phone          String?
+  trade          String
+  ncaCardNo      String?
+  ncaExpiresAt   DateTime? @db.Date
+  dailyRate      Decimal   @db.Decimal(12, 2)
+  isSupervisor   Boolean   @default(false)
+  isActive       Boolean   @default(true)
+  createdBy      String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project      ConProject?   @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  muster       ConMuster[]
+  ppeIssues    ConPpeIssue[]
+  incidents    ConIncident[]
+  payrollLines ConPayrollLine[]
+
+  @@unique([organizationId, idNo])
+  @@index([organizationId, projectId])
+  @@map("con_workers")
+}
+
+/// Daily attendance. clientRef makes a retried phone upload safe to send twice.
+model ConMuster {
+  id             String          @id @default(uuid())
+  organizationId String
+  projectId      String
+  workerId       String
+  date           DateTime        @db.Date
+  status         ConMusterStatus
+  hours          Decimal?        @db.Decimal(4, 1)
+  markedBy       String?
+  clientRef      String?
+  updatedAt      DateTime        @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project      ConProject   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  worker       ConWorker    @relation(fields: [workerId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, workerId, date])
+  @@index([organizationId])
+  @@index([projectId, date])
+  @@index([workerId, date])
+  @@map("con_muster")
+}
+
+model ConToolboxTalk {
+  id             String   @id @default(uuid())
+  organizationId String
+  projectId      String
+  date           DateTime @db.Date
+  topic          String
+  notes          String?
+  attendeeIds    Json     @default("[]")
+  heldBy         String?
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project      ConProject   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([projectId, date])
+  @@map("con_toolbox_talks")
+}
+
+model ConPpeIssue {
+  id             String   @id @default(uuid())
+  organizationId String
+  projectId      String
+  workerId       String
+  item           String
+  qty            Int      @default(1)
+  issuedAt       DateTime @db.Date
+  issuedBy       String?
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project      ConProject   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  worker       ConWorker    @relation(fields: [workerId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([projectId, issuedAt])
+  @@index([workerId])
+  @@map("con_ppe_issues")
+}
+
+model ConPermitToWork {
+  id             String              @id @default(uuid())
+  organizationId String
+  projectId      String
+  number         String
+  type           ConWorkPermitType
+  location       String
+  precautions    String?
+  validFrom      DateTime
+  validTo        DateTime
+  status         ConWorkPermitStatus @default(OPEN)
+  issuedBy       String?
+  closedBy       String?
+  closedAt       DateTime?
+  createdAt      DateTime            @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project      ConProject   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, number])
+  @@index([organizationId])
+  @@map("con_permits_to_work")
+}
+
+/// Incident register. Lost-time and fatal incidents must be reported to DOSHS by reportDueAt.
+model ConIncident {
+  id              String              @id @default(uuid())
+  organizationId  String
+  projectId       String
+  occurredAt      DateTime
+  severity        ConIncidentSeverity
+  description     String
+  actionTaken     String?
+  workerId        String?
+  reportDueAt     DateTime?
+  reportedToDoshs Boolean             @default(false)
+  reportedAt      DateTime?
+  doshsRef        String?
+  createdBy       String?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project      ConProject   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  worker       ConWorker?   @relation(fields: [workerId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([projectId, occurredAt])
+  @@index([workerId])
+  @@map("con_incidents")
+}
+
+// ── Construction C4: requisitions, LPOs, site stock issues, plant ─────────────
+// Each project's site is a Branch (con_projects.branchId): LPOs are purchase orders to it, deliveries are goods receipts,
+// and site stock is the normal inventory ledger for that branch.
+
+enum ConRequisitionStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  REJECTED
+  ORDERED
+  CANCELLED
+}
+
+enum ConLpoStatus {
+  AWAITING_APPROVAL
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+enum ConIssueKind {
+  USED
+  WASTED
+}
+
+enum ConPlantOwnership {
+  OWNED
+  HIRED
+}
+
+enum ConRateUnit {
+  HOUR
+  DAY
+}
+
+/// Materials the site asks for. The creator cannot approve their own requisition.
+model ConRequisition {
+  id             String               @id @default(uuid())
+  organizationId String
+  projectId      String
+  number         String
+  status         ConRequisitionStatus @default(DRAFT)
+  neededBy       DateTime?            @db.Date
+  notes          String?
+  createdBy      String
+  approvedBy     String?
+  approvedAt     DateTime?
+  rejectedReason String?
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+
+  organization Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project      ConProject           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  lines        ConRequisitionLine[]
+  lpos         ConLpo[]
+
+  @@unique([organizationId, number])
+  @@index([projectId, status])
+  @@map("con_requisitions")
+}
+
+model ConRequisitionLine {
+  id             String   @id @default(uuid())
+  organizationId String
+  requisitionId  String
+  variantId      String
+  qty            Decimal  @db.Decimal(14, 3)
+  bqItemId       String?
+  note           String?
+
+  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  requisition  ConRequisition @relation(fields: [requisitionId], references: [id], onDelete: Cascade)
+  variant      ProductVariant @relation(fields: [variantId], references: [id], onDelete: Restrict)
+  bqItem       ConBqItem?     @relation(fields: [bqItemId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([requisitionId])
+  @@index([bqItemId])
+  @@map("con_requisition_lines")
+}
+
+/// The construction side of a purchase order: number, project, approval within limits (creator cannot approve).
+model ConLpo {
+  id              String       @id @default(uuid())
+  organizationId  String
+  projectId       String
+  purchaseOrderId String       @unique
+  requisitionId   String?
+  number          String
+  status          ConLpoStatus @default(AWAITING_APPROVAL)
+  total           Decimal      @db.Decimal(16, 2)
+  deliverBy       DateTime?    @db.Date
+  createdBy       String
+  approvedBy      String?
+  approvedAt      DateTime?
+  rejectedReason  String?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  organization  Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project       ConProject      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  purchaseOrder PurchaseOrder   @relation(fields: [purchaseOrderId], references: [id], onDelete: Restrict)
+  requisition   ConRequisition? @relation(fields: [requisitionId], references: [id], onDelete: SetNull)
+
+  @@unique([organizationId, number])
+  @@index([projectId])
+  @@index([requisitionId])
+  @@map("con_lpos")
+}
+
+/// Material taken out of the site store: used on a BQ item, or wasted.
+model ConMaterialIssue {
+  id             String       @id @default(uuid())
+  organizationId String
+  projectId      String
+  variantId      String
+  qty            Decimal      @db.Decimal(14, 3)
+  kind           ConIssueKind @default(USED)
+  bqItemId       String?
+  issuedTo       String?
+  note           String?
+  issuedAt       DateTime     @db.Date
+  issuedBy       String?
+  createdAt      DateTime     @default(now())
+
+  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project      ConProject     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  variant      ProductVariant @relation(fields: [variantId], references: [id], onDelete: Restrict)
+  bqItem       ConBqItem?     @relation(fields: [bqItemId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([projectId, variantId])
+  @@index([projectId, issuedAt])
+  @@index([bqItemId])
+  @@map("con_material_issues")
+}
+
+/// How much of a material the BQ allows on a project (the QS's take-off), for the reconciliation.
+model ConMaterialBudget {
+  id             String   @id @default(uuid())
+  organizationId String
+  projectId      String
+  variantId      String
+  qty            Decimal  @db.Decimal(14, 3)
+  updatedAt      DateTime @updatedAt
+
+  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project      ConProject     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  variant      ProductVariant @relation(fields: [variantId], references: [id], onDelete: Restrict)
+
+  @@unique([projectId, variantId])
+  @@index([organizationId])
+  @@index([variantId])
+  @@map("con_material_budgets")
+}
+
+/// Plant and equipment, owned or hired.
+model ConPlant {
+  id             String            @id @default(uuid())
+  organizationId String
+  name           String
+  regNo          String?
+  ownership      ConPlantOwnership
+  hireRate       Decimal?          @db.Decimal(12, 2)
+  rateUnit       ConRateUnit       @default(DAY)
+  supplierId     String?
+  projectId      String?
+  isActive       Boolean           @default(true)
+  createdBy      String?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  supplier     Supplier?     @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  project      ConProject?   @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  logs         ConPlantLog[]
+
+  @@index([organizationId])
+  @@index([projectId])
+  @@map("con_plant")
+}
+
+/// A day's use of a piece of plant on a project: hours, fuel and who operated it.
+model ConPlantLog {
+  id             String   @id @default(uuid())
+  organizationId String
+  plantId        String
+  projectId      String
+  date           DateTime @db.Date
+  hours          Decimal  @db.Decimal(5, 1)
+  fuelLitres     Decimal? @db.Decimal(8, 2)
+  fuelCost       Decimal? @db.Decimal(12, 2)
+  operator       String?
+  notes          String?
+  createdBy      String?
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  plant        ConPlant     @relation(fields: [plantId], references: [id], onDelete: Cascade)
+  project      ConProject   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([plantId, date])
+  @@index([organizationId])
+  @@index([projectId, date])
+  @@map("con_plant_logs")
+}
+
+// ── Construction C5: variations, valuations / IPCs, retention, subcontracts ───
+
+enum ConVariationStatus {
+  PROPOSED
+  PRICED
+  APPROVED
+  REJECTED
+}
+
+enum ConValuationKind {
+  VALUATION
+  REVERSAL
+}
+
+enum ConValuationStatus {
+  DRAFT
+  SUBMITTED
+  CERTIFIED
+  PAID
+}
+
+enum ConRetentionType {
+  DEDUCT
+  RELEASE
+}
+
+enum ConReceiptKind {
+  PAYMENT
+  WHT
+  WHT_VAT
+}
+
+enum ConSubValuationStatus {
+  DRAFT
+  APPROVED
+  PAID
+}
+
+/// Changes to the works (from a site instruction or not). Approved variations change the project's revised sum.
+model ConVariation {
+  id             String             @id @default(uuid())
+  organizationId String
+  projectId      String
+  ref            String
+  instructionId  String?            @unique
+  description    String
+  amount         Decimal            @db.Decimal(16, 2)
+  status         ConVariationStatus @default(PROPOSED)
+  createdBy      String
+  approvedBy     String?
+  approvedByName String?
+  approvedAt     DateTime?
+  rejectedReason String?
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project      ConProject          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  lines        ConValuationLine[]
+
+  @@unique([projectId, ref])
+  @@index([organizationId])
+  @@map("con_variations")
+}
+
+/// An interim valuation (becomes the IPC once the client's QS certifies it). Cumulative to date; certified ones are locked and
+/// corrected only by a REVERSAL valuation. Money figures are kept as they were certified.
+model ConValuation {
+  id                  String             @id @default(uuid())
+  organizationId      String
+  projectId           String
+  number              Int
+  kind                ConValuationKind   @default(VALUATION)
+  reversesId          String?            @unique
+  periodEnd           DateTime           @db.Date
+  workToDate          Decimal            @default(0) @db.Decimal(16, 2)
+  variationsToDate    Decimal            @default(0) @db.Decimal(16, 2)
+  materialsOnSite     Decimal            @default(0) @db.Decimal(16, 2)
+  grossToDate         Decimal            @default(0) @db.Decimal(16, 2)
+  retentionRate       Decimal            @db.Decimal(5, 2)
+  retentionDeducted   Decimal            @default(0) @db.Decimal(16, 2)
+  retentionReleased   Decimal            @default(0) @db.Decimal(16, 2)
+  retentionHeld       Decimal            @default(0) @db.Decimal(16, 2)
+  advanceRecovery     Decimal            @default(0) @db.Decimal(16, 2)
+  previousCertified   Decimal            @default(0) @db.Decimal(16, 2)
+  netDue              Decimal            @default(0) @db.Decimal(16, 2)
+  status              ConValuationStatus @default(DRAFT)
+  reversed            Boolean            @default(false)
+  notes               String?
+  createdBy           String
+  submittedBy         String?
+  submittedAt         DateTime?
+  certifiedByName     String?
+  certifiedRef        String?
+  certifiedAt         DateTime?          @db.Date
+  certifiedRecordedBy String?
+  vatRate             Decimal?           @db.Decimal(6, 2)
+  vatAmount           Decimal?           @db.Decimal(16, 2)
+  invoiceTotal        Decimal?           @db.Decimal(16, 2)
+  saleId              String?            @unique
+  invoicedAt          DateTime?
+  paidAt              DateTime?
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+
+  organization Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project      ConProject            @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  reverses     ConValuation?         @relation("ConValuationReversal", fields: [reversesId], references: [id], onDelete: Restrict)
+  reversedBy   ConValuation?         @relation("ConValuationReversal")
+  lines        ConValuationLine[]
+  receipts     ConValuationReceipt[]
+  retention    ConRetentionEntry[]
+
+  @@unique([projectId, number])
+  @@index([organizationId])
+  @@index([projectId, status])
+  @@map("con_valuations")
+}
+
+/// Work measured to date on one BQ item (qty x rate) or one approved variation (amount).
+model ConValuationLine {
+  id             String   @id @default(uuid())
+  organizationId String
+  valuationId    String
+  bqItemId       String?
+  variationId    String?
+  qtyToDate      Decimal? @db.Decimal(14, 3)
+  amountToDate   Decimal  @db.Decimal(16, 2)
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  valuation    ConValuation  @relation(fields: [valuationId], references: [id], onDelete: Cascade)
+  bqItem       ConBqItem?    @relation(fields: [bqItemId], references: [id], onDelete: Restrict)
+  variation    ConVariation? @relation(fields: [variationId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId])
+  @@index([valuationId])
+  @@index([bqItemId])
+  @@index([variationId])
+  @@map("con_valuation_lines")
+}
+
+/// Money received against a certified IPC: the client's payment, and withholding tax / withholding VAT certificates.
+model ConValuationReceipt {
+  id             String         @id @default(uuid())
+  organizationId String
+  valuationId    String
+  kind           ConReceiptKind
+  amount         Decimal        @db.Decimal(16, 2)
+  method         String?
+  reference      String?
+  certificateNo  String?
+  receivedAt     DateTime       @db.Date
+  createdBy      String
+  createdAt      DateTime       @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  valuation    ConValuation @relation(fields: [valuationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([valuationId])
+  @@index([organizationId, receivedAt])
+  @@map("con_valuation_receipts")
+}
+
+/// Retention deducted on each certificate and released (half at practical completion, the rest after the defects period).
+model ConRetentionEntry {
+  id             String           @id @default(uuid())
+  organizationId String
+  projectId      String
+  valuationId    String?
+  type           ConRetentionType
+  amount         Decimal          @db.Decimal(16, 2)
+  reason         String?
+  createdBy      String
+  createdAt      DateTime         @default(now())
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project      ConProject    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  valuation    ConValuation? @relation(fields: [valuationId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([projectId])
+  @@index([valuationId])
+  @@map("con_retention_ledger")
+}
+
+model ConSubcontract {
+  id             String   @id @default(uuid())
+  organizationId String
+  projectId      String
+  partyId        String
+  ref            String
+  scope          String
+  sum            Decimal  @db.Decimal(16, 2)
+  retentionRate  Decimal  @default(10) @db.Decimal(5, 2)
+  retentionLimit Decimal  @default(5) @db.Decimal(5, 2)
+  isActive       Boolean  @default(true)
+  createdBy      String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project      ConProject          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  party        ConParty            @relation(fields: [partyId], references: [id], onDelete: Restrict)
+  valuations   ConSubValuation[]
+
+  @@unique([projectId, ref])
+  @@index([organizationId])
+  @@index([partyId])
+  @@map("con_subcontracts")
+}
+
+/// A subcontractor's valuation: their work to date less their retention and what they were paid before.
+model ConSubValuation {
+  id             String                @id @default(uuid())
+  organizationId String
+  subcontractId  String
+  number         Int
+  grossToDate    Decimal               @db.Decimal(16, 2)
+  retention      Decimal               @db.Decimal(16, 2)
+  previousPaid   Decimal               @db.Decimal(16, 2)
+  netDue         Decimal               @db.Decimal(16, 2)
+  status         ConSubValuationStatus @default(DRAFT)
+  notes          String?
+  createdBy      String
+  approvedBy     String?
+  approvedAt     DateTime?
+  paidAt         DateTime?
+  paymentRef     String?
+  createdAt      DateTime              @default(now())
+
+  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  subcontract  ConSubcontract @relation(fields: [subcontractId], references: [id], onDelete: Cascade)
+
+  @@unique([subcontractId, number])
+  @@index([organizationId])
+  @@index([organizationId, paidAt])
+  @@map("con_sub_valuations")
+}
+
+// ── Construction C6: casual payroll and the external portal ──
+
+enum ConPayrollStatus {
+  DRAFT
+  APPROVED
+  PAID
+}
+
+enum ConPayLineStatus {
+  UNPAID
+  SENDING
+  PAID
+  FAILED
+}
+
+enum ConPayMethod {
+  MPESA
+  MPESA_MANUAL
+  CASH
+}
+
+/// A pay run for a project's casual workers over a period, worked out from the muster roll. Never approved by whoever made it.
+model ConPayrollRun {
+  id             String           @id @default(uuid())
+  organizationId String
+  projectId      String
+  number         String
+  periodStart    DateTime         @db.Date
+  periodEnd      DateTime         @db.Date
+  status         ConPayrollStatus @default(DRAFT)
+  workers        Int              @default(0)
+  gross          Decimal          @default(0) @db.Decimal(14, 2)
+  deductions     Decimal          @default(0) @db.Decimal(14, 2)
+  net            Decimal          @default(0) @db.Decimal(14, 2)
+  notes          String?
+  createdBy      String
+  approvedBy     String?
+  approvedAt     DateTime?
+  paidAt         DateTime?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project      ConProject       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  lines        ConPayrollLine[]
+
+  @@unique([projectId, number])
+  @@index([organizationId])
+  @@index([projectId, periodEnd])
+  @@map("con_payroll_runs")
+}
+
+/// One worker's pay in a run: days from the muster, statutory deductions from con_tax_settings, and how it was paid.
+model ConPayrollLine {
+  id             String           @id @default(uuid())
+  organizationId String
+  runId          String
+  workerId       String
+  days           Decimal          @db.Decimal(5, 1)
+  dailyRate      Decimal          @db.Decimal(12, 2)
+  gross          Decimal          @db.Decimal(12, 2)
+  nssf           Decimal          @default(0) @db.Decimal(12, 2)
+  shif           Decimal          @default(0) @db.Decimal(12, 2)
+  housingLevy    Decimal          @default(0) @db.Decimal(12, 2)
+  paye           Decimal          @default(0) @db.Decimal(12, 2)
+  deductions     Decimal          @default(0) @db.Decimal(12, 2)
+  net            Decimal          @db.Decimal(12, 2)
+  status         ConPayLineStatus @default(UNPAID)
+  method         ConPayMethod?
+  reference      String?
+  requestId      String?          @unique
+  failureReason  String?
+  paidAt         DateTime?
+  paidBy         String?
+  smsSentAt      DateTime?
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  run          ConPayrollRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  worker       ConWorker     @relation(fields: [workerId], references: [id], onDelete: Restrict)
+
+  @@unique([runId, workerId])
+  @@index([organizationId])
+  @@index([workerId])
+  @@map("con_payroll_lines")
+}
+
+/// The business's own M-Pesa B2C account that pays its workers. Secrets are stored encrypted.
+model ConPayoutSettings {
+  organizationId              String   @id
+  environment                 String   @default("production")
+  shortcode                   String?
+  initiator                   String?
+  consumerKeyEncrypted        String?
+  consumerSecretEncrypted     String?
+  securityCredentialEncrypted String?
+  callbackSecret              String
+  updatedBy                   String?
+  updatedAt                   DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("con_payout_settings")
+}
+
+/// Someone outside the business (client, client's consultants, subcontractor) who signs in to the portal with an emailed code.
+/// Free: never counts toward the plan's users.
+model ConPortalUser {
+  id             String      @id @default(uuid())
+  organizationId String
+  partyId        String?
+  name           String
+  email          String
+  phone          String?
+  role           ConRoleCode
+  isActive       Boolean     @default(true)
+  invitedBy      String?
+  lastLoginAt    DateTime?
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  party        ConParty?         @relation(fields: [partyId], references: [id], onDelete: SetNull)
+  access       ConPortalAccess[]
+
+  @@unique([organizationId, email])
+  @@index([partyId])
+  @@map("con_portal_users")
+}
+
+/// The only projects a portal user can see.
+model ConPortalAccess {
+  id             String   @id @default(uuid())
+  organizationId String
+  portalUserId   String
+  projectId      String
+  createdAt      DateTime @default(now())
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  portalUser   ConPortalUser @relation(fields: [portalUserId], references: [id], onDelete: Cascade)
+  project      ConProject    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([portalUserId, projectId])
+  @@index([organizationId])
+  @@index([projectId])
+  @@map("con_portal_access")
+}
+
+/// Portal sign-in codes (hash only). No row-level security: a sign-in has no business behind it yet.
+model ConPortalOtp {
+  id         String    @id @default(uuid())
+  email      String
+  codeHash   String
+  attempts   Int       @default(0)
+  consumedAt DateTime?
+  expiresAt  DateTime
+  createdAt  DateTime  @default(now())
+
+  @@index([email, createdAt])
+  @@map("con_portal_otps")
+}
+
+// ── Construction C8: payout fees, SMS bundles ──
+
+/// ZARODA price list for M-Pesa wage payouts (global, edited by super-admin): Safaricom's cost for amounts up to upTo (null = above the last band), plus ZARODA's markup.
+model ConPayoutFeeBand {
+  id         String   @id @default(uuid())
+  upTo       Decimal? @db.Decimal(14, 2)
+  darajaCost Decimal  @db.Decimal(10, 2)
+  markup     Decimal  @default(10) @db.Decimal(10, 2)
+  sortOrder  Int      @default(0)
+  updatedAt  DateTime @updatedAt
+
+  @@map("con_payout_fee_bands")
+}
+
+/// SMS bundles a business can buy (global, edited by super-admin).
+model ConSmsBundle {
+  id        String   @id @default(uuid())
+  code      String   @unique
+  name      String
+  sms       Int
+  price     Decimal  @db.Decimal(10, 2)
+  isActive  Boolean  @default(true)
+  sortOrder Int      @default(0)
+  updatedAt DateTime @updatedAt
+
+  @@map("con_sms_bundles")
+}
+
+enum ConFeeInvoiceStatus {
+  UNPAID
+  PAID
+}
+
+/// A ZARODA fee owed by a business (an M-Pesa wage payout), rolled into that month's fee invoice.
+model ConFeeCharge {
+  id             String   @id @default(uuid())
+  organizationId String
+  kind           String
+  sourceId       String   @unique
+  projectId      String?
+  amount         Decimal  @db.Decimal(10, 2)
+  darajaCost     Decimal  @db.Decimal(10, 2)
+  markup         Decimal  @db.Decimal(10, 2)
+  description    String
+  periodMonth    String
+  invoiceId      String?
+  createdAt      DateTime @default(now())
+
+  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  invoice      ConFeeInvoice? @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, periodMonth])
+  @@index([invoiceId])
+  @@map("con_fee_charges")
+}
+
+/// One month's ZARODA fees for a business, paid by M-Pesa like the plan.
+model ConFeeInvoice {
+  id             String              @id @default(uuid())
+  organizationId String
+  periodMonth    String
+  total          Decimal             @db.Decimal(12, 2)
+  status         ConFeeInvoiceStatus @default(UNPAID)
+  paymentId      String?
+  paidAt         DateTime?
+  createdAt      DateTime            @default(now())
+
+  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  charges      ConFeeCharge[]
+
+  @@unique([organizationId, periodMonth])
+  @@map("con_fee_invoices")
+}
+
+// ── Construction C8: Enterprise (branch offices, custom roles, API keys) ──
+
+/// A company branch office (Enterprise). Staff placed in an office see only its projects; the Director sees all.
+model ConOffice {
+  id             String   @id @default(uuid())
+  organizationId String
+  name           String
+  county         String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  projects     ConProject[]
+  staff        ConUserOffice[]
+
+  @@unique([organizationId, name])
+  @@map("con_offices")
+}
+
+/// The office a staff member belongs to (at most one).
+model ConUserOffice {
+  id             String   @id @default(uuid())
+  organizationId String
+  orgUserId      String   @unique
+  officeId       String
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  orgUser      OrgUser      @relation(fields: [orgUserId], references: [id], onDelete: Cascade)
+  office       ConOffice    @relation(fields: [officeId], references: [id], onDelete: Cascade)
+
+  @@index([officeId])
+  @@map("con_user_offices")
+}
+
+/// A role the Director makes (Enterprise): a name, the company jobs it acts as, and its own approval limit.
+model ConCustomRole {
+  id             String   @id @default(uuid())
+  organizationId String
+  name           String
+  grants         Json     @default("[]")
+  approvalLimit  Decimal? @db.Decimal(16, 2)
+  createdBy      String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  holders      ConUserCustomRole[]
+
+  @@unique([organizationId, name])
+  @@map("con_custom_roles")
+}
+
+model ConUserCustomRole {
+  id             String   @id @default(uuid())
+  organizationId String
+  orgUserId      String
+  customRoleId   String
+  createdAt      DateTime @default(now())
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  orgUser      OrgUser       @relation(fields: [orgUserId], references: [id], onDelete: Cascade)
+  customRole   ConCustomRole @relation(fields: [customRoleId], references: [id], onDelete: Cascade)
+
+  @@unique([orgUserId, customRoleId])
+  @@index([customRoleId])
+  @@map("con_user_custom_roles")
+}
+
+/// Read-only API keys (Enterprise). Only a hash is kept; the key is shown once. prefix is the public part used to find it.
+model ConApiKey {
+  id             String    @id @default(uuid())
+  organizationId String
+  name           String
+  prefix         String    @unique
+  keyHash        String
+  scopes         Json      @default("[]")
+  lastUsedAt     DateTime?
+  requests       Int       @default(0)
+  revokedAt      DateTime?
+  createdBy      String?
+  createdAt      DateTime  @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@map("con_api_keys")
+}
+
+enum EtimsPurchaseStatus {
+  /// Downloaded from KRA, waiting for someone to match it and accept it.
+  WAITING
+  ACCEPTED
+  /// Put aside without telling KRA anything (a supplier credit note, or an invoice that is not ours).
+  DISMISSED
+}
+
+/// A supplier's eTIMS invoice to this business, as KRA lists it (/selectTrnsPurchaseSalesList). Accepting it confirms the purchase to KRA.
+model EtimsPurchaseInvoice {
+  id             String              @id @default(uuid())
+  organizationId String
+  /// The branch whose device downloaded it.
+  branchId       String
+  spplrTin       String
+  spplrNm        String?
+  spplrBhfId     String
+  spplrInvcNo    Int
+  /// S = sale to us, R = the supplier's credit note.
+  rcptTyCd       String
+  pmtTyCd        String?
+  salesDt        String?
+  totAmt         Decimal             @db.Decimal(14, 2)
+  /// The invoice exactly as KRA listed it (totals by tax type and every line).
+  body           Json
+  status         EtimsPurchaseStatus @default(WAITING)
+  /// The delivery note this invoice was matched to, if any (the goods themselves come in through receiving).
+  goodsReceiptId String?
+  decidedAt      DateTime?
+  createdAt      DateTime            @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  bill         SupplierBill?
+  expense      Expense?
+
+  @@unique([organizationId, branchId, spplrTin, spplrBhfId, spplrInvcNo, rcptTyCd])
+  @@index([organizationId, status, createdAt])
+  @@map("etims_purchase_invoices")
+}
+
+/// What a supplier calls a product, matched to ours once, so their next invoice matches by itself.
+model EtimsSupplierItem {
+  id             String   @id @default(uuid())
+  organizationId String
+  spplrTin       String
+  spplrItemCd    String
+  variantId      String
+  createdAt      DateTime @default(now())
+
+  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  variant      ProductVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, spplrTin, spplrItemCd])
+  @@index([variantId])
+  @@map("etims_supplier_items")
+}
+
+/// A message between people in a construction company (in-app). A reply carries threadId = the first message's id.
+model ConMessage {
+  id              String   @id @default(uuid())
+  organizationId  String
+  senderOrgUserId String
+  subject         String
+  body            String
+  /// Sent to a project's team (or about a project).
+  projectId       String?
+  threadId        String?
+  createdAt       DateTime @default(now())
+
+  recipients ConMessageRecipient[]
+
+  @@index([organizationId, threadId])
+  @@index([organizationId, senderOrgUserId, createdAt])
+  @@map("con_messages")
+}
+
+/// One person's copy of a message: unread until readAt.
+model ConMessageRecipient {
+  id             String    @id @default(uuid())
+  organizationId String
+  messageId      String
+  orgUserId      String
+  readAt         DateTime?
+  createdAt      DateTime  @default(now())
+
+  message ConMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, orgUserId])
+  @@index([organizationId, orgUserId, readAt])
+  @@map("con_message_recipients")
+}
+
+// ── Construction C9: power-line contractors (docs/construction/07) ───────────
+
+/// What each EPRA licence class allows on a line: any voltage, or up to maxVoltageKv. Per company, edited by Compliance.
+model ConEpraClass {
+  id             String   @id @default(uuid())
+  organizationId String
+  code           String
+  label          String
+  anyVoltage     Boolean  @default(false)
+  maxVoltageKv   Decimal? @db.Decimal(8, 2)
+  updatedAt      DateTime @updatedAt
+
+  @@unique([organizationId, code])
+  @@map("con_epra_classes")
+}
+
+/// An electrician's own licence (EPRA by default), with expiry alerts.
+model ConStaffLicence {
+  id             String   @id @default(uuid())
+  organizationId String
+  orgUserId      String
+  body           String   @default("EPRA")
+  licenceClass   String
+  licenceNo      String
+  expiresAt      DateTime @db.Date
+  createdBy      String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([organizationId])
+  @@index([orgUserId])
+  @@map("con_staff_licences")
+}
+
+enum ConClientMoveKind {
+  RECEIVED
+  ISSUED
+  RETURNED
+  DAMAGED
+}
+
+/// A material the client supplies ("free-issue"): stays the client's property, never company stock or cost.
+model ConClientItem {
+  id             String   @id @default(uuid())
+  organizationId String
+  projectId      String
+  code           String
+  description    String
+  unit           String
+  createdAt      DateTime @default(now())
+
+  moves ConClientMaterialMove[]
+
+  @@unique([projectId, code])
+  @@index([organizationId])
+  @@map("con_client_items")
+}
+
+model ConClientMaterialMove {
+  id             String            @id @default(uuid())
+  organizationId String
+  projectId      String
+  itemId         String
+  kind           ConClientMoveKind
+  quantity       Decimal           @db.Decimal(14, 3)
+  sectionId      String?
+  moveDate       DateTime          @db.Date
+  reference      String?
+  note           String?
+  createdBy      String?
+  createdAt      DateTime          @default(now())
+
+  item ConClientItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([projectId, itemId])
+  @@map("con_client_material_moves")
+}
+
+/// A stretch of a line job (e.g. km 0-5), with what is to be built on it.
+model ConProjectSection {
+  id                 String   @id @default(uuid())
+  organizationId     String
+  projectId          String
+  code               String
+  name               String
+  fromKm             Decimal? @db.Decimal(9, 3)
+  toKm               Decimal? @db.Decimal(9, 3)
+  targetPoles        Int      @default(0)
+  targetStays        Int      @default(0)
+  targetConductorKm  Decimal  @default(0) @db.Decimal(9, 3)
+  targetTransformers Int      @default(0)
+  targetServices     Int      @default(0)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@unique([projectId, code])
+  @@index([organizationId])
+  @@map("con_project_sections")
+}
+
+/// What one section's crew built on one day.
+model ConSectionProgress {
+  id             String   @id @default(uuid())
+  organizationId String
+  projectId      String
+  sectionId      String
+  date           DateTime @db.Date
+  poles          Int      @default(0)
+  stays          Int      @default(0)
+  conductorKm    Decimal  @default(0) @db.Decimal(9, 3)
+  transformers   Int      @default(0)
+  services       Int      @default(0)
+  crew           String?
+  notes          String?
+  createdBy      String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([sectionId, date])
+  @@index([organizationId])
+  @@index([projectId, date])
+  @@map("con_section_progress")
+}
+
+enum ConWayleaveStatus {
+  PENDING
+  AGREED
+  REFUSED
+  PAID
+}
+
+model ConWayleave {
+  id             String            @id @default(uuid())
+  organizationId String
+  projectId      String
+  sectionId      String?
+  landowner      String
+  phone          String?
+  parcelNo       String?
+  chainageKm     Decimal?          @db.Decimal(9, 3)
+  status         ConWayleaveStatus @default(PENDING)
+  compensation   Decimal?          @db.Decimal(14, 2)
+  agreedAt       DateTime?         @db.Date
+  notes          String?
+  fileKey        String?
+  fileName       String?
+  fileType       String?
+  createdBy      String?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  @@index([organizationId])
+  @@index([projectId])
+  @@map("con_wayleaves")
+}
+
+enum ConCrossingKind {
+  ROAD
+  RAIL
+  RIVER
+  PIPELINE
+  POWER_LINE
+  OTHER
+}
+
+enum ConCrossingStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model ConCrossing {
+  id             String            @id @default(uuid())
+  organizationId String
+  projectId      String
+  sectionId      String?
+  kind           ConCrossingKind
+  authority      String
+  refNo          String?
+  status         ConCrossingStatus @default(PENDING)
+  approvedAt     DateTime?         @db.Date
+  expiresAt      DateTime?         @db.Date
+  notes          String?
+  fileKey        String?
+  fileName       String?
+  fileType       String?
+  createdBy      String?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  @@index([organizationId])
+  @@index([projectId])
+  @@map("con_crossings")
+}
+
+enum ConLineAssetKind {
+  POLE
+  STAY
+  TRANSFORMER
+  SWITCHGEAR
+  SERVICE
+  OTHER
+}
+
+/// As-built record of something installed on the line, with its position from the phone.
+model ConLineAsset {
+  id             String           @id @default(uuid())
+  organizationId String
+  projectId      String
+  sectionId      String?
+  kind           ConLineAssetKind
+  tag            String
+  serialNo       String?
+  spec           String?
+  lat            Decimal?         @db.Decimal(9, 6)
+  lng            Decimal?         @db.Decimal(9, 6)
+  installedAt    DateTime?        @db.Date
+  note           String?
+  createdBy      String?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  @@unique([projectId, kind, tag])
+  @@index([organizationId])
+  @@map("con_line_assets")
 }
 
 /// The school terms a SEASONAL plan is billed in (one row per term). Editable by the platform admin; whole terms only.

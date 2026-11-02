@@ -40,7 +40,7 @@ import {
   FileText,
   Tags,
 } from "lucide-react";
-import { getSession, clearSession, isBackofficeRole, type Session } from "../../lib/auth";
+import { getSession, clearSession, isBackofficeRole, homePath, type Session } from "../../lib/auth";
 import { useIdleLogout } from "../../hooks/use-idle-logout";
 import { Nav } from "../../components/nav";
 
@@ -210,6 +210,10 @@ export default function DashboardPage() {
       router.replace("/login");
       return;
     }
+    if (s.industryType === "CONSTRUCTION" || s.industryType === "RENTAL") {
+      router.replace(homePath(s.role, s.industryType));
+      return;
+    }
     if (!isBackofficeRole(s.role)) {
       clearSession();
       router.replace("/login");
@@ -245,7 +249,7 @@ export default function DashboardPage() {
       <Nav session={session} />
 
       <main className="mx-auto max-w-6xl px-4 py-8 sm:px-6">
-        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-[#1d3f75] via-[#16305c] to-[#0a1730] px-6 py-7 text-white shadow-[0_10px_30px_-10px_rgb(10_23_48/0.6)] sm:px-8 sm:py-9">
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-[#142f5c] via-[#0f2448] to-[#071026] px-6 py-7 text-white shadow-[0_10px_30px_-10px_rgb(10_23_48/0.6)] sm:px-8 sm:py-9">
           <div aria-hidden className="pointer-events-none absolute -right-16 -top-20 h-64 w-64 rounded-full bg-white/10 blur-2xl" />
           <div aria-hidden className="pointer-events-none absolute -bottom-24 right-24 h-48 w-48 rounded-full bg-sky-400/10 blur-2xl" />
           <h1 className="relative text-2xl font-bold sm:text-3xl">Welcome back{session.email ? `, ${session.email.split("@")[0]}` : ""}</h1>

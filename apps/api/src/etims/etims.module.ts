@@ -8,6 +8,7 @@ import { EtimsItemsService } from './etims-items.service';
 import { EtimsExtrasService } from './etims-extras.service';
 import { EtimsReceiptsService } from './etims-receipts.service';
 import { EtimsReportsService } from './etims-reports.service';
+import { EtimsPurchasesService } from './etims-purchases.service';
 import { EtimsSettingsService } from './etims-settings.service';
 
 /**
@@ -26,6 +27,7 @@ import { EtimsSettingsService } from './etims-settings.service';
     EtimsReceiptsService,
     EtimsExtrasService,
     EtimsReportsService,
+    EtimsPurchasesService,
     EtimsSchedulerService,
   ],
   exports: [EtimsSettingsService, EtimsClient],

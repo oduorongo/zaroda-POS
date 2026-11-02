@@ -13,5 +13,7 @@ import { InventoryModule } from '../inventory/inventory.module';
   imports: [InventoryModule],
   controllers: [SuppliersController, PurchaseOrdersController, GoodsReceiptsController, SupplierBillsController],
   providers: [SuppliersService, PurchaseOrdersService, GoodsReceiptsService, SupplierBillsService],
+  // Construction LPOs are purchase orders to a project site branch (construction/materials).
+  exports: [PurchaseOrdersService],
 })
 export class PurchasingModule {}

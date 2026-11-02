@@ -11,8 +11,10 @@ import { PageHeader } from "../../../../components/page-header";
 type Status = "PENDING" | "SENT" | "REJECTED" | "MANUAL";
 interface Doc {
   id: string;
-  kind: "SALE" | "CREDIT_NOTE";
-  saleId: string;
+  kind: "SALE" | "CREDIT_NOTE" | "PURCHASE" | "STOCK_MOVE";
+  saleId: string | null;
+  /** For a stock movement: KRA's movement type. */
+  movement: string | null;
   status: Status;
   invcNo: number | null;
   steps: { sale: boolean; stock: boolean; stockLevels: boolean };
@@ -40,6 +42,18 @@ const TONE: Record<Status, string> = {
   SENT: "bg-green-950 text-green-300",
   REJECTED: "bg-red-950 text-red-300",
   MANUAL: "bg-secondary-500/15",
+};
+const MOVEMENT: Record<string, string> = {
+  "02": "Delivery from a supplier",
+  "03": "Returned to stock",
+  "04": "Transfer in",
+  "05": "Made in production or repacking",
+  "06": "Stock added (adjustment)",
+  "12": "Returned to the supplier",
+  "13": "Transfer out",
+  "14": "Used in production or repacking",
+  "15": "Thrown away",
+  "16": "Stock taken off (adjustment)",
 };
 const STATES: Status[] = ["PENDING", "REJECTED", "MANUAL", "SENT"];
 
@@ -102,11 +116,14 @@ export default function EtimsDocumentsPage() {
       <main className="mx-auto max-w-4xl space-y-5 p-6">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h1 className="text-xl font-bold">Sales sent to KRA</h1>
-          <Link href="/settings/etims" className={ghost}>eTIMS connection</Link>
+          <div className="flex gap-2">
+            <Link href="/settings/etims/purchases" className={ghost}>Purchases</Link>
+            <Link href="/settings/etims" className={ghost}>eTIMS connection</Link>
+          </div>
         </div>
         {error && <p className="rounded-md bg-red-950 p-3 text-sm text-red-300">{error}</p>}
         {notice && <p className="rounded-md bg-green-950 p-3 text-sm text-green-300">{notice}</p>}
-        <p className="text-sm text-secondary-500">Every sale made since sending was switched on, and every refund of a whole sale, appears here. Sending happens by itself every minute; a document that could not be sent is tried again with longer waits in between. This is KRA&apos;s <strong>test</strong> system.</p>
+        <p className="text-sm text-secondary-500">Every sale made since sending was switched on, every refund of a whole sale, every purchase you confirm, and every stock movement that is not a sale (adjustments, waste, transfers, repacking, production, deliveries) appears here. Sending happens by itself every minute; a document that could not be sent is tried again with longer waits in between. This is KRA&apos;s <strong>test</strong> system.</p>
 
         {data && (
           <>
@@ -134,7 +151,7 @@ export default function EtimsDocumentsPage() {
                     <tr>
                       <th className="p-3">When</th>
                       <th className="p-3">What</th>
-                      <th className="p-3">KRA invoice no.</th>
+                      <th className="p-3">KRA number</th>
                       <th className="p-3">Progress</th>
                       <th className="p-3">State</th>
                       <th className="p-3" />
@@ -145,7 +162,13 @@ export default function EtimsDocumentsPage() {
                       <tr key={d.id} className="border-t border-border align-top">
                         <td className="p-3 whitespace-nowrap">{new Date(d.createdAt).toLocaleString()}</td>
                         <td className="p-3">
-                          <Link href={`/sales/${d.saleId}`} className="text-primary-400 hover:underline">{d.kind === "SALE" ? "Sale" : "Credit note"}</Link>
+                          {d.saleId ? (
+                            <Link href={`/sales/${d.saleId}`} className="text-primary-400 hover:underline">{d.kind === "SALE" ? "Sale" : "Credit note"}</Link>
+                          ) : d.kind === "PURCHASE" ? (
+                            <Link href="/settings/etims/purchases" className="text-primary-400 hover:underline">Purchase</Link>
+                          ) : (
+                            <span>Stock: {MOVEMENT[d.movement ?? ""] ?? "movement"}</span>
+                          )}
                         </td>
                         <td className="p-3 font-mono">{d.invcNo ?? "-"}</td>
                         <td className="p-3 text-xs text-secondary-500">

@@ -6,6 +6,7 @@ import Link from "next/link";
 import { apiGet, ApiError } from "../../../../lib/api";
 import { getSession } from "../../../../lib/auth";
 import { KraReceipt, type KraReceiptData } from "../../../../components/kra-receipt";
+import { PoweredByFootnote } from "@zaroda/ui";
 
 interface Side {
   receipt: KraReceiptData | null;
@@ -50,6 +51,7 @@ export default function KraReceiptPage() {
         <div className="space-y-6">
           {data.sale.receipt ? <KraReceipt r={data.sale.receipt} /> : data.sale.message && <p className="mx-auto max-w-md rounded-md bg-amber-950 p-3 text-sm text-amber-200 print:hidden">{data.sale.message}</p>}
           {data.credit.receipt ? <KraReceipt r={data.credit.receipt} /> : data.credit.message && <p className="mx-auto max-w-md rounded-md bg-amber-950 p-3 text-sm text-amber-200 print:hidden">Credit note: {data.credit.message}</p>}
+          {which && <PoweredByFootnote className="mx-auto max-w-md" />}
         </div>
       )}
     </div>

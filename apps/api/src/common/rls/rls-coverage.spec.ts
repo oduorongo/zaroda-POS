@@ -43,6 +43,8 @@ const INTENTIONALLY_EXCLUDED = new Set([
   'tender_adverts',
   // Rental tenants sign in by email across landlords like riders - see rls.sql's "Rental tenant sign-in" comment.
   'rental_tenant_otps',
+  // Construction portal users sign in by email across builders - see rls.sql's "Construction portal sign-in" comment.
+  'con_portal_otps',
   // Marketing teams and their members are platform-level (no tenant) - see rls.sql's "marketing teams" comment.
   'sales_teams',
   'sales_agents',
@@ -52,6 +54,11 @@ const INTENTIONALLY_EXCLUDED = new Set([
   // A global price list with no organizationId - see rls.sql's "platform
   // billing tables" comment.
   'plans',
+  // Construction's price list and discount codes - global like plans, see rls.sql's "Construction" comment.
+  'con_plans',
+  'con_coupons',
+  'con_payout_fee_bands',
+  'con_sms_bundles',
   // Seasonal billing's terms, settings and due-date shift log: the same for every business, like plans.
   'seasonal_terms',
   'seasonal_billing_settings',

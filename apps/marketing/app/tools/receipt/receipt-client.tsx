@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import jsPDF from "jspdf";
+import { addPoweredBy } from "../../../lib/pdf-footnote";
 import { Card, CardContent, Button, Input, Label } from "@zaroda/ui";
 
 type LineItem = {
@@ -113,6 +114,8 @@ export default function ReceiptClient() {
 
     doc.setFontSize(8);
     doc.text("Thank you for shopping with us!", width / 2, y, { align: "center" });
+
+    addPoweredBy(doc);
 
     doc.save(`${receiptNumber || "receipt"}.pdf`);
   }

@@ -24,16 +24,20 @@ export interface AuditLogEntry {
 export class AuditLogService {
   async logInTx(tx: TenantTx, entry: AuditLogEntry) {
     const { organizationId, orgUserId } = getTenantStore();
+    // Someone who is not staff (a construction portal user "portal:<id>", or "system:mpesa") is named in the entry
+    // instead, since actorId must be a staff member.
+    const external = orgUserId.includes(':') ? orgUserId : null;
+    const after = entry.after === undefined ? undefined : (entry.after as object);
     await tx.auditLog.create({
       data: {
         organizationId,
-        actorId: orgUserId,
+        actorId: external ? null : orgUserId,
         action: entry.action,
         entityType: entry.entityType,
         entityId: entry.entityId,
         before:
           entry.before === undefined ? undefined : (entry.before as object),
-        after: entry.after === undefined ? undefined : (entry.after as object),
+        after: external ? { ...(after ?? {}), externalActor: external } : after,
         terminalId: entry.terminalId,
       },
     });

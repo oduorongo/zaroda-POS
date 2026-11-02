@@ -1,0 +1,164 @@
+import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { Role } from '@prisma/client';
+import { brandButton, brandedEmail } from '../../common/email/brand-layout';
+import { PrismaService } from '../../common/prisma/prisma.service';
+import { TenantScopedPrismaService } from '../../common/prisma/tenant-scoped-prisma.service';
+import { AfricasTalkingSmsProvider } from '../../notifications/africas-talking-sms.provider';
+import { ResendEmailProvider } from '../../notifications/resend-email.provider';
+import { asOrg } from '../common/con-access';
+import { constructionUrl } from '../common/con-domain';
+import { WORKS_CLASS_LABELS, alertKey, alertStage, alertText, todayKey } from './compliance.util';
+import { PERMIT_LABELS } from '../projects/projects.util';
+import { smsParts } from '../plans/con-addons.util';
+import { ConUsageService } from '../plans/con-usage.service';
+
+const FIRST_RUN_DELAY_MS = 2 * 60_000;
+const INTERVAL_MS = 6 * 60 * 60_000;
+const COMPLIANCE_HREF = '/construction/compliance';
+
+interface NewAlert {
+  title: string;
+  body: string;
+}
+
+/**
+ * Expiry alerts: 60, 30 and 7 days before a vault document, NCA licence, project permit or staff NCA card expires, and once it has.
+ * Each stage is raised once (con_alerts.dedupeKey), in-app, and emailed / texted where those are configured. Runs in the API
+ * process every few hours with a per-business advisory lock; CONSTRUCTION_SCHEDULER=off turns it off.
+ */
+@Injectable()
+export class ComplianceAlertsService implements OnModuleInit, OnModuleDestroy {
+  private readonly logger = new Logger(ComplianceAlertsService.name);
+  private timers: ReturnType<typeof setTimeout>[] = [];
+
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly tenantPrisma: TenantScopedPrismaService,
+    private readonly email: ResendEmailProvider,
+    private readonly sms: AfricasTalkingSmsProvider,
+    private readonly config: ConfigService,
+    private readonly usage: ConUsageService,
+  ) {}
+
+  onModuleInit() {
+    if (this.config.get<string>('CONSTRUCTION_SCHEDULER') === 'off' || process.env.NODE_ENV === 'test') return;
+    const first = setTimeout(() => void this.tick(), FIRST_RUN_DELAY_MS);
+    const every = setInterval(() => void this.tick(), INTERVAL_MS);
+    first.unref();
+    every.unref();
+    this.timers = [first, every];
+  }
+
+  onModuleDestroy() {
+    this.timers.forEach((t) => clearTimeout(t));
+  }
+
+  async tick(now: Date = new Date()) {
+    const orgs = await this.prisma.organization.findMany({ where: { industryType: 'CONSTRUCTION', isActive: true }, select: { id: true } });
+    let raised = 0;
+    for (const org of orgs) {
+      raised += await this.runForOrganization(org.id, todayKey(now)).catch((e) => (this.logger.warn({ err: e, organizationId: org.id }, 'Compliance alerts failed'), 0));
+      await asOrg(this.prisma, org.id, (tx) => this.usage.closeMonths(tx, org.id, now)).catch((e) => this.logger.warn({ err: e, organizationId: org.id }, 'Closing fee months failed'));
+    }
+    if (raised > 0) this.logger.log({ raised }, 'Construction compliance alerts raised');
+    return raised;
+  }
+
+  async runForOrganization(organizationId: string, today: string): Promise<number> {
+    const fresh = await asOrg(this.prisma, organizationId, async (tx) => {
+      const rows = await tx.$queryRaw<{ locked: boolean }[]>`SELECT pg_try_advisory_xact_lock(hashtext(${'zaroda-con-alerts:' + organizationId})) AS locked`;
+      if (!rows[0]?.locked) return [];
+      const [docs, regs, permits, cards, workers, incidents] = await Promise.all([
+        tx.conComplianceDoc.findMany({ where: { expiresAt: { not: null } } }),
+        tx.conCompanyRegistration.findMany({ where: { licenceExpiresAt: { not: null } } }),
+        tx.conProjectPermit.findMany({ where: { expiresAt: { not: null }, project: { status: { not: 'CLOSED' } } }, include: { project: { select: { code: true } } } }),
+        tx.conStaffAccreditation.findMany({ where: { orgUser: { isActive: true } }, include: { orgUser: { select: { user: { select: { fullName: true } } } } } }),
+        tx.conWorker.findMany({ where: { isActive: true, ncaExpiresAt: { not: null } }, select: { id: true, name: true, ncaExpiresAt: true } }),
+        tx.conIncident.findMany({ where: { reportedToDoshs: false, reportDueAt: { not: null } }, include: { project: { select: { id: true, code: true } } } }),
+      ]);
+      // Power lines (docs/construction/07): electricians' licences and approved crossing permits.
+      const [licences, crossings] = await Promise.all([
+        tx.conStaffLicence.findMany(),
+        tx.conCrossing.findMany({ where: { status: 'APPROVED', expiresAt: { not: null } } }),
+      ]);
+      const holders = new Map((await tx.orgUser.findMany({ where: { id: { in: licences.map((l) => l.orgUserId) }, isActive: true }, select: { id: true, user: { select: { fullName: true } } } })).map((u) => [u.id, u.user.fullName]));
+      const codes = new Map((await tx.conProject.findMany({ where: { id: { in: crossings.map((c) => c.projectId) }, status: { not: 'CLOSED' } }, select: { id: true, code: true } })).map((p) => [p.id, p.code]));
+      const items = [
+        ...docs.map((d) => ({ kind: 'doc', id: d.id, name: d.title, expires: d.expiresAt!.toISOString().slice(0, 10) })),
+        ...regs.map((r) => ({ kind: 'nca', id: r.id, name: `NCA${r.ncaCategory} licence (${WORKS_CLASS_LABELS[r.worksClass]})`, expires: r.licenceExpiresAt!.toISOString().slice(0, 10) })),
+        ...permits.map((p) => ({ kind: 'permit', id: p.id, name: `${p.project.code} ${PERMIT_LABELS[p.type]}`, expires: p.expiresAt!.toISOString().slice(0, 10) })),
+        ...cards.map((c) => ({ kind: 'card', id: c.id, name: `${c.orgUser.user.fullName}'s NCA accreditation card`, expires: c.expiresAt.toISOString().slice(0, 10) })),
+        ...workers.map((w) => ({ kind: 'worker', id: w.id, name: `${w.name}'s NCA card`, expires: w.ncaExpiresAt!.toISOString().slice(0, 10) })),
+        ...licences.filter((l) => holders.has(l.orgUserId)).map((l) => ({ kind: 'licence', id: l.id, name: `${holders.get(l.orgUserId)}'s ${l.body} licence (${l.licenceClass})`, expires: l.expiresAt.toISOString().slice(0, 10) })),
+        ...crossings.filter((c) => codes.has(c.projectId)).map((c) => ({ kind: 'crossing', id: c.id, name: `${codes.get(c.projectId)} ${c.kind.toLowerCase().replace('_', ' ')} crossing permit (${c.authority})`, expires: c.expiresAt!.toISOString().slice(0, 10) })),
+      ];
+      const out: NewAlert[] = [];
+      for (const item of items) {
+        const stage = alertStage(item.expires, today);
+        if (stage === null) continue;
+        const text = alertText(item.name, item.expires, stage);
+        const res = await tx.conAlert.createMany({
+          data: [{ organizationId, kind: stage === 0 ? 'EXPIRED' : 'EXPIRING', ...text, href: COMPLIANCE_HREF, dedupeKey: alertKey(item.kind, item.id, item.expires, stage) }],
+          skipDuplicates: true,
+        });
+        if (res.count === 1) out.push(text);
+      }
+      for (const i of incidents) {
+        const overdue = i.reportDueAt! < new Date();
+        const text = {
+          title: overdue ? `${i.project.code}: DOSHS report overdue` : `${i.project.code}: report the ${i.severity === 'FATAL' ? 'fatal' : 'lost-time'} incident to DOSHS`,
+          body: `Due by ${i.reportDueAt!.toISOString().slice(0, 16).replace('T', ' ')} UTC (OSHA 2007). Record the DOSHS reference once reported.`,
+        };
+        const res = await tx.conAlert.createMany({
+          data: [{ organizationId, kind: overdue ? 'DOSHS_OVERDUE' : 'DOSHS_DUE', ...text, href: `/construction/projects/${i.project.id}`, dedupeKey: `incident:${i.id}:${overdue ? 'overdue' : 'due'}` }],
+          skipDuplicates: true,
+        });
+        if (res.count === 1) out.push(text);
+      }
+      return out;
+    });
+    if (fresh.length) await this.notify(organizationId, fresh).catch((e) => this.logger.warn({ err: e, organizationId }, 'Compliance alert email/SMS failed'));
+    return fresh.length;
+  }
+
+  private async notify(organizationId: string, alerts: NewAlert[]) {
+    const { org, emails } = await asOrg(this.prisma, organizationId, async (tx) => {
+      const org = await tx.organization.findUniqueOrThrow({ where: { id: organizationId }, select: { name: true, email: true, phone: true } });
+      const people = await tx.orgUser.findMany({
+        where: { isActive: true, OR: [{ role: Role.OWNER }, { conUserRoles: { some: { role: { in: ['CON_DIRECTOR', 'CON_COMPLIANCE'] } } } }] },
+        select: { user: { select: { email: true } } },
+      });
+      return { org, emails: [...new Set([...people.map((p) => p.user.email), ...(org.email ? [org.email] : [])])] };
+    });
+    const link = constructionUrl(COMPLIANCE_HREF);
+    if (this.email.isConfigured() && emails.length) {
+      const list = alerts.map((a) => `<li style="margin-bottom:8px"><strong>${escape(a.title)}</strong><br>${escape(a.body)}</li>`).join('');
+      const html = brandedEmail({ title: 'Compliance documents need attention', bodyHtml: `<p>${escape(org.name)}:</p><ul>${list}</ul>${link ? `<p>${brandButton('Open the compliance vault', link)}</p>` : ''}` });
+      for (const to of emails) await this.email.sendEmail({ to, subject: `${alerts.length === 1 ? alerts[0].title : `${alerts.length} compliance documents need attention`} - ${org.name}`, html });
+    }
+    if (org.phone) {
+      const message = `${org.name}: ${alerts.map((a) => a.title).join('; ')}.${link ? ` ${link}` : ''}`.slice(0, 300);
+      const parts = smsParts(message);
+      if (await this.usage.takeSms(organizationId, parts)) {
+        const sent = await this.sms.sendSms({ to: org.phone, message }).catch(() => ({ sent: false }));
+        if (!sent.sent) await this.usage.returnSms(organizationId, parts);
+      }
+    }
+  }
+
+  // ── In-app ──
+
+  list() {
+    return this.tenantPrisma.run((tx) => tx.conAlert.findMany({ orderBy: [{ readAt: { sort: 'asc', nulls: 'first' } }, { createdAt: 'desc' }], take: 50 }));
+  }
+
+  markRead(id?: string) {
+    return this.tenantPrisma.run(async (tx) => {
+      const res = await tx.conAlert.updateMany({ where: { readAt: null, ...(id ? { id } : {}) }, data: { readAt: new Date() } });
+      return { updated: res.count };
+    });
+  }
+}
+
+const escape = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');

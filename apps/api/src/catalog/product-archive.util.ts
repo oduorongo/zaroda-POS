@@ -30,6 +30,9 @@ export const HISTORY_SOURCES: { delegate: string; field: string }[] = [
   { delegate: 'schoolTenderLine', field: 'variantId' },
   { delegate: 'supplierInvoiceLine', field: 'variantId' },
   { delegate: 'hotelRoomType', field: 'variantId' },
+  { delegate: 'conRequisitionLine', field: 'variantId' },
+  { delegate: 'conMaterialIssue', field: 'variantId' },
+  { delegate: 'conMaterialBudget', field: 'variantId' },
 ];
 
 /** Archive when the product appears anywhere in the business's history; delete only when it never has. */

@@ -97,3 +97,35 @@ export function withRunningBalance<T extends { debit: number; credit: number }>(
     return { ...l, balance: bal };
   });
 }
+
+/** Cash and cash equivalents: the asset accounts numbered 1000-1099 (cash, M-Pesa, bank, card payments on their way). */
+export const isMoneyAccount = (a: Pick<AccountInfo, 'type' | 'code'>) => a.type === 'ASSET' && /^10\d\d$/.test(a.code);
+
+export type CashActivity = 'OPERATING' | 'INVESTING' | 'FINANCING';
+
+/** Long-lived assets (codes 15xx-19xx) are investing; equity and long-term loans (codes 25xx-29xx) are financing; the rest is trading. */
+export function cashActivity(a: Pick<AccountInfo, 'type' | 'code'>): CashActivity {
+  if (a.type === 'ASSET' && /^1[5-9]/.test(a.code)) return 'INVESTING';
+  if (a.type === 'EQUITY' || (a.type === 'LIABILITY' && /^2[5-9]/.test(a.code))) return 'FINANCING';
+  return 'OPERATING';
+}
+
+/**
+ * The cash flow statement (direct method) from the books. Every entry that moves money is balanced by its other lines, so each of those
+ * lines is where that money came from or went: effects holds, per account, the money it brought in (positive) or took out (negative).
+ * Moves between money accounts (banking cash, M-Pesa to bank) have no other lines and so change nothing.
+ */
+export function cashFlow(accounts: AccountInfo[], effects: Map<string, number>, openingCents: number, closingCents: number) {
+  const section = (activity: CashActivity) => {
+    const list = accounts
+      .filter((a) => !isMoneyAccount(a) && cashActivity(a) === activity && (effects.get(a.id) ?? 0) !== 0)
+      .map((a) => ({ accountId: a.id, code: a.code, name: a.name, amount: effects.get(a.id) ?? 0 }))
+      .sort(byCode);
+    return { rows: list, total: total(list) };
+  };
+  const operating = section('OPERATING');
+  const investing = section('INVESTING');
+  const financing = section('FINANCING');
+  const net = operating.total + investing.total + financing.total;
+  return { opening: openingCents, operating, investing, financing, net, closing: closingCents, reconciles: openingCents + net === closingCents };
+}

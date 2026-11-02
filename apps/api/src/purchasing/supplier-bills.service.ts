@@ -8,7 +8,9 @@ import { Prisma, SupplierBillStatus } from '@prisma/client';
 import { AuditLogService } from '../common/audit/audit-log.service';
 import { TenantScopedPrismaService } from '../common/prisma/tenant-scoped-prisma.service';
 import { getTenantStore } from '../common/tenant/tenant-context';
+import { vatClaim } from '../accounting/vat-claim.util';
 import {
+  BillVatDto,
   CreateSupplierBillDto,
   PayBillDto,
   VoidBillDto,
@@ -31,7 +33,7 @@ const day = (s: string) => new Date(`${s}T00:00:00Z`);
 const money = (d: Prisma.Decimal | number) => Math.round(Number(d) * 100) / 100;
 
 const BILL_INCLUDE = {
-  supplier: { select: { id: true, name: true, phone: true } },
+  supplier: { select: { id: true, name: true, phone: true, kraPin: true } },
   payments: { orderBy: { paidAt: 'asc' } },
   credits: { orderBy: { createdAt: 'asc' } },
   receipt: {
@@ -68,6 +70,10 @@ export class SupplierBillsService {
       total,
       amountPaid: paid,
       creditAmount: credit,
+      taxAmount: money(b.taxAmount),
+      kraInvoiceNo: b.kraInvoiceNo,
+      // whether the VAT can be claimed from KRA (KRA, DECLARED), or is a cost until the PIN / invoice number are added (MISSING)
+      vatClaim: vatClaim({ taxCents: Math.round(money(b.taxAmount) * 100), pin: b.supplier.kraPin, invoiceNo: b.kraInvoiceNo, linked: !!b.etimsInvoiceId }),
       balance: b.status === 'VOID' ? 0 : outstanding(total, paid, credit),
       // what the damaged goods on this delivery were worth: what to ask the supplier to credit
       damagedValue: b.receipt
@@ -126,6 +132,8 @@ export class SupplierBillsService {
         if (!po || po.supplierId !== supplier.id)
           throw new BadRequestException("That order is not this supplier's");
       }
+      if ((dto.taxAmount ?? 0) > dto.total)
+        throw new BadRequestException('The VAT cannot be more than the bill');
       const billDate = dto.billDate ? dto.billDate.slice(0, 10) : kenyaToday();
       const dueDate = dto.dueDate
         ? dto.dueDate.slice(0, 10)
@@ -144,6 +152,8 @@ export class SupplierBillsService {
             billDate: day(billDate),
             dueDate: day(dueDate),
             total: dto.total,
+            taxAmount: dto.taxAmount ?? 0,
+            kraInvoiceNo: dto.kraInvoiceNo?.trim() || null,
             purchaseOrderId: dto.purchaseOrderId,
             notes: dto.notes || null,
             createdById: orgUserId,
@@ -344,6 +354,30 @@ export class SupplierBillsService {
           include: BILL_INCLUDE,
         }),
       );
+    });
+  }
+
+  /** The VAT on a bill and the supplier's eTIMS invoice number. Not once the bill is linked to KRA's invoice (KRA's figure stands). */
+  async setVat(id: string, dto: BillVatDto) {
+    return this.tenantPrisma.run(async (tx) => {
+      const bill = await tx.supplierBill.findUnique({ where: { id } });
+      if (!bill) throw new NotFoundException('Bill not found');
+      if (bill.status === 'VOID') throw new ConflictException('This bill is cancelled');
+      if (bill.etimsInvoiceId) throw new ConflictException("This bill is linked to KRA's invoice, so its VAT is KRA's figure");
+      if (dto.taxAmount > Number(bill.total)) throw new BadRequestException('The VAT cannot be more than the bill');
+      const after = await tx.supplierBill.update({
+        where: { id },
+        data: { taxAmount: dto.taxAmount, kraInvoiceNo: dto.kraInvoiceNo?.trim() || null },
+        include: BILL_INCLUDE,
+      });
+      await this.auditLog.logInTx(tx, {
+        action: 'supplier_bill.vat_set',
+        entityType: 'SupplierBill',
+        entityId: id,
+        before: { taxAmount: Number(bill.taxAmount), kraInvoiceNo: bill.kraInvoiceNo },
+        after: { taxAmount: dto.taxAmount, kraInvoiceNo: after.kraInvoiceNo },
+      });
+      return this.view(after);
     });
   }
 

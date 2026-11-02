@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import jsPDF from "jspdf";
+import { addPoweredBy } from "../../../lib/pdf-footnote";
 import autoTable from "jspdf-autotable";
 import { Card, CardContent, Button, Input, Label } from "@zaroda/ui";
 
@@ -100,6 +101,8 @@ export default function PurchaseOrderClient() {
       doc.setTextColor(100);
       doc.text(notes, 14, finalY + 10, { maxWidth: 180 });
     }
+
+    addPoweredBy(doc);
 
     doc.save(`${poNumber || "purchase-order"}.pdf`);
   }

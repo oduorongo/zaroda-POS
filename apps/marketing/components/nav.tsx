@@ -23,7 +23,7 @@ export default function Nav() {
         </RibbonLink>
       ))}
       <RibbonLink href={BACKOFFICE_LOGIN_URL}>Sign In</RibbonLink>
-      <Link href="/signup" className="rounded-md bg-[#c99a2e] px-3 py-1 font-semibold text-[#0a1633] no-underline hover:opacity-90">
+      <Link href="/signup" className="rounded-md bg-[#c99a2e] px-3 py-1 font-semibold text-[#060f26] no-underline hover:opacity-90">
         Start Free Trial
       </Link>
       <ThemeToggle />

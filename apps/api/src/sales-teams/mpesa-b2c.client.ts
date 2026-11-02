@@ -31,16 +31,30 @@ export function parseB2cResult(body: unknown): ParsedB2cResult {
   };
 }
 
+/** A B2C account to pay from: Zaroda's own (MPESA_B2C_* settings) or a business's own (construction payroll). */
+export interface B2cAccount {
+  consumerKey: string;
+  consumerSecret: string;
+  shortcode: string;
+  initiator: string;
+  securityCredential: string;
+  environment: string;
+  resultUrl: string;
+  timeoutUrl: string;
+  occasion: string;
+}
+
 /**
- * Pays money out of Zaroda's M-Pesa business account to a person's phone (Daraja "B2C", BusinessPayment). Needs a
- * B2C-enabled shortcode and an API initiator from Safaricom, so it is only "set up" when every MPESA_B2C_* value is
- * present. The request is only an acknowledgement: the real outcome arrives later at the result URL, which carries
- * MPESA_B2C_CALLBACK_SECRET so only Safaricom (who was given the URL) can settle a payout.
+ * Pays money out of an M-Pesa business account to a person's phone (Daraja "B2C", BusinessPayment). Zaroda's own account
+ * needs a B2C-enabled shortcode and an API initiator from Safaricom, so it is only "set up" when every MPESA_B2C_* value is
+ * present; a business can pay from its own account with sendFrom(). The request is only an acknowledgement: the real
+ * outcome arrives later at the result URL, which carries a secret so only Safaricom (who was given the URL) can settle a
+ * payout. MPESA_B2C_BASE_URL points every account at a test double instead of Safaricom.
  */
 @Injectable()
 export class MpesaB2cClient {
   private readonly logger = new Logger(MpesaB2cClient.name);
-  private token?: { value: string; expiresAt: number };
+  private readonly tokens = new Map<string, { value: string; expiresAt: number }>();
 
   constructor(private readonly config: ConfigService) {}
 
@@ -48,8 +62,8 @@ export class MpesaB2cClient {
     return this.config.get<string>(name) || undefined;
   }
 
-  private get baseUrl(): string {
-    return this.get('MPESA_B2C_ENV') === 'production' ? 'https://api.safaricom.co.ke' : 'https://sandbox.safaricom.co.ke';
+  private baseUrl(environment: string | undefined): string {
+    return this.get('MPESA_B2C_BASE_URL') ?? (environment === 'production' ? 'https://api.safaricom.co.ke' : 'https://sandbox.safaricom.co.ke');
   }
 
   isConfigured(): boolean {
@@ -77,44 +91,63 @@ export class MpesaB2cClient {
     return publicEncrypt({ key: cert, padding: constants.RSA_PKCS1_PADDING }, Buffer.from(this.get('MPESA_B2C_INITIATOR_PASSWORD') as string)).toString('base64');
   }
 
-  private async accessToken(): Promise<string> {
-    if (this.token && this.token.expiresAt - 60_000 > Date.now()) return this.token.value;
-    const auth = Buffer.from(`${this.get('MPESA_B2C_CONSUMER_KEY')}:${this.get('MPESA_B2C_CONSUMER_SECRET')}`).toString('base64');
+  private async accessToken(account: B2cAccount): Promise<string> {
+    const cached = this.tokens.get(account.consumerKey);
+    if (cached && cached.expiresAt - 60_000 > Date.now()) return cached.value;
+    const auth = Buffer.from(`${account.consumerKey}:${account.consumerSecret}`).toString('base64');
     let response: Response;
     try {
-      response = await fetch(`${this.baseUrl}/oauth/v1/generate?grant_type=client_credentials`, { headers: { Authorization: `Basic ${auth}` }, signal: AbortSignal.timeout(15_000) });
+      response = await fetch(`${this.baseUrl(account.environment)}/oauth/v1/generate?grant_type=client_credentials`, { headers: { Authorization: `Basic ${auth}` }, signal: AbortSignal.timeout(15_000) });
     } catch {
       throw new ServiceUnavailableException('Could not reach M-Pesa');
     }
     const body = (await response.json().catch(() => ({}))) as { access_token?: string; expires_in?: string };
     if (!response.ok || !body.access_token) throw new BadRequestException('M-Pesa rejected the B2C credentials');
-    this.token = { value: body.access_token, expiresAt: Date.now() + Number(body.expires_in ?? 3500) * 1000 };
+    this.tokens.set(account.consumerKey, { value: body.access_token, expiresAt: Date.now() + Number(body.expires_in ?? 3500) * 1000 });
     return body.access_token;
   }
 
-  /** Asks Safaricom to send `amount` (whole shillings) to `phone` (2547XXXXXXXX). Resolves once Safaricom accepted the request. */
+  /** Asks Safaricom to send `amount` (whole shillings) to `phone` (2547XXXXXXXX) from Zaroda's account. Resolves once Safaricom accepted the request. */
   async send(input: { requestId: string; phone: string; amount: number; remarks: string }): Promise<{ conversationId?: string }> {
     if (!this.isConfigured()) throw new ServiceUnavailableException('M-Pesa B2C payouts are not set up on this server');
     const resultBase = `${(this.get('PUBLIC_API_BASE_URL') as string).replace(/\/+$/, '')}/sales-payouts/mpesa-b2c`;
     const secret = encodeURIComponent(this.callbackSecret() as string);
-    const token = await this.accessToken();
+    return this.sendFrom(
+      {
+        consumerKey: this.get('MPESA_B2C_CONSUMER_KEY') as string,
+        consumerSecret: this.get('MPESA_B2C_CONSUMER_SECRET') as string,
+        shortcode: this.get('MPESA_B2C_SHORTCODE') as string,
+        initiator: this.get('MPESA_B2C_INITIATOR') as string,
+        securityCredential: this.securityCredential(),
+        environment: this.get('MPESA_B2C_ENV') ?? 'sandbox',
+        resultUrl: `${resultBase}/result/${secret}`,
+        timeoutUrl: `${resultBase}/timeout/${secret}`,
+        occasion: 'Commission payout',
+      },
+      input,
+    );
+  }
+
+  /** The same payment from a given account (a business's own shortcode). */
+  async sendFrom(account: B2cAccount, input: { requestId: string; phone: string; amount: number; remarks: string }): Promise<{ conversationId?: string }> {
+    const token = await this.accessToken(account);
     let response: Response;
     try {
-      response = await fetch(`${this.baseUrl}/mpesa/b2c/v3/paymentrequest`, {
+      response = await fetch(`${this.baseUrl(account.environment)}/mpesa/b2c/v3/paymentrequest`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({
           OriginatorConversationID: input.requestId,
-          InitiatorName: this.get('MPESA_B2C_INITIATOR'),
-          SecurityCredential: this.securityCredential(),
+          InitiatorName: account.initiator,
+          SecurityCredential: account.securityCredential,
           CommandID: 'BusinessPayment',
           Amount: input.amount,
-          PartyA: this.get('MPESA_B2C_SHORTCODE'),
+          PartyA: account.shortcode,
           PartyB: input.phone,
           Remarks: input.remarks.slice(0, 100),
-          QueueTimeOutURL: `${resultBase}/timeout/${secret}`,
-          ResultURL: `${resultBase}/result/${secret}`,
-          Occasion: 'Commission payout',
+          QueueTimeOutURL: account.timeoutUrl,
+          ResultURL: account.resultUrl,
+          Occasion: account.occasion,
         }),
         signal: AbortSignal.timeout(20_000),
       });

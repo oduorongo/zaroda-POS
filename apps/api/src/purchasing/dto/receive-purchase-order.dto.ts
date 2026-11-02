@@ -67,6 +67,19 @@ export class ReceiveBillDto {
   @IsDateString()
   @IsOptional()
   dueDate?: string;
+
+  /** The VAT included in the bill (input VAT you can claim from KRA). Left out: none. */
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  @Max(1_000_000_000)
+  @IsOptional()
+  taxAmount?: number;
+
+  /** The eTIMS invoice number on the supplier's invoice (needed, with their KRA PIN, to claim the VAT). */
+  @IsString()
+  @IsOptional()
+  @MaxLength(40)
+  kraInvoiceNo?: string;
 }
 
 export class ReceivePurchaseOrderDto {

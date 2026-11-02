@@ -37,7 +37,8 @@ export function isBackofficeRole(role: string): boolean {
 export const isCaretaker = (role: string): boolean => role === "CARETAKER";
 
 /** Where a freshly signed-in person lands. */
-export const homePath = (role: string): string => (isCaretaker(role) ? "/rentals" : "/dashboard");
+export const homePath = (role: string, industryType?: string): string =>
+  isCaretaker(role) || industryType === "RENTAL" ? "/rentals" : industryType === "CONSTRUCTION" ? "/construction" : "/dashboard";
 
 export function getSession(): Session | null {
   if (typeof window === "undefined") return null;

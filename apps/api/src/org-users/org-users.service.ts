@@ -14,6 +14,7 @@ import { CreateOrgUserDto } from './dto/create-org-user.dto';
 import { UpdateOrgUserDto } from './dto/update-org-user.dto';
 import { SetPinDto } from './dto/set-pin.dto';
 import { assertCaretakerAllowed } from '../rental/rental-plans.service';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 
 const SALT_ROUNDS = 10;
 
@@ -23,6 +24,7 @@ export class OrgUsersService {
     private readonly tenantPrisma: TenantScopedPrismaService,
     private readonly prisma: PrismaService,
     private readonly auditLog: AuditLogService,
+    private readonly events: EventEmitter2,
   ) {}
 
   /**
@@ -94,6 +96,9 @@ export class OrgUsersService {
     try {
       return await this.tenantPrisma.run(async (tx) => {
         if (dto.role === 'CARETAKER') await assertCaretakerAllowed(tx, organizationId);
+        // A vertical can refuse a role or a user over its plan's limit by throwing (construction).
+        await this.events.emitAsync('orgUser.beforeRoleSet', { tx, organizationId, role: dto.role });
+        await this.events.emitAsync('orgUser.beforeCreate', { tx, organizationId });
         const orgUser = await tx.orgUser.create({
           data: {
             organizationId,
@@ -140,6 +145,7 @@ export class OrgUsersService {
       const before = await tx.orgUser.findUnique({ where: { id } });
       if (!before) throw new NotFoundException('Org user not found');
       if (dto.role === 'CARETAKER' && before.role !== 'CARETAKER') await assertCaretakerAllowed(tx, before.organizationId, id);
+      if (dto.role && dto.role !== before.role) await this.events.emitAsync('orgUser.beforeRoleSet', { tx, organizationId: before.organizationId, role: dto.role });
 
       const updated = await tx.orgUser.update({
         where: { id },

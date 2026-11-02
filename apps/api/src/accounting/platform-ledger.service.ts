@@ -5,9 +5,11 @@ import { nairobiDayOf } from '../reports/profit.util';
 import { CreateAccountDto, CreateJournalDto, JournalListQueryDto, RangeQueryDto, ReverseJournalDto, UpdateAccountDto } from './dto/accounting.dto';
 import { dateOf, dayOf, todayKey } from './ledger-books.service';
 import { PLATFORM_ACCOUNTS } from './ledger-chart';
+import { CON_PAYMENT_INCOME, CON_PAYMENT_LABEL } from './construction-posting.util';
 import { Draft, DraftLine, fingerprint, isBalanced, manualProblem, postingDate } from './ledger-posting.util';
 import { AccountInfo, balanceSheet, profitAndLoss, Sums, trialBalance, withRunningBalance } from './ledger-reports.util';
 import {
+  platformConPaymentDraft,
   platformAdvertDraft,
   platformInvoiceDraft,
   platformInvoiceIncome,
@@ -266,6 +268,19 @@ export class PlatformLedgerService {
         const p = await tx.salesPayout.findUnique({ where: { id }, include: { agent: { select: { fullName: true } } } });
         if (!p || p.status !== 'PAID' || !p.paidAt) return null;
         return platformPayoutDraft({ date: nairobiDayOf(p.paidAt), agent: p.agent.fullName, amountCents: cents(p.amountKes), taxCents: cents(p.taxWithheldKes), method: p.method });
+      },
+    },
+    {
+      type: 'P_CON_PAYMENT',
+      perBusiness: true,
+      scan: async (tx, c) => ({
+        fresh: (await tx.conSubscriptionPayment.findMany({ where: { status: 'PAID', paidAt: { gte: c.since } }, select: { id: true } })).map((r) => r.id),
+        gone: [],
+      }),
+      draft: async (tx, id, business) => {
+        const p = await tx.conSubscriptionPayment.findUnique({ where: { id } });
+        if (!p || p.status !== 'PAID' || !p.paidAt) return null;
+        return platformConPaymentDraft({ date: nairobiDayOf(p.paidAt), business, label: CON_PAYMENT_LABEL[p.purpose], income: CON_PAYMENT_INCOME[p.purpose], amountCents: cents(p.amount), method: p.method });
       },
     },
   ];

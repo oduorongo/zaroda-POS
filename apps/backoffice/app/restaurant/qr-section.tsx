@@ -18,7 +18,7 @@ interface OnlineStore {
 }
 
 const STOREFRONT_URL = (process.env.NEXT_PUBLIC_STOREFRONT_URL ?? "https://shop.zarodashop.com").replace(/\/+$/, "");
-const NAVY = "#0a1633";
+const NAVY = "#060f26";
 
 /**
  * A printable card for every table: its own QR code, which opens the restaurant's menu already knowing which table
@@ -95,6 +95,7 @@ export function QrSection({ tables, stationCount }: { tables: Table[]; stationCo
                 {table.label}
               </p>
               <p className="mt-1 text-xs text-slate-600">View the menu, pay with M-Pesa, and your food comes to your table.</p>
+              <p className="mt-2 text-[9px] italic text-slate-400">Powered by ZARODA SOLUTIONS</p>
             </div>
           ))}
         </div>

@@ -1,5 +1,6 @@
 import type { ElementType, ReactNode } from "react";
 import { cn } from "../lib/cn";
+import { BackButton } from "./BackButton";
 
 /**
  * The two navy "ribbons" every Zaroda web app shares with Zaroda Events: a sticky bar across the top (logo,
@@ -7,7 +8,7 @@ import { cn } from "../lib/cn";
  * bar across the bottom ("Powered by ZARODA SOLUTIONS", shortened on a phone). Deliberately a fixed navy in
  * both light and dark mode, like Events - they are the brand frame around the page, not part of its theme.
  */
-const NAVY = "bg-[#0a1633]";
+const NAVY = "bg-[#060f26]";
 const GOLD_TEXT = "text-[#c99a2e]";
 const GOLD_BORDER = "border-[#c99a2e]";
 
@@ -36,11 +37,14 @@ export function TopRibbon({ appName, homeHref, LinkComponent = "a", logoSrc = "/
         className,
       )}
     >
+      <div className="flex min-w-0 items-center gap-2 sm:gap-3">
+      <BackButton homeHref={homeHref} />
       <Brand href={homeHref} className="inline-flex items-center gap-2 no-underline" aria-label={`Zaroda ${appName} home`}>
         {/* eslint-disable-next-line @next/next/no-img-element -- a fixed brand asset; no optimisation needed */}
         <img src={logoSrc} alt="Zaroda Solutions" width={147} height={120} className="block h-10 w-auto sm:h-12" />
         <span className={cn("whitespace-nowrap border-l border-white/35 pl-2.5 text-sm font-extrabold tracking-wider sm:text-base", GOLD_TEXT)}>{appName}</span>
       </Brand>
+      </div>
       <nav className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm sm:gap-x-4">{children}</nav>
     </header>
   );
@@ -98,5 +102,14 @@ export function BottomRibbon({ children, className }: { children?: ReactNode; cl
       Innovative. Reliable. Forward.
       {children}
     </footer>
+  );
+}
+
+/** The line at the foot of every printed or PDF document a Zaroda app produces (product: e.g. "Zaroda Build", shown before it). */
+export function PoweredByFootnote({ product, className }: { product?: string; className?: string }) {
+  return (
+    <div className={cn("mt-8 border-t border-gray-300 pt-3 text-center text-[10px] italic text-gray-500", className)}>
+      <p>{product ? `${product} · ` : ""}Powered by ZARODA SOLUTIONS</p>
+    </div>
   );
 }

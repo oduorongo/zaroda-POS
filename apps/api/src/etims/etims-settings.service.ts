@@ -154,7 +154,7 @@ export class EtimsSettingsService {
         ...(dto.enabled !== undefined ? { enabled: dto.enabled } : {}),
         // switching sending on starts the clock: only sales made from now on are ever sent
         ...(dto.sendSales !== undefined ? { sendSales: dto.sendSales } : {}),
-        ...(dto.sendSales === true && !before?.sendSales ? { salesStartAt: new Date() } : {}),
+        ...(dto.sendSales === true && !before?.sendSales ? { salesStartAt: new Date(), stockScannedAt: null } : {}),
         ...(tin !== undefined ? { tin } : {}),
       };
       await tx.etimsSetting.upsert({

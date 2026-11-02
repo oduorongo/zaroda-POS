@@ -23,6 +23,11 @@ import {
   UpdateEtimsItemDto,
 } from './dto/etims-items.dto';
 import { DocumentListQueryDto } from './dto/etims-documents.dto';
+import {
+  AcceptPurchaseDto,
+  LinkPurchaseDto,
+  PurchaseListQueryDto,
+} from './dto/etims-purchases.dto';
 import { EtimsCodesService } from './etims-codes.service';
 import { EtimsDocumentsService } from './etims-documents.service';
 import { EtimsItemsService } from './etims-items.service';
@@ -30,6 +35,7 @@ import { EtimsExtrasService } from './etims-extras.service';
 import { ImportDecisionDto } from './dto/etims-extras.dto';
 import { EtimsReceiptsService } from './etims-receipts.service';
 import { EtimsReportsService } from './etims-reports.service';
+import { EtimsPurchasesService } from './etims-purchases.service';
 import { EtimsSettingsService } from './etims-settings.service';
 
 // eTIMS is the business's tax setup, so it is for owners and managers; an auditor can look.
@@ -48,6 +54,7 @@ export class EtimsController {
     private readonly receipts: EtimsReceiptsService,
     private readonly reports: EtimsReportsService,
     private readonly extras: EtimsExtrasService,
+    private readonly purchases: EtimsPurchasesService,
   ) {}
 
   @Roles(...READERS)
@@ -294,5 +301,75 @@ export class EtimsController {
   @HttpCode(200)
   retryDocument(@Param('id', ParseUUIDPipe) id: string) {
     return this.documents.retry(id);
+  }
+
+  // ── Purchases ──
+  @Roles(...READERS)
+  @Get('purchases')
+  listPurchases(@Query() q: PurchaseListQueryDto) {
+    return this.purchases.list(q);
+  }
+
+  /** Download the supplier invoices KRA holds for us. */
+  @Roles(...WRITERS)
+  @Post('purchases/sync')
+  @HttpCode(200)
+  syncPurchases() {
+    return this.purchases.sync();
+  }
+
+  @Roles(...READERS)
+  @Get('purchases/receipts')
+  purchaseReceipts() {
+    return this.purchases.receipts();
+  }
+
+  @Roles(...WRITERS)
+  @Post('purchases/receipts/:id/report')
+  @HttpCode(200)
+  reportReceipt(@Param('id', ParseUUIDPipe) id: string) {
+    return this.purchases.reportReceipt(id);
+  }
+
+  @Roles(...WRITERS)
+  @Post('purchases/:id/accept')
+  @HttpCode(200)
+  acceptPurchase(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: AcceptPurchaseDto,
+  ) {
+    return this.purchases.accept(id, dto);
+  }
+
+  /** Bills and expenses this KRA invoice could be for. */
+  @Roles(...READERS)
+  @Get('purchases/:id/matches')
+  purchaseMatches(@Param('id', ParseUUIDPipe) id: string) {
+    return this.purchases.matches(id);
+  }
+
+  /** Links a KRA invoice to its bill or expense: the VAT becomes KRA's figure, claimable and checked. */
+  @Roles(...WRITERS)
+  @Post('purchases/:id/link')
+  @HttpCode(200)
+  linkPurchase(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: LinkPurchaseDto,
+  ) {
+    return this.purchases.link(id, dto);
+  }
+
+  @Roles(...WRITERS)
+  @Post('purchases/:id/unlink')
+  @HttpCode(200)
+  unlinkPurchase(@Param('id', ParseUUIDPipe) id: string) {
+    return this.purchases.unlink(id);
+  }
+
+  @Roles(...WRITERS)
+  @Post('purchases/:id/dismiss')
+  @HttpCode(200)
+  dismissPurchase(@Param('id', ParseUUIDPipe) id: string) {
+    return this.purchases.dismiss(id);
   }
 }

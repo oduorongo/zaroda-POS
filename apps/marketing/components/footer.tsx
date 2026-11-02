@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { BottomRibbon } from "@zaroda/ui";
+import { rentalsLink } from "./rentals-section";
 
 const BACKOFFICE_URL = process.env.NEXT_PUBLIC_BACKOFFICE_URL ?? "http://localhost:3003";
 
@@ -7,6 +8,8 @@ const PRODUCT_LINKS = [
   { href: "/features", label: "Features" },
   { href: "/industries", label: "Industries" },
   { href: "/pricing", label: "Pricing" },
+  { href: `${BACKOFFICE_URL}/guide`, label: "User guide" },
+  { href: rentalsLink(""), label: "ZARODA RENTALS" },
 ];
 
 const TOOLS_LINKS = [

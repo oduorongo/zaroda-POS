@@ -13,7 +13,7 @@ export function buildLoginCodeEmail(code: string, minutesValid: number): { subje
       bodyHtml: `
         <div style="text-align:center">
           <p style="margin:0 0 12px">Enter this code to sign in to Zaroda:</p>
-          <p style="font-size:34px;letter-spacing:8px;font-weight:bold;margin:12px 0;color:#0a1633">${safe}</p>
+          <p style="font-size:34px;letter-spacing:8px;font-weight:bold;margin:12px 0;color:#060f26">${safe}</p>
           <p style="font-size:13px;color:#64748b">It expires in ${minutesValid} minutes. If you didn't ask for it, you can ignore this email - nobody can sign in without the code.</p>
         </div>`,
     }),
