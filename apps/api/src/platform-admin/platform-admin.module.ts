@@ -14,6 +14,8 @@ import { HotelModule } from '../hotel/hotel.module';
 import { TenderAdvertsModule } from '../tender-adverts/tender-adverts.module';
 import { AccountingModule } from '../accounting/accounting.module';
 import { PlatformAccountingController } from './platform-accounting.controller';
+import { PlatformConstructionController } from './platform-construction.controller';
+import { ConstructionModule } from '../construction/construction.module';
 import { PlatformSeasonalController } from './platform-seasonal.controller';
 import { SeasonalBillingModule } from '../seasonal-billing/seasonal-billing.module';
 
@@ -32,6 +34,8 @@ import { SeasonalBillingModule } from '../seasonal-billing/seasonal-billing.modu
     TenderAdvertsModule,
     // PlatformLedgerService - ZARODA's own books.
     AccountingModule,
+    // ConPlansService - construction plans, coupons, trials and payments are a platform-admin job.
+    ConstructionModule,
     // Seasonal (school-term) plans: onboarding onto one, and the settings, due-date shifts and payments screens.
     SeasonalBillingModule,
     // A second, independent JwtModule registration (separate from
@@ -50,7 +54,7 @@ import { SeasonalBillingModule } from '../seasonal-billing/seasonal-billing.modu
       }),
     }),
   ],
-  controllers: [PlatformAdminController, PlatformAccountingController, PlatformSeasonalController],
+  controllers: [PlatformAdminController, PlatformAccountingController, PlatformConstructionController, PlatformSeasonalController],
   providers: [
     PlatformAdminAuthService,
     PlatformAdminService,

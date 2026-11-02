@@ -95,6 +95,7 @@ export function QrSection({ tables, stationCount }: { tables: Table[]; stationCo
                 {table.label}
               </p>
               <p className="mt-1 text-xs text-slate-600">View the menu, pay with M-Pesa, and your food comes to your table.</p>
+              <p className="mt-2 text-[9px] italic text-slate-400">Powered by ZARODA SOLUTIONS</p>
             </div>
           ))}
         </div>

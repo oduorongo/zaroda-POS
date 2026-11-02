@@ -172,6 +172,11 @@ export class RangeQueryDto {
   @IsUUID()
   @IsOptional()
   branchId?: string;
+
+  /** Construction: one project's income and direct costs. */
+  @IsUUID()
+  @IsOptional()
+  projectId?: string;
 }
 
 export class AsOfQueryDto {
@@ -204,4 +209,11 @@ export class JournalListQueryDto extends RangeQueryDto {
   @Min(1)
   @IsOptional()
   page?: number;
+}
+
+export class VatQueryDto {
+  /** "2026-10"; left out, this month. */
+  @Matches(/^\d{4}-(0[1-9]|1[0-2])$/, { message: 'Choose a month like 2026-10' })
+  @IsOptional()
+  month?: string;
 }

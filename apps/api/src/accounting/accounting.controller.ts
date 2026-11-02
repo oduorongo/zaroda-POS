@@ -12,6 +12,7 @@ import {
   RangeQueryDto,
   ReverseJournalDto,
   UpdateAccountDto,
+  VatQueryDto,
 } from './dto/accounting.dto';
 
 const READERS = [Role.MANAGER, Role.OWNER, Role.AUDITOR];
@@ -116,5 +117,29 @@ export class AccountingController {
   @Get('reports/balance-sheet')
   balanceSheet(@Query() q: AsOfQueryDto) {
     return this.accounting.balanceSheet(q);
+  }
+
+  @Roles(...READERS)
+  @Get('reports/cash-flow')
+  cashFlow(@Query() q: RangeQueryDto) {
+    return this.accounting.cashFlow(q);
+  }
+
+  @Roles(...READERS)
+  @Get('reports/debtors')
+  debtors() {
+    return this.accounting.debtors();
+  }
+
+  @Roles(...READERS)
+  @Get('reports/creditors')
+  creditors() {
+    return this.accounting.creditors();
+  }
+
+  @Roles(...READERS)
+  @Get('reports/vat-return')
+  vatReturn(@Query() q: VatQueryDto) {
+    return this.accounting.vatReturn(q);
   }
 }

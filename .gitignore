@@ -13,3 +13,6 @@ coverage/
 *.tsbuildinfo
 .env.*
 !.env.example
+
+# Construction documents saved on disk when no private Blob store is set (local development only)
+.private-uploads/

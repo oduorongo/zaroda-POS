@@ -80,6 +80,8 @@ export default function PurchaseOrderDetailPage() {
   const [deliveryNote, setDeliveryNote] = useState("");
   const [makeBill, setMakeBill] = useState(false);
   const [billNumber, setBillNumber] = useState("");
+  const [billTax, setBillTax] = useState("");
+  const [billKraNo, setBillKraNo] = useState("");
   const [warnings, setWarnings] = useState<Warning[]>([]);
   const [billMessage, setBillMessage] = useState<string | null>(null);
   const [receipts, setReceipts] = useState<ReceiptSummary[]>([]);
@@ -147,7 +149,7 @@ export default function PurchaseOrderDetailPage() {
       const r = await apiPost<{ warnings: Warning[]; bill: { billNumber: string; total: number; dueDate: string } | null }>(`/purchase-orders/${order.id}/receive`, {
         lines,
         deliveryNote: deliveryNote.trim() || undefined,
-        bill: makeBill ? { billNumber: billNumber.trim() || undefined } : undefined,
+        bill: makeBill ? { billNumber: billNumber.trim() || undefined, taxAmount: billTax ? Number(billTax) : undefined, kraInvoiceNo: billKraNo.trim() || undefined } : undefined,
       });
       setWarnings(r.warnings ?? []);
       setBillMessage(r.bill ? `A bill of KES ${r.bill.total.toLocaleString()} (invoice ${r.bill.billNumber}) is due ${r.bill.dueDate}.` : null);
@@ -307,7 +309,11 @@ export default function PurchaseOrderDetailPage() {
                   Record what we now owe {order.supplier.name} (needs a price on every line received)
                 </label>
                 {makeBill && (
-                  <input placeholder="Supplier invoice number (delivery note number if empty)" value={billNumber} onChange={(e) => setBillNumber(e.target.value)} className="w-full rounded-md border border-border bg-background p-2 text-sm sm:w-1/2" />
+                  <>
+                    <input placeholder="Supplier invoice number (delivery note number if empty)" value={billNumber} onChange={(e) => setBillNumber(e.target.value)} className="w-full rounded-md border border-border bg-background p-2 text-sm sm:w-1/2" />
+                    <input type="number" min={0} step="0.01" placeholder="VAT included on the invoice (KES, optional)" value={billTax} onChange={(e) => setBillTax(e.target.value)} className="w-full rounded-md border border-border bg-background p-2 text-sm sm:w-1/2" />
+                    {Number(billTax) > 0 && <input placeholder="eTIMS invoice number (needed to claim the VAT)" value={billKraNo} onChange={(e) => setBillKraNo(e.target.value)} className="w-full rounded-md border border-border bg-background p-2 text-sm sm:w-1/2" />}
+                  </>
                 )}
               </div>
             )}

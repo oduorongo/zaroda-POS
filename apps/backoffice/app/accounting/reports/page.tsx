@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { apiGet, ApiError } from "../../../lib/api";
+import { AgedReport, CashFlowReport, VatReport } from "./more";
 import { API, downloadCsv, loadBranches, AccountingTabs, inputClass, kes, monthStart, niceDay, quietButtonClass, todayKey, useBooksSession, Shell } from "../shared";
 
 interface Row {
@@ -45,7 +46,8 @@ interface Branch {
   name: string;
 }
 
-type Tab = "pl" | "bs" | "tb";
+type Tab = "pl" | "bs" | "tb" | "cf" | "debtors" | "creditors" | "vat";
+const OWN_LOAD: Tab[] = ["cf", "debtors", "creditors", "vat"];
 
 // a cell a spreadsheet could read as a formula is written as text
 const cell = (v: string | number) => {
@@ -64,6 +66,8 @@ export default function StatementsPage() {
   const [asOf, setAsOf] = useState(todayKey());
   const [branchId, setBranchId] = useState("");
   const [branches, setBranches] = useState<Branch[]>([]);
+  const [projectId, setProjectId] = useState("");
+  const [projects, setProjects] = useState<{ id: string; code: string; name: string }[]>([]);
   const [pl, setPl] = useState<ProfitLoss | null>(null);
   const [bs, setBs] = useState<BalanceSheet | null>(null);
   const [tb, setTb] = useState<TrialBalance | null>(null);
@@ -71,13 +75,16 @@ export default function StatementsPage() {
 
   useEffect(() => {
     if (session) void loadBranches().then(setBranches).catch(() => undefined);
+    if (session?.industryType === "CONSTRUCTION") void apiGet<{ id: string; code: string; name: string }[]>("/construction/projects").then(setProjects).catch(() => undefined);
   }, [session]);
 
   const load = useCallback(async () => {
     try {
+      if (OWN_LOAD.includes(tab)) return;
       if (tab === "pl") {
         const q = new URLSearchParams({ from, to });
         if (branchId) q.set("branchId", branchId);
+        if (projectId) q.set("projectId", projectId);
         setPl(await apiGet<ProfitLoss>(`${API}/reports/profit-loss?${q.toString()}`));
       } else if (tab === "bs") setBs(await apiGet<BalanceSheet>(`${API}/reports/balance-sheet?asOf=${asOf}`));
       else setTb(await apiGet<TrialBalance>(`${API}/reports/trial-balance?asOf=${asOf}`));
@@ -85,7 +92,7 @@ export default function StatementsPage() {
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not load the statement.");
     }
-  }, [tab, from, to, asOf, branchId]);
+  }, [tab, from, to, asOf, branchId, projectId]);
 
   useEffect(() => {
     if (session) void load();
@@ -93,7 +100,8 @@ export default function StatementsPage() {
 
   function download() {
     if (tab === "pl" && pl) {
-      const rows: (string | number)[][] = [["Profit and loss", `${pl.from} to ${pl.to}`], [], ["Code", "Account", "Amount"]];
+      const project = projects.find((p) => p.id === projectId);
+      const rows: (string | number)[][] = [["Profit and loss", `${pl.from} to ${pl.to}`, project ? `${project.code} ${project.name}` : ""], [], ["Code", "Account", "Amount"]];
       const part = (title: string, list: Row[], total: number) => {
         rows.push([title]);
         for (const r of list) rows.push([r.code, r.name, r.amount]);
@@ -104,7 +112,7 @@ export default function StatementsPage() {
       rows.push(["", "Gross profit", pl.grossProfit]);
       part("Expenses", pl.expenses, pl.totalExpenses);
       rows.push(["", "Net profit", pl.netProfit]);
-      downloadCsv(`profit-and-loss-${pl.from}-${pl.to}.csv`, csv(rows));
+      downloadCsv(`profit-and-loss-${project ? `${project.code}-` : ""}${pl.from}-${pl.to}.csv`, csv(rows));
     } else if (tab === "bs" && bs) {
       const rows: (string | number)[][] = [["Balance sheet", bs.asOf], [], ["Code", "Account", "Amount"]];
       for (const [title, list, total] of [["Assets", bs.assets, bs.totalAssets], ["Liabilities", bs.liabilities, bs.totalLiabilities]] as const) {
@@ -139,6 +147,10 @@ export default function StatementsPage() {
                 ["pl", "Profit and loss"],
                 ["bs", "Balance sheet"],
                 ["tb", "Trial balance"],
+                ["cf", "Cash flow"],
+                ["debtors", "Aged debtors"],
+                ["creditors", "Aged creditors"],
+                ["vat", "VAT return"],
               ] as [Tab, string][]
             ).map(([key, label]) => (
               <button
@@ -151,7 +163,7 @@ export default function StatementsPage() {
             ))}
           </div>
           <div className="flex flex-wrap items-end gap-3 text-sm">
-            {tab === "pl" ? (
+            {tab === "debtors" || tab === "creditors" || tab === "vat" ? null : tab === "pl" || tab === "cf" ? (
               <>
                 <label>
                   From
@@ -161,7 +173,7 @@ export default function StatementsPage() {
                   To
                   <input type="date" max={todayKey()} value={to} onChange={(e) => setTo(e.target.value)} className={inputClass} />
                 </label>
-                {branches.length > 1 && (
+                {tab === "pl" && branches.length > 1 && (
                   <label>
                     Branch
                     <select value={branchId} onChange={(e) => setBranchId(e.target.value)} className={inputClass}>
@@ -174,6 +186,19 @@ export default function StatementsPage() {
                     </select>
                   </label>
                 )}
+                {tab === "pl" && projects.length > 0 && (
+                  <label>
+                    Project
+                    <select value={projectId} onChange={(e) => setProjectId(e.target.value)} className={inputClass}>
+                      <option value="">All projects and overheads</option>
+                      {projects.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.code} {p.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
               </>
             ) : (
               <label>
@@ -181,9 +206,11 @@ export default function StatementsPage() {
                 <input type="date" max={todayKey()} value={asOf} onChange={(e) => setAsOf(e.target.value)} className={inputClass} />
               </label>
             )}
-            <button onClick={download} className={quietButtonClass}>
-              Download (CSV)
-            </button>
+            {!OWN_LOAD.includes(tab) && (
+              <button onClick={download} className={quietButtonClass}>
+                Download (CSV)
+              </button>
+            )}
           </div>
         </div>
 
@@ -194,6 +221,7 @@ export default function StatementsPage() {
             <p className="text-xs text-secondary-500">
               {niceDay(pl.from)} to {niceDay(pl.to)}
               {branchId ? " · one branch (costs recorded for the whole business are left out)" : ""}
+              {projectId ? " · one project: its IPCs, retention, site wages, materials used and subcontractors (office overheads are left out)" : ""}
             </p>
             <Section title="Income" rows={pl.income} total={pl.totalIncome} />
             <Section title="Cost of sales" rows={pl.costOfSales} total={pl.totalCostOfSales} />
@@ -202,6 +230,10 @@ export default function StatementsPage() {
             <Total label={pl.netProfit >= 0 ? "Net profit" : "Net loss"} value={pl.netProfit} big />
           </div>
         )}
+
+        {tab === "cf" && <CashFlowReport from={from} to={to} />}
+        {(tab === "debtors" || tab === "creditors") && <AgedReport key={tab} kind={tab} />}
+        {tab === "vat" && <VatReport />}
 
         {tab === "bs" && bs && (
           <div className="space-y-1 rounded-lg border border-border bg-surface p-4 text-sm">

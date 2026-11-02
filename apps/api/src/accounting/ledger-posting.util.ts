@@ -16,6 +16,8 @@ export interface Draft {
   date: string;
   memo: string;
   branchId?: string | null;
+  /** Construction project (left out everywhere else, so other fingerprints never change). */
+  projectId?: string | null;
   lines: DraftLine[];
 }
 
@@ -49,7 +51,7 @@ export const reversed = (lines: DraftLine[]): DraftLine[] => lines.map((l) => ({
 /** A short, stable signature of a posting, so the poster can tell when a source has changed and must be posted again. */
 export function fingerprint(d: Draft | null): string {
   if (!d) return 'none';
-  const body = JSON.stringify([d.date, d.branchId ?? null, tidy(d.lines).map((l) => [l.account, l.debit, l.credit])]);
+  const body = JSON.stringify([d.date, d.branchId ?? null, tidy(d.lines).map((l) => [l.account, l.debit, l.credit]), ...(d.projectId ? [d.projectId] : [])]);
   return createHash('sha1').update(body).digest('hex');
 }
 
@@ -148,23 +150,28 @@ export function refundDraft(r: {
   };
 }
 
-export function expenseDraft(e: { date: string; branchId?: string | null; category: string; label: string; amountCents: number; paidWith: string | null }): Draft {
+/** The VAT included (taxCents) is claimable from KRA, so only the rest is a cost. */
+export function expenseDraft(e: { date: string; branchId?: string | null; category: string; label: string; amountCents: number; taxCents?: number; paidWith: string | null }): Draft {
+  const tax = e.taxCents ?? 0;
   return {
     date: e.date,
     branchId: e.branchId,
     memo: `Expense: ${e.label}`,
-    lines: tidy([dr(expenseAccount(e.category), e.amountCents), cr(moneyAccount(e.paidWith), e.amountCents)]),
+    lines: tidy([dr(expenseAccount(e.category), e.amountCents - tax), dr('VAT_INPUT', tax), cr(moneyAccount(e.paidWith), e.amountCents)]),
   };
 }
 
 /** A supplier's bill for stock: the stock comes in, and the business owes the supplier. */
-export function billDraft(b: { date: string; reference: string; supplier: string; totalCents: number }): Draft {
-  return { date: b.date, memo: `Bill ${b.reference} from ${b.supplier}`, lines: tidy([dr('INVENTORY', b.totalCents), cr('AP', b.totalCents)]) };
+export function billDraft(b: { date: string; reference: string; supplier: string; totalCents: number; taxCents?: number }): Draft {
+  const tax = b.taxCents ?? 0;
+  return { date: b.date, memo: `Bill ${b.reference} from ${b.supplier}`, lines: tidy([dr('INVENTORY', b.totalCents - tax), dr('VAT_INPUT', tax), cr('AP', b.totalCents)]) };
 }
 
 /** A credit from a supplier against a bill (goods sent back, a price corrected): less owed, less stock. */
-export function billCreditDraft(b: { date: string; reference: string; supplier: string; amountCents: number }): Draft {
-  return { date: b.date, memo: `Credit on bill ${b.reference} from ${b.supplier}`, lines: tidy([dr('AP', b.amountCents), cr('INVENTORY', b.amountCents)]) };
+/** A credit takes back its share of the bill's VAT (taxCents of totalCents). */
+export function billCreditDraft(b: { date: string; reference: string; supplier: string; amountCents: number; taxCents?: number; totalCents?: number }): Draft {
+  const tax = b.taxCents && b.totalCents ? Math.round((b.amountCents * b.taxCents) / b.totalCents) : 0;
+  return { date: b.date, memo: `Credit on bill ${b.reference} from ${b.supplier}`, lines: tidy([dr('AP', b.amountCents), cr('INVENTORY', b.amountCents - tax), cr('VAT_INPUT', tax)]) };
 }
 
 export function billPaymentDraft(b: { date: string; reference: string; supplier: string; amountCents: number; method: string }): Draft {
@@ -334,9 +341,15 @@ export const PAYABLE_ACCOUNTS: Record<string, string> = {
 };
 
 /** Paying off something owed (VAT, PAYE, tips to staff...) from cash, M-Pesa or the bank. */
-export function payOffDraft(p: { date: string; account: string; amountCents: number; paidFrom: string; reference?: string | null }): Draft {
+/** Paying VAT also uses up the claimable input VAT (offsetCents): it comes off the VAT owed along with the payment. */
+export function payOffDraft(p: { date: string; account: string; amountCents: number; paidFrom: string; reference?: string | null; offsetCents?: number }): Draft {
   const label = PAYABLE_ACCOUNTS[p.account] ?? p.account;
-  return { date: p.date, memo: `Paid: ${label}${p.reference ? ` (${p.reference})` : ''}`, lines: tidy([dr(p.account as AccountKey, p.amountCents), cr(moneyAccount(p.paidFrom), p.amountCents)]) };
+  const offset = p.offsetCents ?? 0;
+  return {
+    date: p.date,
+    memo: `Paid: ${label}${p.reference ? ` (${p.reference})` : ''}`,
+    lines: tidy([dr(p.account as AccountKey, p.amountCents + offset), cr('VAT_INPUT', offset), cr(moneyAccount(p.paidFrom), p.amountCents)]),
+  };
 }
 
 /** A manual journal's problem, or null: at least two lines, each one side only, and balanced. */

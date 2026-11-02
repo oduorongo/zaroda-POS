@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { apiGet, apiPost, ApiError } from "../../lib/api";
+import { apiGet, apiPatch, apiPost, ApiError } from "../../lib/api";
+import { VatClaimNote, type VatClaim } from "../../components/vat-claim";
 import { getSession, clearSession, isBackofficeRole, type Session } from "../../lib/auth";
 import { Nav } from "../../components/nav";
 import { PageHeader } from "../../components/page-header";
@@ -19,8 +20,11 @@ const METHODS: [Method, string][] = [
 interface Bill {
   id: string;
   billNumber: string;
-  supplier: { id: string; name: string };
+  supplier: { id: string; name: string; kraPin: string | null };
   billDate: string;
+  taxAmount: number;
+  kraInvoiceNo: string | null;
+  vatClaim: VatClaim;
   dueDate: string;
   total: number;
   amountPaid: number;
@@ -63,6 +67,7 @@ export default function SupplierBillsPage() {
   const [paying, setPaying] = useState<Bill | null>(null);
   const [crediting, setCrediting] = useState<Bill | null>(null);
   const [adding, setAdding] = useState(false);
+  const [vatFor, setVatFor] = useState<Bill | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -185,6 +190,16 @@ export default function SupplierBillsPage() {
                       Billed {b.billDate} · due {b.dueDate}
                       {b.receipt && <> · <Link href={`/goods-receipts/${b.receipt.id}`} className="text-primary-400 hover:underline">{b.receipt.receiptNumber}</Link></>}
                     </p>
+                    {(b.taxAmount > 0 || (canWrite && b.status !== "VOID")) && (
+                      <p>
+                        <VatClaimNote claim={b.vatClaim} vat={b.taxAmount} kes={kes} />
+                        {canWrite && b.status !== "VOID" && b.vatClaim !== "KRA" && (
+                          <button className="ml-2 text-xs text-primary-400 hover:underline" onClick={() => setVatFor(b)}>
+                            {b.taxAmount > 0 ? "VAT details" : "Add VAT"}
+                          </button>
+                        )}
+                      </p>
+                    )}
                     {b.credits.length > 0 && <p className="text-xs text-secondary-500">Credit notes: {b.credits.map((c) => `${kes(c.amount)} (${c.reason}${c.reference ? `, ${c.reference}` : ""})`).join(" · ")}</p>}
                     {b.payments.length > 0 && <p className="text-xs text-secondary-500">Paid: {b.payments.map((p) => `${kes(p.amount)} ${p.method.toLowerCase()}${p.reference ? ` ${p.reference}` : ""}`).join(" · ")}</p>}
                   </div>
@@ -206,6 +221,7 @@ export default function SupplierBillsPage() {
 
         {paying && <PayModal bill={paying} onClose={() => setPaying(null)} onDone={(m) => { setPaying(null); setNotice(m); void load(); }} />}
         {crediting && <CreditModal bill={crediting} onClose={() => setCrediting(null)} onDone={(m) => { setCrediting(null); setNotice(m); void load(); }} />}
+        {vatFor && <VatModal bill={vatFor} onClose={() => setVatFor(null)} onDone={(m) => { setVatFor(null); setNotice(m); void load(); }} />}
         {adding && <AddBillModal suppliers={suppliers} onClose={() => setAdding(false)} onDone={(m) => { setAdding(false); setNotice(m); void load(); }} />}
       </main>
     </div>
@@ -293,8 +309,41 @@ function CreditModal({ bill, onClose, onDone }: { bill: Bill; onClose: () => voi
   );
 }
 
+function VatModal({ bill, onClose, onDone }: { bill: Bill; onClose: () => void; onDone: (message: string) => void }) {
+  const [vat, setVat] = useState(bill.taxAmount ? String(bill.taxAmount) : "");
+  const [invoiceNo, setInvoiceNo] = useState(bill.kraInvoiceNo ?? "");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function save() {
+    setBusy(true);
+    setError(null);
+    try {
+      await apiPatch(`/supplier-bills/${bill.id}/vat`, { taxAmount: Number(vat || 0), kraInvoiceNo: invoiceNo.trim() });
+      onDone(`VAT details saved for bill ${bill.billNumber}.`);
+    } catch (e) {
+      setError(explain(e, "Could not save the VAT details."));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal title={`VAT on bill ${bill.billNumber}`} onClose={onClose}>
+      {error && <p className="rounded-md bg-red-950 p-2 text-sm text-red-300">{error}</p>}
+      <p className="text-sm text-secondary-500">
+        KRA only allows VAT to be claimed back from a supplier&apos;s eTIMS invoice. Copy the VAT and the eTIMS invoice number from it.
+        {bill.supplier.kraPin ? ` ${bill.supplier.name}'s KRA PIN: ${bill.supplier.kraPin}.` : <> {bill.supplier.name} has no KRA PIN yet: add it on <Link href="/suppliers" className="text-primary-400 hover:underline">Suppliers</Link>, or the VAT stays a cost.</>}
+      </p>
+      <label className="block text-sm">VAT included (KES)<input type="number" min={0} step="0.01" className={field} value={vat} onChange={(e) => setVat(e.target.value)} /></label>
+      <label className="block text-sm">eTIMS invoice number<input className={field} value={invoiceNo} onChange={(e) => setInvoiceNo(e.target.value)} /></label>
+      <button className={primary} disabled={busy} onClick={() => void save()}>{busy ? "Saving..." : "Save"}</button>
+    </Modal>
+  );
+}
+
 function AddBillModal({ suppliers, onClose, onDone }: { suppliers: Supplier[]; onClose: () => void; onDone: (message: string) => void }) {
-  const [f, setF] = useState({ supplierId: suppliers[0]?.id ?? "", billNumber: "", total: "", billDate: "", dueDate: "", notes: "" });
+  const [f, setF] = useState({ supplierId: suppliers[0]?.id ?? "", billNumber: "", total: "", taxAmount: "", kraInvoiceNo: "", billDate: "", dueDate: "", notes: "" });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const set = (k: keyof typeof f, v: string) => setF((x) => ({ ...x, [k]: v }));
@@ -303,7 +352,7 @@ function AddBillModal({ suppliers, onClose, onDone }: { suppliers: Supplier[]; o
     setBusy(true);
     setError(null);
     try {
-      await apiPost("/supplier-bills", { supplierId: f.supplierId, billNumber: f.billNumber.trim(), total: Number(f.total), billDate: f.billDate || undefined, dueDate: f.dueDate || undefined, notes: f.notes.trim() || undefined });
+      await apiPost("/supplier-bills", { supplierId: f.supplierId, billNumber: f.billNumber.trim(), total: Number(f.total), taxAmount: f.taxAmount ? Number(f.taxAmount) : undefined, kraInvoiceNo: f.kraInvoiceNo.trim() || undefined, billDate: f.billDate || undefined, dueDate: f.dueDate || undefined, notes: f.notes.trim() || undefined });
       onDone("Bill added.");
     } catch (e) {
       setError(explain(e, "Could not add the bill."));
@@ -321,6 +370,8 @@ function AddBillModal({ suppliers, onClose, onDone }: { suppliers: Supplier[]; o
       </label>
       <label className="block text-sm">Supplier&apos;s invoice number<input className={field} value={f.billNumber} onChange={(e) => set("billNumber", e.target.value)} /></label>
       <label className="block text-sm">Amount (KES)<input type="number" min={0.01} step="0.01" className={field} value={f.total} onChange={(e) => set("total", e.target.value)} /></label>
+      <label className="block text-sm">VAT included in the amount (KES, optional)<input type="number" min={0} step="0.01" className={field} value={f.taxAmount} onChange={(e) => set("taxAmount", e.target.value)} /></label>
+      {Number(f.taxAmount) > 0 && <label className="block text-sm">eTIMS invoice number <span className="text-secondary-500">(needed, with the supplier&apos;s KRA PIN, to claim the VAT)</span><input className={field} value={f.kraInvoiceNo} onChange={(e) => set("kraInvoiceNo", e.target.value)} /></label>}
       <div className="grid grid-cols-2 gap-3">
         <label className="block text-sm">Bill date <span className="text-secondary-500">(today)</span><input type="date" className={field} value={f.billDate} onChange={(e) => set("billDate", e.target.value)} /></label>
         <label className="block text-sm">Due <span className="text-secondary-500">(by terms)</span><input type="date" className={field} value={f.dueDate} onChange={(e) => set("dueDate", e.target.value)} /></label>

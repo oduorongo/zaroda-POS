@@ -100,3 +100,12 @@ export function BottomRibbon({ children, className }: { children?: ReactNode; cl
     </footer>
   );
 }
+
+/** The line at the foot of every printed or PDF document a Zaroda app produces (product: e.g. "Zaroda Build", shown before it). */
+export function PoweredByFootnote({ product, className }: { product?: string; className?: string }) {
+  return (
+    <div className={cn("mt-8 border-t border-gray-300 pt-3 text-center text-[10px] italic text-gray-500", className)}>
+      <p>{product ? `${product} · ` : ""}Powered by ZARODA SOLUTIONS</p>
+    </div>
+  );
+}

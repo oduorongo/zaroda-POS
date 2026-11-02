@@ -5,6 +5,7 @@ import { getTenantStore } from '../common/tenant/tenant-context';
 import { EXPENSE_CATEGORIES } from '../expenses/expense-categories';
 import { nairobiDayOf } from '../reports/profit.util';
 import { dayOf, LedgerBooksService } from './ledger-books.service';
+import { claimableCents } from './vat-claim.util';
 import {
   billCreditDraft,
   billDraft,
@@ -37,11 +38,18 @@ import {
   wasteDraft,
   writeOffDraft,
 } from './ledger-posting.util';
+import { CON_PAYMENT_LABEL, conPayrollDraft, conZarodaDraft, ipcReceiptDraft, materialIssueDraft, retentionDraft, subPaymentDraft, subValuationDraft } from './construction-posting.util';
 
 const BATCH = 200;
 const MAX_ROUNDS = 50;
 const NAIROBI_OFFSET_MS = 3 * 3600_000; // Kenya keeps UTC+3 all year
 const short = (id: string) => id.slice(0, 8);
+/** A construction IPC is a sale whose clientId names its valuation: its entries belong to that project. Other sales get nothing. */
+const ipcProject = async (tx: TenantTx, clientId: string | null) => {
+  const valuationId = clientId?.startsWith('con-ipc-') ? clientId.slice('con-ipc-'.length) : null;
+  const v = valuationId ? await tx.conValuation.findUnique({ where: { id: valuationId }, select: { projectId: true } }) : null;
+  return v ? { projectId: v.projectId } : {};
+};
 
 interface Ctx {
   /** The start day as stored (UTC midnight), for comparing with date-only fields. */
@@ -72,6 +80,9 @@ const postedWhere = (type: string, table: string, cond: Prisma.Sql) =>
 const originalPosted = (type: string) =>
   Prisma.sql`EXISTS (SELECT 1 FROM ledger_postings o WHERE o."sourceType" = ${type} AND o."sourceId" = t.id AND o."entryId" IS NOT NULL)`;
 const dateKey = (d: Date) => d.toISOString().slice(0, 10);
+/** A bill's claimable VAT: its supplier's PIN and the eTIMS invoice number, or a link to KRA's invoice. */
+const billVat = (b: { taxAmount: Prisma.Decimal; kraInvoiceNo: string | null; etimsInvoiceId: string | null; supplier: { kraPin: string | null } }) =>
+  claimableCents({ taxCents: toCents(b.taxAmount), pin: b.supplier.kraPin, invoiceNo: b.kraInvoiceNo, linked: !!b.etimsInvoiceId });
 
 /**
  * Posts what happened in each business to its books, a batch at a time, in the background. Each source (a sale, an expense...)
@@ -119,7 +130,8 @@ export class LedgerPosterService {
             for (const i of l.ingredients) if (i.ingredientVariant.cost !== null) cost += Number(i.quantity) * Number(i.ingredientVariant.cost);
           } else if (l.variant.cost !== null) cost += Number(l.quantity) * Number(l.variant.cost);
         }
-        return saleDraft({
+        return {
+          ...saleDraft({
           date: nairobiDayOf(sale.createdAt),
           branchId: sale.branchId,
           reference: short(sale.id),
@@ -128,7 +140,9 @@ export class LedgerPosterService {
           payments: sale.payments.map((p) => ({ method: p.method, amountCents: toCents(p.amount) })),
           costCents: Math.round(cost * 100),
           settlement: !!sale.roomSettlement,
-        });
+          }),
+          ...(await ipcProject(tx, sale.clientId)),
+        };
       },
     },
     {
@@ -151,7 +165,8 @@ export class LedgerPosterService {
         const s = r.sale;
         const total = toCents(s.total);
         const main = [...s.payments].sort((a, b) => Number(b.amount) - Number(a.amount))[0]?.method ?? 'CASH';
-        return refundDraft({
+        return {
+          ...refundDraft({
           date: nairobiDayOf(r.createdAt),
           branchId: s.branchId,
           reference: short(s.id),
@@ -160,7 +175,9 @@ export class LedgerPosterService {
           saleTaxCents: saleTaxCents(total, s.lineItems.map((l) => ({ netCents: toCents(Number(l.quantity) * Number(l.unitPrice)), taxCents: toCents(l.taxAmount) }))),
           mainMethod: main,
           settlement: !!s.roomSettlement,
-        });
+          }),
+          ...(await ipcProject(tx, s.clientId)),
+        };
       },
     },
     {
@@ -184,6 +201,7 @@ export class LedgerPosterService {
           category: e.category,
           label: e.description ? `${label} - ${e.description}` : label,
           amountCents: toCents(e.amount),
+          taxCents: claimableCents({ taxCents: toCents(e.taxAmount), pin: e.supplierPin, invoiceNo: e.kraInvoiceNo, linked: !!e.etimsInvoiceId }),
           paidWith: e.paidWith,
         });
       },
@@ -193,20 +211,22 @@ export class LedgerPosterService {
       candidates: async (tx, c) => [
         ...(await ids(tx, Prisma.sql`SELECT t.id FROM supplier_bills t WHERE t."billDate" >= ${c.sinceDay} AND t.status::text <> 'VOID' AND ${unposted('BILL')} ORDER BY t."createdAt" LIMIT ${BATCH}`)),
         ...(await ids(tx, postedWhere('BILL', 'supplier_bills', Prisma.sql`t.status::text = 'VOID'`))),
+        // the VAT on a bill becomes claimable (or stops being) when the bill or its supplier's PIN changes
+        ...(await ids(tx, Prisma.sql`SELECT t.id FROM ledger_postings p JOIN supplier_bills t ON t.id = p."sourceId" JOIN suppliers s ON s.id = t."supplierId" WHERE p."sourceType" = 'BILL' AND t."taxAmount" > 0 AND (t."updatedAt" > p."updatedAt" OR s."updatedAt" > p."updatedAt") LIMIT ${BATCH}`)),
       ],
       draft: async (tx, id, c) => {
-        const b = await tx.supplierBill.findUnique({ where: { id }, include: { supplier: { select: { name: true } } } });
+        const b = await tx.supplierBill.findUnique({ where: { id }, include: { supplier: { select: { name: true, kraPin: true } } } });
         if (!b || b.status === 'VOID' || b.billDate < c.start) return null;
-        return billDraft({ date: dateKey(b.billDate), reference: b.billNumber, supplier: b.supplier.name, totalCents: toCents(b.total) });
+        return billDraft({ date: dateKey(b.billDate), reference: b.billNumber, supplier: b.supplier.name, totalCents: toCents(b.total), taxCents: billVat(b) });
       },
     },
     {
       type: 'BILL_CREDIT',
       candidates: (tx, c) => ids(tx, Prisma.sql`SELECT t.id FROM supplier_bill_credits t WHERE t."createdAt" >= ${c.since} AND ${unposted('BILL_CREDIT')} ORDER BY t."createdAt" LIMIT ${BATCH}`),
       draft: async (tx, id) => {
-        const r = await tx.supplierBillCredit.findUnique({ where: { id }, include: { bill: { include: { supplier: { select: { name: true } } } } } });
+        const r = await tx.supplierBillCredit.findUnique({ where: { id }, include: { bill: { include: { supplier: { select: { name: true, kraPin: true } } } } } });
         if (!r) return null;
-        return billCreditDraft({ date: nairobiDayOf(r.createdAt), reference: r.bill.billNumber, supplier: r.bill.supplier.name, amountCents: toCents(r.amount) });
+        return billCreditDraft({ date: nairobiDayOf(r.createdAt), reference: r.bill.billNumber, supplier: r.bill.supplier.name, amountCents: toCents(r.amount), taxCents: billVat(r.bill), totalCents: toCents(r.bill.total) });
       },
     },
     {
@@ -526,6 +546,83 @@ export class LedgerPosterService {
         return zarodaAdvertDraft({ date: nairobiDayOf(p.paidAt), reference: `${n} advert${n === 1 ? '' : 's'}${p.paymentReference ? `, ${p.paymentReference}` : ''}`, amountCents: p.amount * 100 });
       },
     },
+    // ── Construction (IPCs are sales on account and post as SALE / REFUND) ──
+    {
+      type: 'CON_RETENTION',
+      candidates: (tx, c) => ids(tx, Prisma.sql`SELECT t.id FROM con_retention_ledger t WHERE t."createdAt" >= ${c.since} AND ${unposted('CON_RETENTION')} ORDER BY t."createdAt" LIMIT ${BATCH}`),
+      draft: async (tx, id, c) => {
+        const r = await tx.conRetentionEntry.findUnique({ where: { id }, include: { project: { select: { code: true } } } });
+        if (!r || r.createdAt < c.startAt) return null;
+        return retentionDraft({ date: nairobiDayOf(r.createdAt), projectId: r.projectId, type: r.type, project: r.project.code, reason: r.reason ?? '', amountCents: toCents(r.amount) });
+      },
+    },
+    {
+      type: 'CON_IPC_RECEIPT',
+      candidates: (tx, c) => ids(tx, Prisma.sql`SELECT t.id FROM con_valuation_receipts t WHERE t."receivedAt" >= ${c.sinceDay} AND ${unposted('CON_IPC_RECEIPT')} ORDER BY t."createdAt" LIMIT ${BATCH}`),
+      draft: async (tx, id, c) => {
+        const r = await tx.conValuationReceipt.findUnique({ where: { id }, include: { valuation: { select: { number: true, projectId: true, project: { select: { code: true } } } } } });
+        if (!r || r.receivedAt < c.start) return null;
+        return ipcReceiptDraft({ date: dateKey(r.receivedAt), projectId: r.valuation.projectId, kind: r.kind, reference: `${r.valuation.project.code} IPC ${r.valuation.number}${r.reference ? ` (${r.reference})` : r.certificateNo ? ` (${r.certificateNo})` : ''}`, amountCents: toCents(r.amount), method: r.method });
+      },
+    },
+    {
+      type: 'CON_PAYROLL',
+      candidates: (tx, c) => ids(tx, Prisma.sql`SELECT t.id FROM con_payroll_runs t WHERE t.status::text = 'PAID' AND t."paidAt" >= ${c.since} AND ${unposted('CON_PAYROLL')} ORDER BY t."paidAt" LIMIT ${BATCH}`),
+      draft: async (tx, id, c) => {
+        const run = await tx.conPayrollRun.findUnique({ where: { id }, include: { lines: true, project: { select: { code: true } } } });
+        if (!run || run.status !== 'PAID' || !run.paidAt || run.paidAt < c.startAt) return null;
+        const sum = (f: (l: (typeof run.lines)[number]) => unknown) => run.lines.reduce((a, l) => a + toCents(f(l)), 0);
+        return conPayrollDraft({
+          date: nairobiDayOf(run.paidAt), projectId: run.projectId, reference: `${run.project.code} ${run.number} (${dateKey(run.periodStart)} to ${dateKey(run.periodEnd)})`,
+          grossCents: sum((l) => l.gross), payeCents: sum((l) => l.paye), nssfCents: sum((l) => l.nssf), shifCents: sum((l) => l.shif), housingCents: sum((l) => l.housingLevy),
+          paid: run.lines.map((l) => ({ method: l.method ?? 'CASH', netCents: toCents(l.net) })),
+        });
+      },
+    },
+    {
+      type: 'CON_SUB_VALUATION',
+      candidates: (tx, c) => ids(tx, Prisma.sql`SELECT t.id FROM con_sub_valuations t WHERE t.status::text IN ('APPROVED', 'PAID') AND t."approvedAt" >= ${c.since} AND ${unposted('CON_SUB_VALUATION')} ORDER BY t."approvedAt" LIMIT ${BATCH}`),
+      draft: async (tx, id, c) => {
+        const v = await tx.conSubValuation.findUnique({ where: { id }, include: { subcontract: { select: { ref: true, projectId: true, party: { select: { name: true } } } } } });
+        if (!v || !v.approvedAt || v.approvedAt < c.startAt) return null;
+        const prev = await tx.conSubValuation.findFirst({ where: { subcontractId: v.subcontractId, number: { lt: v.number }, status: { in: ['APPROVED', 'PAID'] } }, orderBy: { number: 'desc' } });
+        return subValuationDraft({
+          date: nairobiDayOf(v.approvedAt), projectId: v.subcontract.projectId, reference: `${v.subcontract.ref} no. ${v.number} - ${v.subcontract.party.name}`,
+          workCents: toCents(v.grossToDate) - toCents(prev?.grossToDate), retentionCents: toCents(v.retention) - toCents(prev?.retention),
+        });
+      },
+    },
+    {
+      type: 'CON_SUB_PAID',
+      candidates: (tx, c) => ids(tx, Prisma.sql`SELECT t.id FROM con_sub_valuations t WHERE t.status::text = 'PAID' AND t."paidAt" >= ${c.since} AND ${unposted('CON_SUB_PAID')} AND ${originalPosted('CON_SUB_VALUATION')} ORDER BY t."paidAt" LIMIT ${BATCH}`),
+      draft: async (tx, id) => {
+        const v = await tx.conSubValuation.findUnique({ where: { id }, include: { subcontract: { select: { ref: true, projectId: true, party: { select: { name: true } } } } } });
+        if (!v || v.status !== 'PAID' || !v.paidAt) return null;
+        return subPaymentDraft({ date: nairobiDayOf(v.paidAt), projectId: v.subcontract.projectId, reference: `${v.subcontract.ref} no. ${v.number} - ${v.subcontract.party.name}${v.paymentRef ? ` (${v.paymentRef})` : ''}`, amountCents: toCents(v.netDue) });
+      },
+    },
+    {
+      type: 'CON_MATERIAL',
+      candidates: (tx, c) => ids(tx, Prisma.sql`SELECT t.id FROM con_material_issues t WHERE t."issuedAt" >= ${c.sinceDay} AND ${unposted('CON_MATERIAL')} ORDER BY t."createdAt" LIMIT ${BATCH}`),
+      draft: async (tx, id, c) => {
+        const m = await tx.conMaterialIssue.findUnique({ where: { id }, include: { project: { select: { code: true, branchId: true } }, variant: { select: { cost: true, name: true, product: { select: { name: true } } } } } });
+        if (!m || m.issuedAt < c.start) return null;
+        // valued at the product's cost (weighted average of deliveries) when it is first posted
+        return materialIssueDraft({
+          date: dateKey(m.issuedAt), projectId: m.projectId, branchId: m.project.branchId, kind: m.kind,
+          label: `${m.project.code} ${m.variant.product.name}${m.variant.name ? ` ${m.variant.name}` : ''} x ${Number(m.qty)}`, costCents: Math.round(Number(m.qty) * Number(m.variant.cost ?? 0) * 100),
+        });
+      },
+    },
+    {
+      type: 'ZARODA_CON_PAYMENT',
+      candidates: (tx, c) => ids(tx, Prisma.sql`SELECT t.id FROM con_subscription_payments t WHERE t.status::text = 'PAID' AND t."paidAt" >= ${c.since} AND ${unposted('ZARODA_CON_PAYMENT')} ORDER BY t."paidAt" LIMIT ${BATCH}`),
+      draft: async (tx, id) => {
+        const p = await tx.conSubscriptionPayment.findUnique({ where: { id } });
+        if (!p || p.status !== 'PAID' || !p.paidAt) return null;
+        return conZarodaDraft({ date: nairobiDayOf(p.paidAt), label: `${CON_PAYMENT_LABEL[p.purpose]}${p.receipt ? ` (${p.receipt})` : ''}`, amountCents: toCents(p.amount), method: p.method });
+      },
+    },
   ];
 
   /** A follow-up that undoes exactly what the original posted (null when the original posted nothing). */
@@ -561,6 +658,7 @@ export class LedgerPosterService {
         sourceType: source.type,
         sourceId: id,
         branchId: wanted.branchId ?? null,
+        projectId: wanted.projectId ?? null,
         lines: wanted.lines,
       });
       entryId = entry.id;

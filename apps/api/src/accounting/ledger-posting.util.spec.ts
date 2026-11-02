@@ -72,6 +72,13 @@ describe('tidy and fingerprint', () => {
     expect(fingerprint(a)).not.toBe(fingerprint({ ...a, date: '2026-10-02' }));
     expect(fingerprint(null)).toBe('none');
   });
+  it('changes with a project, but no project leaves every existing fingerprint as it was', () => {
+    const a: Draft = { date: '2026-10-01', memo: 'x', lines: [{ account: 'CASH', debit: 100, credit: 0 }, { account: 'SALES', debit: 0, credit: 100 }] };
+    expect(fingerprint({ ...a, projectId: null })).toBe(fingerprint(a));
+    expect(fingerprint({ ...a, projectId: 'p1' })).not.toBe(fingerprint(a));
+    // the hash the books already hold for this posting (before projects existed)
+    expect(fingerprint(a)).toBe('bb53184e5f15d2e9e7ff6ca1b897cb9d5e4630fe');
+  });
   it('reversing swaps every side', () => {
     expect(reversed([{ account: 'CASH', debit: 5, credit: 0 }])).toEqual([{ account: 'CASH', debit: 0, credit: 5 }]);
   });

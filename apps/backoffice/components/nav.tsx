@@ -8,6 +8,7 @@ import { apiGet } from "../lib/api";
 import { clearSession, homePath, isCaretaker, setSession, type Session } from "../lib/auth";
 import { useIdleLogout } from "../hooks/use-idle-logout";
 import { RibbonButton, RibbonLink, ThemeToggle, TopRibbon } from "@zaroda/ui";
+import { ConHeader, useConMeFetch } from "./construction/con-shell";
 
 // A handful of the most-used screens, kept in the top bar for quick access.
 // The full set of screens lives on the /dashboard tile grid.
@@ -32,6 +33,7 @@ const VERTICAL_LINKS: Record<string, { href: string; label: string }> = {
   RENTAL: { href: "/rentals", label: "Rentals" },
   SCHOOL_SUPPLIER: { href: "/school-orders", label: "School Orders" },
   HOTEL: { href: "/front-desk", label: "Front desk" },
+  CONSTRUCTION: { href: "/construction", label: "Construction" },
 };
 
 // The navy top ribbon shared with Zaroda Events and the other web apps: logo and app name, then the menu,
@@ -55,9 +57,13 @@ export function Nav({ session }: { session: Session }) {
       })
       .catch(() => {});
   }, [session]);
+  const conMe = useConMeFetch(session);
+
+  // A contractor on a shared screen (Suppliers, Materials) keeps the construction bar.
+  if (session.industryType === "CONSTRUCTION") return <ConHeader session={{ ...session, orgName: orgName ?? session.orgName }} me={conMe} />;
 
   return (
-    <TopRibbon appName={orgName ?? "Back Office"} homeHref={homePath(session.role)} LinkComponent={Link}>
+    <TopRibbon appName={orgName ?? "Back Office"} homeHref={homePath(session.role, session.industryType)} LinkComponent={Link}>
       {orgName && <span className="hidden text-xs text-white/60 lg:inline">Back Office</span>}
       {!caretaker && (
       <RibbonLink href="/dashboard" LinkComponent={Link} active={pathname === "/dashboard"}>

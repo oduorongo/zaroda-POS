@@ -3,7 +3,7 @@ import { JournalKind, Prisma } from '@prisma/client';
 import { TenantTx } from '../common/prisma/tenant-scoped-prisma.service';
 import { getTenantStore } from '../common/tenant/tenant-context';
 import { nairobiDayOf } from '../reports/profit.util';
-import { AccountKey, SYSTEM_ACCOUNTS } from './ledger-chart';
+import { AccountKey, SYSTEM_ACCOUNTS, systemAccountsFor } from './ledger-chart';
 import { DraftLine, isBalanced, tidy } from './ledger-posting.util';
 
 export const dateOf = (day: string) => new Date(`${day}T00:00:00.000Z`);
@@ -17,6 +17,7 @@ export interface EntryInput {
   sourceType?: string | null;
   sourceId?: string | null;
   branchId?: string | null;
+  projectId?: string | null;
   reversesId?: string | null;
   /** Lines on system accounts (by key) or on any account (by id). */
   lines: (DraftLine | { accountId: string; debit: number; credit: number; memo?: string | null })[];
@@ -48,10 +49,18 @@ export class LedgerBooksService {
   /** Adds any system account the business does not have yet (a code already used by one of its own accounts gets a suffix). */
   async ensureChart(tx: TenantTx) {
     const { organizationId } = getTenantStore();
-    const have = await tx.ledgerAccount.findMany({ select: { code: true, systemKey: true } });
+    const have = await tx.ledgerAccount.findMany({ select: { id: true, code: true, name: true, systemKey: true } });
     const keys = new Set(have.map((a) => a.systemKey));
     const codes = new Set(have.map((a) => a.code));
-    const missing = SYSTEM_ACCOUNTS.filter((a) => !keys.has(a.key));
+    const org = await tx.organization.findUnique({ where: { id: organizationId }, select: { industryType: true } });
+    const wanted = systemAccountsFor(org?.industryType);
+    // An account still under the shared default name gets this business type's name (one the owner renamed is left alone).
+    for (const a of have) {
+      const w = wanted.find((x) => x.key === a.systemKey);
+      const shared = SYSTEM_ACCOUNTS.find((x) => x.key === a.systemKey);
+      if (w && shared && a.name === shared.name && w.name !== a.name) await tx.ledgerAccount.update({ where: { id: a.id }, data: { name: w.name } });
+    }
+    const missing = wanted.filter((a) => !keys.has(a.key));
     if (missing.length === 0) return;
     await tx.ledgerAccount.createMany({
       data: missing.map((a) => {
@@ -96,6 +105,7 @@ export class LedgerBooksService {
         sourceType: input.sourceType ?? null,
         sourceId: input.sourceId ?? null,
         branchId: input.branchId ?? null,
+        projectId: input.projectId ?? null,
         reversesId: input.reversesId ?? null,
         createdById: input.by?.id ?? null,
         createdByName: input.by?.name ?? null,
@@ -124,6 +134,7 @@ export class LedgerBooksService {
       sourceType: original.sourceType,
       sourceId: original.sourceId,
       branchId: original.branchId,
+      projectId: original.projectId,
       reversesId: original.id,
       lines: original.lines.map((l) => ({
         accountId: l.accountId,
