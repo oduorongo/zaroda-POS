@@ -43,6 +43,7 @@ export function Nav({ session }: { session: Session }) {
   const router = useRouter();
   const verticalLink = VERTICAL_LINKS[session.industryType];
   const caretaker = isCaretaker(session.role); // sees Rentals only
+  const rentals = session.industryType === "RENTAL"; // ZARODA RENTALS: landlord links instead of the shop's
   useIdleLogout();
 
   // The shop's name goes in the ribbon. Sessions made before this existed do not have it yet, so fetch it once and keep it.
@@ -65,13 +66,13 @@ export function Nav({ session }: { session: Session }) {
   return (
     <TopRibbon appName={session.industryType === "RENTAL" ? "ZARODA RENTALS" : (orgName ?? "Back Office")} homeHref={homePath(session.role, session.industryType)} LinkComponent={Link}>
       {orgName && <span className="hidden text-xs text-white/60 lg:inline">{session.industryType === "RENTAL" ? orgName : "Back Office"}</span>}
-      {!caretaker && (
+      {!caretaker && !rentals && (
       <RibbonLink href="/dashboard" LinkComponent={Link} active={pathname === "/dashboard"}>
         <LayoutGrid size={14} />
         Home
       </RibbonLink>
       )}
-      {!caretaker && QUICK_LINKS.map((link) => (
+      {!caretaker && !rentals && QUICK_LINKS.map((link) => (
         <RibbonLink key={link.href} href={link.href} LinkComponent={Link} active={!!pathname?.startsWith(link.href)}>
           {link.label}
         </RibbonLink>
@@ -79,6 +80,26 @@ export function Nav({ session }: { session: Session }) {
       {verticalLink && (
         <RibbonLink href={verticalLink.href} LinkComponent={Link} active={!!pathname?.startsWith(verticalLink.href)} className="text-amber-300">
           {verticalLink.label}
+        </RibbonLink>
+      )}
+      {rentals && !caretaker && (
+        <>
+          <RibbonLink href="/accounting" LinkComponent={Link} active={!!pathname?.startsWith("/accounting")}>
+            Accounts
+          </RibbonLink>
+          <RibbonLink href="/staff" LinkComponent={Link} active={!!pathname?.startsWith("/staff")}>
+            Staff
+          </RibbonLink>
+        </>
+      )}
+      {!rentals && !caretaker && (
+        <RibbonLink href="/guide" LinkComponent={Link} active={pathname === "/guide"}>
+          Guide
+        </RibbonLink>
+      )}
+      {rentals && (
+        <RibbonLink href="/rentals/guide" LinkComponent={Link} active={!!pathname?.startsWith("/rentals/guide")}>
+          Guide
         </RibbonLink>
       )}
       {session.industryType === "HOTEL" && !caretaker && (

@@ -19,13 +19,13 @@ const POINTS = [
 export default function RentalsWelcome() {
   return (
     <RentalsFrame>
-      <section className="text-white" style={{ background: `linear-gradient(160deg, ${RENTALS_BRAND.navy}, #0f1c3a)` }}>
+      <section className="text-white" style={{ background: `linear-gradient(160deg, ${RENTALS_BRAND.navy}, #0a142d)` }}>
         <div className="mx-auto max-w-5xl px-4 py-14 sm:py-20">
           <p className="text-sm font-semibold uppercase tracking-widest" style={{ color: RENTALS_BRAND.gold }}>For Kenyan landlords and agents</p>
           <h1 className="mt-2 max-w-2xl text-3xl font-bold leading-tight sm:text-4xl">Collect rent, track tenants and stay on top of arrears - from your phone.</h1>
           <p className="mt-4 max-w-xl text-white/80">ZARODA RENTALS does the monthly invoices, M-Pesa matching, receipts and reminders, so you only deal with the exceptions.</p>
           <div className="mt-6 flex flex-wrap gap-3">
-            <Link href="/rentals/signup" className="rounded-lg px-5 py-3 font-semibold text-white no-underline" style={{ background: RENTALS_BRAND.green }}>Start free (up to 5 units)</Link>
+            <Link href="/rentals/signup" className="rounded-lg px-5 py-3 font-semibold text-white no-underline" style={{ background: RENTALS_BRAND.orange }}>Start free (up to 5 units)</Link>
             <Link href="/rentals/pricing" className="rounded-lg border border-white/40 px-5 py-3 font-semibold text-white no-underline">See pricing</Link>
           </div>
         </div>
@@ -33,11 +33,15 @@ export default function RentalsWelcome() {
       <section className="mx-auto grid max-w-5xl gap-4 px-4 py-10 sm:grid-cols-2">
         {POINTS.map((p) => (
           <div key={p.title} className="rounded-xl border border-border bg-surface p-5">
-            <h2 className="font-bold" style={{ color: RENTALS_BRAND.green }}>{p.title}</h2>
+            <h2 className="font-bold" style={{ color: "var(--con-ink)" }}>{p.title}</h2>
             <p className="mt-1 text-sm text-secondary-600">{p.text}</p>
           </div>
         ))}
       </section>
+      <p className="mx-auto max-w-5xl px-4 pb-12 text-sm">
+        <Link href="/rentals/guide" className="font-semibold" style={{ color: "var(--con-ink)" }}>Read the user guide</Link>
+        <span className="text-secondary-500"> - setting up, collecting rent, M-Pesa, caretakers, adverts and the tenant portal, step by step.</span>
+      </p>
     </RentalsFrame>
   );
 }

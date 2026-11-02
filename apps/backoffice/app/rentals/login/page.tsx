@@ -54,7 +54,7 @@ export default function RentalsLogin() {
     <RentalsFrame>
       <main className="mx-auto flex max-w-sm flex-col gap-5 px-4 py-12">
         <div>
-          <h1 className="text-2xl font-bold" style={{ color: RENTALS_BRAND.green }}>Sign in</h1>
+          <h1 className="text-2xl font-bold" style={{ color: "var(--con-ink)" }}>Sign in</h1>
           <p className="text-sm text-secondary-500">{RENTALS_BRAND.name}, for landlords and caretakers.</p>
         </div>
         <form onSubmit={submit} className="space-y-4">
@@ -70,7 +70,7 @@ export default function RentalsLogin() {
             {busy ? "Signing in..." : "Sign in"}
           </button>
         </form>
-        <Link href="/rentals/signup" className="text-center text-sm" style={{ color: RENTALS_BRAND.green }}>New here? Start free</Link>
+        <Link href="/rentals/signup" className="text-center text-sm" style={{ color: "var(--con-ink)" }}>New here? Start free</Link>
       </main>
     </RentalsFrame>
   );

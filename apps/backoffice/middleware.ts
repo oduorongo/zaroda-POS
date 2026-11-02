@@ -22,6 +22,7 @@ const PUBLIC: Record<Exclude<Product, "POS">, Record<string, string>> = {
     "/register": "/rentals/signup",
     "/signup": "/rentals/signup",
     "/pricing": "/rentals/pricing",
+    "/guide": "/rentals/guide",
   },
 };
 const HOME: Record<Exclude<Product, "POS">, string> = { CONSTRUCTION: "/construction", RENTALS: "/rentals" };

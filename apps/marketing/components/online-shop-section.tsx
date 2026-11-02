@@ -39,7 +39,7 @@ export default function OnlineShopSection({ heading = "Sell online, from the sto
         <div className="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
           {POINTS.map((p) => (
             <div key={p.title} className="rounded-xl border border-border bg-background p-5">
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#0a1633] text-[#c99a2e]">
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#060f26] text-[#c99a2e]">
                 <p.icon size={20} />
               </div>
               <h3 className="mt-3 font-semibold text-foreground">{p.title}</h3>

@@ -21,7 +21,7 @@ export default function RentalsPricing() {
   return (
     <RentalsFrame>
       <main className="mx-auto max-w-5xl px-4 py-10">
-        <h1 className="text-3xl font-bold" style={{ color: RENTALS_BRAND.green }}>Pricing</h1>
+        <h1 className="text-3xl font-bold" style={{ color: "var(--con-ink)" }}>Pricing</h1>
         <p className="mt-2 text-secondary-600">Start free and move up when you grow. Your tenants never pay anything to use the portal.</p>
         {error && <p className="mt-6 text-sm text-red-700">Could not load the plans right now.</p>}
         <div className="mt-6 grid gap-4 sm:grid-cols-3">
@@ -38,7 +38,7 @@ export default function RentalsPricing() {
                 {p.features.map((f) => <li key={f}>✓ {RENTAL_FEATURE_LABELS[f] ?? f}</li>)}
                 {p.features.length === 0 && <li>Properties, units, tenants, leases and invoices</li>}
               </ul>
-              <Link href="/rentals/signup" className="mt-4 rounded-lg px-4 py-2 text-center text-sm font-semibold text-white no-underline" style={{ background: RENTALS_BRAND.green }}>
+              <Link href="/rentals/signup" className="mt-4 rounded-lg px-4 py-2 text-center text-sm font-semibold text-white no-underline" style={{ background: RENTALS_BRAND.orange }}>
                 {p.monthlyPrice === 0 && p.feePercent === 0 ? "Start free" : "Start"}
               </Link>
             </div>

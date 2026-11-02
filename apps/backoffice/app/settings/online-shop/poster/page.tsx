@@ -21,7 +21,7 @@ interface OnlineStore {
 }
 
 const STOREFRONT_URL = (process.env.NEXT_PUBLIC_STOREFRONT_URL ?? "https://shop.zarodashop.com").replace(/\/+$/, "");
-const NAVY = "#0a1633";
+const NAVY = "#060f26";
 const GOLD = "#c99a2e";
 
 type PosterKind = "shop" | "menu" | "salon" | "pharmacy";

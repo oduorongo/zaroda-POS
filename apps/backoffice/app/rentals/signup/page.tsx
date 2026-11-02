@@ -51,7 +51,7 @@ export default function RentalsSignup() {
   return (
     <RentalsFrame>
       <main className="mx-auto max-w-md px-4 py-10">
-        <h1 className="text-2xl font-bold" style={{ color: RENTALS_BRAND.green }}>Start free</h1>
+        <h1 className="text-2xl font-bold" style={{ color: "var(--con-ink)" }}>Start free</h1>
         <p className="mt-1 text-sm text-secondary-600">Free for up to 5 occupied units. No M-Pesa needed to start.</p>
         <form onSubmit={submit} className="mt-6 space-y-3">
           <label className="block text-sm">Your business or property name<input className={field} value={f.organizationName} onChange={set("organizationName")} required /></label>
@@ -65,7 +65,7 @@ export default function RentalsSignup() {
             </select>
           </label>
           {error && <p className="rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800">{error}</p>}
-          <button type="submit" disabled={busy} className="w-full rounded-lg p-3 font-semibold text-white disabled:opacity-50" style={{ background: RENTALS_BRAND.green }}>
+          <button type="submit" disabled={busy} className="w-full rounded-lg p-3 font-semibold text-white disabled:opacity-50" style={{ background: RENTALS_BRAND.orange }}>
             {busy ? "Setting up..." : "Create my account"}
           </button>
         </form>

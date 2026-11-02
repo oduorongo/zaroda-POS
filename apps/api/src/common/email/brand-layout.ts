@@ -2,7 +2,7 @@
 // the navy "Powered by ZARODA SOLUTIONS" footer - the same frame as the apps and Zaroda Events. Inline styles
 // only, because mail apps ignore stylesheets.
 
-const NAVY = '#0a1633';
+const NAVY = '#060f26';
 const GOLD = '#c99a2e';
 
 /** The white logo, hosted with the marketing site. Override with EMAIL_LOGO_URL if it moves. */

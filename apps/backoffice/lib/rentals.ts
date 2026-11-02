@@ -1,5 +1,5 @@
-/** ZARODA RENTALS branding: the Zaroda navy and gold, with a green of its own. */
-export const RENTALS_BRAND = { navy: "#1a2e5a", gold: "#d4af37", green: "#14866d", name: "ZARODA RENTALS" };
+/** ZARODA RENTALS branding: the Zaroda brand colours only - navy, gold and orange. */
+export const RENTALS_BRAND = { navy: "#0f1f45", gold: "#d4af37", orange: "#f5820a", name: "ZARODA RENTALS" };
 
 export interface RentalPlan {
   code: string;

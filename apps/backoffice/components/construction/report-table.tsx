@@ -27,7 +27,7 @@ export function ReportTable({ report, print = false }: { report: ConReport; prin
       ) : (
         <table className={`w-full border-collapse ${print ? "text-[10px]" : "text-xs sm:text-sm"}`}>
           <thead>
-            <tr className="text-left text-white" style={{ background: "#1a2e5a" }}>
+            <tr className="text-left text-white" style={{ background: "#0f1f45" }}>
               {report.columns.map((c) => (
                 <th key={c.key} className={`whitespace-nowrap px-2 py-2 font-semibold ${RIGHT.has(c.type) ? "text-right" : ""}`}>{c.label}</th>
               ))}

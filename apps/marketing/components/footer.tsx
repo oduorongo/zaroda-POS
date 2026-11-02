@@ -8,6 +8,7 @@ const PRODUCT_LINKS = [
   { href: "/features", label: "Features" },
   { href: "/industries", label: "Industries" },
   { href: "/pricing", label: "Pricing" },
+  { href: `${BACKOFFICE_URL}/guide`, label: "User guide" },
   { href: rentalsLink(""), label: "ZARODA RENTALS" },
 ];
 

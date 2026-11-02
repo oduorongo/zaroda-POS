@@ -1,6 +1,6 @@
 import { Fragment, type ReactNode } from "react";
 
-// Just enough Markdown for the user guide: # and ## headings, paragraphs, "- " lists, | tables |, --- rules and **bold**.
+// Just enough Markdown for the user guides: #, ## and ### headings, paragraphs, "- " and "1. " lists, | tables |, --- rules and **bold**.
 
 export const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 
@@ -23,6 +23,13 @@ export function GuideMarkdown({ source }: { source: string }) {
       const t = line.slice(3);
       out.push(<h2 key={i} id={slug(t)} className="mt-8 scroll-mt-20 border-b border-border pb-1 text-xl font-bold" style={{ color: "var(--con-ink)" }}>{t}</h2>);
       i++;
+    } else if (line.startsWith("### ")) {
+      out.push(<h3 key={i} className="mt-5 text-base font-bold">{inline(line.slice(4))}</h3>);
+      i++;
+    } else if (/^\d+\. /.test(line)) {
+      const items: string[] = [];
+      while (i < lines.length && /^\d+\. /.test(lines[i])) items.push(lines[i++].replace(/^\d+\. /, ""));
+      out.push(<ol key={i} className="my-2 list-decimal space-y-1 pl-5">{items.map((t, n) => <li key={n}>{inline(t)}</li>)}</ol>);
     } else if (line.startsWith("# ")) {
       i++; // the page shows its own title
     } else if (line.trim() === "---") {
@@ -49,7 +56,7 @@ export function GuideMarkdown({ source }: { source: string }) {
       );
     } else {
       const para: string[] = [];
-      while (i < lines.length && lines[i].trim() && !/^(#|- |\||---)/.test(lines[i])) para.push(lines[i++]);
+      while (i < lines.length && lines[i].trim() && !/^(#|- |\||---|\d+\. )/.test(lines[i])) para.push(lines[i++]);
       out.push(<p key={i} className="my-2">{inline(para.join(" "))}</p>);
     }
   }
