@@ -26,6 +26,7 @@ import {
   ScanBarcode,
   ClipboardCheck,
   TrendingUp,
+  BrainCircuit,
   BookOpen,
   UtensilsCrossed,
   BedDouble,
@@ -85,6 +86,13 @@ const MANAGER_TILES: Tile[] = [
     description: "Print barcode labels for your products.",
     icon: ScanBarcode,
     tone: "bg-slate-600",
+  },
+  {
+    href: "/insights",
+    label: "AI Business Analyser",
+    description: "A weekly written summary of your business, and answers to your questions about it.",
+    icon: BrainCircuit,
+    tone: "bg-primary-600",
   },
   {
     href: "/profit",

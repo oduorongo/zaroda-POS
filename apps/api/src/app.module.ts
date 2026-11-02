@@ -42,6 +42,7 @@ import { HotelModule } from './hotel/hotel.module';
 import { ReservationsModule } from './reservations/reservations.module';
 import { AlertsModule } from './alerts/alerts.module';
 import { ExpensesModule } from './expenses/expenses.module';
+import { AiModule } from './ai/ai.module';
 import { AccountingModule } from './accounting/accounting.module';
 import { SchoolSupplierModule } from './school-supplier/school-supplier.module';
 import { ConstructionModule } from './construction/construction.module';
@@ -153,6 +154,7 @@ import { DeliveryModule } from './delivery/delivery.module';
     ReservationsModule,
     AlertsModule,
     ExpensesModule,
+    AiModule,
     AccountingModule,
     SchoolSupplierModule,
     ConstructionModule,

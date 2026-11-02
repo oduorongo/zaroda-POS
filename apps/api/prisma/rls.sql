@@ -2110,3 +2110,11 @@ DROP POLICY IF EXISTS tenant_isolation ON rental_stay_notifications;
 CREATE POLICY tenant_isolation ON rental_stay_notifications
   USING ("organizationId" = current_setting('app.current_tenant', true))
   WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+-- ── ai_insights: the AI Business Analyser's weekly summaries and answers ─────────────────
+ALTER TABLE ai_insights ENABLE ROW LEVEL SECURITY;
+ALTER TABLE ai_insights FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON ai_insights;
+CREATE POLICY tenant_isolation ON ai_insights
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
