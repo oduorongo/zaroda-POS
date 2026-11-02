@@ -5494,3 +5494,21 @@ model SeasonalDueShift {
 
   @@map("seasonal_due_shifts")
 }
+
+/// One answer from the AI Business Analyser: the weekly summary or an owner's question. Also what the usage limits count.
+model AiInsight {
+  id             String   @id @default(uuid())
+  organizationId String
+  /// WEEKLY | QUESTION
+  kind           String
+  question       String?
+  answer         String
+  model          String
+  inputTokens    Int      @default(0)
+  outputTokens   Int      @default(0)
+  askedById      String?
+  createdAt      DateTime @default(now())
+
+  @@index([organizationId, kind, createdAt])
+  @@map("ai_insights")
+}

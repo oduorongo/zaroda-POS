@@ -1521,3 +1521,11 @@ DROP POLICY IF EXISTS tenant_isolation ON platform_ledger_postings;
 CREATE POLICY tenant_isolation ON platform_ledger_postings
   USING (NULLIF(current_setting('app.current_tenant', true), '') IS NULL)
   WITH CHECK (NULLIF(current_setting('app.current_tenant', true), '') IS NULL);
+
+-- ── ai_insights: the AI Business Analyser's weekly summaries and answers ─────────────────
+ALTER TABLE ai_insights ENABLE ROW LEVEL SECURITY;
+ALTER TABLE ai_insights FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON ai_insights;
+CREATE POLICY tenant_isolation ON ai_insights
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
