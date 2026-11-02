@@ -33,6 +33,7 @@ type Tool = {
   description: string;
   href: string;
   comingSoon?: boolean;
+  inAccount?: boolean;
 };
 
 const LIVE_TOOLS: Tool[] = [
@@ -101,36 +102,39 @@ const LIVE_TOOLS: Tool[] = [
   },
 ];
 
-const COMING_SOON_TOOLS: Tool[] = [
+const ACCOUNT_TOOLS: Tool[] = [
   {
     icon: UtensilsCrossed,
-    color: "bg-secondary-400",
+    color: "bg-primary-600",
     title: "Menu Maker",
-    description: "Design and update a restaurant menu.",
-    href: "#",
-    comingSoon: true,
+    description: "Your menu online, built from your products. A dish hides by itself when an ingredient runs out.",
+    href: "/signup",
+    inAccount: true,
   },
+  {
+    icon: QrMenuIcon,
+    color: "bg-accent-500",
+    title: "QR Menu Generator",
+    description: "A QR code for every table: guests scan, see the menu and order from their seat.",
+    href: "/signup",
+    inAccount: true,
+  },
+  {
+    icon: CalendarClock,
+    color: "bg-primary-600",
+    title: "Schedule Manager",
+    description: "Plan staff shifts across your branches with the staff roster.",
+    href: "/signup",
+    inAccount: true,
+  },
+];
+
+const COMING_SOON_TOOLS: Tool[] = [
   {
     icon: ChefHat,
     color: "bg-secondary-400",
     title: "Menu Engineering",
     description: "See which dishes actually make money.",
-    href: "#",
-    comingSoon: true,
-  },
-  {
-    icon: QrMenuIcon,
-    color: "bg-secondary-400",
-    title: "QR Menu Generator",
-    description: "Turn your menu into a scannable table QR code.",
-    href: "#",
-    comingSoon: true,
-  },
-  {
-    icon: CalendarClock,
-    color: "bg-secondary-400",
-    title: "Schedule Manager",
-    description: "Plan staff shifts across your branches.",
     href: "#",
     comingSoon: true,
   },
@@ -166,10 +170,11 @@ function ToolCard({ tool }: { tool: Tool }) {
             <Icon size={20} strokeWidth={2} />
           </div>
           {tool.comingSoon && <Badge variant="neutral">Coming soon</Badge>}
+          {tool.inAccount && <Badge variant="primary">In your account</Badge>}
         </div>
         <h2 className="mt-4 font-semibold text-foreground">{tool.title}</h2>
         <p className="mt-1.5 flex-1 text-sm text-secondary-500">{tool.description}</p>
-        {tool.comingSoon && <p className="mt-2 text-xs text-secondary-400">Available with your Zaroda account</p>}
+        {(tool.comingSoon || tool.inAccount) && <p className="mt-2 text-xs text-secondary-400">{tool.inAccount ? "Start a free trial to use it" : "Available with your Zaroda account"}</p>}
       </CardContent>
     </Card>
   );
@@ -205,6 +210,18 @@ export default function ToolsPage() {
         <div className="mx-auto max-w-6xl px-6">
           <div className="grid grid-cols-2 gap-4 sm:gap-6 md:grid-cols-3 lg:grid-cols-4">
             {LIVE_TOOLS.map((tool) => (
+              <ToolCard key={tool.title} tool={tool} />
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="pt-8">
+        <div className="mx-auto max-w-6xl px-6">
+          <h2 className="text-lg font-semibold text-foreground">In your Zaroda account</h2>
+          <p className="mt-1 text-sm text-secondary-500">Already built into Zaroda POS for restaurants and shops.</p>
+          <div className="mt-6 grid grid-cols-2 gap-4 sm:gap-6 md:grid-cols-3 lg:grid-cols-4">
+            {ACCOUNT_TOOLS.map((tool) => (
               <ToolCard key={tool.title} tool={tool} />
             ))}
           </div>
