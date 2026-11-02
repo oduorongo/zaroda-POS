@@ -135,6 +135,14 @@ const ACCOUNT_TOOLS: Tool[] = [
     href: "/signup",
     inAccount: true,
   },
+  {
+    icon: BrainCircuit,
+    color: "bg-accent-500",
+    title: "AI Business Analyser",
+    description: "A weekly written summary of your sales, stock and spending, and answers to your questions. On paid plans.",
+    href: "/signup",
+    inAccount: true,
+  },
 ];
 
 const COMING_SOON_TOOLS: Tool[] = [
@@ -143,14 +151,6 @@ const COMING_SOON_TOOLS: Tool[] = [
     color: "bg-secondary-400",
     title: "Bulk Messaging",
     description: "Send SMS/WhatsApp promotions to your customer list.",
-    href: "#",
-    comingSoon: true,
-  },
-  {
-    icon: BrainCircuit,
-    color: "bg-secondary-400",
-    title: "AI Business Analyser",
-    description: "Get insights on sales trends and slow-moving stock.",
     href: "#",
     comingSoon: true,
   },
