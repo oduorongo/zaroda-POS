@@ -5032,6 +5032,10 @@ model EtimsItem {
   sentHash       String?
   lastError      String?
   registeredAt   DateTime?
+  /// What KRA was last told about this item's recipe (ingredients and quantities), so a changed recipe is sent again.
+  cpstSentKey    String?
+  /// Why the recipe could not be sent, kept until it goes through.
+  cpstError      String?
   updatedAt      DateTime        @updatedAt
 
   organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)

@@ -182,6 +182,7 @@ const notices = [
   { noticeNo: 41, title: 'Planned maintenance', cont: 'eTIMS will be down on Sunday from 1am to 3am.', dtlUrl: 'https://etims.kra.go.ke/notice/41', regrNm: 'Administrator', regDt: '20261001090000' },
 ];
 const customers = new Map();
+const compositions = new Map(); // `${tin}|${itemCd}|${cpstItemCd}` -> quantity
 const imports = [];
 const importDecisions = [];
 
@@ -408,6 +409,15 @@ const handlers = {
     if (need.some((k) => !b[k])) return answer('910', 'Request parameter error');
     if (!/^\d{9}$/.test(b.custNo) || !PIN.test(b.custTin) || b.custNm.length > 60) return answer('910', 'Request parameter error');
     customers.set(b.tin + '|' + b.custNo, { ...b, cmcKey: undefined });
+    return answer('000', 'It is succeeded');
+  },
+  saveItemComposition(b) {
+    const bad = checkDevice(b);
+    if (bad) return bad;
+    const need = ['itemCd', 'cpstItemCd', 'regrId', 'regrNm'];
+    if (need.some((k) => !b[k]) || typeof b.cpstQty !== 'number' || !(b.cpstQty > 0)) return answer('910', 'Request parameter error');
+    if (!items.has(b.tin + '|' + b.itemCd) || !items.has(b.tin + '|' + b.cpstItemCd)) return answer('910', 'The item is not registered');
+    compositions.set(b.tin + '|' + b.itemCd + '|' + b.cpstItemCd, b.cpstQty);
     return answer('000', 'It is succeeded');
   },
   selectImportItemList(b) {

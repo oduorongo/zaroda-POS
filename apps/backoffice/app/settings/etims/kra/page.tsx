@@ -52,7 +52,17 @@ interface RegisteredItem {
   itemCd: string | null;
 }
 
-type Tab = "notices" | "imports" | "branches" | "customers";
+interface Recipe {
+  variantId: string;
+  name: string;
+  itemCd: string | null;
+  state: "WAITING" | "TO_SEND" | "SENT" | "FAILED";
+  message: string | null;
+  ingredients: { name: string; itemCd: string | null; qty: number }[];
+}
+
+type Tab = "notices" | "imports" | "branches" | "customers" | "recipes";
+const recipeState: Record<Recipe["state"], string> = { WAITING: "Waiting", TO_SEND: "To send", SENT: "Sent to KRA", FAILED: "Not accepted" };
 const field = "rounded-md border border-border bg-surface p-2 text-sm";
 const kraDate = (s: string | null) => (s && /^\d{14}$/.test(s) ? `${s.slice(6, 8)}/${s.slice(4, 6)}/${s.slice(0, 4)}` : s ?? "");
 const declDate = (s: string) => (/^\d{8}$/.test(s) ? `${s.slice(6, 8)}/${s.slice(4, 6)}/${s.slice(0, 4)}` : s);
@@ -65,6 +75,7 @@ export default function EtimsFromKraPage() {
   const [notices, setNotices] = useState<{ unread: number; rows: Notice[] } | null>(null);
   const [imports, setImports] = useState<ImportRow[] | null>(null);
   const [branches, setBranches] = useState<KraBranch[] | null>(null);
+  const [recipes, setRecipes] = useState<Recipe[] | null>(null);
   const [openNotice, setOpenNotice] = useState<string | null>(null);
   const [approving, setApproving] = useState<ImportRow | null>(null);
   const [search, setSearch] = useState("");
@@ -82,6 +93,7 @@ export default function EtimsFromKraPage() {
       const [n, i] = await Promise.all([apiGet<{ unread: number; rows: Notice[] }>("/etims/notices"), apiGet<ImportRow[]>("/etims/imports")]);
       setNotices(n);
       setImports(i);
+      setRecipes(await apiGet<Recipe[]>("/etims/compositions"));
       setError(null);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not load this.");
@@ -142,7 +154,7 @@ export default function EtimsFromKraPage() {
           <h1 className="text-xl font-bold">From KRA</h1>
           <Link href="/settings/etims" className="text-sm text-primary-600 hover:underline">Back to eTIMS</Link>
         </div>
-        <p className="text-sm text-secondary-500">Notices KRA has put out, items customs declared under your PIN (to approve or cancel), your branches as KRA has them, and your customers with a KRA PIN.</p>
+        <p className="text-sm text-secondary-500">Notices KRA has put out, items customs declared under your PIN (to approve or cancel), your branches as KRA has them, your customers with a KRA PIN, and your recipes.</p>
         {error && <p className="rounded-md bg-red-950 p-3 text-sm text-red-300">{error}</p>}
         {notice && <p className="rounded-md bg-green-950 p-3 text-sm text-green-300">{notice}</p>}
 
@@ -153,6 +165,7 @@ export default function EtimsFromKraPage() {
               ["imports", `Imported items${imports && imports.some((i) => i.status === "WAITING") ? ` (${imports.filter((i) => i.status === "WAITING").length})` : ""}`],
               ["branches", "Branches at KRA"],
               ["customers", "Customers"],
+              ["recipes", `Recipes${recipes && recipes.some((r) => r.state === "FAILED") ? ` (${recipes.filter((r) => r.state === "FAILED").length})` : ""}`],
             ] as [Tab, string][]
           ).map(([k, label]) => (
             <button
@@ -314,6 +327,30 @@ export default function EtimsFromKraPage() {
                 Send customers to KRA now
               </button>
             )}
+          </section>
+        )}
+
+        {tab === "recipes" && (
+          <section className="space-y-2 text-sm">
+            <p className="text-secondary-500">KRA is told what each item made from a recipe uses (for example 0.2 kg rice per biryani), so the ingredients&apos; stock adds up. A recipe is sent once the item and all its ingredients are registered under eTIMS items, about once a minute, and again when the recipe changes.</p>
+            {canEdit && (
+              <button disabled={busy} onClick={() => void run(() => apiPost<{ sent: number; failed: number }>("/etims/compositions/sync", {}), (r) => `${r.sent} recipe(s) sent${r.failed ? `, ${r.failed} not accepted (will be tried again)` : ""}.`)} className="rounded-md border border-border px-3 py-1.5 hover:bg-secondary-500/10 disabled:opacity-50">
+                Send recipes to KRA now
+              </button>
+            )}
+            {recipes && recipes.length === 0 && <p className="text-secondary-500">No products are made from a recipe.</p>}
+            <ul className="space-y-2">
+              {recipes?.map((r) => (
+                <li key={r.variantId} className="rounded-md border border-border p-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="font-medium">{r.name}{r.itemCd && <span className="ml-2 text-xs text-secondary-500">{r.itemCd}</span>}</span>
+                    <span className={`rounded px-1.5 py-0.5 text-xs ${r.state === "SENT" ? "bg-primary-600 text-white" : r.state === "FAILED" ? "bg-red-950 text-red-300" : "bg-secondary-500/20"}`}>{recipeState[r.state]}</span>
+                  </div>
+                  <p className="text-xs text-secondary-500">{r.ingredients.map((i) => `${i.qty} x ${i.name}`).join(" · ")}</p>
+                  {r.message && <p className="text-xs text-red-400">{r.message}</p>}
+                </li>
+              ))}
+            </ul>
           </section>
         )}
       </main>

@@ -70,6 +70,9 @@ export class EtimsSchedulerService implements OnModuleInit, OnModuleDestroy {
               await this.extras.syncCustomers().catch((e) =>
                 this.logger.warn({ err: e, organizationId }, 'Sending customers to KRA failed'),
               );
+              await this.extras.syncCompositions().catch((e) =>
+                this.logger.warn({ err: e, organizationId }, 'Sending recipes to KRA failed'),
+              );
               return pass;
             },
           );

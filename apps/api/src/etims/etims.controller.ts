@@ -267,6 +267,20 @@ export class EtimsController {
     return this.extras.syncCustomers();
   }
 
+  /** Products made from a recipe, and whether KRA has the recipe. */
+  @Get('compositions')
+  compositions() {
+    return this.extras.compositions();
+  }
+
+  /** Sends recipes now, instead of waiting for the timed pass. */
+  @Roles(...WRITERS)
+  @Post('compositions/sync')
+  @HttpCode(200)
+  syncCompositions() {
+    return this.extras.syncCompositions();
+  }
+
   /** Send what is waiting now instead of at the next timed pass. */
   @Roles(...WRITERS)
   @Post('documents/run')
