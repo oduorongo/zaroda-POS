@@ -14,9 +14,17 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 
 const num = (d: Prisma.Decimal | number | null | undefined) => (d == null ? 0 : Number(d));
 
-/** One piece of money Zaroda received from a shop: a paid commission invoice or a subscription payment. */
+export const SALES_APPS = ['POS', 'ONLINE_SHOP', 'CONSTRUCTION', 'RENTALS'] as const;
+export type SalesApp = (typeof SALES_APPS)[number];
+
+/**
+ * One piece of money Zaroda received from a business. SUBSCRIPTION = a plan payment in any app (POS, construction,
+ * rentals); COMMISSION = a usage fee (online shop commission/convenience fees, construction payout fees, rent
+ * collection fees). The same team rates apply in every app. One-off adverts and SMS bundles never count.
+ */
 interface Source {
   type: 'COMMISSION' | 'SUBSCRIPTION';
+  app: SalesApp;
   id: string;
   base: number;
   earnedAt: Date;
@@ -68,6 +76,7 @@ export class SalesEarningsService {
         salesAgentId: true,
         salesAssignedAt: true,
         subscription: { select: { currentPeriodEnd: true, graceDays: true, isTrial: true, manuallySuspended: true, plan: { select: { billingCycle: true } } } },
+        conSubscription: { select: { status: true } },
       },
     });
 
@@ -92,12 +101,22 @@ export class SalesEarningsService {
         const team = teams.get(org.salesTeamId as string);
         if (!team) continue;
         const subscriptionStatus = org.subscription ? effectiveStatus(org.subscription) : null;
-        const blocked = !org.isActive ? 'The shop was suspended' : subscriptionStatus === 'SUSPENDED' || subscriptionStatus === 'READ_ONLY' ? 'The shop subscription was unpaid' : members.get(org.salesAgentId as string) !== SalesAgentStatus.ACTIVE ? 'The member was no longer active' : null;
+        const posUnpaid = subscriptionStatus === 'SUSPENDED' || subscriptionStatus === 'READ_ONLY' ? 'The shop subscription was unpaid' : null;
+        const conStatus = org.conSubscription?.status;
+        const conUnpaid = conStatus === 'SUSPENDED' || conStatus === 'CANCELLED' ? 'The construction subscription was unpaid' : null;
+        const suspended = !org.isActive ? 'The shop was suspended' : null;
         const result = await this.accrueShop({
           org,
           team,
           leader: leaders.get(team.id) ?? null,
-          blocked,
+          // Each app is stopped only by its own unpaid plan; a rentals invoice counts only once it is paid anyway.
+          appBlocked: {
+            POS: suspended ?? posUnpaid,
+            ONLINE_SHOP: suspended ?? posUnpaid,
+            CONSTRUCTION: suspended ?? conUnpaid,
+            RENTALS: suspended,
+          },
+          memberInactive: members.get(org.salesAgentId as string) !== SalesAgentStatus.ACTIVE,
           payments: (paymentsByOrg.get(org.id) ?? []).map((p) => ({ id: p.id, amount: num(p.amount), paidAt: p.paidAt })),
         });
         totals.commission += result.commission;
@@ -124,10 +143,11 @@ export class SalesEarningsService {
     org: { id: string; name: string; createdAt: Date; salesAgentId: string | null; salesAssignedAt: Date | null };
     team: { id: string; memberShareRate: Prisma.Decimal; subscriptionShareRate: Prisma.Decimal; leaderOverrideRate: Prisma.Decimal; onboardingBonusKes: Prisma.Decimal; payoutCapRate: Prisma.Decimal; earningMonths: number };
     leader: { id: string; createdAt: Date } | null;
-    blocked: string | null;
+    appBlocked: Record<SalesApp, string | null>;
+    memberInactive: boolean;
     payments: { id: string; amount: number; paidAt: Date }[];
   }) {
-    const { org, team, leader, blocked, payments } = input;
+    const { org, team, leader, appBlocked, memberInactive, payments } = input;
     const memberId = org.salesAgentId as string;
     const assignedAt = org.salesAssignedAt ?? org.createdAt;
     const rates = { COMMISSION: num(team.memberShareRate), SUBSCRIPTION: num(team.subscriptionShareRate) };
@@ -136,11 +156,23 @@ export class SalesEarningsService {
 
     return this.prisma.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT set_config('app.current_tenant', ${org.id}, true)`;
-      const invoices = await tx.commissionInvoice.findMany({ where: { status: 'PAID', paidAt: { not: null } }, select: { id: true, commissionTotal: true, paidAt: true } });
+      const [invoices, conPayments, rentalInvoices] = await Promise.all([
+        tx.commissionInvoice.findMany({ where: { status: 'PAID', paidAt: { not: null } }, select: { id: true, commissionTotal: true, paidAt: true } }),
+        tx.conSubscriptionPayment.findMany({
+          where: { organizationId: org.id, status: 'PAID', paidAt: { not: null }, amount: { gt: 0 }, purpose: { in: ['PLAN', 'EXTRA_PROJECTS', 'FEES'] } },
+          select: { id: true, amount: true, paidAt: true, purpose: true },
+        }),
+        tx.rentalPlatformInvoice.findMany({
+          where: { organizationId: org.id, status: 'PAID', paidAt: { not: null }, amountDue: { gt: 0 } },
+          select: { id: true, kind: true, amountDue: true, paidAt: true },
+        }),
+      ]);
 
       const sources: Source[] = [
-        ...invoices.map((i): Source => ({ type: 'COMMISSION', id: i.id, base: num(i.commissionTotal), earnedAt: i.paidAt as Date })),
-        ...payments.map((p): Source => ({ type: 'SUBSCRIPTION', id: p.id, base: p.amount, earnedAt: p.paidAt })),
+        ...invoices.map((i): Source => ({ type: 'COMMISSION', app: 'ONLINE_SHOP', id: i.id, base: num(i.commissionTotal), earnedAt: i.paidAt as Date })),
+        ...payments.map((p): Source => ({ type: 'SUBSCRIPTION', app: 'POS', id: p.id, base: p.amount, earnedAt: p.paidAt })),
+        ...(conPayments ?? []).map((p): Source => ({ type: p.purpose === 'FEES' ? 'COMMISSION' : 'SUBSCRIPTION', app: 'CONSTRUCTION', id: p.id, base: num(p.amount), earnedAt: p.paidAt as Date })),
+        ...(rentalInvoices ?? []).map((i): Source => ({ type: i.kind === 'SUBSCRIPTION' ? 'SUBSCRIPTION' : 'COMMISSION', app: 'RENTALS', id: i.id, base: i.amountDue, earnedAt: i.paidAt as Date })),
       ].sort((a, b) => a.earnedAt.getTime() - b.earnedAt.getTime());
       if (sources.length === 0) return { commission: 0, subscriptions: 0, bonuses: 0 };
 
@@ -161,7 +193,7 @@ export class SalesEarningsService {
 
       const rows: Prisma.SalesEarningCreateManyInput[] = [];
       const counts = { commission: 0, subscriptions: 0, bonuses: 0 };
-      const common = (s: Source) => ({ teamId: team.id, organizationId: org.id, organizationName: org.name, sourceId: s.id, earnedAt: s.earnedAt, periodMonth: nairobiMonth(s.earnedAt) });
+      const common = (s: Source) => ({ teamId: team.id, organizationId: org.id, organizationName: org.name, sourceId: s.id, sourceApp: s.app, earnedAt: s.earnedAt, periodMonth: nairobiMonth(s.earnedAt) });
       const eligibleSource = (s: Source) => s.earnedAt >= assignedAt && withinEarningWindow(org.createdAt, s.earnedAt, team.earningMonths);
 
       for (const s of sources) {
@@ -176,9 +208,9 @@ export class SalesEarningsService {
         let leaderAmount = leaderPending ? round2(s.base * leaderRate) : 0;
         let capped = false;
 
-        // The shop being suspended/unpaid stops everyone; the member leaving stops only the member.
-        const shopBlocked = blocked && blocked !== 'The member was no longer active' ? blocked : null;
-        const memberBlocked = blocked;
+        // The business being suspended/unpaid in that app stops everyone; the member leaving stops only the member.
+        const shopBlocked = appBlocked[s.app];
+        const memberBlocked = shopBlocked ?? (memberInactive ? 'The member was no longer active' : null);
         if (!shopBlocked) {
           const headroom = round2(capRate * (revenue.get(month) ?? 0) - (earned.get(month) ?? 0));
           if (memberBlocked) member = 0;
@@ -217,11 +249,12 @@ export class SalesEarningsService {
         }
       }
 
-      // Bonus: once per shop, on its second subscription payment.
+      // Bonus: once per business, on its second plan payment in any app.
       const bonus = num(team.onboardingBonusKes);
-      const second = payments[1];
+      const second = sources.filter((s) => s.type === 'SUBSCRIPTION')[1];
       if (bonus > 0 && second && !existing.some((e) => e.kind === SalesEarningKind.ONBOARDING_BONUS)) {
-        const s: Source = { type: 'SUBSCRIPTION', id: second.id, base: bonus, earnedAt: second.paidAt };
+        const s: Source = { ...second, base: bonus };
+        const blocked = appBlocked[s.app] ?? (memberInactive ? 'The member was no longer active' : null);
         if (eligibleSource(s)) {
           rows.push({
             ...common(s),
@@ -273,6 +306,7 @@ export class SalesEarningsService {
         organizationName: e.organizationName,
         kind: SalesEarningKind.ADJUSTMENT,
         sourceId: `${e.id}:${dto.reference}`,
+        sourceApp: e.sourceApp,
         baseKes: dto.refundedKes,
         rate: e.rate,
         amountKes: -round2(reversal),
@@ -324,6 +358,7 @@ export class SalesEarningsService {
         onboardingBonus: sum(SalesEarningKind.ONBOARDING_BONUS),
         adjustments: sum(SalesEarningKind.ADJUSTMENT),
         total: round2(lines.reduce((total, l) => total + num(l.amountKes), 0)),
+        byApp: SALES_APPS.map((app) => ({ app, total: round2(lines.filter((l) => l.sourceApp === app).reduce((t, l) => t + num(l.amountKes), 0)) })).filter((a) => a.total !== 0),
       },
       byShop: [...byShop.values()].map((r) => ({ shop: r.shop, pending: round2(r.pending), payable: round2(r.payable), paid: round2(r.paid), total: round2(r.total) })),
       allTime: { pending: bucket(SalesEarningStatus.PENDING), payable: round2(bucket(SalesEarningStatus.PAYABLE) + bucket(SalesEarningStatus.ACCRUED)), paid: bucket(SalesEarningStatus.PAID) },
@@ -332,6 +367,7 @@ export class SalesEarningsService {
       lines: lines.map((l) => ({
         id: l.id,
         kind: l.kind,
+        app: l.sourceApp,
         shop: l.organizationName,
         baseKes: num(l.baseKes),
         rate: l.rate == null ? null : num(l.rate),
@@ -368,21 +404,25 @@ export class SalesEarningsService {
   // ── The platform owner's side ────────────────────────────────────────
 
   /** Every team and person: earned in the month, and what is pending, payable and paid overall. */
-  async overview(month: string | undefined) {
+  async overview(month: string | undefined, app?: SalesApp) {
     await this.accrue();
     const period = month ?? nairobiMonth(new Date());
-    const [teams, agents, inMonth, byStatus, settings] = await Promise.all([
+    const appWhere = app ? { sourceApp: app } : {};
+    const [teams, agents, inMonth, byStatus, settings, appTotals] = await Promise.all([
       this.prisma.salesTeam.findMany({ orderBy: { name: 'asc' } }),
       this.prisma.salesAgent.findMany({ orderBy: [{ role: 'asc' }, { fullName: 'asc' }] }),
-      this.prisma.salesEarning.groupBy({ by: ['agentId'], where: { periodMonth: period, status: { not: SalesEarningStatus.VOID } }, _sum: { amountKes: true } }),
-      this.prisma.salesEarning.groupBy({ by: ['agentId', 'status'], _sum: { amountKes: true } }),
+      this.prisma.salesEarning.groupBy({ by: ['agentId'], where: { ...appWhere, periodMonth: period, status: { not: SalesEarningStatus.VOID } }, _sum: { amountKes: true } }),
+      this.prisma.salesEarning.groupBy({ by: ['agentId', 'status'], where: appWhere, _sum: { amountKes: true } }),
       this.payouts.getSettings(),
+      this.prisma.salesEarning.groupBy({ by: ['sourceApp'], where: { periodMonth: period, status: { not: SalesEarningStatus.VOID } }, _sum: { amountKes: true } }),
     ]);
     const earned = new Map(inMonth.map((g) => [g.agentId, num(g._sum.amountKes)]));
     const bucket = (agentId: string, ...statuses: SalesEarningStatus[]) =>
       round2(byStatus.filter((g) => g.agentId === agentId && statuses.includes(g.status)).reduce((t, g) => t + num(g._sum.amountKes), 0));
     return {
       month: period,
+      app: app ?? null,
+      byApp: SALES_APPS.map((a) => ({ app: a, earnedThisMonth: round2(num(appTotals.find((t) => t.sourceApp === a)?._sum.amountKes)) })),
       settings: this.payouts.toSettingsView(settings),
       teams: teams.map((team) => {
         const people = agents

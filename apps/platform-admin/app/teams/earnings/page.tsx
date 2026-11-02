@@ -30,8 +30,11 @@ interface Settings {
   withholdingTaxRate: number;
   available: Record<Gateway, boolean>;
 }
+type App = "POS" | "ONLINE_SHOP" | "CONSTRUCTION" | "RENTALS";
+const APP_LABEL: Record<App, string> = { POS: "POS", ONLINE_SHOP: "Online shop", CONSTRUCTION: "Construction", RENTALS: "Rentals" };
 interface Overview {
   month: string;
+  byApp: { app: App; earnedThisMonth: number }[];
   settings: Settings;
   teams: { teamId: string; name: string; earnedThisMonth: number; pending: number; payable: number; people: Person[] }[];
 }
@@ -65,6 +68,7 @@ export default function TeamEarningsAdminPage() {
   const router = useRouter();
   const [session, setSession] = useState<Session | null>(null);
   const [month, setMonth] = useState(currentMonth());
+  const [app, setApp] = useState<App | "">("");
   const [data, setData] = useState<Overview | null>(null);
   const [payouts, setPayouts] = useState<Payout[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -98,7 +102,7 @@ export default function TeamEarningsAdminPage() {
     setError(null);
     try {
       const [overview, history] = await Promise.all([
-        apiGet<Overview>(`/platform-admin/sales-earnings?month=${month}`),
+        apiGet<Overview>(`/platform-admin/sales-earnings?month=${month}${app ? `&app=${app}` : ""}`),
         apiGet<Payout[]>("/platform-admin/sales-earnings/payouts"),
       ]);
       setData(overview);
@@ -117,7 +121,7 @@ export default function TeamEarningsAdminPage() {
   useEffect(() => {
     if (session) void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session, month]);
+  }, [session, month, app]);
 
   async function run(action: () => Promise<string>) {
     setBusy(true);
@@ -205,13 +209,41 @@ export default function TeamEarningsAdminPage() {
         </Link>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h1 className="text-xl font-bold">Team earnings and payouts</h1>
-          <label className="text-sm">
-            Month{" "}
-            <input type="month" className="rounded-md border border-border bg-background p-1.5" value={month} max={currentMonth()} onChange={(e) => e.target.value && setMonth(e.target.value)} />
-          </label>
+          <div className="flex flex-wrap items-center gap-3 text-sm">
+            <label>
+              App{" "}
+              <select className="rounded-md border border-border bg-background p-1.5" value={app} onChange={(e) => setApp(e.target.value as App | "")}>
+                <option value="">All apps</option>
+                {(Object.keys(APP_LABEL) as App[]).map((a) => (
+                  <option key={a} value={a}>
+                    {APP_LABEL[a]}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Month{" "}
+              <input type="month" className="rounded-md border border-border bg-background p-1.5" value={month} max={currentMonth()} onChange={(e) => e.target.value && setMonth(e.target.value)} />
+            </label>
+          </div>
         </div>
+        {data && (
+          <div className="grid gap-3 sm:grid-cols-4">
+            {data.byApp.map((a) => (
+              <button
+                key={a.app}
+                type="button"
+                onClick={() => setApp(app === a.app ? "" : a.app)}
+                className={`rounded-lg border bg-surface p-3 text-left ${app === a.app ? "border-primary-600" : "border-border"}`}
+              >
+                <p className="text-lg font-bold">{kes(a.earnedThisMonth)}</p>
+                <p className="text-sm text-secondary-500">{APP_LABEL[a.app]} earnings this month</p>
+              </button>
+            ))}
+          </div>
+        )}
         <p className="text-sm text-secondary-500">
-          People earn only when Zaroda has the money: a share of a shop&apos;s commission once its invoice is paid, a share of each subscription it pays, and a bonus on its second subscription. Earnings are{" "}
+          People earn only when Zaroda has the money, with the same team rates in every app (POS, online shop, construction, rentals): the subscription rate on each plan payment, the commission rate on each paid fee invoice (online shop fees, construction payout fees, rent collection fees), and a bonus on the business&apos;s second plan payment. Adverts and SMS bundles do not count. Earnings are{" "}
           <b>pending</b> until {settings?.holdDays ?? 30} days after the month ends, then <b>payable</b>. Payable balances of at least {kes(settings?.payoutMinKes ?? 500)} are paid on the{" "}
           {settings?.payoutDay ?? 5}th of each month; smaller balances carry over.
         </p>

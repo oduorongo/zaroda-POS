@@ -14,6 +14,7 @@ const KIND: Record<string, string> = {
   LEADER_OVERRIDE: "Leader share of the team",
   ONBOARDING_BONUS: "Onboarding bonus",
 };
+const APP: Record<string, string> = { POS: "POS", ONLINE_SHOP: "Online shop", CONSTRUCTION: "Construction", RENTALS: "Rentals" };
 
 function currentMonth() {
   const now = new Date(Date.now() + 3 * 60 * 60 * 1000);
@@ -91,7 +92,8 @@ function EarningsBody({ me }: { me: TeamMe }) {
           <p className="text-sm text-secondary-500">
             {kes(data.thisMonth.commissionShare)} commission share · {kes(data.thisMonth.subscriptionShare)} subscription share
             {isLeader ? ` · ${kes(data.thisMonth.leaderOverride)} leader share of the team` : ""} · {kes(data.thisMonth.onboardingBonus)} bonuses
-            {data.thisMonth.adjustments !== 0 ? ` · ${kes(data.thisMonth.adjustments)} refund adjustments` : ""}. Only money Zaroda has actually received counts. Balances under{" "}
+            {data.thisMonth.adjustments !== 0 ? ` · ${kes(data.thisMonth.adjustments)} refund adjustments` : ""}.
+            {data.thisMonth.byApp.length > 1 ? ` By app: ${data.thisMonth.byApp.map((a) => `${APP[a.app]} ${kes(a.total)}`).join(", ")}.` : ""} Only money Zaroda has actually received counts. Balances under{" "}
             {kes(data.payoutTerms.minimumKes)} carry over to the next payout.
             {data.payoutTerms.withholdingTaxRate > 0 ? ` Withholding tax of ${Math.round(data.payoutTerms.withholdingTaxRate * 10000) / 100}% is deducted from each payout.` : ""}{" "}
             {data.payoutDetails.gateway ? `You are paid by ${data.payoutDetails.gateway === "MPESA_B2C" ? "M-Pesa" : "TUMA"} to ${data.payoutDetails.account}.` : "Payouts to you are recorded by hand."}
@@ -115,7 +117,7 @@ function EarningsBody({ me }: { me: TeamMe }) {
           <section className="space-y-2">
             <h2 className="font-semibold">What you earned</h2>
             {data.lines.length === 0 ? (
-              <EmptyState title="Nothing earned in this month" description="Earnings appear here when a shop you signed up pays its commission or its first subscription." />
+              <EmptyState title="Nothing earned in this month" description="Earnings appear here when a business you signed up (POS, online shop, construction or rentals) pays its plan or its fees." />
             ) : (
               <ul className="space-y-2">
                 {data.lines.map((l) => (
@@ -123,7 +125,7 @@ function EarningsBody({ me }: { me: TeamMe }) {
                     <div>
                       <p className="font-semibold">{l.shop}</p>
                       <p className="text-secondary-500">
-                        {KIND[l.kind]}
+                        {APP[l.app]} · {KIND[l.kind]}
                         {l.rate != null ? ` · ${Math.round(l.rate * 10000) / 100}% of ${kes(l.baseKes)}` : ""} · {new Date(l.earnedAt).toLocaleDateString("en-KE")}
                       </p>
                     </div>

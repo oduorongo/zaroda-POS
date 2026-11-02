@@ -1,5 +1,12 @@
 # Changelog
 
+## Sales team commission across every app (2026-11-02)
+
+- Marketing teams now earn from construction and ZARODA RENTALS as well as POS and the online shop, with the same team rates everywhere: the subscription rate on each plan payment (construction plans and extra projects, rentals subscriptions) and the commission rate on each paid fee (construction payout fees, rent collection fees). Adverts and SMS bundles do not count.
+- Each app is stopped only by its own unpaid plan (an unpaid POS plan no longer blocks construction earnings); the onboarding bonus is paid on the second plan payment in any app; the payout cap covers all the business's apps together.
+- Every earning records its app (`sales_earnings.sourceApp`, existing rows backfilled). Team earnings admin page: app filter and earnings per app this month; members see the app on each line.
+- Migration `20261226100000_sales_earning_app` (no RLS change).
+
 ## ZARODA RENTALS: short stays (Airbnb-style lets) (2026-11-02)
 
 - A vacant unit can be let by the night: nightly and Friday/Saturday rates, cleaning fee, fewest nights, most guests, check-in/out times, directions, door code (encrypted), cleaner, and an owner when managed for someone else. While on, it cannot take a lease or a Houses to let advert. Comes with Starter and Pay-as-you-collect.

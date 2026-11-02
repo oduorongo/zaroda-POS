@@ -17,6 +17,7 @@ import { CreateShopRiderDto } from '../riders/dto/rider.dto';
 import { AddMemberDto, OnboardTenantByAgentDto, SetMemberStatusDto } from './dto/sales-portal.dto';
 import {
   EarningsMonthQueryDto,
+  EarningsOverviewQueryDto,
   ManualPayoutDto,
   PayoutsQueryDto,
   RecordSalesAdjustmentDto,
@@ -273,8 +274,8 @@ export class SalesEarningsAdminController {
   @Public()
   @UseGuards(PlatformAdminAuthGuard)
   @Get()
-  overview(@Query() query: EarningsMonthQueryDto) {
-    return this.earnings.overview(query.month);
+  overview(@Query() query: EarningsOverviewQueryDto) {
+    return this.earnings.overview(query.month, query.app);
   }
 
   @Public()
