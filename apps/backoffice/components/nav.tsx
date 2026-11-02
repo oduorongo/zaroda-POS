@@ -63,8 +63,8 @@ export function Nav({ session }: { session: Session }) {
   if (session.industryType === "CONSTRUCTION") return <ConHeader session={{ ...session, orgName: orgName ?? session.orgName }} me={conMe} />;
 
   return (
-    <TopRibbon appName={orgName ?? "Back Office"} homeHref={homePath(session.role, session.industryType)} LinkComponent={Link}>
-      {orgName && <span className="hidden text-xs text-white/60 lg:inline">Back Office</span>}
+    <TopRibbon appName={session.industryType === "RENTAL" ? "ZARODA RENTALS" : (orgName ?? "Back Office")} homeHref={homePath(session.role, session.industryType)} LinkComponent={Link}>
+      {orgName && <span className="hidden text-xs text-white/60 lg:inline">{session.industryType === "RENTAL" ? orgName : "Back Office"}</span>}
       {!caretaker && (
       <RibbonLink href="/dashboard" LinkComponent={Link} active={pathname === "/dashboard"}>
         <LayoutGrid size={14} />

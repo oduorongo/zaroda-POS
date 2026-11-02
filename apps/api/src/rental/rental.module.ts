@@ -1,4 +1,5 @@
 import { Module, OnModuleInit } from '@nestjs/common';
+import { RentalPublicPlansController } from './rental-public-plans.controller';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
@@ -55,7 +56,7 @@ import { RentalListingAdminService } from './rental-listing-admin.service';
   ],
   // Platform admin records and waives the landlords' ZARODA invoices.
   exports: [RentalPlatformPaymentsService, RentalListingAdminService],
-  controllers: [RentalPlatformCallbackController, RentalSubscriptionController, RentalController, RentalListingsController, RentalListingCallbackController, PublicHousesController, RentalTenantAuthController, RentalTenantPortalController, RentalOpsController, RentalMpesaController, RentalCallbackController],
+  controllers: [RentalPlatformCallbackController, RentalSubscriptionController, RentalController, RentalListingsController, RentalListingCallbackController, PublicHousesController, RentalTenantAuthController, RentalTenantPortalController, RentalOpsController, RentalMpesaController, RentalCallbackController, RentalPublicPlansController],
   providers: [
     RentalService,
     RentalListingsService,

@@ -5,7 +5,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { login, getOrganization, ApiError } from "../../lib/api";
 import { setSession, clearSession, decodeRole, homePath, isBackofficeRole, isCaretaker } from "../../lib/auth";
-import { constructionUrl, currentProduct, hasConstructionDomain } from "../../lib/product";
+import { constructionUrl, currentProduct, hasConstructionDomain, hasRentalsDomain, rentalsUrl } from "../../lib/product";
 
 const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:3001";
 const TERMINAL_URL = process.env.NEXT_PUBLIC_TERMINAL_URL ?? "https://pos.zarodashop.com";
@@ -40,6 +40,12 @@ export default function LoginPage() {
       if (industryType === "CONSTRUCTION" && hasConstructionDomain() && currentProduct() === "POS") {
         clearSession();
         window.location.href = constructionUrl("/construction/login");
+        return;
+      }
+      // So has ZARODA RENTALS: landlords and caretakers sign in there.
+      if (industryType === "RENTAL" && hasRentalsDomain() && currentProduct() === "POS") {
+        clearSession();
+        window.location.href = rentalsUrl("/rentals/login");
         return;
       }
       setSession({ apiBaseUrl, accessToken, role, email: email.trim(), industryType });
