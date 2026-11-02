@@ -321,6 +321,9 @@ export class RentalService {
     if (!(await tx.rentalTenant.findUnique({ where: { id: dto.tenantId } }))) {
       throw new NotFoundException('Tenant not found');
     }
+    if (await tx.rentalStayUnit.findFirst({ where: { unitId: unit.id, active: true }, select: { id: true } })) {
+      throw new ConflictException('This unit is let by the night (Short stays). Switch short stays off for it first.');
+    }
     // The partial unique index is the real guard against a race; this gives the friendly message.
     if (unit.status === 'OCCUPIED') {
       throw new ConflictException('This unit is already occupied. End its current lease first.');

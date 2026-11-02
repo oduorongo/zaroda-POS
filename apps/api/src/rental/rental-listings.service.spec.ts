@@ -20,6 +20,7 @@ const dto = {
 function setup(opts: { unitStatus?: 'VACANT' | 'OCCUPIED'; photoCount?: number } = {}) {
   const tx = {
     rentalUnit: { findUnique: jest.fn().mockResolvedValue({ id: UNIT, status: opts.unitStatus ?? 'VACANT' }) },
+    rentalStayUnit: { findFirst: jest.fn().mockResolvedValue(null) },
     rentalListing: {
       upsert: jest.fn().mockImplementation(({ create }) => Promise.resolve({ id: LISTING, photos: [], paidUntil: null, ...create })),
       findUnique: jest.fn().mockResolvedValue({ id: LISTING, unitId: UNIT, isActive: true, paidUntil: null, photos: [] }),
