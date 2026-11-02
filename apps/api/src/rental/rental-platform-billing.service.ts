@@ -175,7 +175,10 @@ export class RentalPlatformBillingService {
 
   // ── Notices ─────────────────────────────────────────────────────────────
 
+  /** The landlord's Rentals screen: on RENTALS_DOMAIN (ZARODA RENTALS) once it is set, else the back office. Always https on .app. */
   private backofficeUrl(): string | null {
+    const domain = this.config.get<string>('RENTALS_DOMAIN')?.trim().replace(/^https?:\/\//, '').replace(/\/+$/, '');
+    if (domain) return `https://${domain}/rentals`;
     const base = this.config.get<string>('BACKOFFICE_BASE_URL');
     return base ? `${base.replace(/\/+$/, '')}/rentals` : null;
   }

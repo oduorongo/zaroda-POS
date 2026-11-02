@@ -81,6 +81,7 @@ export class RentalListingsService {
       const unit = await tx.rentalUnit.findUnique({ where: { id: unitId } });
       if (!unit) throw new NotFoundException('Unit not found');
       if (unit.status !== 'VACANT') throw new ConflictException('Only an empty unit can be advertised.');
+      if (await tx.rentalStayUnit.findFirst({ where: { unitId, active: true }, select: { id: true } })) throw new ConflictException('This unit is let by the night (Short stays), so it cannot be advertised as a house to let.');
       const data = {
         title: dto.title,
         unitType: dto.unitType,

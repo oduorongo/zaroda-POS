@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { RentalsSection } from "../components/rentals-section";
 import Link from "next/link";
 import { Card, CardContent, Badge } from "@zaroda/ui";
 import CapabilityGrid from "../components/capability-grid";
@@ -92,6 +93,8 @@ export default function LandingPage() {
       <CapabilityGrid />
 
       <OnlineShopSection />
+
+      <RentalsSection />
 
       <section className="border-t border-border bg-surface py-16">
         <div className="mx-auto max-w-6xl px-6">

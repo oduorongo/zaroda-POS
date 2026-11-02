@@ -20,7 +20,7 @@ Phase prompts live in `prompts/construction/`.
 - Documents (certificates, permits, drawings, photos) go to object storage with `expiresAt` where applicable;
   expiry alerts at 60/30/7 days.
 - Code style: short, minimal working versions; no unnecessary comments.
-- Brand: navy #1a2e5a, gold #d4af37, orange #f5820a. Mobile-first for site screens (supervisors use phones).
+- Brand: navy #0f1f45, gold #d4af37, orange #f5820a. Mobile-first for site screens (supervisors use phones).
 - Plans, limits and features come from `con_plans` (docs/construction/05-pricing-plans.md). Gate features with
   `@ConFeature()` and limits server-side; show an upgrade prompt, never a silent failure. External portal users are free.
 - Construction is served at `CONSTRUCTION_DOMAIN` (build.zarodasolutions.app) via host-based middleware — see

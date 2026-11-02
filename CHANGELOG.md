@@ -1,5 +1,24 @@
 # Changelog
 
+## ZARODA RENTALS: short stays (Airbnb-style lets) (2026-11-02)
+
+- A vacant unit can be let by the night: nightly and Friday/Saturday rates, cleaning fee, fewest nights, most guests, check-in/out times, directions, door code (encrypted), cleaner, and an owner when managed for someone else. While on, it cannot take a lease or a Houses to let advert. Comes with Starter and Pay-as-you-collect.
+- Bookings direct or from Airbnb / Booking.com / other sites (their price, fee and confirmation code typed as shown). No double bookings: clashes with other bookings, hand-made blocks and booking-site calendars are refused. Check in, check out (early check-out moves the cleaning), change dates, no-show, cancel. Payments and refunds with receipt numbers, voided not deleted; payouts from the booking sites.
+- Calendar sync both ways by iCal: each unit reads its Airbnb / Booking.com calendars every hour (booking sites' addresses only, https, redirects checked) and offers its own calendar link per site (busy dates only, no guest details; a new link cuts off the old).
+- Night-by-night calendar for all units, cleaning list (made with each booking, due on check-out day, marked done by the caretaker or cleaner), owners with commission and monthly owner statements (nights shared across months, booking-site fees, commission, unit expenses, payable; CSV).
+- Guest messages for direct bookings (confirmation, directions and door code the day before, thank-you) and a text to the cleaner at check-out: text when switched on, else email; each sent once.
+- Caretakers work the calendar, bookings, payments and cleaning for their properties only. New Short stays tab in Rentals; rentals guide, welcome page and POS marketing advert updated.
+- Migration `20261225100000_rental_short_stays` then apply-rls. e2e-rental-stays 69 checks.
+
+## Construction C9: power-line contractors (2026-11-02)
+
+- EPRA licences: the company's EPRA electrical contractor licence is a compliance document with its class (A1, A2, B, C1, C2). The highest line voltage each class covers is a company setting on the Compliance page (confirm with EPRA). Electrical tenders and projects take the line voltage; saving one without a valid EPRA licence that covers it is refused, unless the Director overrides with a reason (like the NCA cap). Electricians' EPRA licences are recorded per person on Staff, with expiry alerts at 60/30/7 days.
+- Free-issue (client-supplied) materials per project: items, received / issued / returned / damaged moves, balances on hand; issuing more than is on hand is refused. Kept apart from the company's own stock. CSV download.
+- Line sections (chainage from-to km) with targets for poles, stays, conductor km, transformers and services, and daily progress per section with percentages per section and for the whole line.
+- Wayleaves (landowner, parcel, chainage, compensation, status, signed consent file), crossings (road, rail, river, pipeline, power line; authority approvals with expiry alerts and file), and the as-built asset register (poles, stays, transformers, switchgear, services with tag, serial and GPS; CSV for handover).
+- Project page gains a "Power line" tab; the site screens gain "Line work" for phones (today's progress, record a pole with the phone's GPS, client materials). All writes audited; tables carry RLS.
+- Migration `20261224100000_construction_power_lines` then apply-rls. Demo: Uriri Builders gets the Rongo-Kamagambo 11 kV REREC line. e2e-con-powerlines 55 checks.
+
 ## VAT on purchases follows eTIMS (2026-11-01)
 
 - KRA only allows VAT on purchases to be claimed from the supplier's eTIMS invoice. VAT on a bill or expense now counts as claimable only with the supplier's KRA PIN and the eTIMS invoice number, or when the bill or expense is linked to the invoice KRA holds (then KRA's VAT figure is used and it is marked "checked with KRA"). Without them the VAT is a cost, in the books and on the VAT return.

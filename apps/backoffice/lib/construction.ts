@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { ApiError } from "./api";
 import { getSession, type Session } from "./auth";
 
-export const CON_BRAND = { navy: "#1a2e5a", gold: "#d4af37", orange: "#f5820a" };
+export const CON_BRAND = { navy: "#0f1f45", gold: "#d4af37", orange: "#f5820a" };
 
 /**
  * The site photo (public/con-guide.jpg) behind a page, under a veil of the page colour so tables and forms stay readable in either
@@ -147,7 +147,7 @@ export async function withChecks<T>(send: (extra: { confirm?: boolean; overrideR
         extra.confirm = true;
         continue;
       }
-      if (e.status === 400 && e.data.capExceeded && canOverride) {
+      if (e.status === 400 && (e.data.capExceeded || e.data.epraFailed) && canOverride) {
         const reason = window.prompt(`${e.message}\n\nAs Director you may go ahead. Give the reason (it is kept in the record):`);
         if (!reason?.trim()) return null;
         extra.overrideReason = reason.trim();

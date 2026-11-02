@@ -38,6 +38,7 @@ export class TendersService {
       isPublic: t.isPublic,
       agpoReserved: t.agpoReserved,
       worksClass: t.worksClass,
+      voltageKv: t.voltageKv === null ? null : Number(t.voltageKv),
       worksClassLabel: WORKS_CLASS_LABELS[t.worksClass],
       estValue: Number(t.estValue),
       closingAt: t.closingAt,
@@ -65,6 +66,7 @@ export class TendersService {
       isPublic: dto.isPublic ?? true,
       agpoReserved: dto.agpoReserved ?? false,
       worksClass: dto.worksClass,
+      voltageKv: dto.worksClass === 'ELEC_MECH' && dto.voltageKv ? dto.voltageKv : null,
       estValue: dto.estValue,
       closingAt: dto.closingAt ? new Date(dto.closingAt) : null,
       bidBond: dto.bidBond ?? null,
@@ -78,8 +80,8 @@ export class TendersService {
       const before = id ? await tx.conTender.findUnique({ where: { id } }) : null;
       if (id && !before) throw new NotFoundException('Tender not found');
       if (before && before.status !== 'PREPARING') throw new ConflictException(`This tender is ${before.status.toLowerCase()} and can no longer be edited.`);
-      const valueChanged = !before || Number(before.estValue) !== dto.estValue || before.worksClass !== dto.worksClass;
-      const cap = valueChanged ? await enforceCap(tx, this.compliance, con, dto.worksClass, dto.estValue, dto.overrideReason) : {};
+      const valueChanged = !before || Number(before.estValue) !== dto.estValue || before.worksClass !== dto.worksClass || Number(before.voltageKv ?? 0) !== (dto.voltageKv ?? 0);
+      const cap = valueChanged ? await enforceCap(tx, this.compliance, con, dto.worksClass, dto.estValue, dto.overrideReason, dto.voltageKv) : {};
       const after = before
         ? await tx.conTender.update({ where: { id: before.id }, data: { ...this.data(dto), ...cap } })
         : await tx.conTender.create({ data: { organizationId: con.organizationId, createdBy: con.orgUserId, ...this.data(dto), ...cap } });
@@ -123,6 +125,7 @@ export class TendersService {
           name: t.title,
           clientId: client.id,
           worksClass: t.worksClass,
+          voltageKv: t.voltageKv === null ? undefined : Number(t.voltageKv),
           contractSum: sum,
           formOfContract: t.isPublic ? 'PPADA' : 'JBC',
           tenderId: t.id,

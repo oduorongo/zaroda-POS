@@ -116,6 +116,18 @@ VAT, PAYE, NSSF, SHIF, Housing Levy and tips held, as the books stand. Record a 
 
 ---
 
+## Power lines (electrical contractors)
+For line extensions such as REREC and KPLC jobs, choose **Electrical & mechanical** as the works class and enter the **line voltage (kV)** on the tender or project.
+- **EPRA licence**: the Compliance Officer uploads the company's EPRA electrical contractor licence as a compliance document and picks its class. Under **EPRA licence classes** on the Compliance page, set the highest voltage each class covers (confirm the limits with EPRA). A tender or project whose voltage is not covered by a valid licence is refused; only the Director can override it, with a reason.
+- **Electricians' licences**: on **Staff**, use **Add EPRA licence** under each person. Expiry alerts come at 60, 30 and 7 days.
+- **Power line tab** on the project: the Project Manager adds the line's **sections** (from km to km) with targets for poles, stays, conductor, transformers and services. Progress shows per section and for the whole line.
+- **Wayleaves**: each landowner, parcel, chainage, compensation and status (pending, agreed, refused, paid), with the signed consent attached. **Crossings**: road, rail, river, pipeline or power-line crossings, with the authority's approval, its expiry and the file.
+- **Client-supplied materials** (free issue): poles, conductor and transformers the client hands over are kept apart from your own stock. Record what is received, issued to a section, returned or damaged; you cannot issue more than is on hand.
+- **As-built register**: every pole, stay, transformer and service with its tag, serial number and GPS. Download it as CSV for handover.
+- **On the phone**: the site supervisor opens **Site > Line work** to record today's progress, record a pole while standing at it (tap **Use my position**), and log client materials.
+
+---
+
 ## Reports
 Open **Reports** in the top bar. Pick a report, then a project (or all your projects) and dates if you want.
 - **Excel** downloads a spreadsheet. **Print / PDF** opens a printable page; choose "Save as PDF" in the print window.

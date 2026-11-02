@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { apiPost, ApiError } from "../../lib/api";
+import { RENTALS_URL } from "../../components/rentals-section";
 import { Button, Input, Label } from "@zaroda/ui";
 
 const INDUSTRY_TYPES = [
@@ -48,8 +49,9 @@ export default function SignupClient() {
   const [done, setDone] = useState(false);
   const [accessToken, setAccessToken] = useState<string | null>(null);
 
+  // A landlord is handed to ZARODA RENTALS' own site once it has one (its sessions are its own).
   const handoffUrl = accessToken
-    ? `${BACKOFFICE_URL}/auth/callback#token=${encodeURIComponent(accessToken)}&email=${encodeURIComponent(ownerEmail.trim())}`
+    ? `${rental && RENTALS_URL ? RENTALS_URL : BACKOFFICE_URL}/auth/callback#token=${encodeURIComponent(accessToken)}&email=${encodeURIComponent(ownerEmail.trim())}`
     : null;
 
   useEffect(() => {

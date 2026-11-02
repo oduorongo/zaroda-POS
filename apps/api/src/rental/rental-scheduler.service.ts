@@ -4,6 +4,7 @@ import { PrismaService } from '../common/prisma/prisma.service';
 import { RentalBillingService } from './rental-billing.service';
 import { RentalMpesaService } from './rental-mpesa.service';
 import { RentalRemindersService } from './rental-reminders.service';
+import { RentalStaysService } from './stays/stays.service';
 import { trimCaretakersToPlan } from './rental-plans.service';
 import { RentalPlatformBillingService } from './rental-platform-billing.service';
 
@@ -31,6 +32,7 @@ export class RentalSchedulerService implements OnModuleInit, OnModuleDestroy {
     private readonly mpesa: RentalMpesaService,
     private readonly reminders: RentalRemindersService,
     private readonly platformBilling: RentalPlatformBillingService,
+    private readonly stays: RentalStaysService,
     private readonly config: ConfigService,
   ) {}
 
@@ -76,6 +78,8 @@ export class RentalSchedulerService implements OnModuleInit, OnModuleDestroy {
         await this.mpesa.reconcileDaraja(org.id).catch((e) => this.logger.warn({ err: e }, 'Rent prompt reconcile failed'));
         // Rent reminders for landlords who switched them on (daytime only; each stage goes out once).
         await this.reminders.runForOrganization(org.id).catch((e) => this.logger.warn({ err: e }, 'Rent reminders failed'));
+        // Short stays: read Airbnb / Booking.com calendars and send guests their arrival details.
+        await this.stays.runForOrganization(org.id).catch((e) => this.logger.warn({ err: e }, 'Short stays pass failed'));
       }
       if (created > 0) this.logger.log({ created }, 'Rental invoices created');
     } catch (e) {

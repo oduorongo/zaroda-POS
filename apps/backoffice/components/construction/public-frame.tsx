@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { ThemeToggle } from "@zaroda/ui";
+import { BackButton, ThemeToggle } from "@zaroda/ui";
 import { CON_BRAND, conBackdrop } from "../../lib/construction";
 
 /** Construction's public pages (landing, pricing, login, signup). Links use the paths middleware maps on CONSTRUCTION_DOMAIN. */
@@ -11,11 +11,14 @@ export function PublicFrame({ children, backdrop }: { children: ReactNode; backd
     <div className="min-h-screen bg-background text-foreground" style={backdrop ? conBackdrop(0.5) : undefined}>
       <header className="sticky top-0 z-40 text-white shadow" style={{ background: CON_BRAND.navy }}>
         <div className="mx-auto flex max-w-5xl items-center justify-between gap-3 px-4 py-3">
+          <div className="flex items-center gap-2">
+          <BackButton homeHref="/construction/welcome" />
           <Link href="/construction/welcome" className="flex items-center gap-2 no-underline">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="/zaroda-logo-white.png" alt="Zaroda" className="h-9 w-auto" />
             <span className="text-sm font-extrabold uppercase tracking-widest" style={{ color: CON_BRAND.gold }}>Build</span>
           </Link>
+          </div>
           <nav className="flex items-center gap-3 text-sm">
             <Link href="/construction/pricing" className="text-white/85 no-underline hover:text-white">Pricing</Link>
             <Link href="/construction/guide" className="hidden text-white/85 no-underline hover:text-white sm:inline">Guide</Link>

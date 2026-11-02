@@ -19,12 +19,17 @@ const MAX_FILE = 10 * 1024 * 1024;
 const CONTRACT_ROLES: ConRoleCode[] = ['CON_CONTRACTS_MGR', 'CON_QS', 'CON_ACCOUNTANT', 'CON_PROCUREMENT', 'CON_COMPLIANCE', 'CON_SHE_OFFICER', 'CON_PROJECT_MGR', 'CON_SITE_ENGINEER', 'CON_SITE_SUPERVISOR'];
 const FILE_TYPES: Record<string, string> = { 'application/pdf': 'pdf', 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' };
 
-/** Checks the NCA cap; above it only a Director may go ahead, with a reason that is kept. */
-export async function enforceCap(tx: Tx, compliance: ComplianceService, con: ConContext, worksClass: ConWorksClass, value: number, overrideReason?: string) {
-  const r = await compliance.capCheckIn(tx, con.organizationId, worksClass, value);
-  if (r.ok) return { capOverrideReason: null, capOverrideBy: null };
-  if (!overrideReason?.trim()) throw new BadRequestException({ statusCode: 400, message: r.reason, capExceeded: true });
-  if (!isDirector(con)) throw new ForbiddenException(r.reason);
+/**
+ * Checks the NCA cap and, for an electrical line (voltageKv), the EPRA licence class (docs/construction/07). If either fails only a
+ * Director may go ahead, with a reason that is kept.
+ */
+export async function enforceCap(tx: Tx, compliance: ComplianceService, con: ConContext, worksClass: ConWorksClass, value: number, overrideReason?: string, voltageKv?: number | null) {
+  const nca = await compliance.capCheckIn(tx, con.organizationId, worksClass, value);
+  const epra = worksClass === 'ELEC_MECH' && voltageKv ? await compliance.epraCheckIn(tx, con.organizationId, voltageKv) : { ok: true as const, reason: undefined };
+  if (nca.ok && epra.ok) return { capOverrideReason: null, capOverrideBy: null };
+  const reason = [nca.ok ? null : nca.reason, epra.ok ? null : epra.reason].filter(Boolean).join(' ');
+  if (!overrideReason?.trim()) throw new BadRequestException({ statusCode: 400, message: reason, capExceeded: !nca.ok, epraFailed: !epra.ok });
+  if (!isDirector(con)) throw new ForbiddenException(reason);
   return { capOverrideReason: overrideReason.trim(), capOverrideBy: con.orgUserId };
 }
 
@@ -55,6 +60,7 @@ export class ProjectsService {
       tenderId: p.tenderId,
       officeId: p.officeId,
       worksClass: p.worksClass,
+      voltageKv: p.voltageKv === null ? null : Number(p.voltageKv),
       contractSum: Number(p.contractSum),
       revisedSum: num(p.revisedSum),
       formOfContract: p.formOfContract,
@@ -76,7 +82,7 @@ export class ProjectsService {
   async createIn(tx: Tx, con: ConContext, dto: ProjectDto & { tenderId?: string; capOverride?: { capOverrideReason: string | null; capOverrideBy: string | null } }) {
     const { organizationId, orgUserId } = con;
     await this.plans.assertCanAdd(tx, organizationId, 'activeProjects', await tx.conProject.count({ where: { status: { not: 'CLOSED' } } }));
-    const cap = dto.capOverride ?? (await enforceCap(tx, this.compliance, con, dto.worksClass, dto.contractSum, dto.overrideReason));
+    const cap = dto.capOverride ?? (await enforceCap(tx, this.compliance, con, dto.worksClass, dto.contractSum, dto.overrideReason, dto.voltageKv));
     if (dto.clientId && !(await tx.conParty.findUnique({ where: { id: dto.clientId } }))) throw new BadRequestException('That client was not found');
     if (dto.startDate && dto.completionDate && dto.completionDate < dto.startDate) throw new BadRequestException('Completion cannot be before the start.');
     const codes = (await tx.conProject.findMany({ select: { code: true } })).map((c) => c.code);
@@ -93,6 +99,7 @@ export class ProjectsService {
         tenderId: dto.tenderId ?? null,
         officeId: con.officeId ?? null,
         worksClass: dto.worksClass,
+        voltageKv: dto.worksClass === 'ELEC_MECH' && dto.voltageKv ? dto.voltageKv : null,
         contractSum: dto.contractSum,
         formOfContract: dto.formOfContract ?? 'JBC',
         startDate: date(dto.startDate),
@@ -170,8 +177,8 @@ export class ProjectsService {
     return this.tenantPrisma.run(async (tx) => {
       const before = await this.load(tx, projectId);
       if (before.status === 'CLOSED') throw new ConflictException('A closed project cannot be changed.');
-      const valueChanged = Number(before.contractSum) !== dto.contractSum || before.worksClass !== dto.worksClass;
-      const cap = valueChanged ? await enforceCap(tx, this.compliance, con, dto.worksClass, dto.contractSum, dto.overrideReason) : {};
+      const valueChanged = Number(before.contractSum) !== dto.contractSum || before.worksClass !== dto.worksClass || Number(before.voltageKv ?? 0) !== (dto.voltageKv ?? 0);
+      const cap = valueChanged ? await enforceCap(tx, this.compliance, con, dto.worksClass, dto.contractSum, dto.overrideReason, dto.voltageKv) : {};
       if (dto.clientId && !(await tx.conParty.findUnique({ where: { id: dto.clientId } }))) throw new BadRequestException('That client was not found');
       const code = dto.code?.trim().toUpperCase();
       if (code && code !== before.code && (await tx.conProject.findFirst({ where: { code } }))) throw new ConflictException(`Project code ${code} is already used`);
@@ -182,6 +189,7 @@ export class ProjectsService {
           name: dto.name.trim(),
           clientId: dto.clientId ?? null,
           worksClass: dto.worksClass,
+          voltageKv: dto.worksClass === 'ELEC_MECH' && dto.voltageKv ? dto.voltageKv : null,
           contractSum: dto.contractSum,
           formOfContract: dto.formOfContract ?? before.formOfContract,
           startDate: date(dto.startDate),

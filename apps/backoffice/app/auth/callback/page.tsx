@@ -44,7 +44,7 @@ export default function AuthCallbackPage() {
         const { industryType } = await getOrganization(apiBaseUrl, token);
         setSession({ apiBaseUrl, accessToken: token, role, email, industryType });
         history.replaceState(null, "", window.location.pathname);
-        router.replace(homePath(role));
+        router.replace(homePath(role, industryType));
       } catch {
         router.replace("/login");
       }

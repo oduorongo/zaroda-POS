@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { RentalsSection } from "../../components/rentals-section";
 import Link from "next/link";
 import { Card, CardContent, Badge } from "@zaroda/ui";
 import { FeatureIllustration, type IllustrationKey } from "../../components/feature-illustrations";
@@ -80,6 +81,8 @@ export default function IndustriesPage() {
           </div>
         </div>
       </section>
+
+      <RentalsSection />
 
       <section className="border-t border-border bg-surface py-16 text-center">
         <div className="mx-auto max-w-3xl px-6">

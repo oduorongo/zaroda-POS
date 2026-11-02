@@ -6,8 +6,8 @@ import { TenantScopedPrismaService } from '../../common/prisma/tenant-scoped-pri
 import { PrivateObjectStorageService } from '../../common/storage/private-object-storage.service';
 import { getTenantStore } from '../../common/tenant/tenant-context';
 import { Tx } from '../common/con-access';
-import { CategoryLimitDto, ComplianceDocDto, RegistrationDto, TaxSettingDto } from '../dto/construction.dto';
-import { DOC_LABELS, REQUIRED_DOCS, WORKS_CLASS_LABELS, capCheck, complianceHealth, daysLeft, expiryState, todayKey } from './compliance.util';
+import { CategoryLimitDto, ComplianceDocDto, EpraClassDto, RegistrationDto, TaxSettingDto } from '../dto/construction.dto';
+import { DOC_LABELS, EPRA_CLASSES, REQUIRED_DOCS, WORKS_CLASS_LABELS, capCheck, complianceHealth, daysLeft, epraCheck, expiryState, todayKey } from './compliance.util';
 
 export const MAX_DOC_BYTES = 10 * 1024 * 1024;
 const FILE_TYPES: Record<string, string> = { 'application/pdf': 'pdf', 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' };
@@ -92,6 +92,7 @@ export class ComplianceService {
       issuedAt: day(d.issuedAt),
       expiresAt: expires,
       projectId: d.projectId,
+      epraClass: d.epraClass,
       notes: d.notes,
       hasFile: !!d.fileKey,
       fileName: d.fileName,
@@ -108,7 +109,8 @@ export class ComplianceService {
 
   private docData(dto: ComplianceDocDto) {
     if (dto.issuedAt && dto.expiresAt && dto.expiresAt < dto.issuedAt) throw new BadRequestException('It cannot expire before it was issued.');
-    return { type: dto.type, title: dto.title.trim(), refNo: dto.refNo?.trim() || null, issuedAt: date(dto.issuedAt), expiresAt: date(dto.expiresAt), projectId: dto.projectId ?? null, notes: dto.notes?.trim() || null };
+    if (dto.type === 'EPRA_LICENCE' && !EPRA_CLASSES.some((c) => c.code === dto.epraClass)) throw new BadRequestException('Choose the EPRA licence class (A1, A2, B, C1 or C2).');
+    return { type: dto.type, title: dto.title.trim(), refNo: dto.refNo?.trim() || null, issuedAt: date(dto.issuedAt), expiresAt: date(dto.expiresAt), projectId: dto.projectId ?? null, epraClass: dto.type === 'EPRA_LICENCE' ? dto.epraClass! : null, notes: dto.notes?.trim() || null };
   }
 
   async createDoc(dto: ComplianceDocDto) {
@@ -222,6 +224,40 @@ export class ComplianceService {
   capCheck(worksClass: ConWorksClass, value: number) {
     const { organizationId } = getTenantStore();
     return this.tenantPrisma.run((tx) => this.capCheckIn(tx, organizationId, worksClass, value));
+  }
+
+  // ── EPRA licence classes (docs/construction/07 s1) ──
+
+  private epraView = (c: { code: string; label: string; anyVoltage: boolean; maxVoltageKv: unknown }) => ({ code: c.code, label: c.label, anyVoltage: c.anyVoltage, maxVoltageKv: num(c.maxVoltageKv) });
+
+  /** The company's EPRA classes, made from the defaults on first use. */
+  private async epraClassesIn(tx: Tx, organizationId: string) {
+    await tx.conEpraClass.createMany({ data: EPRA_CLASSES.map((c) => ({ organizationId, ...c })), skipDuplicates: true });
+    return tx.conEpraClass.findMany({ orderBy: { code: 'asc' } });
+  }
+
+  async listEpraClasses() {
+    const { organizationId } = getTenantStore();
+    return (await this.tenantPrisma.run((tx) => this.epraClassesIn(tx, organizationId))).map(this.epraView);
+  }
+
+  async updateEpraClass(code: string, dto: EpraClassDto) {
+    const { organizationId } = getTenantStore();
+    if (!dto.anyVoltage && dto.maxVoltageKv === undefined) throw new BadRequestException('Say the highest line voltage this class allows, or tick "any voltage".');
+    return this.tenantPrisma.run(async (tx) => {
+      await this.epraClassesIn(tx, organizationId);
+      const before = await tx.conEpraClass.findUnique({ where: { organizationId_code: { organizationId, code } } });
+      if (!before) throw new NotFoundException('EPRA class not found');
+      const after = await tx.conEpraClass.update({ where: { id: before.id }, data: { anyVoltage: dto.anyVoltage, maxVoltageKv: dto.anyVoltage ? null : dto.maxVoltageKv } });
+      await this.audit.logInTx(tx, { action: 'con_epra_class.updated', entityType: 'ConEpraClass', entityId: after.id, before, after });
+      return this.epraView(after);
+    });
+  }
+
+  /** Whether the company's valid EPRA licences cover a line of this voltage. Used by tenders and projects. */
+  async epraCheckIn(tx: Tx, organizationId: string, voltageKv: number) {
+    const [licences, classes] = await Promise.all([tx.conComplianceDoc.findMany({ where: { type: 'EPRA_LICENCE' }, select: { epraClass: true, expiresAt: true } }), this.epraClassesIn(tx, organizationId)]);
+    return epraCheck(voltageKv, licences.map((l) => ({ epraClass: l.epraClass, expiresAt: day(l.expiresAt) })), classes.map(this.epraView), todayKey());
   }
 
   // ── Tax settings ──

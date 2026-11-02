@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
-import { ThemeToggle } from "@zaroda/ui";
+import { BackButton, ThemeToggle } from "@zaroda/ui";
 import { Bell } from "lucide-react";
 import { apiGet } from "../../lib/api";
 import { clearSession, type Session } from "../../lib/auth";
@@ -45,6 +45,8 @@ export function ConHeader({ session, me }: { session: Session; me: ConMe | null 
     <header className="sticky top-0 z-40 text-white shadow" style={{ background: CON_BRAND.navy }}>
       <style>{conBackdropCss(0.62)}</style>
       <div className="flex items-center justify-between gap-3 px-3 py-2 sm:px-5">
+        <div className="flex min-w-0 items-center gap-2">
+        <BackButton homeHref="/construction" />
         <Link href="/construction" className="flex min-w-0 items-center gap-2 no-underline">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/zaroda-logo-white.png" alt="Zaroda" className="h-8 w-auto" />
@@ -52,6 +54,7 @@ export function ConHeader({ session, me }: { session: Session; me: ConMe | null 
             {session.orgName ?? "Zaroda Build"}
           </span>
         </Link>
+        </div>
         <div className="flex shrink-0 items-center gap-2">
           <MessagesBell />
           <ThemeToggle className="text-white hover:bg-white/10 hover:text-white" />
