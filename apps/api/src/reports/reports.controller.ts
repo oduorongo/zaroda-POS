@@ -3,6 +3,7 @@ import { Role } from '@prisma/client';
 import { Roles } from '../auth/roles.decorator';
 import { ReportsService } from './reports.service';
 import { ReportFiltersDto } from './dto/report-filters.dto';
+import { MenuEngineeringQueryDto } from './dto/menu-engineering-query.dto';
 
 // JwtAuthGuard and RolesGuard are both global (see app.module.ts). Reports
 // reveal financial data across the whole branch/org, not just a cashier's
@@ -16,6 +17,11 @@ export class ReportsController {
   @Get('sales-by-product')
   salesByProduct(@Query() filters: ReportFiltersDto) {
     return this.reports.salesByProduct(filters);
+  }
+
+  @Get('menu-engineering')
+  menuEngineering(@Query() q: MenuEngineeringQueryDto) {
+    return this.reports.menuEngineering(q);
   }
 
   @Get('sales-by-branch')
