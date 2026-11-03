@@ -6,6 +6,7 @@
 - Each app is stopped only by its own unpaid plan (an unpaid POS plan no longer blocks construction earnings); the onboarding bonus is paid on the second plan payment in any app; the payout cap covers all the business's apps together.
 - Every earning records its app (`sales_earnings.sourceApp`, existing rows backfilled). Team earnings admin page: app filter and earnings per app this month; members see the app on each line.
 - Migration `20261226100000_sales_earning_app` (no RLS change).
+- Demo team: `pnpm --filter api seed:sales-demo` makes "Demo Sales Team" with a leader and a member (fresh passwords printed each run) and assigns them Demo Retail Co and Uriri Builders Ltd.
 
 ## ZARODA RENTALS: short stays (Airbnb-style lets) (2026-11-02)
 
