@@ -1,5 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { assertPlanAllows } from '../common/plans/plan-limits';
 import { TenantScopedPrismaService } from '../common/prisma/tenant-scoped-prisma.service';
+import { getTenantStore } from '../common/tenant/tenant-context';
 import { CreateTerminalDto, UpdateTerminalDto } from './dto/terminal.dto';
 
 @Injectable()
@@ -12,6 +14,7 @@ export class TerminalsService {
         where: { id: dto.branchId },
       });
       if (!branch) throw new NotFoundException('Branch not found');
+      await assertPlanAllows(tx, getTenantStore().organizationId, 'TERMINAL');
 
       return tx.terminal.create({
         data: { branchId: dto.branchId, deviceLabel: dto.deviceLabel },

@@ -175,6 +175,7 @@ model Organization {
   deliveryQuotes            DeliveryQuote[]
   deliveryJobContacts       DeliveryJobContact[]
   conSubscription           ConSubscription?
+  stockSyncKeys             StockSyncKey[]
   conSubscriptionPayments   ConSubscriptionPayment[]
   conRoles                  ConRole[]
   conUserRoles              ConUserRole[]
@@ -2696,6 +2697,8 @@ model OnlineStore {
   fulfilmentBranchId           String?
   pickupEnabled                Boolean  @default(true)
   deliveryEnabled              Boolean  @default(false)
+  // Units held back online, so an item stops selling online before the shop's other POS sells the last one.
+  onlineStockBuffer            Int      @default(0)
   /// Counties this shop delivers to. Empty = just the county of its fulfilment branch. Pickup, hotel and rental bookings are never limited by distance.
   deliveryCounties             String[] @default([])
   tumaEmail                    String?
@@ -3225,6 +3228,7 @@ model SalesTeam {
   organizations Organization[]
   riders        Rider[]
   earnings      SalesEarning[]
+  setupFees     SalesSetupFee[]
 
   @@map("sales_teams")
 }
@@ -3253,6 +3257,7 @@ model SalesAgent {
   riders        Rider[]
   earnings      SalesEarning[]
   payouts       SalesPayout[]
+  setupFees     SalesSetupFee[]
 
   @@index([teamId])
   @@map("sales_agents")
@@ -7837,4 +7842,65 @@ model AiInsight {
 
   @@index([organizationId, kind, createdAt])
   @@map("ai_insights")
+}
+
+/// A shop's key for its other POS to send stock and prices to ZARODA (PUT /stock-sync). Only the hash is kept.
+model StockSyncKey {
+  id             String    @id @default(uuid())
+  organizationId String
+  // The branch whose stock the key updates.
+  branchId       String
+  name           String
+  prefix         String    @unique
+  keyHash        String
+  lastUsedAt     DateTime?
+  requests       Int       @default(0)
+  revokedAt      DateTime?
+  createdBy      String?
+  createdAt      DateTime  @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@map("stock_sync_keys")
+}
+
+/// The setup fee a team member may charge, by business type and size (industryType "ANY" = every type without its own row).
+model SalesSetupFeeRate {
+  id           String   @id @default(uuid())
+  industryType String
+  // SMALL | MEDIUM | LARGE
+  size         String
+  minKes       Decimal  @db.Decimal(12, 2)
+  maxKes       Decimal  @db.Decimal(12, 2)
+  updatedAt    DateTime @updatedAt
+
+  @@unique([industryType, size])
+  @@map("sales_setup_fee_rates")
+}
+
+/// A setup fee a team member charged a business they set up and kept in cash. ZARODA never pays it out; one per business.
+/// A mistake is voided (with a reason), never deleted.
+model SalesSetupFee {
+  id               String    @id @default(uuid())
+  organizationId   String
+  organizationName String
+  teamId           String
+  agentId          String
+  industryType     String
+  size             String
+  amountKes        Decimal   @db.Decimal(12, 2)
+  receiptNo        String    @unique
+  note             String?
+  receivedAt       DateTime  @default(now())
+  voidedAt         DateTime?
+  voidReason       String?
+  createdAt        DateTime  @default(now())
+
+  team  SalesTeam  @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  agent SalesAgent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([agentId, receivedAt])
+  @@map("sales_setup_fees")
 }

@@ -20,3 +20,9 @@ export class SetSuspensionDto {
   @IsBoolean()
   suspended!: boolean;
 }
+
+export class ChangePlanDto {
+  @IsString()
+  @MaxLength(40)
+  planTier!: string;
+}

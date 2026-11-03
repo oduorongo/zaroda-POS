@@ -26,6 +26,7 @@ import { ReportsModule } from './reports/reports.module';
 import { OrgUsersModule } from './org-users/org-users.module';
 import { StockTransfersModule } from './stock-transfers/stock-transfers.module';
 import { StockTakesModule } from './stock-takes/stock-takes.module';
+import { StockSyncModule } from './stock-sync/stock-sync.module';
 import { CustomersModule } from './customers/customers.module';
 import { OrganizationsModule } from './organizations/organizations.module';
 import { BranchesModule } from './branches/branches.module';
@@ -130,6 +131,7 @@ import { DeliveryModule } from './delivery/delivery.module';
     RosterModule,
     StockTransfersModule,
     StockTakesModule,
+    StockSyncModule,
     PurchasingModule,
     EtimsModule,
     RepackagingModule,

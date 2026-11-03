@@ -3,12 +3,15 @@ import {
   IsArray,
   IsBoolean,
   IsEmail,
+  IsInt,
   IsIn,
   IsOptional,
   IsString,
   IsUUID,
   Matches,
+  Max,
   MaxLength,
+  Min,
   MinLength,
 } from 'class-validator';
 
@@ -54,6 +57,13 @@ export class UpdateOnlineStoreDto {
   @IsBoolean()
   @IsOptional()
   deliveryEnabled?: boolean;
+
+  // Units of each item held back online (0 = sell everything in stock).
+  @IsInt()
+  @Min(0)
+  @Max(1000)
+  @IsOptional()
+  onlineStockBuffer?: number;
 
   // Counties the shop delivers to (checked against the 47 counties in the service). Empty = its own branch's county.
   @IsArray()

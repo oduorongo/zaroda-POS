@@ -15,6 +15,8 @@ async function bootstrap() {
   // import carries up to 5,000 rows. Everything else keeps the usual 100 KB limit. The import's own parser must come first.
   const app = await NestFactory.create(AppModule, { bufferLogs: true, bodyParser: false });
   app.use('/products/import', json({ limit: '5mb' }));
+  app.use('/products/stock-update', json({ limit: '5mb' }));
+  app.use('/stock-sync', json({ limit: '5mb' }));
   app.use(json());
   app.use(urlencoded({ extended: true }));
   // a request over its limit is a clear 413, not an "internal error"
