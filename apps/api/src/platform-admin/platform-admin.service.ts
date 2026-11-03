@@ -9,7 +9,7 @@ import { OnboardTenantDto } from './dto/onboard-tenant.dto';
 import { RecordPaymentDto } from './dto/record-payment.dto';
 import { SetOnlineStoreAddonDto, UpdateOrganizationDto } from './dto/update-organization.dto';
 import { DEFAULT_COMMISSION_RATE } from '../online-store/online-store.constants';
-import { effectiveStatus, needsDeviceSubscription } from './subscriptions.util';
+import { effectiveStatus, FREE_PLAN_UNTIL, isFreePlan, needsDeviceSubscription, ONLINE_ONLY_TIER } from './subscriptions.util';
 
 const SALT_ROUNDS = 10;
 
@@ -254,7 +254,8 @@ export class PlatformAdminService {
           data: { organizationId, name: dto.branchName, county: dto.county, subCounty: dto.subCounty },
         });
 
-        const terminalCount = dto.terminalCount ?? 1;
+        const free = needsDeviceSubscription(dto.industryType) && isFreePlan(plan);
+        const terminalCount = plan.tier === ONLINE_ONLY_TIER ? 0 : dto.terminalCount ?? 1;
         for (let i = 1; i <= terminalCount; i++) {
           await tx.terminal.create({
             data: { branchId: branch.id, deviceLabel: `Register ${i}` },
@@ -271,10 +272,13 @@ export class PlatformAdminService {
               data: {
                 organizationId,
                 planId: plan.id,
-                currentPeriodEnd: new Date(Date.now() + (options.trial ? 14 : plan.billingPeriodDays) * 24 * 60 * 60 * 1000),
-                isTrial: options.trial ?? false,
+                currentPeriodEnd: free ? FREE_PLAN_UNTIL : new Date(Date.now() + (options.trial ? 14 : plan.billingPeriodDays) * 24 * 60 * 60 * 1000),
+                isTrial: free ? false : options.trial ?? false,
               },
             });
+        if (subscription && plan.tier === ONLINE_ONLY_TIER) {
+          await tx.onlineStore.create({ data: { organizationId, addonActive: true } });
+        }
 
         return { organizationId, branchId: branch.id, subscriptionId: subscription?.id ?? null };
       }, TX_OPTIONS);
@@ -306,6 +310,7 @@ export class PlatformAdminService {
     });
     if (!subscription) throw new NotFoundException('This tenant has no subscription');
     if (subscription.plan.billingCycle === 'SEASONAL') throw new BadRequestException('This business is on a seasonal plan: record the payment against its instalment (Seasonal billing)');
+    if (isFreePlan(subscription.plan)) throw new BadRequestException(`This business is on the free ${subscription.plan.name} plan: there is nothing to pay`);
 
     const base = subscription.currentPeriodEnd > new Date() ? subscription.currentPeriodEnd : new Date();
     const newPeriodEnd = new Date(base.getTime() + subscription.plan.billingPeriodDays * 24 * 60 * 60 * 1000);

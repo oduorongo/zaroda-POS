@@ -15,7 +15,7 @@ import { PinLoginDto } from './dto/pin-login.dto';
 import { RegisterOrganizationDto } from './dto/register-organization.dto';
 import { JwtPayload } from './jwt.strategy';
 import { PinLockoutService } from './pin-lockout.service';
-import { needsDeviceSubscription } from '../platform-admin/subscriptions.util';
+import { FREE_PLAN_UNTIL, needsDeviceSubscription, ONLINE_ONLY_TIER } from '../platform-admin/subscriptions.util';
 import { SeasonalBillingService } from '../seasonal-billing/seasonal-billing.service';
 
 const SALT_ROUNDS = 10;
@@ -257,8 +257,13 @@ export class AuthService {
           // A rental landlord is the exception: their plan is the rental plan (free Bure to start), billed from the
           // rentals screens, so they get no device subscription or trial.
           // A school supplier starts on the seasonal (school-term) plan instead, billed from this term on.
-          const seasonalPlan = needsDeviceSubscription(dto.industryType) ? await this.seasonal.defaultPlanFor(tx, dto.industryType) : null;
-          if (seasonalPlan) {
+          const onlineOnly = dto.onlineOnly === true && needsDeviceSubscription(dto.industryType);
+          const seasonalPlan = needsDeviceSubscription(dto.industryType) && !onlineOnly ? await this.seasonal.defaultPlanFor(tx, dto.industryType) : null;
+          if (onlineOnly) {
+            const freePlan = await tx.plan.findUniqueOrThrow({ where: { tier: ONLINE_ONLY_TIER } });
+            await tx.subscription.create({ data: { organizationId, planId: freePlan.id, currentPeriodEnd: FREE_PLAN_UNTIL, isTrial: false } });
+            await tx.onlineStore.create({ data: { organizationId, addonActive: true } });
+          } else if (seasonalPlan) {
             await this.seasonal.startSubscription(tx, organizationId, seasonalPlan);
           } else if (needsDeviceSubscription(dto.industryType)) {
             const basicPlan = await tx.plan.findUniqueOrThrow({

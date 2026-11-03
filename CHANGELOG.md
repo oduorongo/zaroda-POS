@@ -1,5 +1,12 @@
 # Changelog
 
+## Free "Online Shop only" plan (2026-11-03)
+
+- New plan `ONLINE_ONLY` (KES 0, no tills, 1 branch) for a shop that sells in-store on another POS: never falls due (paid-up 2099, not a trial), recording a payment on it is refused, and its online shop add-on is switched on at sign-up. ZARODA earns the 3% shopper convenience fee; sales teams earn their commission rate on those fee invoices as usual.
+- Sign-up page: "I already have a POS and only want the online shop" (preset by `/signup?plan=online`); admin and sales-team onboarding can pick the plan (no tills are created). Pricing page: "Already have a POS? Online Shop only: KES 0".
+- My subscription shows the free plan; the AI Business Analyser stays for paid plans only. Plan editor accepts KES 0 and 0 tills.
+- Migration `20261227100000_online_only_plan` (adds the plan row; no RLS change).
+
 ## Sales team commission across every app (2026-11-02)
 
 - Marketing teams now earn from construction and ZARODA RENTALS as well as POS and the online shop, with the same team rates everywhere: the subscription rate on each plan payment (construction plans and extra projects, rentals subscriptions) and the commission rate on each paid fee (construction payout fees, rent collection fees). Adverts and SMS bundles do not count.

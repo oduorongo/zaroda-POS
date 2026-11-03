@@ -7,10 +7,10 @@ export const QUESTION_MAX = 500;
 
 /** Why a business cannot use the analyser, or null. Only paying businesses (not on trial, not suspended) get it. */
 export function accessProblem(
-  sub: { currentPeriodEnd: Date; graceDays: number; isTrial: boolean; manuallySuspended: boolean; plan?: { billingCycle: string } | null } | null,
+  sub: { currentPeriodEnd: Date; graceDays: number; isTrial: boolean; manuallySuspended: boolean; plan?: { billingCycle: string; priceKes?: unknown } | null } | null,
   now = new Date(),
 ): string | null {
-  if (!sub) return 'The AI Business Analyser comes with a paid Zaroda plan.';
+  if (!sub || (sub.plan?.priceKes != null && Number(sub.plan.priceKes) === 0)) return 'The AI Business Analyser comes with a paid Zaroda plan.';
   const s = effectiveStatus(sub, now);
   if (s === 'TRIAL') return 'The AI Business Analyser comes with a paid plan. Pay for your plan to switch it on.';
   if (s !== 'ACTIVE' && s !== 'GRACE') return 'Your plan needs paying before the AI Business Analyser can be used.';

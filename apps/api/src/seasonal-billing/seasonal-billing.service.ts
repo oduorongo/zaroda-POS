@@ -6,7 +6,7 @@ import { TenantScopedPrismaService } from '../common/prisma/tenant-scoped-prisma
 import { getTenantStore } from '../common/tenant/tenant-context';
 import { AfricasTalkingSmsProvider } from '../notifications/africas-talking-sms.provider';
 import { normalizeKenyanPhone } from '../online-orders/online-orders.util';
-import { effectiveStatus } from '../platform-admin/subscriptions.util';
+import { effectiveStatus, isFreePlan } from '../platform-admin/subscriptions.util';
 import { nairobiDayOf } from '../reports/profit.util';
 import { paidUntil, payInFull, reminderFor, reminderText, SeasonalRules, signupSchedule, TermRule, yearSchedule } from './seasonal.util';
 
@@ -117,6 +117,7 @@ export class SeasonalBillingService {
       const full = payInFull(sub.instalments.map((i) => ({ ...i, amount: num(i.amount) })), offerYear, on, rules);
       return {
         cycle: sub.plan.billingCycle,
+        free: isFreePlan(sub.plan),
         plan: { name: sub.plan.name, annualPriceKes: num(sub.plan.annualPriceKes ?? sub.plan.priceKes) },
         status: effectiveStatus(sub),
         instalments,

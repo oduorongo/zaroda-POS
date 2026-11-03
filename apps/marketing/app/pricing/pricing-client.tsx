@@ -29,7 +29,7 @@ export default function PricingClient() {
   useEffect(() => {
     void (async () => {
       try {
-        setPlans(await apiGet<Plan[]>("/public/plans"));
+        setPlans((await apiGet<Plan[]>("/public/plans")).filter((p) => p.tier !== "ONLINE_ONLY"));
       } catch (err) {
         setError(err instanceof ApiError ? err.message : "Could not load pricing right now.");
       } finally {
@@ -104,6 +104,16 @@ export default function PricingClient() {
           If a monthly invoice stays unpaid, your online shop is paused until it is settled. Your till keeps working as normal.
           To switch the add-on on, contact Zaroda after you sign up.
         </p>
+        <div className="mt-6 rounded-lg border border-border bg-background p-4">
+          <h3 className="text-lg font-bold text-foreground">Already have a POS? Online Shop only: KES 0</h3>
+          <p className="mt-1 text-sm text-secondary-500">
+            Keep selling in-store on your current system and sell online with Zaroda for free: no monthly fee, no tills. Your online shop is on from the
+            day you sign up; you add your products and prices in the back office. Zaroda earns only the 3% convenience fee your shoppers pay.
+          </p>
+          <Link href="/signup?plan=online" className="mt-3 inline-block rounded-md bg-primary-600 px-4 py-2 text-sm font-semibold text-white hover:bg-primary-700">
+            Sign up free
+          </Link>
+        </div>
       </section>
     </main>
   );

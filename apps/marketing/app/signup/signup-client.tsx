@@ -43,6 +43,13 @@ export default function SignupClient() {
   const [subCounty, setSubCounty] = useState("");
   // Landlords start on the free Bure plan (up to 5 occupied units), not a 14-day trial, so the wording differs.
   const rental = industryType === "RENTAL";
+  // A shop on another POS: the free Online Shop only plan, no trial.
+  const [onlineOnlyChosen, setOnlineOnly] = useState(false);
+  const onlineOnly = onlineOnlyChosen && !rental;
+
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("plan") === "online") setOnlineOnly(true);
+  }, []);
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -75,6 +82,7 @@ export default function SignupClient() {
         branchName: branchName.trim(),
         county: county.trim() || undefined,
         subCounty: subCounty.trim() || undefined,
+        onlineOnly: onlineOnly || undefined,
       });
       setAccessToken(response.accessToken);
       setDone(true);
@@ -92,7 +100,9 @@ export default function SignupClient() {
     return (
       <main className="mx-auto max-w-md px-6 py-24 text-center">
         <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-success-600 text-2xl text-white">✓</div>
-        <h1 className="mt-4 text-2xl font-bold text-foreground">{rental ? "You’re in — your free landlord account is ready" : "You’re in — 14-day free trial started"}</h1>
+        <h1 className="mt-4 text-2xl font-bold text-foreground">
+          {rental ? "You’re in — your free landlord account is ready" : onlineOnly ? "You’re in — your free online shop is ready" : "You’re in — 14-day free trial started"}
+        </h1>
         <p className="mt-2 text-secondary-500">Taking you to your back office...</p>
         {handoffUrl && (
           <a
@@ -108,11 +118,13 @@ export default function SignupClient() {
 
   return (
     <main className="mx-auto max-w-md px-6 py-16">
-      <h1 className="text-2xl font-bold text-foreground">{rental ? "Create your free landlord account" : "Start your free trial"}</h1>
+      <h1 className="text-2xl font-bold text-foreground">{rental ? "Create your free landlord account" : onlineOnly ? "Open your free online shop" : "Start your free trial"}</h1>
       <p className="mt-1 text-sm text-secondary-500">
         {rental
           ? "Free for up to 5 occupied units, no card required. Add your properties and tenants right away, and upgrade only when you need more."
-          : "14 days, no card required. Set up your first branch and register now."}
+          : onlineOnly
+            ? "Free, with no monthly fee: keep your current POS for in-store sales. Shoppers pay a 3% convenience fee on their orders."
+            : "14 days, no card required. Set up your first branch and register now."}
       </p>
 
       <div className="mt-6 space-y-4">
@@ -130,6 +142,15 @@ export default function SignupClient() {
             {INDUSTRY_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
           </select>
         </div>
+        {!rental && (
+          <label className="flex items-start gap-2 rounded-md border border-border bg-surface p-3 text-sm text-foreground">
+            <input type="checkbox" className="mt-1" checked={onlineOnlyChosen} onChange={(e) => setOnlineOnly(e.target.checked)} />
+            <span>
+              <b>I already have a POS and only want the online shop</b>
+              <span className="block text-secondary-500">Free Online Shop only plan: no tills, no monthly fee.</span>
+            </span>
+          </label>
+        )}
         <div>
           <Label>{rental ? "Office or main property name" : "First branch name"}</Label>
           <Input value={branchName} onChange={(e) => setBranchName(e.target.value)} placeholder={rental ? "e.g. Head Office" : "e.g. Main Branch"} />
@@ -160,7 +181,7 @@ export default function SignupClient() {
         {error && <p className="text-sm text-error-600">{error}</p>}
 
         <Button onClick={() => void submit()} disabled={submitting || !canSubmit} size="lg" className="w-full">
-          {submitting ? "Creating your account..." : rental ? "Create free account" : "Start free trial"}
+          {submitting ? "Creating your account..." : rental || onlineOnly ? "Create free account" : "Start free trial"}
         </Button>
       </div>
     </main>

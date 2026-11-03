@@ -37,3 +37,10 @@ describe('cleanQuestion', () => {
     expect(cleanQuestion('x'.repeat(900))!.length).toBe(500);
   });
 });
+
+describe('accessProblem - free plan', () => {
+  it('is not given to the free Online Shop only plan, even though it never falls due', () => {
+    expect(accessProblem({ ...sub({}), plan: { billingCycle: 'MONTHLY', priceKes: 0 } }, now)).toMatch(/paid/);
+    expect(accessProblem({ ...sub({}), plan: { billingCycle: 'MONTHLY', priceKes: 2500 } }, now)).toBeNull();
+  });
+});
