@@ -12,6 +12,7 @@ const prisma = new PrismaClient();
  * Run: pnpm --filter api seed:plans
  */
 const DEFAULT_PLANS = [
+  { tier: "ONLINE_ONLY", name: "Online Shop only", priceKes: 0, maxDevices: 0, maxBranches: 1 },
   { tier: "BASIC", name: "Basic", priceKes: 2500, maxDevices: 1, maxBranches: 1 },
   { tier: "STANDARD", name: "Standard", priceKes: 6000, maxDevices: 3, maxBranches: 1 },
   { tier: "PREMIUM", name: "Premium", priceKes: 15000, maxDevices: 10, maxBranches: 5 },

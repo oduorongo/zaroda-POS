@@ -1,4 +1,5 @@
 import {
+  IsBoolean,
   IsEmail,
   IsIn,
   IsOptional,
@@ -63,4 +64,9 @@ export class RegisterOrganizationDto {
   @IsOptional()
   @MaxLength(100)
   terminalLabel?: string;
+
+  // A shop that sells in-store on another POS: starts on the free Online Shop only plan with the online shop on.
+  @IsBoolean()
+  @IsOptional()
+  onlineOnly?: boolean;
 }

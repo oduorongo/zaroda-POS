@@ -59,7 +59,7 @@ export class AiService {
     const { organizationId } = getTenantStore();
     const sub = await this.prisma.subscription.findUnique({
       where: { organizationId },
-      include: { plan: { select: { billingCycle: true } } },
+      include: { plan: { select: { billingCycle: true, priceKes: true } } },
     });
     return accessProblem(sub);
   }

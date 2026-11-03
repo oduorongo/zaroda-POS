@@ -1,7 +1,7 @@
-import { IsBoolean, IsIn, IsInt, IsNumber, IsOptional, IsPositive, IsString, MaxLength, MinLength } from 'class-validator';
+import { IsBoolean, IsIn, IsInt, IsNumber, IsOptional, IsPositive, IsString, MaxLength, Min, MinLength } from 'class-validator';
 import { PartialType } from '@nestjs/mapped-types';
 
-const TIERS = ['BASIC', 'STANDARD', 'PREMIUM', 'SEASONAL'] as const;
+const TIERS = ['ONLINE_ONLY', 'BASIC', 'STANDARD', 'PREMIUM', 'SEASONAL'] as const;
 
 export class CreatePlanDto {
   @IsIn(TIERS)
@@ -13,11 +13,11 @@ export class CreatePlanDto {
   name!: string;
 
   @IsNumber()
-  @IsPositive()
+  @Min(0)
   priceKes!: number;
 
   @IsInt()
-  @IsPositive()
+  @Min(0)
   maxDevices!: number;
 
   @IsInt()

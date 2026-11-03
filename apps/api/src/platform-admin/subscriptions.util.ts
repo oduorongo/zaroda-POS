@@ -32,3 +32,12 @@ export function effectiveStatus(sub: SubscriptionLike, now: Date = new Date()): 
 export function needsDeviceSubscription(industryType: string): boolean {
   return industryType !== 'RENTAL' && industryType !== 'CONSTRUCTION';
 }
+
+/** The free "Online Shop only" plan: for a shop that sells in-store on another POS. No tills; ZARODA earns the 3% shopper fee. */
+export const ONLINE_ONLY_TIER = 'ONLINE_ONLY';
+/** A free plan never falls due, so its paid-up date is set far ahead and it is never a trial. */
+export const FREE_PLAN_UNTIL = new Date('2099-12-31T00:00:00Z');
+
+export function isFreePlan(plan: { priceKes: unknown }): boolean {
+  return Number(plan.priceKes) === 0;
+}
