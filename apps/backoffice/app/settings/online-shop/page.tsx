@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { apiDelete, apiGet, apiPatch, apiPost, ApiError } from "../../../lib/api";
@@ -19,6 +20,7 @@ interface OnlineStore {
   fulfilmentBranchId: string | null;
   pickupEnabled: boolean;
   deliveryEnabled: boolean;
+  onlineStockBuffer: number;
   deliveryCounties: string[];
   tumaEmail: string | null;
   tumaConnected: boolean;
@@ -96,6 +98,7 @@ export default function OnlineShopSettingsPage() {
   const [fulfilmentBranchId, setFulfilmentBranchId] = useState("");
   const [pickupEnabled, setPickupEnabled] = useState(true);
   const [deliveryEnabled, setDeliveryEnabled] = useState(false);
+  const [stockBuffer, setStockBuffer] = useState("0");
   const [deliveryCounties, setDeliveryCounties] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -151,6 +154,7 @@ export default function OnlineShopSettingsPage() {
     setFulfilmentBranchId(result.fulfilmentBranchId ?? "");
     setPickupEnabled(result.pickupEnabled);
     setDeliveryEnabled(result.deliveryEnabled);
+    setStockBuffer(String(result.onlineStockBuffer ?? 0));
     setDeliveryCounties(result.deliveryCounties ?? []);
     setTumaEmail(result.tumaEmail ?? "");
     setPayTab(result.paymentGateway ?? "TUMA");
@@ -194,6 +198,7 @@ export default function OnlineShopSettingsPage() {
         fulfilmentBranchId: fulfilmentBranchId || undefined,
         pickupEnabled,
         deliveryEnabled,
+        onlineStockBuffer: Math.max(0, Math.min(1000, Math.floor(Number(stockBuffer) || 0))),
         deliveryCounties,
       });
       applyStore(result);
@@ -626,6 +631,15 @@ export default function OnlineShopSettingsPage() {
                   <label className="flex items-center gap-2 text-sm">
                     <input type="checkbox" checked={deliveryEnabled} onChange={(e) => setDeliveryEnabled(e.target.checked)} className="h-4 w-4" />
                     Offer delivery (a rider brings the order)
+                  </label>
+                  <label className="block text-sm">
+                    Stock buffer: hold back
+                    <input type="number" min={0} max={1000} value={stockBuffer} onChange={(e) => setStockBuffer(e.target.value)} className="mx-2 w-20 rounded-md border border-border bg-surface p-1 text-sm" />
+                    of each item online
+                    <span className="block text-xs text-secondary-500">
+                      For a shop that also sells in-store on another POS: an item stops selling online when only this many are left, so you never sell online what
+                      was just sold in the shop. 0 = sell everything in stock. <Link href="/stock-update" className="underline">Update stock from another POS</Link>
+                    </span>
                   </label>
                 </div>
                 {deliveryEnabled && (

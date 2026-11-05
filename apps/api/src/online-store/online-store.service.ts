@@ -38,6 +38,7 @@ export function toTenantView(store: OnlineStore | null) {
     fulfilmentBranchId: store?.fulfilmentBranchId ?? null,
     pickupEnabled: store?.pickupEnabled ?? true,
     deliveryEnabled: store?.deliveryEnabled ?? false,
+    onlineStockBuffer: store?.onlineStockBuffer ?? 0,
     deliveryCounties: store?.deliveryCounties ?? [],
     tumaEmail: store?.tumaEmail ?? null,
     tumaConnected: Boolean(store?.tumaApiKeyEncrypted),
@@ -129,6 +130,7 @@ export class OnlineStoreService {
           fulfilmentBranchId: dto.fulfilmentBranchId,
           pickupEnabled: dto.pickupEnabled,
           deliveryEnabled: dto.deliveryEnabled,
+          onlineStockBuffer: dto.onlineStockBuffer,
           deliveryCounties: dto.deliveryCounties === undefined ? undefined : countiesOrThrow(dto.deliveryCounties),
           isPublished: dto.isPublished,
         };

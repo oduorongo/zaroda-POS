@@ -20,7 +20,7 @@ import { PlatformAuditLogService } from './platform-audit-log.service';
 import { PlatformAdminLoginDto } from './dto/platform-admin-login.dto';
 import { CreatePlanDto, UpdatePlanDto } from './dto/create-plan.dto';
 import { OnboardTenantDto } from './dto/onboard-tenant.dto';
-import { RecordPaymentDto, SetSuspensionDto } from './dto/record-payment.dto';
+import { ChangePlanDto, RecordPaymentDto, SetSuspensionDto } from './dto/record-payment.dto';
 import { SetOnlineStoreAddonDto, SetOrganizationActiveDto, UpdateOrganizationDto } from './dto/update-organization.dto';
 import { ResetUserPasswordDto } from './dto/reset-user-password.dto';
 import { CommissionService } from '../online-store/commission.service';
@@ -270,6 +270,21 @@ export class PlatformAdminController {
       organizationId: id,
     });
     return result;
+  }
+
+  @Public()
+  @UseGuards(PlatformAdminAuthGuard)
+  @Patch('organizations/:id/plan')
+  async changePlan(@Req() req: PlatformAdminRequest, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ChangePlanDto) {
+    const result = await this.platformAdmin.changePlan(id, dto.planTier);
+    await this.auditLog.log({
+      platformAdminId: req.user!.platformAdminId,
+      action: `platform_admin.changed_plan:${result.from}->${result.to}`,
+      entityType: 'Subscription',
+      entityId: result.subscription.id,
+      organizationId: id,
+    });
+    return result.subscription;
   }
 
   @Public()

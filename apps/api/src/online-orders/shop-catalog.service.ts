@@ -13,6 +13,7 @@ const TX_OPTIONS = { timeout: 15_000, maxWait: 15_000 };
 const MAX_DIRECTORY_SHOPS = 60;
 
 export interface LiveShop {
+  onlineStockBuffer: number;
   organizationId: string;
   slug: string;
   displayName: string;
@@ -81,6 +82,7 @@ export class ShopCatalogService {
         hotelBlocked: store.hotelBlockedAt !== null,
         tableOrderingBlocked: store.tableOrderingBlockedAt !== null,
         reservationsEnabled: store.reservationsEnabled,
+        onlineStockBuffer: store.onlineStockBuffer,
       });
     }, TX_OPTIONS);
   }
@@ -93,7 +95,7 @@ export class ShopCatalogService {
    * open orders (for that dish or any other dish sharing them) are holding. So a dish drops off the menu the moment
    * an ingredient runs out, and nobody can order what the kitchen can no longer make.
    */
-  async availableQuantities(tx: TenantTx, branchId: string, variantIds: string[]): Promise<Map<string, number>> {
+  async availableQuantities(tx: TenantTx, branchId: string, variantIds: string[], buffer = 0): Promise<Map<string, number>> {
     if (variantIds.length === 0) return new Map();
     const heldLines = await tx.onlineOrderLine.findMany({
       where: {
@@ -119,7 +121,10 @@ export class ShopCatalogService {
     }
     const items = await tx.inventoryItem.findMany({ where: { branchId, variantId: { in: [...stockIds] } } });
     const onHand = new Map(items.map((i) => [i.variantId, Number(i.quantity)]));
-    return availablePortions(variantIds, recipes, onHand, held);
+    const available = availablePortions(variantIds, recipes, onHand, held);
+    // The shop's online buffer: units kept back so the online shop stops before its other POS sells the last one.
+    if (buffer > 0) for (const [id, q] of available) available.set(id, Math.max(0, q - buffer));
+    return available;
   }
 
   /**
@@ -251,6 +256,7 @@ export class ShopCatalogService {
         tx,
         shop.fulfilmentBranchId,
         products.flatMap((p) => p.variants.map((v) => v.id)),
+        shop.onlineStockBuffer,
       );
       const branch = await tx.branch.findUnique({
         where: { id: shop.fulfilmentBranchId },

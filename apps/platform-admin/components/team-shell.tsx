@@ -8,7 +8,7 @@ import { ApiError } from "../lib/api";
 import { clearTeamSession, getTeamSession } from "../lib/team-auth";
 import { teamMe, type TeamMe } from "../lib/team-api";
 
-type Page = "home" | "shops" | "riders" | "members" | "earnings";
+type Page = "home" | "shops" | "riders" | "members" | "earnings" | "setup-fees";
 
 /**
  * The frame for every marketing-team screen: the navy ribbon, the sign-in check, and a hold on everything but the
@@ -69,6 +69,9 @@ export function TeamShell({ active, children }: { active: Page; children: (me: T
             </RibbonLink>
             <RibbonLink href="/team/earnings" LinkComponent={Link} active={active === "earnings"}>
               Earnings
+            </RibbonLink>
+            <RibbonLink href="/team/setup-fees" LinkComponent={Link} active={active === "setup-fees"}>
+              Setup fees
             </RibbonLink>
             {isLeader && (
               <RibbonLink href="/team/members" LinkComponent={Link} active={active === "members"}>

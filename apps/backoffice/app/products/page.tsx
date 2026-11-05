@@ -329,6 +329,9 @@ export default function ProductsPage() {
             {canEdit && (
               <button onClick={() => setImportOpen((v) => !v)} className="rounded-md border border-border px-3 py-2 text-sm hover:bg-secondary-500/10">Import CSV</button>
             )}
+            {canEdit && (
+              <Link href="/stock-update" className="rounded-md border border-border px-3 py-2 text-sm hover:bg-secondary-500/10">Update stock from another POS</Link>
+            )}
           </div>
         </div>
         {error && <p className="mb-4 rounded-md bg-red-950 p-3 text-sm text-red-300">{error}</p>}

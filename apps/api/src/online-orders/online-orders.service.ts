@@ -233,7 +233,7 @@ export class OnlineOrdersService {
             if (variants.length !== wanted.size) {
               throw new BadRequestException('Some items in your cart are no longer available - refresh the shop and try again');
             }
-            const available = await this.catalog.availableQuantities(tx, shop.fulfilmentBranchId, [...wanted.keys()]);
+            const available = await this.catalog.availableQuantities(tx, shop.fulfilmentBranchId, [...wanted.keys()], shop.onlineStockBuffer);
 
             const lines = variants.map((v) => {
               const quantity = wanted.get(v.id)!;

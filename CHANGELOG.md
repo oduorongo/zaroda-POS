@@ -1,5 +1,15 @@
 # Changelog
 
+## Online shop for shops on another POS, plan limits, team setup fees (2026-11-03)
+
+- Plan limits are now enforced: adding a till or branch beyond the plan is refused with an upgrade message (the system's own online-shop, front-desk, school and construction terminals do not count; what exists keeps working). The free Online Shop only plan has no tills, and its self sign-up no longer makes one. Unpaid plans are still only a warning label.
+- Platform admin can change a business's plan (business page): onto a free plan nothing falls due; free to paid starts a 14-day trial; paid to paid keeps the paid-up date. Audited.
+- Update stock from another POS (back office, /stock-update): upload the other system's stock list as CSV (SKU or barcode, stock and/or price; common column names such as item_code, qty and selling_price understood), preview, then apply in one go. Stock changes are stock-count movements; price changes are audited.
+- Automatic sync: an owner makes a sync key (shown once, hash kept, can be switched off) and the other POS sends `PUT /stock-sync` with up to 5,000 rows; applies at once unless dryRun. New table `stock_sync_keys` (RLS, with a prefix-only lookup like construction API keys).
+- Online stock buffer (Online shop settings): hold back N of each item online so it stops selling online before the other POS sells the last one. Sold-out items were already hidden from checkout.
+- Team setup fees: members record the one-off setup fee they charged a business they set up and kept in cash (one per business, receipt number SF-YYYY-XXXXXX), within the range the platform owner sets per size (small / medium / large) and optionally per business type. Not an earning, never paid out. Admin page Teams > Setup fees (ranges, totals per member, void with reason); members' portal page Setup fees (leaders see the team's).
+- Migration `20261228100000_stock_sync_setup_fees` (starting ranges KES 1,000-3,000 / 3,000-10,000 / 10,000-30,000) then apply-rls. Local checks: scripts/e2e-online-only.mjs (24) and e2e-online-only-admin.js (10).
+
 ## Free "Online Shop only" plan (2026-11-03)
 
 - New plan `ONLINE_ONLY` (KES 0, no tills, 1 branch) for a shop that sells in-store on another POS: never falls due (paid-up 2099, not a trial), recording a payment on it is refused, and its online shop add-on is switched on at sign-up. ZARODA earns the 3% shopper convenience fee; sales teams earn their commission rate on those fee invoices as usual.

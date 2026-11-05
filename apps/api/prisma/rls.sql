@@ -2118,3 +2118,17 @@ DROP POLICY IF EXISTS tenant_isolation ON ai_insights;
 CREATE POLICY tenant_isolation ON ai_insights
   USING ("organizationId" = current_setting('app.current_tenant', true))
   WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+-- stock_sync_keys: the shop's own keys, plus one narrow cross-business read - the key whose public prefix the sync request
+-- carries (app.current_sync_key_prefix, set by StockSyncService before the business is known). The hash is then checked in code.
+ALTER TABLE stock_sync_keys ENABLE ROW LEVEL SECURITY;
+ALTER TABLE stock_sync_keys FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON stock_sync_keys;
+CREATE POLICY tenant_isolation ON stock_sync_keys
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+DROP POLICY IF EXISTS sync_key_lookup ON stock_sync_keys;
+CREATE POLICY sync_key_lookup ON stock_sync_keys FOR SELECT
+  USING ("prefix" = current_setting('app.current_sync_key_prefix', true));
+-- sales_setup_fee_rates / sales_setup_fees: platform-level, like the other marketing team tables (no tenant; scoped in
+-- SalesSetupFeesService by the verified team member, and on rls-coverage.spec.ts's exclusion list).

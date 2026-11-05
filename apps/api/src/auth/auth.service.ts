@@ -209,7 +209,7 @@ export class AuthService {
         branchId: string | null;
       };
       branch: { id: string };
-      terminal: { id: string };
+      terminal: { id: string } | null;
     };
     try {
       result = await this.prisma.$transaction(
@@ -241,12 +241,16 @@ export class AuthService {
             data: { organizationId, name: dto.branchName, county: dto.county, subCounty: dto.subCounty },
           });
 
-          const terminal = await tx.terminal.create({
-            data: {
-              branchId: branch.id,
-              deviceLabel: dto.terminalLabel ?? 'Register 1',
-            },
-          });
+          const onlineOnly = dto.onlineOnly === true && needsDeviceSubscription(dto.industryType);
+          // An online-only shop sells in-store on its other POS, so it gets no till.
+          const terminal = onlineOnly
+            ? null
+            : await tx.terminal.create({
+                data: {
+                  branchId: branch.id,
+                  deviceLabel: dto.terminalLabel ?? 'Register 1',
+                },
+              });
 
           // Every self-registered tenant starts on a 14-day trial of the
           // entry-level plan - BASIC must exist (prisma/seed-plans.ts is a
@@ -257,7 +261,6 @@ export class AuthService {
           // A rental landlord is the exception: their plan is the rental plan (free Bure to start), billed from the
           // rentals screens, so they get no device subscription or trial.
           // A school supplier starts on the seasonal (school-term) plan instead, billed from this term on.
-          const onlineOnly = dto.onlineOnly === true && needsDeviceSubscription(dto.industryType);
           const seasonalPlan = needsDeviceSubscription(dto.industryType) && !onlineOnly ? await this.seasonal.defaultPlanFor(tx, dto.industryType) : null;
           if (onlineOnly) {
             const freePlan = await tx.plan.findUniqueOrThrow({ where: { tier: ONLINE_ONLY_TIER } });
@@ -312,7 +315,7 @@ export class AuthService {
       organizationId,
       orgUserId: orgUser.id,
       branchId: branch.id,
-      terminalId: terminal.id,
+      terminalId: terminal?.id ?? null,
     };
   }
 

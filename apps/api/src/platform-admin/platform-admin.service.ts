@@ -414,6 +414,33 @@ export class PlatformAdminService {
   }
 
   /**
+   * Moves a business to another device plan. Onto a free plan: nothing ever falls due. From a free plan onto a paid one: a 14-day
+   * trial before the first payment. Between paid plans: the paid-up date stays, the next payment is at the new price.
+   * Seasonal plans are moved from Seasonal billing. Tills and branches already set up keep working; only adding more is limited.
+   */
+  async changePlan(organizationId: string, planTier: string) {
+    const [subscription, plan] = await Promise.all([
+      this.prisma.subscription.findUnique({ where: { organizationId }, include: { plan: true } }),
+      this.prisma.plan.findUnique({ where: { tier: planTier } }),
+    ]);
+    if (!subscription) throw new NotFoundException('This business has no device plan');
+    if (!plan || !plan.active) throw new NotFoundException('No active plan with that tier');
+    if (plan.billingCycle === 'SEASONAL' || subscription.plan.billingCycle === 'SEASONAL') {
+      throw new BadRequestException('Seasonal (school-term) plans are changed from Seasonal billing');
+    }
+    if (plan.id === subscription.planId) throw new BadRequestException(`This business is already on the ${plan.name} plan`);
+    const toFree = isFreePlan(plan);
+    const fromFree = isFreePlan(subscription.plan);
+    const data = toFree
+      ? { planId: plan.id, currentPeriodEnd: FREE_PLAN_UNTIL, isTrial: false }
+      : fromFree
+        ? { planId: plan.id, currentPeriodEnd: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000), isTrial: true }
+        : { planId: plan.id };
+    const updated = await this.prisma.subscription.update({ where: { organizationId }, data, include: { plan: true } });
+    return { from: subscription.plan.tier, to: plan.tier, subscription: { ...updated, status: effectiveStatus(updated) } };
+  }
+
+  /**
    * Switches the paid Online Shop add-on on or off for one tenant - the
    * only way an online_stores row is ever created (a tenant can only
    * update an existing, active one). Switching off keeps every setting so

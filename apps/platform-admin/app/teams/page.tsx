@@ -106,6 +106,9 @@ export default function TeamsPage() {
             <Link href="/teams/earnings" className="rounded-md border border-border px-4 py-2 text-sm font-medium no-underline hover:bg-secondary-500/5">
               Earnings &amp; payouts
             </Link>
+            <Link href="/teams/setup-fees" className="rounded-md border border-border px-4 py-2 text-sm font-medium no-underline hover:bg-secondary-500/5">
+              Setup fees
+            </Link>
             <Button onClick={() => setShowNew((v) => !v)}>{showNew ? "Cancel" : "New team"}</Button>
           </div>
         </div>

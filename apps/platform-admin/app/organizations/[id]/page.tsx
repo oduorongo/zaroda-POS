@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { apiGet, apiPatch, ApiError } from "../../../lib/api";
+import { ChangePlan } from "./change-plan";
 import { getSession, type Session } from "../../../lib/auth";
 import { Nav } from "../../../components/nav";
 import { Badge } from "@zaroda/ui";
@@ -386,6 +387,7 @@ export default function OrganizationDetailPage() {
                   >
                     {togglingSuspend ? "..." : org.subscription.manuallySuspended ? "Reactivate tenant" : "Suspend tenant"}
                   </button>
+                  <ChangePlan organizationId={org.id} currentTier={org.subscription.plan.tier} onChanged={load} />
 
                   {org.subscription.payments.length > 0 && (
                     <div className="mt-4 border-t border-border pt-3">

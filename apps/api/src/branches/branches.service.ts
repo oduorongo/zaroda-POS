@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { assertPlanAllows } from '../common/plans/plan-limits';
 import { TenantScopedPrismaService } from '../common/prisma/tenant-scoped-prisma.service';
 import { getTenantStore } from '../common/tenant/tenant-context';
 import { CreateBranchDto, UpdateBranchDto } from './dto/branch.dto';
@@ -9,9 +10,10 @@ export class BranchesService {
 
   create(dto: CreateBranchDto) {
     const { organizationId } = getTenantStore();
-    return this.tenantPrisma.run((tx) =>
-      tx.branch.create({ data: { ...dto, organizationId } }),
-    );
+    return this.tenantPrisma.run(async (tx) => {
+      await assertPlanAllows(tx, organizationId, 'BRANCH');
+      return tx.branch.create({ data: { ...dto, organizationId } });
+    });
   }
 
   findAll() {
