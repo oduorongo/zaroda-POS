@@ -1,5 +1,10 @@
 # Changelog
 
+## Team portal moved to the back office (2026-11-09)
+
+- Sales team leaders and members now sign in at the back office (`/team/login` on app.zarodashop.com) instead of the platform admin. Same pages: home with training accounts, shops, riders, earnings, setup fees, members. Tab title "ZARODA Team".
+- The platform admin's old `/team/...` addresses forward to the same page on the back office when `NEXT_PUBLIC_BACKOFFICE_URL` is set on the platform admin; the team page's "sign in at" hint uses it too.
+
 ## Sales team training accounts (2026-11-09)
 
 - Every new sales team gets 8 training businesses, one per business type (Retail, Restaurant, Pharmacy, Salon, Hotel, School supplier, Property rentals, Construction), with sample data: products with stock, customers and two weeks of cash and M-Pesa sales for the shop types; tables (restaurant), rooms (hotel), chairs (salon), schools as customers with school prices (supplier), 2 properties / 10 units / 7 tenants on leases (rentals), and 2 projects on an active Contractor plan (construction).
