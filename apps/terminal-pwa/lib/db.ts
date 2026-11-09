@@ -112,8 +112,26 @@ export async function getDeviceConfig(): Promise<DeviceConfig | undefined> {
   return db.deviceConfig.get("device");
 }
 
+const MAX_SESSION_MS = 12 * 60 * 60 * 1000;
+
+/** When the sign-in stops working: the token's own expiry, else 12 hours after it started. */
+function sessionExpiresAt(session: CashierSession): number {
+  try {
+    const payload = JSON.parse(atob(session.accessToken.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")));
+    if (typeof payload.exp === "number") return payload.exp * 1000;
+  } catch {}
+  return new Date(session.startedAt).getTime() + MAX_SESSION_MS;
+}
+
+/** The signed-in cashier, if their sign-in has not expired. An expired one is cleared so the till asks for a PIN again. */
 export async function getActiveSession(): Promise<CashierSession | undefined> {
-  return db.session.get("session");
+  const session = await db.session.get("session");
+  if (!session) return undefined;
+  if (!(Date.now() < sessionExpiresAt(session))) {
+    await clearSession();
+    return undefined;
+  }
+  return session;
 }
 
 export async function clearSession(): Promise<void> {
