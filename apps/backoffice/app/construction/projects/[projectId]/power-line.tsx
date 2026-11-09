@@ -466,7 +466,7 @@ export function PowerLineTab({ project: p }: TabProps) {
           title="Client-supplied materials (free-issue)"
           action={<button className="text-sm underline" onClick={() => csv(`${p.code}-client-materials.csv`, [["Code", "Description", "Unit", "Received", "Issued", "Returned", "Damaged", "On hand"], ...cm.items.map((i) => [i.code, i.description, i.unit, i.received, i.issued, i.returned, i.damaged, i.onHand])])}>Download (CSV)</button>}
         >
-          <p className="text-xs text-secondary-500">The client's property: kept apart from your own stock, never valued or costed.</p>
+          <p className="text-xs text-secondary-500">The client&apos;s property: kept apart from your own stock, never valued or costed.</p>
           <ClientItemsTable data={cm} />
           {matEdit && (
             <div className="mt-3 space-y-3">

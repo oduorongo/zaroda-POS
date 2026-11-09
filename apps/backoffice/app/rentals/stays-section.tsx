@@ -641,7 +641,7 @@ function UnitsView({ units, reload, onUpgrade }: { units: StayUnitRow[]; reload:
             {u.shortStay?.active && (
               <div className="mt-3 space-y-2 border-t border-border pt-2 text-xs">
                 <p className="font-semibold">Calendar sync</p>
-                {settings && !settings.calendarLinksAvailable && <p className="text-amber-500">Calendar links need the server's public address set (PUBLIC_API_BASE_URL).</p>}
+                {settings && !settings.calendarLinksAvailable && <p className="text-amber-500">Calendar links need the server&apos;s public address set (PUBLIC_API_BASE_URL).</p>}
                 {u.shortStay.calendarUrls.AIRBNB && (
                   <p>
                     Give these to the booking sites so our bookings block your dates there:{" "}
@@ -791,7 +791,7 @@ function OwnersView() {
           <button className={small} onClick={() => void apiGet<{ filename: string; csv: string }>(`/rental/stays/statements?${q}&format=csv`).then((r) => downloadCsv(r.filename, r.csv))}>Download CSV</button>
           <button className={small} onClick={() => window.print()}>Print</button>
         </div>
-        <p className="mb-2 text-xs text-secondary-500">Nights are counted in the month they fall in (a stay across two months is shared). Commission is on income after the booking sites' fees; expenses are those recorded against the unit that month.</p>
+        <p className="mb-2 text-xs text-secondary-500">Nights are counted in the month they fall in (a stay across two months is shared). Commission is on income after the booking sites&apos; fees; expenses are those recorded against the unit that month.</p>
         {stmt?.owners.length === 0 && <p className="text-sm text-secondary-500">No units let by the night for this choice.</p>}
         {stmt?.owners.map((o) => (
           <div key={o.ownerId ?? "own"} className="mb-4 overflow-x-auto">
