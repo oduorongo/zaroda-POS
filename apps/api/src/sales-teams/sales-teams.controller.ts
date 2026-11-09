@@ -34,6 +34,7 @@ import { SalesAgentService } from './sales-agent.service';
 import { SalesEarningsService } from './sales-earnings.service';
 import { SalesPortalService } from './sales-portal.service';
 import { SalesTeamsService } from './sales-teams.service';
+import { TrainingAccountsService } from './training/training-accounts.service';
 
 const LOGIN_THROTTLE = { default: { limit: 5, ttl: 60_000 } };
 
@@ -44,7 +45,10 @@ interface PlatformAdminRequest extends Request {
 /** The platform owner's side: every team, its leader and members, and their terms. */
 @Controller('platform-admin/sales-teams')
 export class SalesTeamsAdminController {
-  constructor(private readonly teams: SalesTeamsService) {}
+  constructor(
+    private readonly teams: SalesTeamsService,
+    private readonly training: TrainingAccountsService,
+  ) {}
 
   @Public()
   @UseGuards(PlatformAdminAuthGuard)
@@ -56,8 +60,11 @@ export class SalesTeamsAdminController {
   @Public()
   @UseGuards(PlatformAdminAuthGuard)
   @Post()
-  create(@Req() req: PlatformAdminRequest, @Body() dto: CreateSalesTeamDto) {
-    return this.teams.createTeam(req.user!.platformAdminId, dto);
+  async create(@Req() req: PlatformAdminRequest, @Body() dto: CreateSalesTeamDto) {
+    const team = await this.teams.createTeam(req.user!.platformAdminId, dto);
+    // Training businesses come with every new team; a failure never undoes the team (the team page can retry).
+    const training = await this.training.ensureForTeam(team.id, req.user!.platformAdminId).catch(() => ({ accounts: [], failed: ['ALL'] }));
+    return { ...team, training };
   }
 
   @Public()

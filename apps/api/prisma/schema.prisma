@@ -56,6 +56,8 @@ model Organization {
   // isActive convention OrgUser already uses for staff deactivation.
   isActive      Boolean   @default(true)
   deactivatedAt DateTime?
+  // A sales team training business (sample data, shared login): never billed, never earns commission.
+  isDemo        Boolean   @default(false)
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
@@ -171,6 +173,7 @@ model Organization {
   salesAssignedAt           DateTime?
   salesTeam                 SalesTeam?                 @relation(fields: [salesTeamId], references: [id], onDelete: SetNull)
   salesAgent                SalesAgent?                @relation(fields: [salesAgentId], references: [id], onDelete: SetNull)
+  trainingAccount           SalesTeamTrainingAccount?
   deliveryJobs              DeliveryJob[]
   deliveryQuotes            DeliveryQuote[]
   deliveryJobContacts       DeliveryJobContact[]
@@ -3229,8 +3232,27 @@ model SalesTeam {
   riders        Rider[]
   earnings      SalesEarning[]
   setupFees     SalesSetupFee[]
+  trainingAccounts SalesTeamTrainingAccount[]
 
   @@map("sales_teams")
+}
+
+/// One training business per business type per team (sample data, owner login shared by the team).
+/// Platform-level like sales_teams: no tenant, scoped in the service by team.
+model SalesTeamTrainingAccount {
+  id             String   @id @default(uuid())
+  teamId         String
+  industryType   String
+  organizationId String   @unique
+  ownerEmail     String
+  createdAt      DateTime @default(now())
+  passwordSetAt  DateTime @default(now())
+
+  team         SalesTeam    @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([teamId, industryType])
+  @@map("sales_team_training_accounts")
 }
 
 model SalesAgent {

@@ -53,6 +53,7 @@ const INTENTIONALLY_EXCLUDED = new Set([
   'sales_payout_settings',
   'sales_setup_fee_rates',
   'sales_setup_fees',
+  'sales_team_training_accounts',
   // A global price list with no organizationId - see rls.sql's "platform
   // billing tables" comment.
   'plans',
