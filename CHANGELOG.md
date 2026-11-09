@@ -1,5 +1,9 @@
 # Changelog
 
+## School supplier price shown per year (2026-11-09)
+
+- The school supplier plan is KES 12,000 a year. The pricing page showed it as "School Supplier (per term) ... /365d", which read as 12,000 each term. Plan renamed "School Supplier" (migration `20261230100000_school_supplier_plan_name`, data only), price shown "/year" with its own tagline; platform admin labels say "/year". The year's fee is still split 50/30/20 across terms (Term 1 / 2 / 3), unchanged.
+
 ## ZARODA Team app (2026-11-09)
 
 - The team portal is an installable app, "ZARODA Team" (own icon: gold Z with an orange TEAM badge, full screen, theme navy): Install button on the sign-in and home pages (Android/desktop prompt; iPhone gets the Add to Home Screen steps). public/team.webmanifest (scope /team), public/team-sw.js (caches app files only, never API calls).

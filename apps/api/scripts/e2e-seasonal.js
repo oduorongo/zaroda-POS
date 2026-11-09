@@ -59,7 +59,7 @@ const tag = Date.now().toString(36);
   check('a business cannot open the settings', (await call('GET', '/platform-admin/seasonal/settings')).status === 401);
   check('a seasonal plan needs an annual price', (await pa('POST', '/plans', { tier: 'SEASONAL', name: 'x', priceKes: 1, maxDevices: 1, maxBranches: 1, billingCycle: 'SEASONAL' })).status === 400);
   const plan = (await pa('GET', '/plans')).json.find((p) => p.tier === 'SEASONAL');
-  check('the School Supplier (per term) plan exists, seasonal, with an annual price', plan && plan.billingCycle === 'SEASONAL' && Number(plan.annualPriceKes) > 0, plan);
+  check('the School Supplier plan exists, seasonal, with an annual price', plan && plan.billingCycle === 'SEASONAL' && Number(plan.annualPriceKes) > 0, plan);
   const annual = Number(plan.annualPriceKes);
 
   section('2. A school supplier signs up');

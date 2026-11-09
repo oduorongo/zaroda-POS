@@ -18,7 +18,10 @@ const TAGLINES: Record<string, string> = {
   BASIC: "One till, one shop. Perfect for a single minimart or agrovet counter.",
   STANDARD: "A few registers, one branch — supermarkets and busier shops.",
   PREMIUM: "Multiple branches, full staff roster, and priority support.",
+  SEASONAL: "For suppliers to schools: one fee for the whole school year, all three terms included.",
 };
+
+const period = (days: number) => (days === 30 ? "mo" : days === 365 ? "year" : `${days}d`);
 
 /** Pricing is fetched live from GET /public/plans - the same Plan rows platform-admin's Billing screen manages, never hardcoded twice. */
 export default function PricingClient() {
@@ -42,7 +45,7 @@ export default function PricingClient() {
     <main className="mx-auto max-w-5xl px-6 py-16">
       <div className="text-center">
         <h1 className="text-3xl font-bold text-foreground">Simple, per-device pricing</h1>
-        <p className="mt-2 text-secondary-500">Pay monthly in KES. Cancel anytime. No setup fee. Add the online shop whenever you are ready.</p>
+        <p className="mt-2 text-secondary-500">Pay monthly in KES (school suppliers pay yearly). Cancel anytime. No setup fee. Add the online shop whenever you are ready.</p>
       </div>
 
       {loading && <div className="mt-12"><LoadingState label="Loading pricing..." /></div>}
@@ -61,7 +64,7 @@ export default function PricingClient() {
                 <h2 className="text-lg font-bold text-foreground">{plan.name}</h2>
                 <p className="mt-2 text-3xl font-bold text-foreground">
                   KES {Number(plan.priceKes).toLocaleString()}
-                  <span className="text-sm font-normal text-secondary-500">/{plan.billingPeriodDays === 30 ? "mo" : `${plan.billingPeriodDays}d`}</span>
+                  <span className="text-sm font-normal text-secondary-500">/{period(plan.billingPeriodDays)}</span>
                 </p>
                 <p className="mt-2 text-sm text-secondary-500">{TAGLINES[plan.tier] ?? ""}</p>
                 <ul className="mt-4 space-y-2 text-sm text-secondary-600">
