@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * The marketing teams' own session - a different localStorage key from the platform admin's, because it is a
+ * The marketing teams' own session - a different localStorage key from the back office staff session, because it is a
  * different identity with different powers (a team leader or member, never an admin). The two can be signed
  * in at once in one browser without touching each other.
  */

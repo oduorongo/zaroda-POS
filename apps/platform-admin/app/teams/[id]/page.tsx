@@ -37,6 +37,7 @@ interface Team {
   agents: Agent[];
 }
 
+const teamLoginUrl = `${(process.env.NEXT_PUBLIC_BACKOFFICE_URL ?? "").replace(/\/+$/, "").replace(/^https?:\/\//, "")}/team/login`;
 const toPct = (n: number) => String(Math.round(n * 10000) / 100);
 
 /** One marketing team: its terms, its leader and members. Temporary passwords are shown once, here, to pass on. */
@@ -334,7 +335,7 @@ export default function TeamDetailPage() {
               Password: <b className="font-mono text-base">{secret.password}</b>
             </p>
             <p className="mt-2 text-secondary-600">
-              Share this with them now - it is shown once and cannot be looked up later. They sign in at <b>/team/login</b> and must choose their own password
+              Share this with them now - it is shown once and cannot be looked up later. They sign in at <b>{teamLoginUrl}</b> and must choose their own password
               straight away.
             </p>
             <Button size="sm" variant="secondary" className="mt-2" onClick={() => setSecret(null)}>
