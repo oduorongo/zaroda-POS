@@ -32,13 +32,6 @@ const APPS = [
     href: `${SHOP_URL}/rider`,
     cta: "Rider sign in",
   },
-  {
-    who: "Sales team",
-    name: "Team",
-    description: "Sign up businesses, practise on training accounts and track your earnings.",
-    href: `${BACKOFFICE_URL}/team/login`,
-    cta: "Team sign in",
-  },
 ];
 
 export default function ChooseApp() {
@@ -46,7 +39,7 @@ export default function ChooseApp() {
     <section id="apps" className="mx-auto max-w-6xl px-6 py-12">
       <h2 className="text-center text-2xl font-bold text-foreground">Choose your app</h2>
       <p className="mx-auto mt-2 max-w-xl text-center text-secondary-500">One Zaroda POS, a door for everyone who uses it. Pick the one that matches you.</p>
-      <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+      <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {APPS.map((app) => (
           <a
             key={app.name}

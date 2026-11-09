@@ -37,7 +37,7 @@ interface Team {
   agents: Agent[];
 }
 
-const teamLoginUrl = `${(process.env.NEXT_PUBLIC_BACKOFFICE_URL ?? "").replace(/\/+$/, "").replace(/^https?:\/\//, "")}/team/login`;
+const teamLoginUrl = `${(process.env.NEXT_PUBLIC_TEAM_URL || process.env.NEXT_PUBLIC_BACKOFFICE_URL || "").replace(/\/+$/, "").replace(/^https?:\/\//, "")}/team/login`;
 const toPct = (n: number) => String(Math.round(n * 10000) / 100);
 
 /** One marketing team: its terms, its leader and members. Temporary passwords are shown once, here, to pass on. */

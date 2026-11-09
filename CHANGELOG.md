@@ -1,6 +1,10 @@
 # Changelog
 
-## Team portal moved to the back office (2026-11-09)
+## ZARODA Team app (2026-11-09)
+
+- The team portal is an installable app, "ZARODA Team" (own icon: gold Z with an orange TEAM badge, full screen, theme navy): Install button on the sign-in and home pages (Android/desktop prompt; iPhone gets the Add to Home Screen steps). public/team.webmanifest (scope /team), public/team-sw.js (caches app files only, never API calls).
+- Optional own address: set TEAM_DOMAIN (e.g. team.zarodashop.com) on the back office and point the domain at it; its / and /login open the team app. Platform admin forwards old links to NEXT_PUBLIC_TEAM_URL when set, else NEXT_PUBLIC_BACKOFFICE_URL.
+- The "Sales team" card is not on the public zarodashop.com page; members get the link from their leader or the platform admin.
 
 - Sales team leaders and members now sign in at the back office (`/team/login` on app.zarodashop.com) instead of the platform admin. Same pages: home with training accounts, shops, riders, earnings, setup fees, members. Tab title "ZARODA Team".
 - The platform admin's old `/team/...` addresses forward to the same page on the back office when `NEXT_PUBLIC_BACKOFFICE_URL` is set on the platform admin; the team page's "sign in at" hint uses it too.
