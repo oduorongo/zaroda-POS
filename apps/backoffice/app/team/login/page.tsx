@@ -1,6 +1,7 @@
 "use client";
 
 import { FloatingThemeToggle, PasswordInput } from "@zaroda/ui";
+import { TeamInstall } from "../../../components/team-install";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { ApiError } from "../../../lib/api";
@@ -34,8 +35,11 @@ export default function TeamLoginPage() {
     <div className="flex min-h-screen items-center justify-center bg-background p-4 text-foreground">
       <FloatingThemeToggle />
       <form onSubmit={handleSubmit} className="w-full max-w-md space-y-4 rounded-xl border border-border bg-surface p-6 shadow-xl">
-        <h1 className="text-2xl font-bold">
-          Zaroda <span className="text-[#c99a2e]">Team</span>
+        <h1 className="flex items-center gap-3 text-2xl font-bold">
+          <img src="/team-icon-192.png" alt="" className="h-10 w-10 rounded-lg" />
+          <span>
+            Zaroda <span className="text-[#c99a2e]">Team</span>
+          </span>
         </h1>
         <p className="text-sm text-secondary-500">Sign in to your marketing team account.</p>
         <div>
@@ -66,6 +70,7 @@ export default function TeamLoginPage() {
           {busy ? "Signing in..." : "Sign in"}
         </button>
         <p className="text-xs text-secondary-500">Forgotten your password? Ask your team leader, or Zaroda, to issue you a new one.</p>
+        <TeamInstall compact />
       </form>
     </div>
   );

@@ -49,6 +49,12 @@ export function middleware(req: NextRequest) {
     else if (asked !== "pos" && (remembered === "CONSTRUCTION" || remembered === "RENTALS")) product = remembered;
   }
 
+  // TEAM_DOMAIN (optional) is the sales team app's own address: its front page and /login open the team portal.
+  const teamDomain = domainOf(process.env.TEAM_DOMAIN ?? process.env.NEXT_PUBLIC_TEAM_DOMAIN);
+  if (teamDomain && host === teamDomain && (pathname === "/" || pathname === "/login")) {
+    return NextResponse.rewrite(new URL(pathname === "/" ? "/team" : "/team/login", req.url));
+  }
+
   let res: NextResponse;
   // A product's own paths on the POS domain move to that product's domain (once it has one).
   const elsewhere = product === "POS" && !isLocal ? (["CONSTRUCTION", "RENTALS"] as const).find((p) => domains[p] && pathname.startsWith(HOME[p])) : undefined;

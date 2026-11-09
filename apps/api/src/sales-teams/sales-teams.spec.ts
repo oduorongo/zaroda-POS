@@ -48,7 +48,10 @@ function teamsSetup() {
     platformAuditLog: { create: jest.fn().mockResolvedValue({}) },
     $transaction: jest.fn((fn: (t: any) => unknown) => fn(tx)),
   };
-  return { service: new SalesTeamsService(prisma), prisma, tx };
+  const config: any = { get: jest.fn((k: string) => (k === 'BACKOFFICE_BASE_URL' ? 'https://office.example.com/' : undefined)) };
+  const email: any = { sendEmail: jest.fn().mockResolvedValue({ sent: true }) };
+  const sms: any = { sendSms: jest.fn().mockResolvedValue({ sent: true }) };
+  return { service: new SalesTeamsService(prisma, config, email, sms), prisma, tx, email, sms };
 }
 
 describe('generateTempPassword', () => {
@@ -90,6 +93,18 @@ describe('SalesTeamsService.addAgent', () => {
     expect(stored.passwordHash).not.toBe(result.temporaryPassword);
     expect(await bcrypt.compare(result.temporaryPassword, stored.passwordHash)).toBe(true);
     expect(JSON.stringify(result.agent)).not.toContain('passwordHash');
+  });
+
+  it('emails and texts the sign-in link with the temporary password', async () => {
+    const { service, email, sms } = teamsSetup();
+    const result = await service.addAgent(ADMIN, TEAM, 'MEMBER' as any, { fullName: 'New Person', email: 'new@example.com', phone: '0712 345678' });
+    expect(result.sent).toEqual({ email: true, sms: true });
+    expect(result.loginUrl).toBe('https://office.example.com/team/login');
+    const mail = email.sendEmail.mock.calls[0][0];
+    expect(mail.to).toBe('new@example.com');
+    expect(mail.html).toContain(result.temporaryPassword);
+    expect(mail.html).toContain('https://office.example.com/team/login');
+    expect(sms.sendSms).toHaveBeenCalledWith({ to: '+254712345678', message: expect.stringContaining(result.temporaryPassword) });
   });
 
   it('keeps one active leader per team unless told to replace them', async () => {

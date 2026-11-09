@@ -7,6 +7,7 @@ import Link from "next/link";
 import { ApiError } from "../lib/api";
 import { clearTeamSession, getTeamSession } from "../lib/team-auth";
 import { teamMe, type TeamMe } from "../lib/team-api";
+import { TeamInstall } from "./team-install";
 
 type Page = "home" | "shops" | "riders" | "members" | "earnings" | "setup-fees";
 
@@ -87,6 +88,7 @@ export function TeamShell({ active, children }: { active: Page; children: (me: T
       <main className="mx-auto max-w-5xl space-y-6 p-6">
         {error && <p className="text-sm text-error-600">{error}</p>}
         {!me && !error && <p className="text-sm text-secondary-500">Loading...</p>}
+        {me && active === "home" && <TeamInstall />}
         {me && children(me, reload)}
       </main>
     </div>
