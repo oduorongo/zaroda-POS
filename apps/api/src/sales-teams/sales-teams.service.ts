@@ -1,8 +1,12 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma, SalesAgent, SalesAgentRole, SalesAgentStatus, SalesTeam } from '@prisma/client';
+import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcryptjs';
 import { generateTempPassword } from '../common/crypto/temp-password';
 import { PrismaService } from '../common/prisma/prisma.service';
+import { AfricasTalkingSmsProvider } from '../notifications/africas-talking-sms.provider';
+import { ResendEmailProvider } from '../notifications/resend-email.provider';
+import { normalizeKenyanPhone } from '../online-orders/online-orders.util';
 import { CreateSalesAgentDto, CreateSalesTeamDto, UpdateSalesTeamDto } from './dto/sales-team.dto';
 import { UpdatePayoutDetailsDto } from './dto/sales-earnings.dto';
 import { AssignShopDto } from './dto/sales-shop.dto';
@@ -38,6 +42,8 @@ export const toTeamView = (team: SalesTeam) => ({
   createdAt: team.createdAt,
 });
 
+const escapeHtml = (v: string) => v.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
+
 /** A member earns memberShareRate and the leader also takes leaderOverrideRate of the team's earnings; together they cannot be more than Zaroda's commission. */
 function assertRatesFit(memberShareRate: number, leaderOverrideRate: number) {
   if (memberShareRate + leaderOverrideRate > 1) {
@@ -53,7 +59,39 @@ function assertRatesFit(memberShareRate: number, leaderOverrideRate: number) {
  */
 @Injectable()
 export class SalesTeamsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly config: ConfigService,
+    private readonly email: ResendEmailProvider,
+    private readonly sms: AfricasTalkingSmsProvider,
+  ) {}
+
+  /** The team app's sign-in page: TEAM_APP_URL when the app has its own address, else the back office's /team/login. */
+  teamLoginUrl(): string | null {
+    const own = this.config.get<string>('TEAM_APP_URL');
+    if (own) return `${own.replace(/\/+$/, '')}/login`;
+    const base = this.config.get<string>('BACKOFFICE_BASE_URL');
+    return base ? `${base.replace(/\/+$/, '')}/team/login` : null;
+  }
+
+  /** Emails, and texts when there is a phone, the sign-in link and temporary password. Best effort: never fails the action. */
+  private async sendCredentials(agent: SalesAgent, temporaryPassword: string, isNew: boolean) {
+    const link = this.teamLoginUrl();
+    const first = agent.fullName.split(' ')[0];
+    const intro = isNew ? 'your ZARODA Team account is ready' : 'your ZARODA Team password has been reset';
+    const html = `<p>Hi ${escapeHtml(first)},</p><p>${intro}.</p>
+<p>Email: <b>${escapeHtml(agent.email)}</b><br/>Temporary password: <b style="font-family:monospace;font-size:16px">${temporaryPassword}</b></p>
+${link ? `<p><a href="${link}" style="display:inline-block;background:#0f1f45;color:#fff;padding:10px 18px;border-radius:6px;text-decoration:none">Sign in to ZARODA Team</a></p><p style="color:#555">Or open ${link}</p>` : ''}
+<p>You will be asked to choose your own password when you first sign in. Do not share this message.</p>`;
+    const phone = agent.phone ? normalizeKenyanPhone(agent.phone) : null;
+    const [mail, text] = await Promise.all([
+      this.email.sendEmail({ to: agent.email, subject: isNew ? 'Your ZARODA Team account' : 'Your new ZARODA Team password', html }),
+      phone
+        ? this.sms.sendSms({ to: `+${phone}`, message: `ZARODA Team: ${intro}. Email ${agent.email}, temporary password ${temporaryPassword}${link ? `. Sign in: ${link}` : ''}` })
+        : Promise.resolve({ sent: false }),
+    ]);
+    return { email: mail.sent, sms: text.sent };
+  }
 
   /** Logged under the platform admin who did it. A leader's own actions on their members have no platform admin, so are not written here. */
   private async audit(platformAdminId: string | null, action: string, entityType: string, entityId: string) {
@@ -185,7 +223,8 @@ export class SalesTeamsService {
       });
     });
     await this.audit(platformAdminId, role === SalesAgentRole.LEADER ? 'sales_agent.create_leader' : 'sales_agent.create_member', 'SalesAgent', agent.id);
-    return { agent: toAgentView(agent), temporaryPassword };
+    const sent = await this.sendCredentials(agent, temporaryPassword, true);
+    return { agent: toAgentView(agent), temporaryPassword, sent, loginUrl: this.teamLoginUrl() };
   }
 
   async setAgentStatus(platformAdminId: string | null, agentId: string, status: SalesAgentStatus) {
@@ -212,7 +251,8 @@ export class SalesTeamsService {
       data: { passwordHash: await bcrypt.hash(temporaryPassword, SALT_ROUNDS), mustChangePassword: true },
     });
     await this.audit(platformAdminId, 'sales_agent.reset_password', 'SalesAgent', agentId);
-    return { agent: toAgentView(updated), temporaryPassword };
+    const sent = await this.sendCredentials(updated, temporaryPassword, false);
+    return { agent: toAgentView(updated), temporaryPassword, sent, loginUrl: this.teamLoginUrl() };
   }
 
   /**

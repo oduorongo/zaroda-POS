@@ -8,6 +8,13 @@ import { teamGet, teamPatch, teamPost, type TeamMe, type TeamMember } from "../.
 
 const inputClass = "mt-1 w-full rounded-md border border-border bg-background p-2";
 
+type Sent = { email: boolean; sms: boolean };
+
+function sentNote(sent?: Sent) {
+  const ways = [sent?.email && "email", sent?.sms && "text message"].filter(Boolean).join(" and ");
+  return ways ? `The sign-in link and password were sent to them by ${ways}.` : "Could not send it to them automatically - share it with them now.";
+}
+
 function MembersBody({ me }: { me: TeamMe }) {
   const [members, setMembers] = useState<TeamMember[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -17,7 +24,7 @@ function MembersBody({ me }: { me: TeamMe }) {
   const [phone, setPhone] = useState("");
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
-  const [secret, setSecret] = useState<{ who: string; email: string; password: string } | null>(null);
+  const [secret, setSecret] = useState<{ who: string; email: string; password: string; sent?: Sent } | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const isLeader = me.agent.role === "LEADER";
 
@@ -38,12 +45,12 @@ function MembersBody({ me }: { me: TeamMe }) {
     setBusy(true);
     setFormError(null);
     try {
-      const result = await teamPost<{ agent: TeamMember; temporaryPassword: string }>("/members", {
+      const result = await teamPost<{ agent: TeamMember; temporaryPassword: string; sent?: Sent }>("/members", {
         fullName: fullName.trim(),
         email: email.trim(),
         ...(phone.trim() ? { phone: phone.trim() } : {}),
       });
-      setSecret({ who: result.agent.fullName, email: result.agent.email, password: result.temporaryPassword });
+      setSecret({ who: result.agent.fullName, email: result.agent.email, password: result.temporaryPassword, sent: result.sent });
       setShowForm(false);
       setFullName("");
       setEmail("");
@@ -74,8 +81,8 @@ function MembersBody({ me }: { me: TeamMe }) {
     setBusyId(m.id);
     setError(null);
     try {
-      const result = await teamPost<{ temporaryPassword: string }>(`/members/${m.id}/reset-password`, {});
-      setSecret({ who: m.fullName, email: m.email, password: result.temporaryPassword });
+      const result = await teamPost<{ temporaryPassword: string; sent?: Sent }>(`/members/${m.id}/reset-password`, {});
+      setSecret({ who: m.fullName, email: m.email, password: result.temporaryPassword, sent: result.sent });
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not reset the password.");
     } finally {
@@ -101,7 +108,8 @@ function MembersBody({ me }: { me: TeamMe }) {
           <p>
             Password: <b className="font-mono text-base">{secret.password}</b>
           </p>
-          <p className="mt-2 text-secondary-600">Share this with them now - it is shown once. They sign in at /team/login and must choose their own password straight away.</p>
+          <p className="mt-2 font-medium">{sentNote(secret.sent)}</p>
+          <p className="mt-1 text-secondary-600">It is shown here once. They sign in at /team/login and must choose their own password straight away.</p>
           <Button size="sm" variant="secondary" className="mt-2" onClick={() => setSecret(null)}>
             I have passed it on
           </Button>

@@ -37,6 +37,13 @@ interface Team {
   agents: Agent[];
 }
 
+type Sent = { email: boolean; sms: boolean };
+
+function sentNote(sent?: Sent) {
+  const ways = [sent?.email && "email", sent?.sms && "text message"].filter(Boolean).join(" and ");
+  return ways ? `The sign-in link and password were sent to them by ${ways}.` : "Could not send it to them automatically - share it with them now.";
+}
+
 const teamLoginUrl = `${(process.env.NEXT_PUBLIC_TEAM_URL || process.env.NEXT_PUBLIC_BACKOFFICE_URL || "").replace(/\/+$/, "").replace(/^https?:\/\//, "")}/team/login`;
 const toPct = (n: number) => String(Math.round(n * 10000) / 100);
 
@@ -68,7 +75,7 @@ export default function TeamDetailPage() {
   const [addBusy, setAddBusy] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
 
-  const [secret, setSecret] = useState<{ who: string; email: string; password: string } | null>(null);
+  const [secret, setSecret] = useState<{ who: string; email: string; password: string; sent?: Sent } | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [payoutFor, setPayoutFor] = useState<string | null>(null);
   const [payoutGateway, setPayoutGateway] = useState<"" | "MPESA_B2C" | "TUMA">("");
@@ -152,7 +159,7 @@ export default function TeamDetailPage() {
     setAddBusy(true);
     setAddError(null);
     try {
-      const result = await apiPost<{ agent: Agent; temporaryPassword: string }>(
+      const result = await apiPost<{ agent: Agent; temporaryPassword: string; sent?: Sent }>(
         `/platform-admin/sales-teams/${id}/${adding === "LEADER" ? "leader" : "members"}`,
         {
           fullName: fullName.trim(),
@@ -161,7 +168,7 @@ export default function TeamDetailPage() {
           ...(adding === "LEADER" && replace ? { replaceExistingLeader: true } : {}),
         },
       );
-      setSecret({ who: result.agent.fullName, email: result.agent.email, password: result.temporaryPassword });
+      setSecret({ who: result.agent.fullName, email: result.agent.email, password: result.temporaryPassword, sent: result.sent });
       setAdding(null);
       setFullName("");
       setEmail("");
@@ -210,8 +217,8 @@ export default function TeamDetailPage() {
     setBusyId(agent.id);
     setError(null);
     try {
-      const result = await apiPost<{ temporaryPassword: string }>(`/platform-admin/sales-agents/${agent.id}/reset-password`, {});
-      setSecret({ who: agent.fullName, email: agent.email, password: result.temporaryPassword });
+      const result = await apiPost<{ temporaryPassword: string; sent?: Sent }>(`/platform-admin/sales-agents/${agent.id}/reset-password`, {});
+      setSecret({ who: agent.fullName, email: agent.email, password: result.temporaryPassword, sent: result.sent });
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not reset the password.");
     } finally {
@@ -334,9 +341,9 @@ export default function TeamDetailPage() {
             <p>
               Password: <b className="font-mono text-base">{secret.password}</b>
             </p>
-            <p className="mt-2 text-secondary-600">
-              Share this with them now - it is shown once and cannot be looked up later. They sign in at <b>{teamLoginUrl}</b> and must choose their own password
-              straight away.
+            <p className="mt-2 font-medium">{sentNote(secret.sent)}</p>
+            <p className="mt-1 text-secondary-600">
+              It is shown here once and cannot be looked up later. They sign in at <b>{teamLoginUrl}</b> and must choose their own password straight away.
             </p>
             <Button size="sm" variant="secondary" className="mt-2" onClick={() => setSecret(null)}>
               I have passed it on
