@@ -282,6 +282,38 @@ export default function TeamDetailPage() {
     </li>
   );
 
+  const addForm = adding && (
+    <form onSubmit={addAgent} className="space-y-3 rounded-lg border border-border bg-surface p-4">
+      <h2 className="font-semibold">{adding === "LEADER" ? (leader ? "Replace the team leader" : "Add the team leader") : "Add a member"}</h2>
+      <div className="grid gap-3 sm:grid-cols-3">
+        <label className="text-sm">
+          Full name
+          <input required autoFocus className="mt-1 w-full rounded-md border border-border bg-background p-2" value={fullName} onChange={(e) => setFullName(e.target.value)} />
+        </label>
+        <label className="text-sm">
+          Email (their sign-in)
+          <input required type="email" className="mt-1 w-full rounded-md border border-border bg-background p-2" value={email} onChange={(e) => setEmail(e.target.value)} />
+        </label>
+        <label className="text-sm">
+          Phone (optional)
+          <input className="mt-1 w-full rounded-md border border-border bg-background p-2" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="0712 345 678" />
+        </label>
+      </div>
+      {adding === "LEADER" && leader && (
+        <label className="flex items-center gap-2 text-sm">
+          <input type="checkbox" checked={replace} onChange={(e) => setReplace(e.target.checked)} />
+          Suspend {leader.fullName} and make this person the leader
+        </label>
+      )}
+      {adding === "LEADER" && leader && !replace && <p className="text-sm text-secondary-600">This team already has a leader. Tick the box above to replace them, then Create account.</p>}
+      {addError && <p className="text-sm text-error-600">{addError}</p>}
+      <Button type="submit" disabled={addBusy || !fullName.trim() || !email.trim() || (adding === "LEADER" && !!leader && !replace)}>
+        {addBusy ? "Creating..." : "Create account"}
+      </Button>
+      <p className="text-xs text-secondary-500">A temporary password is created and shown once for you to pass on.</p>
+    </form>
+  );
+
   return (
     <div className="min-h-screen bg-background text-foreground">
       <Nav session={session} />
@@ -388,6 +420,7 @@ export default function TeamDetailPage() {
                 </Button>
               </div>
               {leader ? <ul>{person(leader)}</ul> : <p className="text-sm text-secondary-500">This team has no leader yet.</p>}
+              {adding === "LEADER" && addForm}
               {pastLeaders.length > 0 && (
                 <details className="text-sm text-secondary-500">
                   <summary className="cursor-pointer">Earlier leaders ({pastLeaders.length})</summary>
@@ -404,6 +437,7 @@ export default function TeamDetailPage() {
                 </Button>
               </div>
               {members.length === 0 && <p className="text-sm text-secondary-500">No members yet. The leader will be able to add members once they sign in.</p>}
+              {adding === "MEMBER" && addForm}
               <ul className="space-y-2">{members.map(person)}</ul>
             </section>
 
@@ -414,36 +448,6 @@ export default function TeamDetailPage() {
               reset={(type) => apiPost<{ password: string }>(`/platform-admin/sales-teams/${id}/training-accounts/${type}/reset-password`, {})}
             />
 
-            {adding && (
-              <form onSubmit={addAgent} className="space-y-3 rounded-lg border border-border bg-surface p-4">
-                <h2 className="font-semibold">{adding === "LEADER" ? (leader ? "Replace the team leader" : "Add the team leader") : "Add a member"}</h2>
-                <div className="grid gap-3 sm:grid-cols-3">
-                  <label className="text-sm">
-                    Full name
-                    <input required className="mt-1 w-full rounded-md border border-border bg-background p-2" value={fullName} onChange={(e) => setFullName(e.target.value)} />
-                  </label>
-                  <label className="text-sm">
-                    Email (their sign-in)
-                    <input required type="email" className="mt-1 w-full rounded-md border border-border bg-background p-2" value={email} onChange={(e) => setEmail(e.target.value)} />
-                  </label>
-                  <label className="text-sm">
-                    Phone (optional)
-                    <input className="mt-1 w-full rounded-md border border-border bg-background p-2" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="0712 345 678" />
-                  </label>
-                </div>
-                {adding === "LEADER" && leader && (
-                  <label className="flex items-center gap-2 text-sm">
-                    <input type="checkbox" checked={replace} onChange={(e) => setReplace(e.target.checked)} />
-                    Suspend {leader.fullName} and make this person the leader
-                  </label>
-                )}
-                {addError && <p className="text-sm text-error-600">{addError}</p>}
-                <Button type="submit" disabled={addBusy || !fullName.trim() || !email.trim() || (adding === "LEADER" && !!leader && !replace)}>
-                  {addBusy ? "Creating..." : "Create account"}
-                </Button>
-                <p className="text-xs text-secondary-500">A temporary password is created and shown once for you to pass on.</p>
-              </form>
-            )}
           </>
         )}
       </main>
