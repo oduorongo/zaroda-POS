@@ -60,12 +60,12 @@ function LineWork() {
       </div>
       {data && tab === "progress" && (
         <Panel title="Today's progress">
-          {data.sections.length ? <ProgressForm projectId={projectId} sections={data.sections} onSaved={() => void load()} /> : <p className="text-sm text-secondary-500">The project manager adds the line's sections first (project, Power line tab).</p>}
+          {data.sections.length ? <ProgressForm projectId={projectId} sections={data.sections} onSaved={() => void load()} /> : <p className="text-sm text-secondary-500">The project manager adds the line&apos;s sections first (project, Power line tab).</p>}
         </Panel>
       )}
       {data && tab === "asset" && (
         <Panel title="Record a pole, stay or transformer">
-          <p className="mb-2 text-xs text-secondary-500">Stand at it and tap "Use my position" for its GPS.</p>
+          <p className="mb-2 text-xs text-secondary-500">Stand at it and tap &quot;Use my position&quot; for its GPS.</p>
           <AssetForm projectId={projectId} sections={data.sections} onSaved={() => void load()} />
         </Panel>
       )}
