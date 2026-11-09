@@ -137,7 +137,7 @@ export default function SubscriptionPage() {
             <div className="rounded-lg border border-border bg-surface p-4 text-sm">
               <p className="font-semibold">{data.plan.name}</p>
               <p className="text-secondary-500">
-                {kes(data.plan.annualPriceKes)} a year, paid per school term (the biggest share with Term 1, when capitation arrives). {data.payHow}
+                {kes(data.plan.annualPriceKes)} a year, paid in termly instalments (the biggest share in Term 1). {data.payHow}
               </p>
             </div>
             {data.payInFull && fullYearStart && (

@@ -18,7 +18,7 @@ const TAGLINES: Record<string, string> = {
   BASIC: "One till, one shop. Perfect for a single minimart or agrovet counter.",
   STANDARD: "A few registers, one branch — supermarkets and busier shops.",
   PREMIUM: "Multiple branches, full staff roster, and priority support.",
-  SEASONAL: "For suppliers to schools: one yearly fee, paid in termly instalments (half in Term 1, when capitation arrives) or all at once.",
+  SEASONAL: "For suppliers to schools: one yearly fee, paid in termly instalments (half in Term 1) or all at once.",
 };
 
 const period = (days: number) => (days === 30 ? "mo" : days === 365 ? "year" : `${days}d`);
