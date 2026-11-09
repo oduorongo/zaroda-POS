@@ -124,6 +124,8 @@ export class TrainingAccountsService {
         await tx.subscription.create({ data: { organizationId, planId: plan.id, currentPeriodEnd: FREE_PLAN_UNTIL, isTrial: false } });
       }
       await tx.salesTeamTrainingAccount.create({ data: { teamId: team.id, industryType, organizationId, ownerEmail } });
+      // The books start before the sample sales, or the accounts would post none of them (they start on the day first opened).
+      await tx.ledgerSettings.create({ data: { organizationId, startDate: startOfDay(-SALE_DAYS - 1) } });
 
       if (kit) await this.seedShop(tx, organizationId, branch.id, terminal.id, owner.id, kit);
       if (industryType === 'RESTAURANT') await this.seedRestaurant(tx, organizationId, branch.id);
