@@ -133,25 +133,31 @@ function HomeBody({ me, reload }: { me: TeamMe; reload: () => Promise<void> }) {
 
       <form onSubmit={changePassword} className="space-y-3 rounded-lg border border-border bg-surface p-4">
         <h2 className="font-semibold">Change your password</h2>
-        <PasswordInput
-          
-          required
-          autoComplete="current-password"
-          placeholder="Current password"
-          className="w-full rounded-md border border-border bg-background p-2.5 text-sm"
-          value={current}
-          onChange={(e) => setCurrent(e.target.value)}
-        />
-        <PasswordInput
-          
-          required
-          minLength={8}
-          autoComplete="new-password"
-          placeholder="New password (at least 8 characters)"
-          className="w-full rounded-md border border-border bg-background p-2.5 text-sm"
-          value={next}
-          onChange={(e) => setNext(e.target.value)}
-        />
+        <label className="block space-y-1 text-sm">
+          <span className="font-medium">Current password</span>
+          <span className="block text-xs text-secondary-500">{locked ? "The temporary password you just signed in with." : "The password you use now."}</span>
+          <PasswordInput
+            required
+            autoComplete="current-password"
+            placeholder="Current password"
+            className="w-full rounded-md border border-border bg-background p-2.5 text-sm"
+            value={current}
+            onChange={(e) => setCurrent(e.target.value)}
+          />
+        </label>
+        <label className="block space-y-1 text-sm">
+          <span className="font-medium">New password</span>
+          <span className="block text-xs text-secondary-500">At least 8 characters.</span>
+          <PasswordInput
+            required
+            minLength={8}
+            autoComplete="new-password"
+            placeholder="New password"
+            className="w-full rounded-md border border-border bg-background p-2.5 text-sm"
+            value={next}
+            onChange={(e) => setNext(e.target.value)}
+          />
+        </label>
         <button type="submit" disabled={busy} className="rounded-md bg-primary-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
           {busy ? "Saving..." : "Change password"}
         </button>
