@@ -4,7 +4,8 @@ import { useEffect, useState } from "react";
 import { Badge, PasswordInput } from "@zaroda/ui";
 import { ApiError } from "../../lib/api";
 import { TeamShell } from "../../components/team-shell";
-import { teamChangePassword, teamGet, type TeamMe, type TeamOverview } from "../../lib/team-api";
+import { TrainingAccounts, type TrainingAccount } from "../../components/training-accounts";
+import { teamChangePassword, teamGet, teamPost, type TeamMe, type TeamOverview } from "../../lib/team-api";
 
 const pct = (n: number) => `${Math.round(n * 10000) / 100}%`;
 
@@ -109,6 +110,13 @@ function HomeBody({ me, reload }: { me: TeamMe; reload: () => Promise<void> }) {
             </section>
           )}
         </>
+      )}
+
+      {!locked && (
+        <TrainingAccounts
+          load={() => teamGet<TrainingAccount[]>("/training-accounts")}
+          reset={me.agent.role === "LEADER" ? (type) => teamPost<{ password: string }>(`/training-accounts/${type}/reset-password`, {}) : undefined}
+        />
       )}
 
       <section className="space-y-2 rounded-lg border border-border bg-surface p-4">

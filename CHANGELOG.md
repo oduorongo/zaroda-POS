@@ -1,5 +1,13 @@
 # Changelog
 
+## Sales team training accounts (2026-11-09)
+
+- Every new sales team gets 8 training businesses, one per business type (Retail, Restaurant, Pharmacy, Salon, Hotel, School supplier, Property rentals, Construction), with sample data: products with stock, customers and two weeks of cash and M-Pesa sales for the shop types; tables (restaurant), rooms (hotel), chairs (salon), schools as customers with school prices (supplier), 2 properties / 10 units / 7 tenants on leases (rentals), and 2 projects on an active Contractor plan (construction).
+- One owner login per training business, shared by the team (`<type>.<team>@training.zarodasolutions.app`). Passwords are shown once when made; the platform owner and the team leader can issue a new one. Members see the logins on their portal home page; the leader resets.
+- Training businesses are marked `isDemo`: plans paid up to 2099 (never billed), not attributed to the team (no commission), left out of platform analytics, construction MRR and the main business list. Made-up customers and tenants have no phone numbers, so no text can reach a real number.
+- Teams that existed before get a "Create training accounts" button on their admin page.
+- Migration `20261229100000_team_training_accounts` (`organizations.isDemo`, table `sales_team_training_accounts`, platform-level like sales_teams) then apply-rls.
+
 ## Online shop for shops on another POS, plan limits, team setup fees (2026-11-03)
 
 - Plan limits are now enforced: adding a till or branch beyond the plan is refused with an upgrade message (the system's own online-shop, front-desk, school and construction terminals do not count; what exists keeps working). The free Online Shop only plan has no tills, and its self sign-up no longer makes one. Unpaid plans are still only a warning label.

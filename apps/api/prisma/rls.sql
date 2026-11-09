@@ -785,6 +785,8 @@ CREATE POLICY tenant_isolation ON delivery_job_contacts
 -- SalesTeamsService / SalesAgentService (every query there is scoped by the verified agent's team or
 -- id), and both tables are on rls-coverage.spec.ts's exclusion list. A business's own row only gains
 -- the nullable salesTeamId / salesAgentId columns, which its own RLS policy already covers.
+-- sales_team_training_accounts (a team's training businesses) is platform-level the same way: scoped by team in
+-- TrainingAccountsService; the training businesses themselves are ordinary tenants under their own RLS.
 
 -- ── Rental / property management module ───────────────────────────────────
 

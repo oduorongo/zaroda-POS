@@ -78,7 +78,9 @@ export class PlatformAdminService {
   ) {}
 
   async listOrganizations() {
+    // Training businesses are listed on their sales team's page instead (8 per team would crowd the real ones).
     const organizations = await this.prisma.organization.findMany({
+      where: { isDemo: false },
       orderBy: { createdAt: 'desc' },
     });
     const subscriptions = await this.prisma.subscription.findMany({
@@ -472,10 +474,12 @@ export class PlatformAdminService {
   // ── Platform analytics ──────────────────────────────────────────────
 
   async analytics() {
+    // Sales team training businesses (isDemo) are left out: they are never billed.
+    const real = { isDemo: false };
     const [organizationCount, subscriptions, terminalCount] = await Promise.all([
-      this.prisma.organization.count(),
-      this.prisma.subscription.findMany({ include: { plan: true } }),
-      this.prisma.terminal.count(),
+      this.prisma.organization.count({ where: real }),
+      this.prisma.subscription.findMany({ where: { organization: real }, include: { plan: true } }),
+      this.prisma.terminal.count({ where: { branch: { organization: real } } }),
     ]);
 
     const byStatus: Record<string, number> = { TRIAL: 0, ACTIVE: 0, GRACE: 0, SUSPENDED: 0, READ_ONLY: 0 };

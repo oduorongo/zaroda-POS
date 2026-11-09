@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { apiGet, apiPatch, apiPost, ApiError } from "../../../lib/api";
 import { getSession, type Session } from "../../../lib/auth";
 import { Nav } from "../../../components/nav";
+import { TrainingAccounts, type TrainingAccount } from "../../../components/training-accounts";
 import { Badge, Button, LoadingState } from "@zaroda/ui";
 
 interface Agent {
@@ -405,6 +406,13 @@ export default function TeamDetailPage() {
               {members.length === 0 && <p className="text-sm text-secondary-500">No members yet. The leader will be able to add members once they sign in.</p>}
               <ul className="space-y-2">{members.map(person)}</ul>
             </section>
+
+            <TrainingAccounts
+              handoverKey={`training-passwords:${id}`}
+              load={() => apiGet<TrainingAccount[]>(`/platform-admin/sales-teams/${id}/training-accounts`)}
+              create={() => apiPost<{ accounts: TrainingAccount[]; failed: string[] }>(`/platform-admin/sales-teams/${id}/training-accounts`, {})}
+              reset={(type) => apiPost<{ password: string }>(`/platform-admin/sales-teams/${id}/training-accounts/${type}/reset-password`, {})}
+            />
 
             {adding && (
               <form onSubmit={addAgent} className="space-y-3 rounded-lg border border-border bg-surface p-4">

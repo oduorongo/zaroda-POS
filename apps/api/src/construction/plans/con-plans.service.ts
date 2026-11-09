@@ -378,7 +378,7 @@ export class ConPlansService {
 
   async tenants() {
     const [orgs, plans] = await Promise.all([
-      this.prisma.organization.findMany({ where: { industryType: 'CONSTRUCTION' }, select: { id: true, name: true, isActive: true, createdAt: true }, orderBy: { name: 'asc' } }),
+      this.prisma.organization.findMany({ where: { industryType: 'CONSTRUCTION', isDemo: false }, select: { id: true, name: true, isActive: true, createdAt: true }, orderBy: { name: 'asc' } }),
       this.setup.activePlans(),
     ]);
     const subs = await this.prisma.conSubscription.findMany({ where: { organizationId: { in: orgs.map((o) => o.id) } } });

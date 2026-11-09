@@ -77,7 +77,7 @@ export default function TeamsPage() {
     setBusy(true);
     setFormError(null);
     try {
-      const team = await apiPost<{ id: string }>("/platform-admin/sales-teams", {
+      const team = await apiPost<{ id: string; training?: { accounts: { industryType: string; password?: string }[] } }>("/platform-admin/sales-teams", {
         name: name.trim(),
         ...(region.trim() ? { region: region.trim() } : {}),
         memberShareRate: Number(memberPct || 0) / 100,
@@ -87,6 +87,10 @@ export default function TeamsPage() {
         earningMonths: Number(months || 12),
         payoutCapRate: Number(capPct || 0) / 100,
       });
+      const passwords = Object.fromEntries((team.training?.accounts ?? []).filter((a) => a.password).map((a) => [a.industryType, a.password]));
+      try {
+        sessionStorage.setItem(`training-passwords:${team.id}`, JSON.stringify(passwords));
+      } catch {}
       router.push(`/teams/${team.id}`);
     } catch (err) {
       setFormError(err instanceof ApiError ? err.message : "Could not create the team.");

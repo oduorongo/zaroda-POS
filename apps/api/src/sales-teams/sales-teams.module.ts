@@ -24,6 +24,8 @@ import {
 import { SalesTeamsService } from './sales-teams.service';
 import { SalesSetupFeesAdminController, SalesSetupFeesAgentController } from './sales-setup-fees.controller';
 import { SalesSetupFeesService } from './sales-setup-fees.service';
+import { TrainingAccountsAdminController, TrainingAccountsAgentController } from './training/training-accounts.controller';
+import { TrainingAccountsService } from './training/training-accounts.service';
 
 @Module({
   imports: [
@@ -52,8 +54,10 @@ import { SalesSetupFeesService } from './sales-setup-fees.service';
     SalesPayoutCallbackController,
     SalesSetupFeesAgentController,
     SalesSetupFeesAdminController,
+    TrainingAccountsAdminController,
+    TrainingAccountsAgentController,
   ],
-  providers: [SalesAgentJwtStrategy, PasswordChangedGuard, SalesAgentService, SalesPortalService, SalesTeamsService, SalesEarningsService, SalesPayoutsService, MpesaB2cClient, TumaClient, SalesEarningsScheduler, SalesSetupFeesService],
+  providers: [SalesAgentJwtStrategy, PasswordChangedGuard, SalesAgentService, SalesPortalService, SalesTeamsService, SalesEarningsService, SalesPayoutsService, MpesaB2cClient, TumaClient, SalesEarningsScheduler, SalesSetupFeesService, TrainingAccountsService],
   exports: [SalesTeamsService],
 })
 export class SalesTeamsModule {}
