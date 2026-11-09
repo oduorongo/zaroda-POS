@@ -195,7 +195,7 @@ export default function NewTenantPage() {
                       className={`rounded-lg border p-3 text-left ${planTier === plan.tier ? "border-amber-500 bg-amber-500/10" : "border-border hover:border-primary-500"}`}
                     >
                       <p className="font-semibold text-foreground">{plan.name}</p>
-                      <p className="text-lg font-bold text-amber-400">KES {Number(plan.priceKes).toLocaleString()}<span className="text-xs font-normal text-secondary-500">{plan.billingCycle === "SEASONAL" ? "/year, per term" : "/mo"}</span></p>
+                      <p className="text-lg font-bold text-amber-400">KES {Number(plan.priceKes).toLocaleString()}<span className="text-xs font-normal text-secondary-500">{plan.billingCycle === "SEASONAL" ? "/year" : "/mo"}</span></p>
                       <p className="text-xs text-secondary-500">{plan.maxDevices} devices · {plan.maxBranches} branches</p>
                     </button>
                   ))}

@@ -159,7 +159,7 @@ export default function BillingPage() {
                       </div>
                       <p className="mt-1 text-2xl font-bold text-amber-400">
                         KES {Number(plan.priceKes).toLocaleString()}
-                        <span className="text-xs font-normal text-secondary-500">{plan.billingCycle === "SEASONAL" ? "/year, per term" : `/${plan.billingPeriodDays}d`}</span>
+                        <span className="text-xs font-normal text-secondary-500">{plan.billingCycle === "SEASONAL" ? "/year" : `/${plan.billingPeriodDays}d`}</span>
                       </p>
                       <p className="mt-1 text-xs text-secondary-500">{plan.maxDevices} devices · {plan.maxBranches} branches</p>
                       <button
