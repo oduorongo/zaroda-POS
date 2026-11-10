@@ -20,8 +20,15 @@ const POINTS = [
 export default function RentalsWelcome() {
   return (
     <RentalsFrame>
-      <section className="text-white" style={{ background: `linear-gradient(160deg, ${RENTALS_BRAND.navy}, #0a142d)` }}>
-        <div className="mx-auto max-w-5xl px-4 py-14 sm:py-20">
+      <section
+        className="bg-cover text-white"
+        style={{
+          backgroundImage: `linear-gradient(90deg, ${RENTALS_BRAND.navy} 0%, ${RENTALS_BRAND.navy}cc 40%, ${RENTALS_BRAND.navy}40 75%, ${RENTALS_BRAND.navy}10 100%), url(/rentals-hero.jpg)`,
+          backgroundPosition: "center, 70% center",
+          backgroundColor: RENTALS_BRAND.navy,
+        }}
+      >
+        <div className="mx-auto max-w-5xl px-4 py-16 sm:py-28">
           <p className="text-sm font-semibold uppercase tracking-widest" style={{ color: RENTALS_BRAND.gold }}>For Kenyan landlords and agents</p>
           <h1 className="mt-2 max-w-2xl text-3xl font-bold leading-tight sm:text-4xl">Collect rent, track tenants and stay on top of arrears - from your phone.</h1>
           <p className="mt-4 max-w-xl text-white/80">ZARODA RENTALS does the monthly invoices, M-Pesa matching, receipts and reminders, so you only deal with the exceptions.</p>
