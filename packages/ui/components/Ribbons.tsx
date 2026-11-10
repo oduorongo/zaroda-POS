@@ -11,6 +11,8 @@ import { BackButton } from "./BackButton";
 const NAVY = "bg-[#060f26]";
 const GOLD_TEXT = "text-[#c99a2e]";
 const GOLD_BORDER = "border-[#c99a2e]";
+/** The gold line dividing each ribbon from the page. */
+const GOLD_LINE = "border-[#d4af37]";
 
 export interface TopRibbonProps {
   /** Shown in gold beside the logo, e.g. "Back Office". */
@@ -32,7 +34,8 @@ export function TopRibbon({ appName, homeHref, LinkComponent = "a", logoSrc = "/
     <header
       className={cn(
         "sticky top-0 z-40 flex flex-wrap items-center justify-between gap-x-4 gap-y-1 px-3 py-2 text-white sm:px-4 sm:py-3",
-        "shadow-[0_2px_10px_rgba(5,12,35,0.25)]",
+        "border-b-[3px] shadow-[0_2px_10px_rgba(5,12,35,0.25)]",
+        GOLD_LINE,
         NAVY,
         className,
       )}
@@ -90,7 +93,8 @@ export function BottomRibbon({ children, className }: { children?: ReactNode; cl
     <footer
       className={cn(
         "sticky bottom-0 z-40 px-2 py-1.5 text-center text-[0.68rem] leading-snug text-white/80 sm:px-4 sm:py-2.5 sm:text-[0.8rem]",
-        "shadow-[0_-2px_10px_rgba(5,12,35,0.25)]",
+        "border-t-[3px] shadow-[0_-2px_10px_rgba(5,12,35,0.25)]",
+        GOLD_LINE,
         NAVY,
         className,
       )}
