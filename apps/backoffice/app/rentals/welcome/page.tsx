@@ -20,15 +20,15 @@ const POINTS = [
 export default function RentalsWelcome() {
   return (
     <RentalsFrame>
-      <section
-        className="bg-cover text-white"
-        style={{
-          backgroundImage: `linear-gradient(90deg, ${RENTALS_BRAND.navy} 0%, ${RENTALS_BRAND.navy}cc 40%, ${RENTALS_BRAND.navy}40 75%, ${RENTALS_BRAND.navy}10 100%), url(/rentals-hero.jpg)`,
-          backgroundPosition: "center, 70% center",
-          backgroundColor: RENTALS_BRAND.navy,
-        }}
-      >
-        <div className="mx-auto max-w-5xl px-4 py-16 sm:py-28">
+      <section className="relative overflow-hidden text-white" style={{ background: `linear-gradient(160deg, ${RENTALS_BRAND.navy}, #0a142d)` }}>
+        <img
+          src="/rentals-hero.jpg"
+          alt="ZARODA RENTALS on a phone, in front of an apartment block"
+          className="absolute inset-y-0 right-0 hidden h-full w-auto max-w-[60%] object-cover object-left md:block"
+          style={{ maskImage: "linear-gradient(90deg, transparent 0%, #000 30%)", WebkitMaskImage: "linear-gradient(90deg, transparent 0%, #000 30%)" }}
+        />
+        <div className="relative mx-auto max-w-5xl px-4 py-16 md:py-28">
+          <div className="md:max-w-[55%]">
           <p className="text-sm font-semibold uppercase tracking-widest" style={{ color: RENTALS_BRAND.gold }}>For Kenyan landlords and agents</p>
           <h1 className="mt-2 max-w-2xl text-3xl font-bold leading-tight sm:text-4xl">Collect rent, track tenants and stay on top of arrears - from your phone.</h1>
           <p className="mt-4 max-w-xl text-white/80">ZARODA RENTALS does the monthly invoices, M-Pesa matching, receipts and reminders, so you only deal with the exceptions.</p>
@@ -36,6 +36,8 @@ export default function RentalsWelcome() {
             <Link href="/rentals/signup" className="rounded-lg px-5 py-3 font-semibold text-white no-underline" style={{ background: RENTALS_BRAND.orange }}>Start free (up to 5 units)</Link>
             <Link href="/rentals/pricing" className="rounded-lg border border-white/40 px-5 py-3 font-semibold text-white no-underline">See pricing</Link>
           </div>
+          </div>
+          <img src="/rentals-hero.jpg" alt="" className="mt-8 w-full rounded-xl md:hidden" />
         </div>
       </section>
       <section className="mx-auto grid max-w-5xl gap-4 px-4 py-10 sm:grid-cols-2">
