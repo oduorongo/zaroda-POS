@@ -9,7 +9,7 @@ import { RENTALS_BRAND } from "../../lib/rentals";
 export function RentalsFrame({ children }: { children: ReactNode }) {
   return (
     <div className="min-h-screen bg-background text-foreground">
-      <header className="sticky top-0 z-40 text-white shadow" style={{ background: RENTALS_BRAND.navy, borderBottom: `3px solid ${RENTALS_BRAND.gold}` }}>
+      <header className="sticky top-0 z-40 text-white shadow" style={{ background: RENTALS_BRAND.navy, borderBottom: `2px solid ${RENTALS_BRAND.gold}` }}>
         <div className="mx-auto flex max-w-5xl items-center justify-between gap-3 px-4 py-3">
           <div className="flex items-center gap-2">
           <BackButton homeHref="/rentals/welcome" />

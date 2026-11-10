@@ -42,7 +42,7 @@ export function ConHeader({ session, me }: { session: Session; me: ConMe | null 
   const links = [...LINKS, ...(hasConRole(me, "CON_COMPLIANCE") ? [{ href: "/construction/staff", label: "Staff & roles" }] : []), ...(isDirector(me) ? [{ href: "/construction/enterprise", label: "Offices & API" }] : []), ...(["OWNER", "MANAGER"].includes(session.role) ? CORE_LINKS : []), { href: "/construction/guide", label: "Guide" }];
 
   return (
-    <header className="sticky top-0 z-40 text-white shadow" style={{ background: CON_BRAND.navy, borderBottom: `3px solid ${CON_BRAND.gold}` }}>
+    <header className="sticky top-0 z-40 text-white shadow" style={{ background: CON_BRAND.navy, borderBottom: `2px solid ${CON_BRAND.gold}` }}>
       <style>{conBackdropCss(0.62)}</style>
       <div className="flex items-center justify-between gap-3 px-3 py-2 sm:px-5">
         <div className="flex min-w-0 items-center gap-2">

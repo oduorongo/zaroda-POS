@@ -12,7 +12,7 @@ export function PortalFrame({ children }: { children: ReactNode }) {
   useEffect(() => setA(portalAccount()), [children]);
   return (
     <div className="min-h-screen bg-background text-foreground" style={conBackdrop(0.6)}>
-      <header className="sticky top-0 z-40 text-white shadow" style={{ background: CON_BRAND.navy, borderBottom: `3px solid ${CON_BRAND.gold}` }}>
+      <header className="sticky top-0 z-40 text-white shadow" style={{ background: CON_BRAND.navy, borderBottom: `2px solid ${CON_BRAND.gold}` }}>
         <div className="mx-auto flex max-w-4xl items-center justify-between gap-3 px-4 py-3">
           <div className="flex items-center gap-2">
           <BackButton homeHref="/construction/portal" />

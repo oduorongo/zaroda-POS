@@ -90,12 +90,13 @@ body {
   box-shadow: var(--card-shadow);
 }
 
-/* A gold frame around the edge of every page, matching the gold lines on the ribbons. */
+/* A thin gold line along the top and bottom edge of every page, matching the lines on the ribbons. */
 body::after {
   content: "";
   position: fixed;
   inset: 0;
-  border: 3px solid #d4af37;
+  border-top: 2px solid #d4af37;
+  border-bottom: 2px solid #d4af37;
   pointer-events: none;
   z-index: 2147483000;
 }
