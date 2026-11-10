@@ -98,3 +98,16 @@ body {
 .rounded-2xl.bg-surface {
   box-shadow: var(--card-shadow);
 }
+
+/* A gold frame around the edge of every page, matching the gold lines on the ribbons. */
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  border: 3px solid #d4af37;
+  pointer-events: none;
+  z-index: 2147483000;
+}
+@media print {
+  body::after { display: none; }
+}
