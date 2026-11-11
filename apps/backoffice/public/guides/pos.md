@@ -204,7 +204,7 @@ Buyers pay a small **convenience fee** (3%) added at checkout; your shop pays no
 
 ## Screens for your kind of business
 
-When you sign up you choose your kind of business, and its own screens appear on **Home** and in the top menu:
+When you sign up you choose your kind of business, and its own screens appear on **Home** and in the top menu. When you open this guide signed in, the section on how Zaroda works for your kind of business is shown near the top.
 
 | Business | Extra screens |
 |---|---|
