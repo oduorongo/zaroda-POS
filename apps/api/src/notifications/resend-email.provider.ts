@@ -35,12 +35,14 @@ export class ResendEmailProvider {
       return { sent: false, detail: 'Email not configured' };
     }
     const from = this.config.get<string>('RESEND_FROM') ?? 'ZARODA <onboarding@resend.dev>';
+    const replyTo = this.config.get<string>('RESEND_REPLY_TO') ?? 'info@zarodasolutions.app';
     try {
       const response = await fetch('https://api.resend.com/emails', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
         body: JSON.stringify({
           from,
+          ...(replyTo ? { reply_to: replyTo } : {}),
           to: input.to,
           subject: input.subject,
           html: input.html,
