@@ -1,5 +1,7 @@
 "use client";
 
+import { forgetActivity, idleTooLong, markActive } from "./idle";
+
 /**
  * Always-online admin console - no Dexie/offline store needed (unlike
  * the terminal PWA). The session is just the JWT plus enough of its
@@ -18,6 +20,7 @@ export interface Session {
 }
 
 const KEY = "zaroda-backoffice-session";
+export const SESSION_KEY = KEY;
 
 /**
  * The back office is for owners/managers/auditors reviewing sales and
@@ -44,6 +47,10 @@ export function getSession(): Session | null {
   if (typeof window === "undefined") return null;
   const raw = window.localStorage.getItem(KEY);
   if (!raw) return null;
+  if (idleTooLong(KEY)) {
+    clearSession();
+    return null;
+  }
   try {
     return JSON.parse(raw) as Session;
   } catch {
@@ -53,10 +60,12 @@ export function getSession(): Session | null {
 
 export function setSession(session: Session): void {
   window.localStorage.setItem(KEY, JSON.stringify(session));
+  markActive(KEY);
 }
 
 export function clearSession(): void {
   window.localStorage.removeItem(KEY);
+  forgetActivity(KEY);
 }
 
 /** Decodes the JWT payload without verifying it - display/gating only, never a trust boundary (the server re-checks every request). */

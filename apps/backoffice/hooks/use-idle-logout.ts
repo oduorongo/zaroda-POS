@@ -1,38 +1,63 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { clearSession } from "../lib/auth";
-
-// Auto-logout on inactivity - an owner/manager back office left open and
-// unattended shouldn't stay a live session indefinitely. 15 minutes
-// matches typical admin-console practice.
-const IDLE_TIMEOUT_MS = 15 * 60 * 1000;
+import { clearSession, SESSION_KEY } from "../lib/auth";
+import { IDLE_TIMEOUT_MS, idleFor, markActive } from "../lib/idle";
 
 const ACTIVITY_EVENTS = ["mousedown", "keydown", "scroll", "touchstart"] as const;
 
-/** Call once from a component mounted on every authenticated page (e.g. Nav). */
-export function useIdleLogout() {
+/**
+ * Signs out after 15 minutes without use. Call once from a component on every signed-in page (e.g. Nav).
+ * Defaults to the back-office session; the team app passes its own.
+ */
+export function useIdleLogout(opts: { sessionKey?: string; clear?: () => void; loginPath?: string } = {}) {
   const router = useRouter();
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const sessionKey = opts.sessionKey ?? SESSION_KEY;
+  const clear = opts.clear ?? clearSession;
+  const loginPath = opts.loginPath ?? "/login";
 
   useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let lastMark = 0;
+
     function logout() {
-      clearSession();
-      router.replace("/login");
+      clear();
+      router.replace(loginPath);
     }
 
-    function resetTimer() {
-      if (timerRef.current) clearTimeout(timerRef.current);
-      timerRef.current = setTimeout(logout, IDLE_TIMEOUT_MS);
+    // Activity in another tab counts too, so only sign out once the shared stamp is really 15 minutes old.
+    function check() {
+      if (timer) clearTimeout(timer);
+      const idle = idleFor(sessionKey);
+      if (idle === null) markActive(sessionKey);
+      else if (idle > IDLE_TIMEOUT_MS) return logout();
+      timer = setTimeout(check, IDLE_TIMEOUT_MS - (idle ?? 0) + 1000);
     }
 
-    resetTimer();
-    ACTIVITY_EVENTS.forEach((event) => window.addEventListener(event, resetTimer));
+    function onActivity() {
+      if (Date.now() - lastMark < 15_000) return;
+      lastMark = Date.now();
+      const idle = idleFor(sessionKey);
+      if (idle !== null && idle > IDLE_TIMEOUT_MS) return logout();
+      markActive(sessionKey);
+      check();
+    }
 
+    function onReturn() {
+      if (document.visibilityState === "visible") check();
+    }
+
+    check();
+    ACTIVITY_EVENTS.forEach((e) => window.addEventListener(e, onActivity, { passive: true }));
+    document.addEventListener("visibilitychange", onReturn);
+    window.addEventListener("focus", check);
     return () => {
-      if (timerRef.current) clearTimeout(timerRef.current);
-      ACTIVITY_EVENTS.forEach((event) => window.removeEventListener(event, resetTimer));
+      if (timer) clearTimeout(timer);
+      ACTIVITY_EVENTS.forEach((e) => window.removeEventListener(e, onActivity));
+      document.removeEventListener("visibilitychange", onReturn);
+      window.removeEventListener("focus", check);
     };
-  }, [router]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [router, sessionKey, loginPath]);
 }

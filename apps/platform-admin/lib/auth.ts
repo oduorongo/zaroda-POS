@@ -1,5 +1,7 @@
 "use client";
 
+import { forgetActivity, idleTooLong, markActive } from "./idle";
+
 /**
  * Namespaced under a completely different localStorage key from
  * apps/backoffice's "zaroda-backoffice-session" - even if someone somehow
@@ -15,11 +17,16 @@ export interface Session {
 }
 
 const KEY = "zaroda-platform-admin-session";
+export const SESSION_KEY = KEY;
 
 export function getSession(): Session | null {
   if (typeof window === "undefined") return null;
   const raw = window.localStorage.getItem(KEY);
   if (!raw) return null;
+  if (idleTooLong(KEY)) {
+    clearSession();
+    return null;
+  }
   try {
     return JSON.parse(raw) as Session;
   } catch {
@@ -29,8 +36,10 @@ export function getSession(): Session | null {
 
 export function setSession(session: Session): void {
   window.localStorage.setItem(KEY, JSON.stringify(session));
+  markActive(KEY);
 }
 
 export function clearSession(): void {
   window.localStorage.removeItem(KEY);
+  forgetActivity(KEY);
 }
