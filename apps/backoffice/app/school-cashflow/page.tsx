@@ -144,7 +144,7 @@ export default function SchoolCashflowPage() {
       <main className="mx-auto max-w-4xl space-y-4 p-6">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h1 className="text-xl font-bold">Cash-flow forecast</h1>
-          <div className="flex gap-4 text-sm">
+          <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
             <Link href="/school-money" className="text-primary-600 hover:underline">Invoices &amp; payments</Link>
             <Link href="/school-contracts" className="text-primary-600 hover:underline">Contracts</Link>
             <Link href="/school-orders" className="text-primary-600 hover:underline">School orders</Link>

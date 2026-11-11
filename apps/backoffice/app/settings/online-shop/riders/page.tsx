@@ -137,7 +137,7 @@ export default function ShopRidersPage() {
       <main className="mx-auto max-w-4xl space-y-6 p-6">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h1 className="text-xl font-bold">My delivery riders</h1>
-          <div className="flex gap-4 text-sm">
+          <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
             <Link href="/online-orders" className="text-primary-600 hover:underline">
               Online orders
             </Link>
