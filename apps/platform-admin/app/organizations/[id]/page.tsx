@@ -79,7 +79,7 @@ const STATUS_VARIANT: Record<string, "primary" | "success" | "warning" | "error"
   SUSPENDED: "error",
 };
 
-const INDUSTRY_TYPES = ["RETAIL", "RESTAURANT", "PHARMACY", "SALON", "RENTAL", "SCHOOL_SUPPLIER", "HOTEL"] as const;
+const INDUSTRY_TYPES = ["RETAIL", "RESTAURANT", "SALON", "RENTAL", "SCHOOL_SUPPLIER", "HOTEL"] as const;
 
 export default function OrganizationDetailPage() {
   const params = useParams<{ id: string }>();
@@ -309,6 +309,7 @@ export default function OrganizationDetailPage() {
                       {INDUSTRY_TYPES.map((t) => (
                         <option key={t} value={t}>{t}</option>
                       ))}
+                      {!(INDUSTRY_TYPES as readonly string[]).includes(editIndustryType) && <option value={editIndustryType}>{editIndustryType}</option>}
                     </select>
                   </div>
                   <div>

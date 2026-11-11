@@ -28,7 +28,7 @@ type PosterKind = "shop" | "menu" | "salon" | "pharmacy";
 
 // Posters exist for retail shops, hotels / restaurants, salons and pharmacies. Salons point at the booking page,
 // the rest at the shop's online page.
-const KIND_BY_INDUSTRY: Record<string, PosterKind> = { RETAIL: "shop", RESTAURANT: "menu", SALON: "salon", PHARMACY: "pharmacy" };
+const KIND_BY_INDUSTRY: Record<string, PosterKind> = { RETAIL: "shop", RESTAURANT: "menu", SALON: "salon" };
 const TITLE: Record<PosterKind, string> = { shop: "Shop poster", menu: "Menu poster", salon: "Booking poster", pharmacy: "Pharmacy poster" };
 const WHAT_THEY_SEE: Record<PosterKind, string> = {
   shop: "lands on your shop and can see what you have in stock and order",
@@ -153,7 +153,7 @@ export default function ShopPosterPage() {
               Print this and pin it where your customers pass - at your counter, your gate, a notice board. Anyone who scans the code with their phone camera {WHAT_THEY_SEE[kind]}.
             </p>
           )}
-          {!kind && <EmptyState title="Posters are not available for this business type" description="QR posters are available for retail shops, hotels and restaurants, salons and pharmacies." />}
+          {!kind && <EmptyState title="Posters are not available for this business type" description="QR posters are available for retail shops, hotels and restaurants, and salons." />}
           {loading && kind && <LoadingState label="Preparing your poster..." />}
           {error && <p className="text-sm text-error-600">{error}</p>}
           {!loading && kind && !isManager && <EmptyState title="Owners and managers only" description="Ask your business owner or a manager to print the poster." />}

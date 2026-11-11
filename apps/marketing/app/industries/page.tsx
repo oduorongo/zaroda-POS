@@ -6,7 +6,7 @@ import { FeatureIllustration, type IllustrationKey } from "../../components/feat
 
 export const metadata: Metadata = {
   title: "Industries — Zaroda POS",
-  description: "Dedicated POS setups for retail, restaurants, pharmacies, and salons in Kenya — each with the screens and workflow their trade needs.",
+  description: "Dedicated POS setups for retail, restaurants, and salons in Kenya — each with the screens and workflow their trade needs.",
   alternates: { canonical: "https://zarodashop.com/industries" },
 };
 
@@ -28,14 +28,6 @@ const INDUSTRIES: { name: string; tagline: string; description: string; illustra
       "Order-to-till checkout built for a fast counter — ring up orders, take M-Pesa or cash, and keep the till moving during a lunch rush.",
     illustration: "restaurant",
     tone: "warning",
-  },
-  {
-    name: "Pharmacies",
-    tagline: "Pharmacies",
-    description:
-      "Fast checkout with the accountability a pharmacy till needs — every discount and refund logged to the staff member who approved it.",
-    illustration: "pharmacy",
-    tone: "success",
   },
   {
     name: "Salons & spas",

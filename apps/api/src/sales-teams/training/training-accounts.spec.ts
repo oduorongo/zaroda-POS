@@ -4,8 +4,8 @@ import { TRAINING_KITS, TRAINING_TYPES } from './training-kits';
 import { TrainingTypePipe } from './training-type.pipe';
 
 describe('training accounts', () => {
-  it('covers all eight business types once each', () => {
-    expect(TRAINING_TYPES).toEqual(['RETAIL', 'RESTAURANT', 'PHARMACY', 'SALON', 'HOTEL', 'SCHOOL_SUPPLIER', 'RENTAL', 'CONSTRUCTION']);
+  it('covers each offered business type once (pharmacy hidden)', () => {
+    expect(TRAINING_TYPES).toEqual(['RETAIL', 'RESTAURANT','SALON', 'HOTEL', 'SCHOOL_SUPPLIER', 'RENTAL', 'CONSTRUCTION']);
   });
 
   it('gives each kit products with a price above cost and customers', () => {

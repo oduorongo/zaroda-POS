@@ -8,7 +8,6 @@ import {
   ShieldCheck,
   BarChart3,
   UtensilsCrossed,
-  Pill,
   Scissors,
   Receipt,
   MessageSquareText,
@@ -91,15 +90,6 @@ const CAPABILITIES: Capability[] = [
     illustration: "restaurant",
     title: "Restaurant Mode",
     description: "Table management and kitchen tickets (KDS) for a fast-moving counter.",
-    href: "/industries",
-  },
-  {
-    icon: Pill,
-    color: "bg-success-600",
-    tone: "success",
-    illustration: "pharmacy",
-    title: "Pharmacy Mode",
-    description: "Prescription flags on sale items for a pharmacy till.",
     href: "/industries",
   },
   {

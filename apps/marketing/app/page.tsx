@@ -78,7 +78,7 @@ export default function LandingPage() {
             Trusted by shops across Kenya
           </p>
           <div className="mt-6 grid grid-cols-2 gap-6 sm:grid-cols-4">
-            {["Retail shop", "Pharmacy", "Restaurant", "Hardware store"].map((label) => (
+            {["Retail shop", "Restaurant", "Hardware store"].map((label) => (
               <div
                 key={label}
                 className="flex h-16 items-center justify-center rounded-md border border-dashed border-border text-xs font-medium text-secondary-400"

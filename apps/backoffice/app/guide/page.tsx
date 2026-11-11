@@ -11,7 +11,6 @@ const BUSINESS_GUIDES: Record<string, string> = {
   SCHOOL_SUPPLIER: "School supplier",
   HOTEL: "Hotel",
   RESTAURANT: "Restaurant",
-  PHARMACY: "Pharmacy",
   SALON: "Salon",
   MANUFACTURING: "Production",
   SERVICE: "Service business",

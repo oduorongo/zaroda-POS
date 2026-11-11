@@ -15,7 +15,6 @@ const STATUS: Record<NonNullable<TeamShop["subscription"]>["status"], { label: s
 const INDUSTRIES = [
   ["RETAIL", "Retail shop"],
   ["RESTAURANT", "Restaurant"],
-  ["PHARMACY", "Pharmacy"],
   ["SALON", "Salon"],
   ["RENTAL", "Rental landlord"],
   ["SCHOOL_SUPPLIER", "School supplier"],

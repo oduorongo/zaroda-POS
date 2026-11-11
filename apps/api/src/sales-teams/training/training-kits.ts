@@ -184,7 +184,8 @@ export const CONSTRUCTION_KIT = {
   ],
 };
 
-export const TRAINING_TYPES = [...TRAINING_KITS.map((k) => k.industryType), RENTAL_KIT.industryType, CONSTRUCTION_KIT.industryType];
+// Pharmacy is hidden until its compliance questions are settled; its kit is kept for later.
+export const TRAINING_TYPES = [...TRAINING_KITS.map((k) => k.industryType).filter((t) => t !== 'PHARMACY'), RENTAL_KIT.industryType, CONSTRUCTION_KIT.industryType];
 
 export const kitLabel = (industryType: string) =>
   TRAINING_KITS.find((k) => k.industryType === industryType)?.label ?? (industryType === 'RENTAL' ? RENTAL_KIT.label : industryType === 'CONSTRUCTION' ? CONSTRUCTION_KIT.label : industryType);
