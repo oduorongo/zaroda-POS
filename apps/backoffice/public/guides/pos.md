@@ -27,7 +27,7 @@ Cashiers and supervisors never sign in to the back office; they use their **PIN*
 ## Getting started
 
 ### 1. Create your account
-Sign up on **zarodashop.com** with your business name, the **kind of business** (shop, restaurant, pharmacy, salon, hotel and others), your name, email and a password, and your first branch. You start on a **14-day free trial**; no card is needed.
+Sign up on **zarodashop.com** with your business name, the **kind of business** (shop, restaurant, salon, hotel and others), your name, email and a password, and your first branch. You start on a **14-day free trial**; no card is needed.
 
 ### 2. Sign in to the back office
 Sign in with your email and password. **Home** shows a tile for every screen you use; the top menu has the ones you use most. Every page has **← Back** at the top left.
@@ -126,7 +126,7 @@ Open the till app on the tablet or phone, choose **Set up this till**, sign in w
 5. The receipt shows; print it or start the next sale.
 
 ### Working offline
-If the internet drops, the till keeps selling for **cash**: sales are saved on the device and sent automatically when the connection is back ("Syncing..."). M-Pesa, customer lookup, charging to a room and pharmacy prescription checks need a connection.
+If the internet drops, the till keeps selling for **cash**: sales are saved on the device and sent automatically when the connection is back ("Syncing..."). M-Pesa, customer lookup and charging to a room need a connection.
 
 ### Returns
 **Returns** refunds a sale: find the sale, enter the **refund amount** (up to what is left to refund) and the reason, and a **supervisor (or above) approves** it. The stock and the money are corrected.
@@ -210,7 +210,6 @@ When you sign up you choose your kind of business, and its own screens appear on
 |---|---|
 | **Restaurant** | Tables & Kitchen (table status, kitchen tickets on a kitchen screen), open bills, QR table ordering |
 | **Hotel** | Front desk (arrivals, in-house guests, departures, check-in and check-out), rooms and housekeeping, rate plans, night audit and hotel reports; optionally the restaurant |
-| **Pharmacy** | Prescription-flagged sales and stock |
 | **Salon** | Bookings (appointments and who does them) |
 | **Manufacturing** | Production runs and recipes |
 | **Service business** | Job orders and their status |

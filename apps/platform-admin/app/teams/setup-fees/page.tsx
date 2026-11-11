@@ -39,7 +39,6 @@ const TYPES = [
   ["ANY", "Any business (default)"],
   ["RETAIL", "Retail / supermarket"],
   ["RESTAURANT", "Restaurant"],
-  ["PHARMACY", "Pharmacy"],
   ["SALON", "Salon / spa"],
   ["HOTEL", "Hotel / lodge"],
   ["SCHOOL_SUPPLIER", "School supplier"],

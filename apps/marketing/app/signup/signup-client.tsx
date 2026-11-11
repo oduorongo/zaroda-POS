@@ -8,7 +8,6 @@ import { Button, Input, Label } from "@zaroda/ui";
 const INDUSTRY_TYPES = [
   { value: "RETAIL", label: "General retail / supermarket / minimart" },
   { value: "RESTAURANT", label: "Restaurant / eatery" },
-  { value: "PHARMACY", label: "Pharmacy" },
   { value: "SALON", label: "Salon / spa" },
   { value: "RENTAL", label: "Rental properties / landlord" },
   { value: "SCHOOL_SUPPLIER", label: "School supplier (sells to schools on credit)" },

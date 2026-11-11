@@ -5,7 +5,7 @@ import Footer from "../components/footer";
 
 const TITLE = "Zaroda Shop — POS for Kenyan Retail";
 const DESCRIPTION =
-  "Zaroda Shop is rent-to-run POS for supermarkets, minimarts, pharmacies, agrovets, and more — M-Pesa built in, works offline.";
+  "Zaroda Shop is rent-to-run POS for supermarkets, minimarts, agrovets, and more — M-Pesa built in, works offline.";
 
 const ORGANIZATION_JSON_LD = {
   "@context": "https://schema.org",

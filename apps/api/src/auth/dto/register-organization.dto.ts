@@ -14,7 +14,7 @@ import {
  * ever accepted from a client, so it's validated against the same set the
  * vertical modules actually register manifests for (ModuleRegistryService).
  */
-const INDUSTRY_TYPES = ['RETAIL', 'RESTAURANT', 'PHARMACY', 'SALON', 'RENTAL', 'SCHOOL_SUPPLIER', 'HOTEL', 'CONSTRUCTION'] as const;
+const INDUSTRY_TYPES = ['RETAIL', 'RESTAURANT', 'SALON', 'RENTAL', 'SCHOOL_SUPPLIER', 'HOTEL', 'CONSTRUCTION'] as const;
 
 export class RegisterOrganizationDto {
   @IsString()
