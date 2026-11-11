@@ -5,7 +5,8 @@ import { useRouter } from "next/navigation";
 import { RibbonButton, RibbonLink, ThemeToggle, TopRibbon } from "@zaroda/ui";
 import Link from "next/link";
 import { ApiError } from "../lib/api";
-import { clearTeamSession, getTeamSession } from "../lib/team-auth";
+import { clearTeamSession, getTeamSession, TEAM_SESSION_KEY } from "../lib/team-auth";
+import { useIdleLogout } from "../hooks/use-idle-logout";
 import { teamMe, type TeamMe } from "../lib/team-api";
 import { TeamInstall } from "./team-install";
 
@@ -19,6 +20,7 @@ export function TeamShell({ active, children }: { active: Page; children: (me: T
   const router = useRouter();
   const [me, setMe] = useState<TeamMe | null>(null);
   const [error, setError] = useState<string | null>(null);
+  useIdleLogout({ sessionKey: TEAM_SESSION_KEY, clear: clearTeamSession, loginPath: "/team/login" });
 
   async function reload() {
     try {
