@@ -115,7 +115,7 @@ export default function SchoolPricesPage() {
       <main className="mx-auto max-w-4xl space-y-4 p-6">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h1 className="text-xl font-bold">School price list</h1>
-          <div className="flex gap-4 text-sm">
+          <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
             <Link href="/schools" className="text-primary-600 hover:underline">Schools</Link>
             <Link href="/school-orders" className="text-primary-600 hover:underline">School orders</Link>
           </div>
