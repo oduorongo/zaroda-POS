@@ -13,7 +13,7 @@
     "@zaroda/ui": "workspace:*",
     "react": "^18",
     "react-dom": "^18",
-    "next": "14.2.35"
+    "next": "15.5.27"
   },
   "devDependencies": {
     "typescript": "^5",
