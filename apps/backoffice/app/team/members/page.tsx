@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Badge, Button, EmptyState, LoadingState } from "@zaroda/ui";
+import { Badge, Button, CredentialsCard, EmptyState, LoadingState } from "@zaroda/ui";
 import { ApiError } from "../../../lib/api";
 import { TeamShell } from "../../../components/team-shell";
 import { teamGet, teamPatch, teamPost, type TeamMe, type TeamMember } from "../../../lib/team-api";
@@ -100,20 +100,17 @@ function MembersBody({ me }: { me: TeamMe }) {
       </div>
 
       {secret && (
-        <div className="rounded-lg border border-warning-600/40 bg-warning-50 p-4 text-sm">
-          <p className="font-semibold">Temporary password for {secret.who}</p>
-          <p className="mt-1">
-            Email: <b>{secret.email}</b>
-          </p>
-          <p>
-            Password: <b className="font-mono text-base">{secret.password}</b>
-          </p>
-          <p className="mt-2 font-medium">{sentNote(secret.sent)}</p>
-          <p className="mt-1 text-secondary-600">It is shown here once. They sign in at /team/login and must choose their own password straight away.</p>
-          <Button size="sm" variant="secondary" className="mt-2" onClick={() => setSecret(null)}>
-            I have passed it on
-          </Button>
-        </div>
+        <CredentialsCard
+          title={`Sign-in details for ${secret.who}`}
+          shareHeading={`ZARODA Team sign-in for ${secret.who}`}
+          loginUrl={`${window.location.origin}/team/login`}
+          email={secret.email}
+          password={secret.password}
+          onDone={() => setSecret(null)}
+        >
+          <p className="mt-3 font-medium">{sentNote(secret.sent)}</p>
+          <p className="mt-1 text-secondary-600">It is shown here once. They must choose their own password straight away.</p>
+        </CredentialsCard>
       )}
 
       {showForm && (
