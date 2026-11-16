@@ -108,7 +108,7 @@ export const teamPatch = <T>(path: string, body: unknown) => request<T>(`/sales-
 export interface EarningLine {
   id: string;
   kind: "COMMISSION_SHARE" | "SUBSCRIPTION_SHARE" | "LEADER_OVERRIDE" | "ONBOARDING_BONUS" | "ADJUSTMENT";
-  app: "POS" | "ONLINE_SHOP" | "CONSTRUCTION" | "RENTALS";
+  app: "POS" | "ONLINE_SHOP" | "CONSTRUCTION" | "RENTALS" | "SCHOOL";
   shop: string;
   baseKes: number;
   rate: number | null;

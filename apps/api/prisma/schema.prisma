@@ -3232,6 +3232,7 @@ model SalesTeam {
   riders        Rider[]
   earnings      SalesEarning[]
   setupFees     SalesSetupFee[]
+  schools       SalesSchool[]
   trainingAccounts SalesTeamTrainingAccount[]
 
   @@map("sales_teams")
@@ -3280,6 +3281,7 @@ model SalesAgent {
   earnings      SalesEarning[]
   payouts       SalesPayout[]
   setupFees     SalesSetupFee[]
+  schools       SalesSchool[]
 
   @@index([teamId])
   @@map("sales_agents")
@@ -3343,7 +3345,7 @@ model SalesEarning {
   periodMonth      String
   status           SalesEarningStatus @default(PENDING)
   payoutId         String?
-  // POS | ONLINE_SHOP | CONSTRUCTION | RENTALS - which app the money came from.
+  // POS | ONLINE_SHOP | CONSTRUCTION | RENTALS | SCHOOL - which app the money came from.
   sourceApp        String             @default("POS")
   createdAt        DateTime           @default(now())
 
@@ -3357,6 +3359,47 @@ model SalesEarning {
   @@index([organizationId, periodMonth])
   @@index([sourceApp, periodMonth])
   @@map("sales_earnings")
+}
+
+// A school on Zaroda School (its own app and database) that a team member brought in. Zaroda School reports
+// each school signed up with a marketer link and every subscription payment it makes (POST /sales-sync/school);
+// the earnings engine treats a school like a business: same team rates, window, cap and bonus.
+// id = the school's tenant id in Zaroda School.
+model SalesSchool {
+  id         String   @id
+  name       String
+  teamId     String
+  agentId    String
+  // The marketer reference the school signed up with (agent id, email or phone), as sent.
+  agentRef   String
+  signedUpAt DateTime
+  assignedAt DateTime @default(now())
+  // False while the school is suspended in Zaroda School: what it pays then earns nothing.
+  active     Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  team     SalesTeam            @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  agent    SalesAgent           @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  payments SalesSchoolPayment[]
+
+  @@index([teamId])
+  @@index([agentId])
+  @@map("sales_schools")
+}
+
+// A successful Zaroda School subscription payment from a SalesSchool. id = "school:" + its payment id there.
+model SalesSchoolPayment {
+  id        String   @id
+  schoolId  String
+  amountKes Decimal  @db.Decimal(12, 2)
+  paidAt    DateTime
+  createdAt DateTime @default(now())
+
+  school SalesSchool @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+
+  @@index([schoolId])
+  @@map("sales_school_payments")
 }
 
 // Money Zaroda pays a person against what they earned, through M-Pesa B2C, TUMA, or recorded by hand.

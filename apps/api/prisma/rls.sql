@@ -2134,3 +2134,5 @@ CREATE POLICY sync_key_lookup ON stock_sync_keys FOR SELECT
   USING ("prefix" = current_setting('app.current_sync_key_prefix', true));
 -- sales_setup_fee_rates / sales_setup_fees: platform-level, like the other marketing team tables (no tenant; scoped in
 -- SalesSetupFeesService by the verified team member, and on rls-coverage.spec.ts's exclusion list).
+-- sales_schools / sales_school_payments: platform-level the same way (Zaroda School schools a member brought in;
+-- written only by the key-protected /sales-sync/school call, read scoped by team in SchoolSalesService).

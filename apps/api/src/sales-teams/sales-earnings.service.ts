@@ -14,7 +14,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 
 const num = (d: Prisma.Decimal | number | null | undefined) => (d == null ? 0 : Number(d));
 
-export const SALES_APPS = ['POS', 'ONLINE_SHOP', 'CONSTRUCTION', 'RENTALS'] as const;
+export const SALES_APPS = ['POS', 'ONLINE_SHOP', 'CONSTRUCTION', 'RENTALS', 'SCHOOL'] as const;
 export type SalesApp = (typeof SALES_APPS)[number];
 
 /**
@@ -115,16 +115,65 @@ export class SalesEarningsService {
             ONLINE_SHOP: suspended ?? posUnpaid,
             CONSTRUCTION: suspended ?? conUnpaid,
             RENTALS: suspended,
+            SCHOOL: suspended,
           },
           memberInactive: members.get(org.salesAgentId as string) !== SalesAgentStatus.ACTIVE,
-          payments: (paymentsByOrg.get(org.id) ?? []).map((p) => ({ id: p.id, amount: num(p.amount), paidAt: p.paidAt })),
+          loadSources: (tx) => this.businessSources(tx, org.id, (paymentsByOrg.get(org.id) ?? []).map((p) => ({ id: p.id, amount: num(p.amount), paidAt: p.paidAt }))),
         });
         totals.commission += result.commission;
         totals.subscriptions += result.subscriptions;
         totals.bonuses += result.bonuses;
       }
     }
+    await this.accrueSchools(totals);
     return { ...totals, released: await this.release(), skipped: false };
+  }
+
+  /** Zaroda School schools a member brought in: each school earns like a business, on its subscription payments. */
+  private async accrueSchools(totals: { commission: number; subscriptions: number; bonuses: number }) {
+    const schools = await this.prisma.salesSchool.findMany({ include: { team: true, agent: { select: { status: true } } } });
+    if (schools.length === 0) return;
+    const leaders = new Map(
+      (await this.prisma.salesAgent.findMany({ where: { teamId: { in: [...new Set(schools.map((s) => s.teamId))] }, role: SalesAgentRole.LEADER, status: SalesAgentStatus.ACTIVE }, select: { id: true, teamId: true, createdAt: true } })).map((l) => [l.teamId, l]),
+    );
+    for (const school of schools) {
+      const blocked = school.active ? null : 'The school was suspended';
+      const result = await this.accrueShop({
+        org: { id: school.id, name: school.name, createdAt: school.signedUpAt, salesAgentId: school.agentId, salesAssignedAt: school.assignedAt },
+        team: school.team,
+        leader: leaders.get(school.teamId) ?? null,
+        appBlocked: { POS: blocked, ONLINE_SHOP: blocked, CONSTRUCTION: blocked, RENTALS: blocked, SCHOOL: blocked },
+        memberInactive: school.agent.status !== SalesAgentStatus.ACTIVE,
+        loadSources: async (tx) =>
+          (await tx.salesSchoolPayment.findMany({ where: { schoolId: school.id, amountKes: { gt: 0 } }, select: { id: true, amountKes: true, paidAt: true } }))
+            .map((p): Source => ({ type: 'SUBSCRIPTION', app: 'SCHOOL', id: p.id, base: num(p.amountKes), earnedAt: p.paidAt })),
+      });
+      totals.commission += result.commission;
+      totals.subscriptions += result.subscriptions;
+      totals.bonuses += result.bonuses;
+    }
+  }
+
+  /** Everything a POS business paid Zaroda, across its apps, read under its own tenant. */
+  private async businessSources(tx: Prisma.TransactionClient, orgId: string, payments: { id: string; amount: number; paidAt: Date }[]): Promise<Source[]> {
+    await tx.$executeRaw`SELECT set_config('app.current_tenant', ${orgId}, true)`;
+    const [invoices, conPayments, rentalInvoices] = await Promise.all([
+      tx.commissionInvoice.findMany({ where: { status: 'PAID', paidAt: { not: null } }, select: { id: true, commissionTotal: true, paidAt: true } }),
+      tx.conSubscriptionPayment.findMany({
+        where: { organizationId: orgId, status: 'PAID', paidAt: { not: null }, amount: { gt: 0 }, purpose: { in: ['PLAN', 'EXTRA_PROJECTS', 'FEES'] } },
+        select: { id: true, amount: true, paidAt: true, purpose: true },
+      }),
+      tx.rentalPlatformInvoice.findMany({
+        where: { organizationId: orgId, status: 'PAID', paidAt: { not: null }, amountDue: { gt: 0 } },
+        select: { id: true, kind: true, amountDue: true, paidAt: true },
+      }),
+    ]);
+    return [
+      ...invoices.map((i): Source => ({ type: 'COMMISSION', app: 'ONLINE_SHOP', id: i.id, base: num(i.commissionTotal), earnedAt: i.paidAt as Date })),
+      ...payments.map((p): Source => ({ type: 'SUBSCRIPTION', app: 'POS', id: p.id, base: p.amount, earnedAt: p.paidAt })),
+      ...(conPayments ?? []).map((p): Source => ({ type: p.purpose === 'FEES' ? 'COMMISSION' : 'SUBSCRIPTION', app: 'CONSTRUCTION', id: p.id, base: num(p.amount), earnedAt: p.paidAt as Date })),
+      ...(rentalInvoices ?? []).map((i): Source => ({ type: i.kind === 'SUBSCRIPTION' ? 'SUBSCRIPTION' : 'COMMISSION', app: 'RENTALS', id: i.id, base: i.amountDue, earnedAt: i.paidAt as Date })),
+    ];
   }
 
   /** PENDING -> PAYABLE for every month whose hold period has now passed. */
@@ -145,9 +194,9 @@ export class SalesEarningsService {
     leader: { id: string; createdAt: Date } | null;
     appBlocked: Record<SalesApp, string | null>;
     memberInactive: boolean;
-    payments: { id: string; amount: number; paidAt: Date }[];
+    loadSources: (tx: Prisma.TransactionClient) => Promise<Source[]>;
   }) {
-    const { org, team, leader, appBlocked, memberInactive, payments } = input;
+    const { org, team, leader, appBlocked, memberInactive, loadSources } = input;
     const memberId = org.salesAgentId as string;
     const assignedAt = org.salesAssignedAt ?? org.createdAt;
     const rates = { COMMISSION: num(team.memberShareRate), SUBSCRIPTION: num(team.subscriptionShareRate) };
@@ -155,25 +204,7 @@ export class SalesEarningsService {
     const capRate = num(team.payoutCapRate);
 
     return this.prisma.$transaction(async (tx) => {
-      await tx.$executeRaw`SELECT set_config('app.current_tenant', ${org.id}, true)`;
-      const [invoices, conPayments, rentalInvoices] = await Promise.all([
-        tx.commissionInvoice.findMany({ where: { status: 'PAID', paidAt: { not: null } }, select: { id: true, commissionTotal: true, paidAt: true } }),
-        tx.conSubscriptionPayment.findMany({
-          where: { organizationId: org.id, status: 'PAID', paidAt: { not: null }, amount: { gt: 0 }, purpose: { in: ['PLAN', 'EXTRA_PROJECTS', 'FEES'] } },
-          select: { id: true, amount: true, paidAt: true, purpose: true },
-        }),
-        tx.rentalPlatformInvoice.findMany({
-          where: { organizationId: org.id, status: 'PAID', paidAt: { not: null }, amountDue: { gt: 0 } },
-          select: { id: true, kind: true, amountDue: true, paidAt: true },
-        }),
-      ]);
-
-      const sources: Source[] = [
-        ...invoices.map((i): Source => ({ type: 'COMMISSION', app: 'ONLINE_SHOP', id: i.id, base: num(i.commissionTotal), earnedAt: i.paidAt as Date })),
-        ...payments.map((p): Source => ({ type: 'SUBSCRIPTION', app: 'POS', id: p.id, base: p.amount, earnedAt: p.paidAt })),
-        ...(conPayments ?? []).map((p): Source => ({ type: p.purpose === 'FEES' ? 'COMMISSION' : 'SUBSCRIPTION', app: 'CONSTRUCTION', id: p.id, base: num(p.amount), earnedAt: p.paidAt as Date })),
-        ...(rentalInvoices ?? []).map((i): Source => ({ type: i.kind === 'SUBSCRIPTION' ? 'SUBSCRIPTION' : 'COMMISSION', app: 'RENTALS', id: i.id, base: i.amountDue, earnedAt: i.paidAt as Date })),
-      ].sort((a, b) => a.earnedAt.getTime() - b.earnedAt.getTime());
+      const sources = (await loadSources(tx)).sort((a, b) => a.earnedAt.getTime() - b.earnedAt.getTime());
       if (sources.length === 0) return { commission: 0, subscriptions: 0, bonuses: 0 };
 
       // Zaroda's revenue from this shop, month by month (the cap is a share of it), and what has already been
