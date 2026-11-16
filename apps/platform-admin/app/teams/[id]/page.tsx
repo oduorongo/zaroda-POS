@@ -6,7 +6,7 @@ import { apiGet, apiPatch, apiPost, ApiError } from "../../../lib/api";
 import { getSession, type Session } from "../../../lib/auth";
 import { Nav } from "../../../components/nav";
 import { TrainingAccounts, type TrainingAccount } from "../../../components/training-accounts";
-import { Badge, Button, LoadingState } from "@zaroda/ui";
+import { Badge, Button, CredentialsCard, LoadingState } from "@zaroda/ui";
 
 interface Agent {
   id: string;
@@ -44,7 +44,7 @@ function sentNote(sent?: Sent) {
   return ways ? `The sign-in link and password were sent to them by ${ways}.` : "Could not send it to them automatically - share it with them now.";
 }
 
-const teamLoginUrl = `${(process.env.NEXT_PUBLIC_TEAM_URL || process.env.NEXT_PUBLIC_BACKOFFICE_URL || "").replace(/\/+$/, "").replace(/^https?:\/\//, "")}/team/login`;
+const teamLoginUrl = `${(process.env.NEXT_PUBLIC_TEAM_URL || process.env.NEXT_PUBLIC_BACKOFFICE_URL || "https://app.zarodashop.com").replace(/\/+$/, "")}/team/login`;
 const toPct = (n: number) => String(Math.round(n * 10000) / 100);
 
 /** One marketing team: its terms, its leader and members. Temporary passwords are shown once, here, to pass on. */
@@ -333,22 +333,17 @@ export default function TeamDetailPage() {
         {error && <p className="text-sm text-error-600">{error}</p>}
 
         {secret && (
-          <div className="rounded-lg border border-warning-600/40 bg-warning-50 p-4 text-sm">
-            <p className="font-semibold">Temporary password for {secret.who}</p>
-            <p className="mt-1">
-              Email: <b>{secret.email}</b>
-            </p>
-            <p>
-              Password: <b className="font-mono text-base">{secret.password}</b>
-            </p>
-            <p className="mt-2 font-medium">{sentNote(secret.sent)}</p>
-            <p className="mt-1 text-secondary-600">
-              It is shown here once and cannot be looked up later. They sign in at <b>{teamLoginUrl}</b> and must choose their own password straight away.
-            </p>
-            <Button size="sm" variant="secondary" className="mt-2" onClick={() => setSecret(null)}>
-              I have passed it on
-            </Button>
-          </div>
+          <CredentialsCard
+            title={`Sign-in details for ${secret.who}`}
+            shareHeading={`ZARODA Team sign-in for ${secret.who}`}
+            loginUrl={teamLoginUrl}
+            email={secret.email}
+            password={secret.password}
+            onDone={() => setSecret(null)}
+          >
+            <p className="mt-3 font-medium">{sentNote(secret.sent)}</p>
+            <p className="mt-1 text-secondary-600">It is shown here once and cannot be looked up later. They must choose their own password straight away.</p>
+          </CredentialsCard>
         )}
 
         {team && (

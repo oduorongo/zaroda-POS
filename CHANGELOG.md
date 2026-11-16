@@ -1,5 +1,9 @@
 # Changelog
 
+## Shareable team sign-in card (2026-11-16)
+
+- When a team leader or member is added, or their password is reset (platform admin team page, and a leader's Members page), the sign-in card shows the full Team app sign-in link with the email and temporary password. Each has its own Copy button, plus Copy all and Share (phone share menu; WhatsApp on a computer). Shared `CredentialsCard` in @zaroda/ui. No DB step.
+
 ## Sales teams earn on Zaroda School (2026-11-16)
 
 - Team members get a Zaroda School sign-up link (Team app > Schools, `SCHOOL_APP_URL/auth/signup?agent=<member id>`). A school that signs up through it, or names the member's phone/email as marketer, is credited to that member for good.
