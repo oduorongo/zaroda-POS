@@ -62,3 +62,18 @@ describe('SchoolSalesService', () => {
     expect(controller.sync({ headers: { 'x-sales-sync-key': 'k'.repeat(30) } } as any, {})).toBeInstanceOf(Promise);
   });
 });
+
+describe('SchoolSalesSyncController key', () => {
+  it('ignores spaces, line breaks and quotes around a pasted key, on either side', () => {
+    const service: any = { sync: jest.fn().mockResolvedValue({}) };
+    const config: any = { get: () => `"${'k'.repeat(30)}"\n` };
+    const controller = new SchoolSalesSyncController(service, config);
+    expect(() => controller.sync({ headers: { 'x-sales-sync-key': ` ${'k'.repeat(30)} ` } } as any, {})).not.toThrow();
+  });
+
+  it('says when the POS has no key, and when the lengths differ', () => {
+    const service: any = { sync: jest.fn() };
+    expect(() => new SchoolSalesSyncController(service, { get: () => undefined } as any).sync({ headers: {} } as any, {})).toThrow(/not set on the POS/);
+    expect(() => new SchoolSalesSyncController(service, { get: () => 'k'.repeat(30) } as any).sync({ headers: { 'x-sales-sync-key': 'k'.repeat(29) } } as any, {})).toThrow(/got 29 characters, the POS key has 30/);
+  });
+});
