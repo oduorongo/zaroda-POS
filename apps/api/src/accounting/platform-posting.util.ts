@@ -44,3 +44,12 @@ export function platformPayoutDraft(p: { date: string; agent: string; amountCent
 export function platformConPaymentDraft(p: { date: string; business: string; label: string; income: string; amountCents: number; method: string | null }): Draft {
   return { date: p.date, memo: `${p.business}: ${p.label}`, lines: tidy([dr(moneyAccount(p.method), p.amountCents), cr(p.income, p.amountCents)]) };
 }
+
+/** A school paid its Zaroda School subscription (reported by Zaroda School; the money reached ZARODA's M-Pesa/Tuma). */
+export function platformSchoolPaymentDraft(p: { date: string; school: string; amountCents: number; reference: string | null }): Draft {
+  return {
+    date: p.date,
+    memo: `Zaroda School subscription from ${p.school}${p.reference ? ` (${p.reference})` : ''}`,
+    lines: tidy([dr('MPESA', p.amountCents), cr('SCHOOL_SUBSCRIPTION_INCOME', p.amountCents)]),
+  };
+}

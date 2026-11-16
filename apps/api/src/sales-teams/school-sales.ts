@@ -25,9 +25,16 @@ class SyncPaymentDto {
   @IsDateString() paidAt!: string;
 }
 
+class SyncReceiptDto extends SyncPaymentDto {
+  @IsString() @MaxLength(200) schoolName!: string;
+  @IsOptional() @IsString() @MaxLength(64) reference?: string;
+}
+
 export class SchoolSalesSyncDto {
   @IsOptional() @IsArray() @ArrayMaxSize(1000) @ValidateNested({ each: true }) @Type(() => SyncSchoolDto) schools?: SyncSchoolDto[];
   @IsOptional() @IsArray() @ArrayMaxSize(5000) @ValidateNested({ each: true }) @Type(() => SyncPaymentDto) payments?: SyncPaymentDto[];
+  /** Every school's subscription payments (marketer or not), for ZARODA's own books. */
+  @IsOptional() @IsArray() @ArrayMaxSize(5000) @ValidateNested({ each: true }) @Type(() => SyncReceiptDto) receipts?: SyncReceiptDto[];
 }
 
 /** A pasted key without stray spaces, line breaks or surrounding quotes. */
@@ -101,7 +108,16 @@ export class SchoolSalesService {
       .filter((p) => known.has(p.schoolId))
       .map((p) => ({ id: `school:${p.id}`, schoolId: p.schoolId, amountKes: p.amountKes, paidAt: new Date(p.paidAt) }));
     const stored = rows.length ? (await this.prisma.salesSchoolPayment.createMany({ data: rows, skipDuplicates: true })).count : 0;
-    return { schoolsAdded: added, unmatched, paymentsAdded: stored };
+    const receipts = (dto.receipts ?? []).map((r) => ({
+      id: `school:${r.id}`,
+      schoolId: r.schoolId,
+      schoolName: r.schoolName.trim() || 'School',
+      amountKes: r.amountKes,
+      paidAt: new Date(r.paidAt),
+      reference: r.reference?.trim() || null,
+    }));
+    const receiptsAdded = receipts.length ? (await this.prisma.schoolSubscriptionReceipt.createMany({ data: receipts, skipDuplicates: true })).count : 0;
+    return { schoolsAdded: added, unmatched, paymentsAdded: stored, receiptsAdded };
   }
 
   /** The schools this person brought in (a leader: the whole team's), with what each has paid. */

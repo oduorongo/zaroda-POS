@@ -106,6 +106,7 @@ export const PLATFORM_ACCOUNTS = [
   { key: 'CONSTRUCTION_PLAN_INCOME', code: '4060', name: 'Construction plans and extra projects', type: 'INCOME' },
   { key: 'SMS_INCOME', code: '4070', name: 'SMS bundles', type: 'INCOME' },
   { key: 'PAYOUT_FEE_INCOME', code: '4080', name: 'Wage payout fees', type: 'INCOME' },
+  { key: 'SCHOOL_SUBSCRIPTION_INCOME', code: '4090', name: 'Zaroda School subscriptions', type: 'INCOME' },
   { key: 'OTHER_INCOME', code: '4200', name: 'Other income', type: 'INCOME' },
   { key: 'SALES_COMMISSIONS', code: '6000', name: 'Commission paid to sales agents', type: 'EXPENSE' },
   { key: 'HOSTING', code: '6010', name: 'Hosting and software', type: 'EXPENSE' },

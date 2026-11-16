@@ -121,7 +121,8 @@ export default function PlatformAccountingPage() {
               <p className="text-secondary-600">
                 These are ZARODA&apos;s own accounts, separate from every business&apos;s, and no business can see them. Subscription payments,
                 commission and shopper convenience-fee invoices (and their payments), rental plan and rent collection invoices, house advert
-                fees and sales-agent payouts are posted automatically every few minutes. A waived invoice is taken back out. Enter ZARODA&apos;s
+                fees, construction payments, Zaroda School subscriptions (reported by Zaroda School every 30 minutes) and sales-agent payouts
+                are posted automatically every few minutes. A waived invoice is taken back out. Enter ZARODA&apos;s
                 own costs (hosting, SMS, salaries, marketing), owners&apos; money, loans and tax payments as journals.
               </p>
               <ul className="space-y-1">
