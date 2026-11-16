@@ -87,6 +87,8 @@ function setup(
     conPayments?: any[];
     rentalInvoices?: any[];
     existing?: any[];
+    schools?: any[];
+    schoolPayments?: any[];
   } = {},
 ) {
   const org = {
@@ -106,6 +108,7 @@ function setup(
     commissionInvoice: { findMany: jest.fn().mockResolvedValue(opts.invoices ?? []) },
     conSubscriptionPayment: { findMany: jest.fn().mockResolvedValue(opts.conPayments ?? []) },
     rentalPlatformInvoice: { findMany: jest.fn().mockResolvedValue(opts.rentalInvoices ?? []) },
+    salesSchoolPayment: { findMany: jest.fn().mockResolvedValue(opts.schoolPayments ?? []) },
     salesEarning: {
       findMany: jest.fn().mockResolvedValue(opts.existing ?? []),
       createMany: jest.fn().mockImplementation(({ data }) => {
@@ -117,6 +120,7 @@ function setup(
   const leader = opts.leader === undefined ? { id: 'leader-1', teamId: TEAM, createdAt: new Date('2026-01-01T00:00:00Z') } : opts.leader && { ...opts.leader, teamId: TEAM };
   const prisma: any = {
     organization: { findMany: jest.fn().mockResolvedValue([org]) },
+    salesSchool: { findMany: jest.fn().mockResolvedValue(opts.schools ?? []) },
     salesTeam: {
       findMany: jest.fn().mockResolvedValue([
         { id: TEAM, memberShareRate: 0.25, subscriptionShareRate: 0.1, leaderOverrideRate: 0.05, onboardingBonusKes: 500, payoutCapRate: 0.35, earningMonths: 12, ...opts.team },
@@ -341,6 +345,30 @@ describe('SalesEarningsService.accrue - bonus', () => {
     const { service, created } = setup({ payments: [payment('p1', '2026-10-05T08:00:00Z', 1000), payment('p2', '2026-11-05T08:00:00Z', 1000)], team: { subscriptionShareRate: 0, leaderOverrideRate: 0 } });
     await service.accrue(true);
     expect(created.find((c) => c.kind === 'ONBOARDING_BONUS')).toMatchObject({ amountKes: 500, status: 'PENDING' });
+  });
+});
+
+describe('SalesEarningsService.accrue - Zaroda School', () => {
+  const team = { id: TEAM, memberShareRate: 0.25, subscriptionShareRate: 0.1, leaderOverrideRate: 0.05, onboardingBonusKes: 500, payoutCapRate: 0.35, earningMonths: 12 };
+  const school = (over: any = {}) => ({ id: 'sch-1', name: 'Uriri Academy', teamId: TEAM, agentId: 'member-1', signedUpAt: NOW_ORG_CREATED, assignedAt: NOW_ORG_CREATED, active: true, team, agent: { status: 'ACTIVE' }, ...over });
+  const schoolPayment = (id: string, paidAt: string, amountKes = 2000) => ({ id, amountKes, paidAt: new Date(paidAt) });
+
+  it("pays the member and leader on a school's subscription payments, with the bonus on the second", async () => {
+    const { service, created } = setup({ schools: [school()], schoolPayments: [schoolPayment('school:p1', '2026-09-05T08:00:00Z'), schoolPayment('school:p2', '2026-10-05T08:00:00Z')] });
+    await service.accrue();
+    const forSchool = created.filter((r) => r.organizationId === 'sch-1');
+    expect(forSchool.every((r) => r.sourceApp === 'SCHOOL')).toBe(true);
+    expect(forSchool.filter((r) => r.kind === 'SUBSCRIPTION_SHARE').map((r) => r.amountKes)).toEqual([200, 200]);
+    expect(forSchool.filter((r) => r.kind === 'LEADER_OVERRIDE').map((r) => r.amountKes)).toEqual([100, 100]);
+    expect(forSchool.find((r) => r.kind === 'ONBOARDING_BONUS')).toMatchObject({ sourceId: 'school:p2', amountKes: 500 });
+  });
+
+  it('a suspended school earns nothing', async () => {
+    const { service, created } = setup({ schools: [school({ active: false })], schoolPayments: [schoolPayment('school:p1', '2026-10-05T08:00:00Z')] });
+    await service.accrue();
+    const forSchool = created.filter((r) => r.organizationId === 'sch-1');
+    expect(forSchool.length).toBeGreaterThan(0);
+    expect(forSchool.every((r) => r.status === 'VOID')).toBe(true);
   });
 });
 

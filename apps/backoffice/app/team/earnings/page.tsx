@@ -14,7 +14,7 @@ const KIND: Record<string, string> = {
   LEADER_OVERRIDE: "Leader share of the team",
   ONBOARDING_BONUS: "Onboarding bonus",
 };
-const APP: Record<string, string> = { POS: "POS", ONLINE_SHOP: "Online shop", CONSTRUCTION: "Construction", RENTALS: "Rentals" };
+const APP: Record<string, string> = { POS: "POS", ONLINE_SHOP: "Online shop", CONSTRUCTION: "Construction", RENTALS: "Rentals", SCHOOL: "School" };
 
 function currentMonth() {
   const now = new Date(Date.now() + 3 * 60 * 60 * 1000);

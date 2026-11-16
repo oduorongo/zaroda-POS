@@ -1,5 +1,12 @@
 # Changelog
 
+## Sales teams earn on Zaroda School (2026-11-16)
+
+- Team members get a Zaroda School sign-up link (Team app > Schools, `SCHOOL_APP_URL/auth/signup?agent=<member id>`). A school that signs up through it, or names the member's phone/email as marketer, is credited to that member for good.
+- Zaroda School reports those schools and their subscription payments to `POST /sales-sync/school` (header `x-sales-sync-key` = `SCHOOL_SALES_SYNC_KEY`, 24+ chars). Repeat-safe: a school is never moved, a payment is stored once.
+- The earnings engine treats each school like a business: same team rates, leader override, bonus on the second payment, earning window and cap; nothing earned while the school is suspended. Earnings show app "School" in the Team app and platform admin.
+- Migration `20261231100000_school_sales_teams` (tables `sales_schools`, `sales_school_payments`; platform-level, no RLS policy, on the RLS exclusion list). Run migrate deploy BEFORE merge. The Zaroda School side (sending the reports) is a separate change in that repo.
+
 ## Gold lines on the ribbons (2026-11-10)
 
 - Every app's top ribbon has a gold line along its bottom edge and the bottom "Powered by" ribbon one along its top edge, dividing them from the page (shared TopRibbon/BottomRibbon, plus the Construction headers). No DB step.

@@ -10,7 +10,7 @@ import { useIdleLogout } from "../hooks/use-idle-logout";
 import { teamMe, type TeamMe } from "../lib/team-api";
 import { TeamInstall } from "./team-install";
 
-type Page = "home" | "shops" | "riders" | "members" | "earnings" | "setup-fees";
+type Page = "home" | "shops" | "schools" | "riders" | "members" | "earnings" | "setup-fees";
 
 /**
  * The frame for every marketing-team screen: the navy ribbon, the sign-in check, and a hold on everything but the
@@ -66,6 +66,9 @@ export function TeamShell({ active, children }: { active: Page; children: (me: T
           <>
             <RibbonLink href="/team/shops" LinkComponent={Link} active={active === "shops"}>
               Shops
+            </RibbonLink>
+            <RibbonLink href="/team/schools" LinkComponent={Link} active={active === "schools"}>
+              Schools
             </RibbonLink>
             <RibbonLink href="/team/riders" LinkComponent={Link} active={active === "riders"}>
               Riders
