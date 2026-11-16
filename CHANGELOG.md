@@ -1,5 +1,10 @@
 # Changelog
 
+## School commission is yearly (2026-11-16)
+
+- Schools pay a year at a time, so a team member earns the team's subscription share, all at once, on a school's first year only: its first payment plus any streams added in the 10 months after it. The renewal earns nothing and schools give no onboarding bonus. The earning window starts at the first payment, so a long free period never costs the member.
+- Fix: a school is credited from its sign-up date, not from when the POS first heard of it, so payments made before the first sync still earn. No DB step.
+
 ## Shareable team sign-in card (2026-11-16)
 
 - When a team leader or member is added, or their password is reset (platform admin team page, and a leader's Members page), the sign-in card shows the full Team app sign-in link with the email and temporary password. Each has its own Copy button, plus Copy all and Share (phone share menu; WhatsApp on a computer). Shared `CredentialsCard` in @zaroda/ui. No DB step.
