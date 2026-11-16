@@ -3388,6 +3388,22 @@ model SalesSchool {
   @@map("sales_schools")
 }
 
+// Every successful Zaroda School subscription payment (any school, marketer or not), reported by Zaroda School so it
+// is posted to ZARODA's own books (PlatformLedgerService, source P_SCHOOL_PAYMENT). id = "school:" + its payment id there.
+model SchoolSubscriptionReceipt {
+  id         String   @id
+  schoolId   String
+  schoolName String
+  amountKes  Decimal  @db.Decimal(12, 2)
+  paidAt     DateTime
+  // M-Pesa receipt number, when Zaroda School has one.
+  reference  String?
+  createdAt  DateTime @default(now())
+
+  @@index([paidAt])
+  @@map("school_subscription_receipts")
+}
+
 // A successful Zaroda School subscription payment from a SalesSchool. id = "school:" + its payment id there.
 model SalesSchoolPayment {
   id        String   @id

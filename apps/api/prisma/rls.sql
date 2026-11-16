@@ -2136,3 +2136,5 @@ CREATE POLICY sync_key_lookup ON stock_sync_keys FOR SELECT
 -- SalesSetupFeesService by the verified team member, and on rls-coverage.spec.ts's exclusion list).
 -- sales_schools / sales_school_payments: platform-level the same way (Zaroda School schools a member brought in;
 -- written only by the key-protected /sales-sync/school call, read scoped by team in SchoolSalesService).
+-- school_subscription_receipts: platform-level (every Zaroda School subscription payment, for ZARODA's own books; written only
+-- by the key-protected /sales-sync/school call, read by PlatformLedgerService).

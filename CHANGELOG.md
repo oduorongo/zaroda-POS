@@ -1,5 +1,10 @@
 # Changelog
 
+## Zaroda School subscriptions in ZARODA's books (2027-01-01 migration)
+
+- Zaroda School now reports every school's successful subscription payment (marketer or not) to `POST /sales-sync/school` (`receipts`). They are stored in `school_subscription_receipts` and posted to ZARODA's own books (platform admin > Accounts) as money in "M-Pesa and Tuma" and income in the new account 4090 "Zaroda School subscriptions" (source "Zaroda School subscription", memo shows the school and M-Pesa receipt). Payments before the books' start date are not posted, like every other source.
+- Migration `20270101100000_school_subscription_receipts` (platform-level, no RLS policy, on the RLS exclusion list): migrate deploy BEFORE merge. Merge this BEFORE the Zaroda School change that sends receipts (the POS refuses unknown fields).
+
 ## School commission is yearly (2026-11-16)
 
 - Schools pay a year at a time, so a team member earns the team's subscription share, all at once, on a school's first year only: its first payment plus any streams added in the 10 months after it. The renewal earns nothing and schools give no onboarding bonus. The earning window starts at the first payment, so a long free period never costs the member.

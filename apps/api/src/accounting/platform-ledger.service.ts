@@ -10,6 +10,7 @@ import { Draft, DraftLine, fingerprint, isBalanced, manualProblem, postingDate }
 import { AccountInfo, balanceSheet, profitAndLoss, Sums, trialBalance, withRunningBalance } from './ledger-reports.util';
 import {
   platformConPaymentDraft,
+  platformSchoolPaymentDraft,
   platformAdvertDraft,
   platformInvoiceDraft,
   platformInvoiceIncome,
@@ -33,6 +34,7 @@ export const PLATFORM_SOURCE_LABELS: Record<string, string> = {
   P_RENTAL_PAID: 'Rental plan invoice paid',
   P_ADVERT: 'House advert fee',
   P_PAYOUT: 'Sales agent paid',
+  P_SCHOOL_PAYMENT: 'Zaroda School subscription',
 };
 
 interface Ctx {
@@ -281,6 +283,18 @@ export class PlatformLedgerService {
         const p = await tx.conSubscriptionPayment.findUnique({ where: { id } });
         if (!p || p.status !== 'PAID' || !p.paidAt) return null;
         return platformConPaymentDraft({ date: nairobiDayOf(p.paidAt), business, label: CON_PAYMENT_LABEL[p.purpose], income: CON_PAYMENT_INCOME[p.purpose], amountCents: cents(p.amount), method: p.method });
+      },
+    },
+    {
+      type: 'P_SCHOOL_PAYMENT',
+      perBusiness: false,
+      scan: async (tx, c) => ({
+        fresh: (await tx.schoolSubscriptionReceipt.findMany({ where: { paidAt: { gte: c.since } }, select: { id: true } })).map((r) => r.id),
+        gone: [],
+      }),
+      draft: async (tx, id) => {
+        const r = await tx.schoolSubscriptionReceipt.findUnique({ where: { id } });
+        return r ? platformSchoolPaymentDraft({ date: nairobiDayOf(r.paidAt), school: r.schoolName, amountCents: cents(r.amountKes), reference: r.reference }) : null;
       },
     },
   ];

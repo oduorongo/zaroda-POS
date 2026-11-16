@@ -6,6 +6,7 @@ import {
   platformInvoiceIncome,
   platformInvoicePaidDraft,
   platformPayoutDraft,
+  platformSchoolPaymentDraft,
   platformSubscriptionDraft,
 } from './platform-posting.util';
 
@@ -49,5 +50,18 @@ describe("ZARODA's own books", () => {
     expect(amount(d, 'MPESA')).toBe(-9500);
     expect(amount(d, 'WHT_PAYABLE')).toBe(-500);
     expect(amount(platformPayoutDraft({ date: 'd', agent: 'A', amountCents: 100, taxCents: 0, method: 'MANUAL' }), 'BANK')).toBe(-100);
+  });
+});
+
+describe('platformSchoolPaymentDraft', () => {
+  it('a school subscription is money in M-Pesa and Zaroda School subscription income, balanced, on a chart account', () => {
+    const d = platformSchoolPaymentDraft({ date: '2027-01-20', school: 'Kisumu Girls', amountCents: 720000, reference: 'UJK12AB' });
+    expect(isBalanced(d.lines)).toBe(true);
+    expect(d.memo).toBe('Zaroda School subscription from Kisumu Girls (UJK12AB)');
+    expect(d.lines).toEqual([
+      { account: 'MPESA', debit: 720000, credit: 0 },
+      { account: 'SCHOOL_SUBSCRIPTION_INCOME', debit: 0, credit: 720000 },
+    ]);
+    expect(PLATFORM_ACCOUNTS.some((a) => a.key === 'SCHOOL_SUBSCRIPTION_INCOME' && a.type === 'INCOME')).toBe(true);
   });
 });

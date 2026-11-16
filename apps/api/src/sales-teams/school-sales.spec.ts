@@ -16,6 +16,7 @@ function setup(existingSchools: string[] = []) {
       update: jest.fn().mockResolvedValue({}),
     },
     salesSchoolPayment: { createMany: jest.fn(({ data }) => Promise.resolve({ count: data.length })) },
+    schoolSubscriptionReceipt: { createMany: jest.fn(({ data }) => Promise.resolve({ count: data.length })) },
   };
   const config: any = { get: jest.fn((k: string) => (k === 'SCHOOL_SALES_SYNC_KEY' ? 'k'.repeat(30) : undefined)) };
   return { prisma, config, service: new SchoolSalesService(prisma, config) };
@@ -35,7 +36,7 @@ describe('SchoolSalesService', () => {
     const result = await service.sync({
       schools: [school('new-a', AGENT.id), school('new-b', 'Jane@Zaroda.test'), school('new-c', '0712345678'), school('new-d', 'nobody')],
     });
-    expect(result).toEqual({ schoolsAdded: 3, unmatched: ['new-d'], paymentsAdded: 0 });
+    expect(result).toEqual({ schoolsAdded: 3, unmatched: ['new-d'], paymentsAdded: 0, receiptsAdded: 0 });
     expect(prisma.salesSchool.create.mock.calls[0][0].data).toMatchObject({ id: 'new-a', name: 'new-a School', agentId: AGENT.id, teamId: 'team-1' });
   });
 
@@ -75,5 +76,17 @@ describe('SchoolSalesSyncController key', () => {
     const service: any = { sync: jest.fn() };
     expect(() => new SchoolSalesSyncController(service, { get: () => undefined } as any).sync({ headers: {} } as any, {})).toThrow(/not set on the POS/);
     expect(() => new SchoolSalesSyncController(service, { get: () => 'k'.repeat(30) } as any).sync({ headers: { 'x-sales-sync-key': 'k'.repeat(29) } } as any, {})).toThrow(/got 29 characters, the POS key has 30/);
+  });
+});
+
+describe('SchoolSalesService receipts for ZARODA books', () => {
+  it("stores every school's payment once, prefixed, whether or not a marketer brought the school in", async () => {
+    const { service, prisma } = setup();
+    const result = await service.sync({ receipts: [{ id: 'p9', schoolId: 'any-school', schoolName: ' Kisumu Girls ', amountKes: 7200, paidAt: '2027-01-20T08:00:00Z', reference: 'UJK12AB' }] });
+    expect(prisma.schoolSubscriptionReceipt.createMany.mock.calls[0][0]).toMatchObject({
+      data: [{ id: 'school:p9', schoolId: 'any-school', schoolName: 'Kisumu Girls', amountKes: 7200, reference: 'UJK12AB' }],
+      skipDuplicates: true,
+    });
+    expect(result.receiptsAdded).toBe(1);
   });
 });
