@@ -30,6 +30,9 @@ export class SchoolSalesSyncDto {
   @IsOptional() @IsArray() @ArrayMaxSize(5000) @ValidateNested({ each: true }) @Type(() => SyncPaymentDto) payments?: SyncPaymentDto[];
 }
 
+/** A pasted key without stray spaces, line breaks or surrounding quotes. */
+export const cleanKey = (key: string | null | undefined) => (key ?? '').trim().replace(/^["']+|["']+$/g, '').trim();
+
 /** The last 9 digits of a Kenyan phone number, however it was typed (07.., 2547.., +254 7..). */
 export const phoneKey = (phone: string | null | undefined) => {
   const digits = (phone ?? '').replace(/\D/g, '');
@@ -139,9 +142,11 @@ export class SchoolSalesSyncController {
   @Post('school')
   @HttpCode(200)
   sync(@Req() req: Request, @Body() dto: SchoolSalesSyncDto) {
-    const expected = this.config.get<string>('SCHOOL_SALES_SYNC_KEY') ?? '';
-    const given = Buffer.from(String(req.headers['x-sales-sync-key'] ?? ''));
-    if (expected.length < 24 || given.length !== Buffer.byteLength(expected) || !timingSafeEqual(given, Buffer.from(expected))) throw new ForbiddenException();
+    const expected = cleanKey(this.config.get<string>('SCHOOL_SALES_SYNC_KEY'));
+    if (expected.length < 24) throw new ForbiddenException('SCHOOL_SALES_SYNC_KEY is not set on the POS API (24+ characters).');
+    const given = Buffer.from(cleanKey(String(req.headers['x-sales-sync-key'] ?? '')));
+    if (given.length !== Buffer.byteLength(expected) || !timingSafeEqual(given, Buffer.from(expected)))
+      throw new ForbiddenException(`The sync key does not match the POS key (got ${given.length} characters, the POS key has ${Buffer.byteLength(expected)}).`);
     return this.schools.sync(dto);
   }
 }
