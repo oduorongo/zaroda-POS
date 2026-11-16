@@ -54,8 +54,9 @@ function SchoolsBody({ me }: { me: TeamMe }) {
             <Button size="sm" onClick={copy}>{copied ? "Copied" : "Copy link"}</Button>
           </div>
           <p className="text-xs text-secondary-500">
-            Send this link to a school. When it signs up through it, the school is credited to you for good and you earn on every subscription it pays, at
-            your team&apos;s usual rates. A school can also type your phone number or email as the marketer when it signs up.
+            Send this link to a school. When it signs up through it, the school is credited to you for good. Schools pay a year at a time: you earn your
+            team&apos;s subscription share, all at once, on the school&apos;s first year (its first payment and any streams it adds that year). Renewals and
+            onboarding bonuses do not apply to schools. A school can also type your phone number or email as the marketer when it signs up.
           </p>
         </div>
       )}

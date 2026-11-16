@@ -4,13 +4,15 @@ import { PrismaService } from '../common/prisma/prisma.service';
 import { effectiveStatus } from '../platform-admin/subscriptions.util';
 import { RecordSalesAdjustmentDto } from './dto/sales-earnings.dto';
 import type { AuthenticatedAgent } from './sales-agent-auth';
-import { adjustmentAmount, applyCap, nairobiMonth, round2, withinEarningWindow } from './sales-earnings.util';
+import { addMonths, adjustmentAmount, applyCap, nairobiMonth, round2, withinEarningWindow } from './sales-earnings.util';
 import { SalesPayoutsService } from './sales-payouts.service';
 
 const TX_OPTIONS = { timeout: 15_000, maxWait: 15_000 };
 // Looking at a statement brings the ledger up to date, but not more than once a minute.
 const ACCRUE_MIN_GAP_MS = 60_000;
 const DAY_MS = 24 * 60 * 60 * 1000;
+// A school's first year: its first payment plus streams added in the months after; a renewal comes about 12 months on.
+const FIRST_YEAR_MONTHS = 10;
 
 const num = (d: Prisma.Decimal | number | null | undefined) => (d == null ? 0 : Number(d));
 
@@ -129,24 +131,36 @@ export class SalesEarningsService {
     return { ...totals, released: await this.release(), skipped: false };
   }
 
-  /** Zaroda School schools a member brought in: each school earns like a business, on its subscription payments. */
+  /**
+   * Zaroda School schools a member brought in. Schools pay a year at a time, so the team earns its usual rates, all at once, on the
+   * school's first year only: its first payment and any streams added in the months after it (FIRST_YEAR_MONTHS), never the renewal.
+   * No onboarding bonus for schools. The member is credited from the school's sign-up (the link was used then), not from when the POS
+   * first heard of it.
+   */
   private async accrueSchools(totals: { commission: number; subscriptions: number; bonuses: number }) {
-    const schools = await this.prisma.salesSchool.findMany({ include: { team: true, agent: { select: { status: true } } } });
+    const schools = await this.prisma.salesSchool.findMany({
+      include: { team: true, agent: { select: { status: true } }, payments: { where: { amountKes: { gt: 0 } }, select: { id: true, amountKes: true, paidAt: true }, orderBy: { paidAt: 'asc' } } },
+    });
     if (schools.length === 0) return;
     const leaders = new Map(
       (await this.prisma.salesAgent.findMany({ where: { teamId: { in: [...new Set(schools.map((s) => s.teamId))] }, role: SalesAgentRole.LEADER, status: SalesAgentStatus.ACTIVE }, select: { id: true, teamId: true, createdAt: true } })).map((l) => [l.teamId, l]),
     );
     for (const school of schools) {
+      if (school.payments.length === 0) continue;
+      const firstPaidAt = school.payments[0].paidAt;
+      const firstYearEnds = addMonths(firstPaidAt, FIRST_YEAR_MONTHS);
+      const sources = school.payments
+        .filter((p) => p.paidAt <= firstYearEnds)
+        .map((p): Source => ({ type: 'SUBSCRIPTION', app: 'SCHOOL', id: p.id, base: num(p.amountKes), earnedAt: p.paidAt }));
       const blocked = school.active ? null : 'The school was suspended';
       const result = await this.accrueShop({
-        org: { id: school.id, name: school.name, createdAt: school.signedUpAt, salesAgentId: school.agentId, salesAssignedAt: school.assignedAt },
-        team: school.team,
+        // The earning window runs from the first payment, so a long free period never costs the member that first year.
+        org: { id: school.id, name: school.name, createdAt: firstPaidAt, salesAgentId: school.agentId, salesAssignedAt: school.signedUpAt },
+        team: { ...school.team, onboardingBonusKes: new Prisma.Decimal(0), earningMonths: FIRST_YEAR_MONTHS },
         leader: leaders.get(school.teamId) ?? null,
         appBlocked: { POS: blocked, ONLINE_SHOP: blocked, CONSTRUCTION: blocked, RENTALS: blocked, SCHOOL: blocked },
         memberInactive: school.agent.status !== SalesAgentStatus.ACTIVE,
-        loadSources: async (tx) =>
-          (await tx.salesSchoolPayment.findMany({ where: { schoolId: school.id, amountKes: { gt: 0 } }, select: { id: true, amountKes: true, paidAt: true } }))
-            .map((p): Source => ({ type: 'SUBSCRIPTION', app: 'SCHOOL', id: p.id, base: num(p.amountKes), earnedAt: p.paidAt })),
+        loadSources: async () => sources,
       });
       totals.commission += result.commission;
       totals.subscriptions += result.subscriptions;

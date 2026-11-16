@@ -350,25 +350,33 @@ describe('SalesEarningsService.accrue - bonus', () => {
 
 describe('SalesEarningsService.accrue - Zaroda School', () => {
   const team = { id: TEAM, memberShareRate: 0.25, subscriptionShareRate: 0.1, leaderOverrideRate: 0.05, onboardingBonusKes: 500, payoutCapRate: 0.35, earningMonths: 12 };
-  const school = (over: any = {}) => ({ id: 'sch-1', name: 'Uriri Academy', teamId: TEAM, agentId: 'member-1', signedUpAt: NOW_ORG_CREATED, assignedAt: NOW_ORG_CREATED, active: true, team, agent: { status: 'ACTIVE' }, ...over });
-  const schoolPayment = (id: string, paidAt: string, amountKes = 2000) => ({ id, amountKes, paidAt: new Date(paidAt) });
+  const pay = (id: string, paidAt: string, amountKes = 24000) => ({ id, amountKes, paidAt: new Date(paidAt) });
+  const school = (payments: any[], over: any = {}) => ({ id: 'sch-1', name: 'Uriri Academy', teamId: TEAM, agentId: 'member-1', signedUpAt: new Date('2026-11-01T00:00:00Z'), assignedAt: new Date('2027-03-01T00:00:00Z'), active: true, team, agent: { status: 'ACTIVE' }, payments, ...over });
+  const forSchool = (created: any[]) => created.filter((r) => r.organizationId === 'sch-1');
 
-  it("pays the member and leader on a school's subscription payments, with the bonus on the second", async () => {
-    const { service, created } = setup({ schools: [school()], schoolPayments: [schoolPayment('school:p1', '2026-09-05T08:00:00Z'), schoolPayment('school:p2', '2026-10-05T08:00:00Z')] });
+  it('earns all at once on the first year only (first payment + streams added later that year), never the renewal, with no bonus', async () => {
+    const { service, created } = setup({ schools: [school([pay('school:y1', '2027-01-20T08:00:00Z'), pay('school:add', '2027-05-10T08:00:00Z', 4800), pay('school:y2', '2028-01-15T08:00:00Z')])] });
     await service.accrue();
-    const forSchool = created.filter((r) => r.organizationId === 'sch-1');
-    expect(forSchool.every((r) => r.sourceApp === 'SCHOOL')).toBe(true);
-    expect(forSchool.filter((r) => r.kind === 'SUBSCRIPTION_SHARE').map((r) => r.amountKes)).toEqual([200, 200]);
-    expect(forSchool.filter((r) => r.kind === 'LEADER_OVERRIDE').map((r) => r.amountKes)).toEqual([100, 100]);
-    expect(forSchool.find((r) => r.kind === 'ONBOARDING_BONUS')).toMatchObject({ sourceId: 'school:p2', amountKes: 500 });
+    const rows = forSchool(created);
+    expect(rows.every((r) => r.sourceApp === 'SCHOOL')).toBe(true);
+    expect(rows.filter((r) => r.kind === 'SUBSCRIPTION_SHARE').map((r) => [r.sourceId, r.amountKes])).toEqual([['school:y1', 2400], ['school:add', 480]]);
+    expect(rows.filter((r) => r.kind === 'LEADER_OVERRIDE').map((r) => r.amountKes)).toEqual([1200, 240]);
+    expect(rows.some((r) => r.sourceId === 'school:y2')).toBe(false);
+    expect(rows.some((r) => r.kind === 'ONBOARDING_BONUS')).toBe(false);
   });
 
-  it('a suspended school earns nothing', async () => {
-    const { service, created } = setup({ schools: [school({ active: false })], schoolPayments: [schoolPayment('school:p1', '2026-10-05T08:00:00Z')] });
+  it('counts from sign-up, so a payment made before the POS heard of the school still earns, even after a long free period', async () => {
+    const { service, created } = setup({ schools: [school([pay('school:y1', '2028-02-01T08:00:00Z')], { assignedAt: new Date('2028-06-01T00:00:00Z') })] });
     await service.accrue();
-    const forSchool = created.filter((r) => r.organizationId === 'sch-1');
-    expect(forSchool.length).toBeGreaterThan(0);
-    expect(forSchool.every((r) => r.status === 'VOID')).toBe(true);
+    expect(forSchool(created).find((r) => r.kind === 'SUBSCRIPTION_SHARE')).toMatchObject({ sourceId: 'school:y1', amountKes: 2400, status: 'PENDING' });
+  });
+
+  it('a suspended school earns nothing, and a school that has not paid is skipped', async () => {
+    const { service, created } = setup({ schools: [school([pay('school:y1', '2027-01-20T08:00:00Z')], { active: false }), school([], { id: 'sch-2' })] });
+    await service.accrue();
+    expect(forSchool(created).length).toBeGreaterThan(0);
+    expect(forSchool(created).every((r) => r.status === 'VOID')).toBe(true);
+    expect(created.some((r) => r.organizationId === 'sch-2')).toBe(false);
   });
 });
 
