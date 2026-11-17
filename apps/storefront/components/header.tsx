@@ -1,7 +1,9 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { RibbonButton, RibbonLink, ThemeToggle, TopRibbon } from "@zaroda/ui";
+import { schoolHome } from "./shop-only";
 import { displayPhone } from "../lib/format";
 import { useStore } from "./store-provider";
 
@@ -9,6 +11,16 @@ import { useStore } from "./store-provider";
 // onto a second row on a phone instead of overflowing.
 export default function Header() {
   const { buyer, ready, signOut } = useStore();
+  const school = schoolHome(usePathname());
+
+  // A school opening its supplier's link sees only that: no marketplace menus.
+  if (school) {
+    return (
+      <TopRibbon appName="School ordering" homeHref={school} LinkComponent={Link}>
+        <ThemeToggle />
+      </TopRibbon>
+    );
+  }
 
   return (
     <TopRibbon appName="Marketplace" homeHref="/" LinkComponent={Link}>

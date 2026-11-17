@@ -5,6 +5,8 @@ import "./globals.css";
 import Header from "../components/header";
 import InstallPrompt from "../components/install-prompt";
 import ShopperAlerts from "../components/shopper-alerts";
+import ShopOnly from "../components/shop-only";
+import FooterNote from "../components/footer-note";
 import { StoreProvider } from "../components/store-provider";
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://shop.zarodashop.com";
@@ -24,19 +26,25 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
       <body className="antialiased">
         <StoreProvider>
           <Header />
-          <ShopperAlerts />
+          <ShopOnly>
+            <ShopperAlerts />
+          </ShopOnly>
           <main className="mx-auto min-h-[70vh] max-w-6xl px-4 py-6">{children}</main>
-          <InstallPrompt />
-          <p className="px-4 pb-4 text-center text-xs text-secondary-500">Payments go directly to each shop through M-Pesa.</p>
+          <ShopOnly>
+            <InstallPrompt />
+          </ShopOnly>
+          <FooterNote />
           <BottomRibbon>
-            <span className="hidden sm:inline"> · </span>
-            <Link href="/rider" className="ml-2 text-[#c99a2e] hover:underline sm:ml-0">
-              Deliver with Zaroda
-            </Link>
-            <span className="hidden sm:inline"> · </span>
-            <Link href="/tenant" className="ml-2 text-[#c99a2e] hover:underline sm:ml-0">
-              Tenants: my rent account
-            </Link>
+            <ShopOnly>
+              <span className="hidden sm:inline"> · </span>
+              <Link href="/rider" className="ml-2 text-[#c99a2e] hover:underline sm:ml-0">
+                Deliver with Zaroda
+              </Link>
+              <span className="hidden sm:inline"> · </span>
+              <Link href="/tenant" className="ml-2 text-[#c99a2e] hover:underline sm:ml-0">
+                Tenants: my rent account
+              </Link>
+            </ShopOnly>
           </BottomRibbon>
         </StoreProvider>
       </body>
