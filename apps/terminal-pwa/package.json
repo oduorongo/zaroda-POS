@@ -13,7 +13,7 @@
     "@zaroda/ui": "workspace:*",
     "react": "^18",
     "react-dom": "^18",
-    "next": "14.2.35",
+    "next": "15.5.28",
     "dexie": "^4.0.8",
     "dexie-react-hooks": "^1.1.7",
     "@zxing/browser": "^0.2.1"
