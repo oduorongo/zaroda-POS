@@ -104,7 +104,7 @@ export default function LayawaysPage() {
     try {
       setLayaways(await apiGet<Layaway[]>(`/layaways${statusFilter ? `?status=${statusFilter}` : ""}`));
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not load layaways.");
+      setError(err instanceof ApiError ? err.message : "Could not load lipa polepole plans.");
     } finally {
       setLoading(false);
     }
@@ -170,7 +170,7 @@ export default function LayawaysPage() {
       });
       router.push(`/layaways/${created.id}`);
     } catch (err) {
-      setCreateError(err instanceof ApiError ? err.message : "Could not create layaway.");
+      setCreateError(err instanceof ApiError ? err.message : "Could not create lipa polepole.");
     } finally {
       setCreateBusy(false);
     }
@@ -184,9 +184,9 @@ export default function LayawaysPage() {
       <PageHeader />
       <main className="mx-auto max-w-4xl p-6">
         <div className="mb-4 flex items-center justify-between">
-          <h1 className="text-xl font-bold">Layaways</h1>
+          <h1 className="text-xl font-bold">Lipa polepole</h1>
           <button onClick={() => void openNew()} className="rounded-md bg-primary-600 px-3 py-2 text-sm font-semibold hover:bg-primary-500">
-            + New layaway
+            + New lipa polepole
           </button>
         </div>
 
@@ -204,7 +204,7 @@ export default function LayawaysPage() {
 
         {newOpen && (
           <div className="mb-6 rounded-lg border border-border p-4">
-            <h2 className="mb-3 font-semibold">New layaway</h2>
+            <h2 className="mb-3 font-semibold">New lipa polepole</h2>
             <label className="block text-xs text-secondary-500">Branch</label>
             <select
               value={branchId}
@@ -289,7 +289,7 @@ export default function LayawaysPage() {
                 disabled={createBusy || !branchId.trim() || !selectedCustomer || lines.length === 0}
                 className="rounded-md bg-primary-600 px-4 py-2 text-sm font-semibold hover:bg-primary-500 disabled:opacity-40"
               >
-                {createBusy ? "Creating..." : "Create layaway"}
+                {createBusy ? "Creating..." : "Create lipa polepole"}
               </button>
             </div>
           </div>
@@ -297,7 +297,7 @@ export default function LayawaysPage() {
 
         {error && <p className="mb-4 rounded-md bg-red-950 p-3 text-sm text-red-300">{error}</p>}
         {loading && <p className="text-secondary-500">Loading...</p>}
-        {!loading && layaways.length === 0 && !error && <p className="text-secondary-500">No layaways found.</p>}
+        {!loading && layaways.length === 0 && !error && <p className="text-secondary-500">No lipa polepole plans found.</p>}
 
         {layaways.length > 0 && (
           <div className="overflow-x-auto rounded-lg border border-border">

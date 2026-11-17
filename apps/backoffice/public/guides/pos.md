@@ -1,6 +1,6 @@
 # Zaroda POS: user guide
 
-Zaroda POS runs a Kenyan shop: the till, stock, suppliers, customers, staff, money, tax (including KRA eTIMS) and, if you want it, an online shop with delivery by riders.
+Zaroda POS runs a Kenyan business (a shop, restaurant, hotel, salon and more): the till, stock, suppliers, customers, staff, money, tax (including KRA eTIMS) and, if you want it, an online shop with delivery by riders.
 It has three parts:
 - **The back office** (on a computer, tablet or phone): set up the shop, manage products and stock, see reports, run the books.
 - **The till** (on any tablet or phone at the counter): sell, take M-Pesa or cash, open and close shifts, do returns.
@@ -51,9 +51,11 @@ On **Products**, tap **New product** and enter:
 - the **selling price** and the **cost** (what you pay for it). The cost is used for your profit; it updates by itself to the average price paid when you enter the price while receiving stock;
 - its **barcode**, if it has one.
 
+<!-- not: HOTEL SALON SERVICE -->
 ### Options (sizes, packs, colours)
 A product can have several **options**, each with its own name (*500 ml*, *1 litre*; *Single*, *Carton of 12*), price, cost, barcode and stock. At the till each option shows by its readable name.
 
+<!-- not: HOTEL SALON RESTAURANT -->
 ### Barcodes and labels
 - Scan or type a product's barcode on the product. Two products cannot share a barcode.
 - **Barcode labels**: choose the products and how many labels of each, then print. A product with no barcode (bread, repacked goods, food you make) can be given one of your own. In the print window choose your label printer, set margins to **None** and scale to **100%**.
@@ -71,12 +73,14 @@ A product can have several **options**, each with its own name (*500 ml*, *1 lit
 ### Adjusting stock
 Record a change with its reason: **adjustment** (found or lost stock), **transfer** (moved between branches), **stock take** or **return**. Type the change as a plus or minus number (decimals are fine for items sold by weight). When stock comes in, enter the **price paid** too and the product's cost updates.
 
+<!-- not: HOTEL SALON SERVICE -->
 ### Batches and expiry
 Products with expiry dates (food, medicine) can be kept in **batches**, each with its expiry date. The till picks the batch to sell from.
 
 ### Stock count
 **Stock count** is for counting your shelves: walk round, **scan** each item (each scan counts one more; with a scanner gun you can just keep scanning), and when you finish, any difference between what you counted and what the system expected is corrected in your stock.
 
+<!-- not: HOTEL RESTAURANT SALON SERVICE -->
 ### Repackaging (breaking bulk)
 **Repackaging** turns bulk stock into sellable units: for example a 50 kg sack of sugar into fifty 1 kg packets. The bulk stock goes down and the packets go up.
 
@@ -122,6 +126,7 @@ Open the till app on the tablet or phone, choose **Set up this till**, sign in w
 4. **Payment**:
    - **Cash**: enter the amount tendered and the till shows the change.
    - **M-Pesa**: enter the customer's Safaricom number and an M-Pesa prompt goes to their phone. When they enter their PIN the sale completes by itself ("M-Pesa payment confirmed"). If nothing comes, ask them to check their phone or try again.
+<!-- for: HOTEL RESTAURANT -->
    - **Charge to room** (hotels): the amount goes on the guest's bill, paid at check-out.
 5. The receipt shows; print it or start the next sale.
 
@@ -136,11 +141,12 @@ If the internet drops, the till keeps selling for **cash**: sales are saved on t
 
 ---
 
-## Sales, customers and layaways
+## Sales and customers
 
 - **Sales**: every sale with its total and status. Open one to see its lines and payments, reprint the receipt or the KRA receipt, and see any refunds.
 - **Customers & Loyalty**: customer records, their purchase history and loyalty points. A customer can have a **KRA PIN**, which is printed on their receipts and sent to KRA with their sales.
-- **Layaways**: a customer pays for goods in parts. **New layaway** records the goods and the total; each part-payment is recorded until it is paid in full and the goods are handed over.
+<!-- not: HOTEL RESTAURANT SALON SERVICE MANUFACTURING -->
+- **Lipa polepole** (layaway): a customer pays for goods in parts. **New lipa polepole** records the goods and the total; each part-payment is recorded until it is paid in full and the goods are handed over.
 
 ---
 
@@ -185,19 +191,30 @@ Under **Settings → eTIMS** (once your business has its eTIMS details from KRA)
 
 ## Online shop (add-on)
 
+<!-- for: HOTEL -->
+For a hotel, the online shop is how guests **book rooms on the Zaroda marketplace** and pay the deposit by M-Pesa straight to you. Set up the link, payments and location below; rooms, prices and photos come from **Rooms & housekeeping** and **Rates & rules**.
+
 Ask Zaroda to switch the online shop on, then set it up under **Online Shop**:
 1. Your **shop link** (lowercase letters, numbers and hyphens; changing it breaks links you have already shared).
 2. **Payments**: connect your own M-Pesa (Tuma, or your own Paybill/Till). Buyers pay **you** directly.
-3. The **branch that fulfils online orders**: online stock comes from it, and buyers collect pickup orders there.
-4. **Where is your shop?** Type the **shopping centre or estate** (e.g. "Kondele Market, Kisumu"); shoppers see it and can search by it. Then, standing in the shop, tap **Use my location** to drop your **map pin**, and use **check it on the map** to make sure it is right.
+3. **Where is your shop?** Type the **shopping centre or estate** (e.g. "Kondele Market, Kisumu"); shoppers see it and can search by it. Then, standing in the shop, tap **Use my location** to drop your **map pin**, and use **check it on the map** to make sure it is right.
+<!-- not: HOTEL -->
+4. The **branch that fulfils online orders**: online stock comes from it, and buyers collect pickup orders there.
+<!-- not: HOTEL -->
 5. **Pickup and delivery**, and **how far you deliver**:
+<!-- not: HOTEL -->
    - **Nearby, within a distance**: type how many km (e.g. 3 or 5). Best for food, groceries and everyday items carried by boda riders. Distance is measured in a straight line, so allow for roads being longer. Needs your map pin.
+<!-- not: HOTEL -->
    - **Whole counties**: tick the counties you deliver to (none ticked = your branch's own county).
+<!-- not: RESTAURANT HOTEL -->
    - **Anywhere in Kenya**: for goods sent by vehicle or courier, such as hardware and big items.
+<!-- not: HOTEL -->
 6. Mark which **products** are online, with photos and descriptions.
 
+<!-- not: HOTEL -->
 Your shop appears on the Zaroda marketplace and at its own link. Shoppers who share their location see the nearest shops first, with the distance, and whether you deliver to them.
 
+<!-- not: HOTEL -->
 ### How shoppers order
 - **No account needed.** A shopper types their **M-Pesa number** (and an address for delivery) and taps **Pay**. The M-Pesa prompt on their phone proves the number is theirs. They follow the order through a **private link**, which is also saved on their phone under **My orders**. Shoppers can still create an account (phone number and PIN) to see all their orders anywhere.
 - **One short screen.** Their phone remembers their name, number, pickup or delivery, and address, so next time they just check the total and tap Pay.
@@ -207,14 +224,17 @@ Your shop appears on the Zaroda marketplace and at its own link. Shoppers who sh
 ### Practice shops (sales team training)
 Each sales team's training businesses can have the online shop switched on by Zaroda (platform admin: **Teams**, open the team, **Training accounts**, **Switch on online shop**). A practice shop needs no M-Pesa: publish it in **Online Shop** and open its link. It is marked **Practice shop** everywhere, checkout pretends to pay (the order is marked paid at once with a PRACTICE receipt), no money is taken, no rider is called, and it is never listed where real shoppers browse. Accept, prepare and complete the order in **Online Orders** to show the whole flow.
 
+<!-- not: HOTEL -->
 ### Online orders
 **Online Orders**: **accept** a paid order, **prepare** it, and hand it over (pickup, or delivery by a rider). Delivery is by your own riders or Zaroda's approved riders, who quote a delivery fee the buyer accepts and are paid cash on delivery.
 
+<!-- not: HOTEL -->
 ### The shopper's convenience fee
 Buyers pay a small **convenience fee** (3%) added at checkout; your shop pays no commission on online orders. You collect it with the payment and send the day's total to Zaroda from **Online Shop** (it is invoiced each evening). If it is not sent within 3 days your online shop is hidden until it is; the till and back office keep working.
 
 ---
 
+<!-- general -->
 ## Screens for your kind of business
 
 When you sign up you choose your kind of business, and its own screens appear on **Home** and in the top menu. When you open this guide signed in, the section on how Zaroda works for your kind of business is shown near the top.

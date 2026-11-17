@@ -62,7 +62,7 @@ const TILES: Tile[] = [
   { href: "/purchase-orders", label: "Purchase Orders", description: "Orders placed with your suppliers.", icon: ClipboardList, tone: "bg-indigo-600" },
   { href: "/repackaging", label: "Repackaging", description: "Break bulk stock into sellable units.", icon: PackageOpen, tone: "bg-cyan-600" },
   { href: "/waste", label: "Waste", description: "Log damaged or expired stock write-offs.", icon: Trash2, tone: "bg-red-600" },
-  { href: "/layaways", label: "Layaways", description: "Partial payments and outstanding balances.", icon: PiggyBank, tone: "bg-pink-600" },
+  { href: "/layaways", label: "Lipa polepole", description: "Customers pay in parts and collect when fully paid.", icon: PiggyBank, tone: "bg-pink-600" },
   { href: "/staff", label: "Staff", description: "Team members, PINs, and roles.", icon: Users, tone: "bg-primary-600" },
   { href: "/roster", label: "Roster", description: "Plan and review staff shift schedules.", icon: CalendarDays, tone: "bg-purple-600" },
   { href: "/payroll", label: "Payroll", description: "Staff pay runs and payment history.", icon: Wallet, tone: "bg-teal-600" },
@@ -138,6 +138,14 @@ const MANAGER_TILES: Tile[] = [
   },
 ];
 const MANAGER_ROLES = ["MANAGER", "OWNER"];
+
+// Retail screens a business type has no use for (the guide hides the same parts). The pages still open by link.
+const HIDDEN_FOR: Record<string, string[]> = {
+  "/repackaging": ["HOTEL", "RESTAURANT", "SALON", "SERVICE"],
+  "/layaways": ["HOTEL", "RESTAURANT", "SALON", "SERVICE", "MANUFACTURING"],
+  "/labels": ["HOTEL", "SALON", "RESTAURANT"],
+  "/online-orders": ["HOTEL"],
+};
 
 // Same industryType gating as components/nav.tsx's VERTICAL_LINKS.
 const VERTICAL_TILES: Record<string, Tile> = {
@@ -225,9 +233,9 @@ export default function DashboardPage() {
   if (!session) return null;
 
   const verticalTile = VERTICAL_TILES[session.industryType];
-  const tiles = MANAGER_ROLES.includes(session.role)
-    ? [...TILES, ...MANAGER_TILES]
-    : TILES;
+  const tiles = (MANAGER_ROLES.includes(session.role) ? [...TILES, ...MANAGER_TILES] : [...TILES]).filter(
+    (t) => !HIDDEN_FOR[t.href]?.includes(session.industryType),
+  );
   if (verticalTile) tiles.push(verticalTile);
   // A school supplier also gets the schools, the school price list and the money screens.
   if (session.industryType === "SCHOOL_SUPPLIER") {

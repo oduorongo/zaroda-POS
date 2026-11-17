@@ -129,7 +129,7 @@ export default function AccountingPage() {
               <h2 className="font-semibold">How the books are kept</h2>
               <p className="text-secondary-600">
                 Every sale, refund, tip, expense, supplier bill and payment, payroll run, school receipt, rent charge and payment, deposit
-                handed back, hotel guest payment, layaway, waste, stock count and ZARODA charge is posted to the books for you every few
+                handed back, hotel guest payment, lipa polepole, waste, stock count and ZARODA charge is posted to the books for you every few
                 minutes, as double entries. Moving stock between your branches needs no entry: it is still your stock. You only enter
                 journals for things the system cannot see: the balances you started with, money the owner puts in or takes out, loans,
                 equipment, and corrections. Record paying KRA, NSSF, SHIF or handing tips to staff under &quot;What you owe&quot;.

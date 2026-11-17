@@ -124,8 +124,8 @@ const CAPABILITIES: Capability[] = [
     color: "bg-primary-600",
     tone: "primary",
     illustration: "layaway",
-    title: "Layaway & Refunds",
-    description: "Partial payments on layaway, and every refund logged against the sale.",
+    title: "Lipa Polepole & Refunds",
+    description: "Customers pay bit by bit with lipa polepole, and every refund logged against the sale.",
     href: "/features",
   },
 ];

@@ -18,6 +18,31 @@ const BUSINESS_GUIDES: Record<string, string> = {
 
 const fetchText = (path: string) => fetch(path).then((r) => (r.ok ? r.text() : Promise.reject()));
 
+const MARKER = /^<!--\s*(general|for|not)\s*:?\s*([A-Z_ ]*)-->$/;
+const headingLevel = (line?: string) => line?.match(/^(#+) /)?.[1].length ?? 0;
+const endsAt = (line: string | undefined, level: number) => headingLevel(line) > 0 && headingLevel(line) <= level;
+const sectionEnds = (lines: string[], i: number, level: number) =>
+  i >= lines.length || endsAt(lines[i], level) || (MARKER.test(lines[i].trim()) && endsAt(lines[i + 1], level));
+
+// pos.md markers: <!-- for: A B --> / <!-- not: A B --> keep or drop the next line (the whole section if it is a heading);
+// <!-- general --> keeps it only when the reader's business is unknown. Marker lines are always removed.
+function forBusiness(md: string, type: string | null): string {
+  const lines = md.split(/\r?\n/);
+  const out: string[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    const m = lines[i].trim().match(MARKER);
+    if (!m) {
+      out.push(lines[i]);
+      continue;
+    }
+    const types = m[2].trim().split(/\s+/);
+    if (!type || (m[1] === "for" ? types.includes(type) : m[1] === "not" && !types.includes(type))) continue;
+    const level = headingLevel(lines[++i]);
+    if (level) while (!sectionEnds(lines, i + 1, level)) i++;
+  }
+  return out.join("\n");
+}
+
 /** The Zaroda POS user guide (public/guides/pos.md), open to everyone, with the section for the reader's kind of business. */
 export default function PosGuide() {
   const [source, setSource] = useState<string | null>(null);
@@ -30,11 +55,12 @@ export default function PosGuide() {
     setSignedIn(!!session);
     const asked = new URLSearchParams(window.location.search).get("for")?.toUpperCase();
     const type = [asked, session?.industryType].find((t) => t && BUSINESS_GUIDES[t]) ?? null;
+    const reader = asked || session?.industryType || null;
     setBusiness(type);
     Promise.all([fetchText("/guides/pos.md"), type ? fetchText(`/guides/pos-${type.toLowerCase()}.md`).catch(() => "") : ""])
       .then(([main, extra]) => {
         const at = main.indexOf("\n## Products and categories");
-        setSource(extra && at > 0 ? `${main.slice(0, at)}\n${extra.trim()}\n\n---\n${main.slice(at)}` : main);
+        setSource(forBusiness(extra && at > 0 ? `${main.slice(0, at)}\n${extra.trim()}\n\n---\n${main.slice(at)}` : main, reader));
       })
       .catch(() => setFailed(true));
   }, []);

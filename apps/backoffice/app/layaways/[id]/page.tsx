@@ -56,7 +56,7 @@ export default function LayawayDetailPage() {
     try {
       setLayaway(await apiGet<Layaway>(`/layaways/${params.id}`));
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not load this layaway.");
+      setError(err instanceof ApiError ? err.message : "Could not load this lipa polepole plan.");
     }
   }
 
@@ -103,7 +103,7 @@ export default function LayawayDetailPage() {
       await apiPatch(`/layaways/${layaway.id}/complete`, {});
       await load();
     } catch (err) {
-      setActionError(err instanceof ApiError ? err.message : "Could not complete this layaway.");
+      setActionError(err instanceof ApiError ? err.message : "Could not complete this lipa polepole plan.");
     } finally {
       setActionBusy(false);
     }
@@ -119,7 +119,7 @@ export default function LayawayDetailPage() {
       setCancelReason("");
       await load();
     } catch (err) {
-      setActionError(err instanceof ApiError ? err.message : "Could not cancel this layaway.");
+      setActionError(err instanceof ApiError ? err.message : "Could not cancel this lipa polepole plan.");
     } finally {
       setActionBusy(false);
     }
@@ -133,7 +133,7 @@ export default function LayawayDetailPage() {
       <PageHeader />
       <main className="mx-auto max-w-2xl p-6">
         <button onClick={() => router.push("/layaways")} className="mb-4 text-primary-400 hover:underline">
-          &larr; Layaways
+          &larr; Lipa polepole
         </button>
         {error && <p className="mb-4 rounded-md bg-red-950 p-3 text-sm text-red-300">{error}</p>}
         {!layaway && !error && <p className="text-secondary-500">Loading...</p>}
@@ -209,7 +209,7 @@ export default function LayawayDetailPage() {
                     Complete (pickup)
                   </button>
                   <button onClick={() => setCancelOpen((v) => !v)} className="rounded-md bg-red-900 px-4 py-2 text-sm hover:bg-red-800">
-                    Cancel layaway
+                    Cancel lipa polepole
                   </button>
                 </div>
 

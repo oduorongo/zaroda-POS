@@ -133,7 +133,7 @@ export class LayawaysService {
     const layaway = await this.tenantPrisma.run((tx) =>
       tx.layaway.findUnique({ where: { id }, include: LAYAWAY_INCLUDE }),
     );
-    if (!layaway) throw new NotFoundException('Layaway not found');
+    if (!layaway) throw new NotFoundException('Lipa polepole plan not found');
     return layaway;
   }
 
@@ -146,10 +146,10 @@ export class LayawaysService {
   async recordPayment(id: string, dto: RecordLayawayPaymentDto) {
     return this.tenantPrisma.run(async (tx) => {
       const layaway = await tx.layaway.findUnique({ where: { id } });
-      if (!layaway) throw new NotFoundException('Layaway not found');
+      if (!layaway) throw new NotFoundException('Lipa polepole plan not found');
       if (layaway.status !== LayawayStatus.OPEN) {
         throw new BadRequestException(
-          `This layaway is ${layaway.status.toLowerCase()} - payments can only be recorded while OPEN`,
+          `This lipa polepole plan is ${layaway.status.toLowerCase()} - payments can only be recorded while OPEN`,
         );
       }
 
@@ -197,10 +197,10 @@ export class LayawaysService {
         where: { id },
         include: { lineItems: true },
       });
-      if (!layaway) throw new NotFoundException('Layaway not found');
+      if (!layaway) throw new NotFoundException('Lipa polepole plan not found');
       if (layaway.status !== LayawayStatus.OPEN) {
         throw new BadRequestException(
-          `This layaway is already ${layaway.status.toLowerCase()}`,
+          `This lipa polepole plan is already ${layaway.status.toLowerCase()}`,
         );
       }
       if (Number(layaway.depositPaid) < Number(layaway.total)) {
@@ -248,10 +248,10 @@ export class LayawaysService {
   async cancel(id: string, dto: CancelLayawayDto) {
     return this.tenantPrisma.run(async (tx) => {
       const layaway = await tx.layaway.findUnique({ where: { id } });
-      if (!layaway) throw new NotFoundException('Layaway not found');
+      if (!layaway) throw new NotFoundException('Lipa polepole plan not found');
       if (layaway.status !== LayawayStatus.OPEN) {
         throw new BadRequestException(
-          `This layaway is already ${layaway.status.toLowerCase()}`,
+          `This lipa polepole plan is already ${layaway.status.toLowerCase()}`,
         );
       }
 
