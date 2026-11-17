@@ -2704,6 +2704,14 @@ model OnlineStore {
   onlineStockBuffer            Int      @default(0)
   /// Counties this shop delivers to. Empty = just the county of its fulfilment branch. Pickup, hotel and rental bookings are never limited by distance.
   deliveryCounties             String[] @default([])
+  /// The shopping centre or estate the shop is in, as shoppers know it ("Kondele Market, Kisumu").
+  locationArea                 String?
+  /// Where the shop stands (map pin), so distance to a shopper can be measured.
+  latitude                     Float?
+  longitude                    Float?
+  /// How far it delivers: COUNTIES (deliveryCounties, the default), RADIUS (within deliveryRadiusKm of the pin) or KENYA (anywhere, e.g. hardware by vehicle).
+  deliveryReach                String   @default("COUNTIES")
+  deliveryRadiusKm             Int?
   tumaEmail                    String?
   tumaApiKeyEncrypted          String?
   // How buyers' payments reach the business: 'TUMA' (above) or 'DARAJA' - the
@@ -2843,6 +2851,9 @@ model OnlineOrder {
   deliveryAddress     String?
   // The county the order is delivered to (a delivery order is only accepted for a county the shop serves).
   deliveryCounty      String?
+  // The shopper's location when they shared it (needed for a shop that delivers within a distance).
+  deliveryLat         Float?
+  deliveryLng         Float?
   // Table orders (DINE_IN): which table, with its label as it was when ordered.
   tableId             String?
   tableLabel          String?

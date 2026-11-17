@@ -155,6 +155,19 @@ export class CreateOnlineOrderDto {
   @MaxLength(40)
   deliveryCounty?: string;
 
+  // The shopper's location, when they shared it: needed for a shop that delivers within a distance.
+  @IsNumber()
+  @IsOptional()
+  @Min(-90)
+  @Max(90)
+  deliveryLat?: number;
+
+  @IsNumber()
+  @IsOptional()
+  @Min(-180)
+  @Max(180)
+  deliveryLng?: number;
+
   @IsString()
   @IsOptional()
   @MaxLength(500)

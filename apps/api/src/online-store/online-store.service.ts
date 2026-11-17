@@ -14,7 +14,7 @@ import { ConnectMpesaDto, ConnectTumaDto, UpdateOnlineStoreDto } from './dto/upd
 import { DarajaClient } from './daraja.client';
 import { darajaConnected, gatewayOf, paymentsReady, tumaConnected } from './payment-gateway';
 import { TumaClient } from './tuma.client';
-import { normalizeCounties } from '../online-orders/delivery-area';
+import { inKenya, normalizeCounties } from '../online-orders/delivery-area';
 
 /** Typed counties made proper, or a plain 400 naming the one that is not a county. */
 function countiesOrThrow(texts: string[]): string[] {
@@ -40,6 +40,11 @@ export function toTenantView(store: OnlineStore | null) {
     deliveryEnabled: store?.deliveryEnabled ?? false,
     onlineStockBuffer: store?.onlineStockBuffer ?? 0,
     deliveryCounties: store?.deliveryCounties ?? [],
+    locationArea: store?.locationArea ?? null,
+    latitude: store?.latitude ?? null,
+    longitude: store?.longitude ?? null,
+    deliveryReach: store?.deliveryReach ?? 'COUNTIES',
+    deliveryRadiusKm: store?.deliveryRadiusKm ?? null,
     tumaEmail: store?.tumaEmail ?? null,
     tumaConnected: Boolean(store?.tumaApiKeyEncrypted),
     // How buyers pay this business: Tuma, or its own M-Pesa (Safaricom Daraja) into its own Paybill/Till.
@@ -132,8 +137,23 @@ export class OnlineStoreService {
           deliveryEnabled: dto.deliveryEnabled,
           onlineStockBuffer: dto.onlineStockBuffer,
           deliveryCounties: dto.deliveryCounties === undefined ? undefined : countiesOrThrow(dto.deliveryCounties),
+          locationArea: cleanText(dto.locationArea),
+          latitude: dto.latitude,
+          longitude: dto.longitude,
+          deliveryReach: dto.deliveryReach,
+          deliveryRadiusKm: dto.deliveryRadiusKm,
           isPublished: dto.isPublished,
         };
+
+        // A pin must be a real place in Kenya, given as a pair; delivering by distance needs both a pin and a distance.
+        const place = { ...current, ...stripUndefined(data) };
+        if ((place.latitude == null) !== (place.longitude == null)) throw new BadRequestException('Set the shop pin with both latitude and longitude');
+        if (place.latitude != null && place.longitude != null && !inKenya(place.latitude, place.longitude)) {
+          throw new BadRequestException('That pin is not in Kenya - stand in the shop and tap "Use my location" again');
+        }
+        if (place.deliveryReach === 'RADIUS' && (!place.deliveryRadiusKm || place.latitude == null)) {
+          throw new BadRequestException('To deliver within a distance, set the shop pin and how many km you deliver');
+        }
 
         // Checked against the merged result, so a request that both fills in
         // the last missing field and publishes succeeds in one save.

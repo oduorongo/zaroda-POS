@@ -38,7 +38,7 @@ import { ShopCatalogService } from './shop-catalog.service';
 import { guestSecretMatches, parseGuestToken } from './guest-token';
 import { CancelOnlineOrderDto, CreateOnlineOrderDto, CreateTableOrderDto } from './dto/online-order.dto';
 import { generateCallbackToken, generateOrderNumber, normalizeKenyanPhone, roundMoney } from './online-orders.util';
-import { checkDeliveryCounty, servedCounties } from './delivery-area';
+import { checkDelivery, normalizeCounty, servedCounties } from './delivery-area';
 import { totalWithFee } from './convenience-fee';
 import { variantTitle } from '../catalog/variant-title';
 
@@ -228,9 +228,20 @@ export class OnlineOrdersService {
             if (dto.fulfilmentType === FulfilmentType.DELIVERY) {
               if (!shop.deliveryEnabled) throw new BadRequestException('This shop does not deliver');
               if (!dto.deliveryAddress?.trim()) throw new BadRequestException('Enter a delivery address');
-              // Food and goods cannot travel across the country: only a county the shop serves can be delivered to.
+              // Only where the shop says it delivers: within its distance, its counties, or anywhere in Kenya.
               const branch = await tx.branch.findUnique({ where: { id: shop.fulfilmentBranchId }, select: { county: true } });
-              const area = checkDeliveryCounty(servedCounties(shop.deliveryCounties, branch?.county), dto.deliveryCounty, shop.displayName);
+              const area = checkDelivery(
+                {
+                  name: shop.displayName,
+                  reach: shop.deliveryReach,
+                  radiusKm: shop.deliveryRadiusKm,
+                  lat: shop.latitude,
+                  lng: shop.longitude,
+                  served: servedCounties(shop.deliveryCounties, branch?.county),
+                  ownCounty: normalizeCounty(branch?.county),
+                },
+                { county: dto.deliveryCounty, lat: dto.deliveryLat, lng: dto.deliveryLng },
+              );
               if (!area.ok) throw new BadRequestException(area.message);
               deliveryCounty = area.county;
             }
@@ -291,6 +302,8 @@ export class OnlineOrdersService {
                 fulfilmentType: dto.fulfilmentType,
                 deliveryAddress: dto.fulfilmentType === FulfilmentType.DELIVERY ? dto.deliveryAddress!.trim() : null,
                 deliveryCounty,
+                deliveryLat: dto.fulfilmentType === FulfilmentType.DELIVERY ? (dto.deliveryLat ?? null) : null,
+                deliveryLng: dto.fulfilmentType === FulfilmentType.DELIVERY ? (dto.deliveryLng ?? null) : null,
                 buyerNote: dto.note?.trim() || null,
                 buyerName: dto.buyerName?.trim() || buyer?.name || null,
                 buyerPhone: paymentPhone,

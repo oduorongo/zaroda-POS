@@ -4,13 +4,15 @@ import Link from "next/link";
 import { MapPin, Store, Truck } from "lucide-react";
 import { locationLabel } from "../lib/format";
 import { useMyCounty } from "../lib/my-county";
+import { distanceKm, kmLabel, reachFor, useMyLocation } from "../lib/my-location";
 import type { ShopSummary } from "../lib/types";
 
 export default function ShopCard({ shop }: { shop: ShopSummary }) {
-  const location = locationLabel(shop.subCounty, shop.county);
+  const place = shop.area || locationLabel(shop.subCounty, shop.county);
   const [myCounty] = useMyCounty();
-  // Whether this shop can deliver to the county the shopper said they are in (unknown = no answer to give).
-  const reaches = !shop.deliveryEnabled || !myCounty || shop.deliveryCounties === null ? null : shop.deliveryCounties.includes(myCounty);
+  const { spot } = useMyLocation();
+  const km = spot && shop.lat != null && shop.lng != null ? distanceKm(spot, { lat: shop.lat, lng: shop.lng }) : null;
+  const reach = reachFor(shop, spot, myCounty);
   return (
     <Link
       href={`/s/${shop.slug}`}
@@ -30,21 +32,18 @@ export default function ShopCard({ shop }: { shop: ShopSummary }) {
         <h3 className="font-semibold group-hover:text-primary-600">{shop.name}</h3>
         {shop.description && <p className="line-clamp-2 text-sm text-secondary-500">{shop.description}</p>}
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 pt-1 text-xs text-secondary-500">
-          {location && (
+          {(place || km !== null) && (
             <span className="flex items-center gap-1">
-              <MapPin size={12} aria-hidden /> {location}
+              <MapPin size={12} aria-hidden /> {[place, km !== null ? kmLabel(km) : null].filter(Boolean).join(" · ")}
             </span>
           )}
-          <span>{shop.productCount} {shop.productCount === 1 ? "product" : "products"}</span>
-          {shop.deliveryEnabled && reaches !== false && (
-            <span className={`flex items-center gap-1 ${reaches ? "font-medium text-success-600" : ""}`}>
-              <Truck size={12} aria-hidden /> {reaches ? `Delivers to ${myCounty}` : "Delivers"}
-            </span>
-          )}
-          {shop.deliveryEnabled && reaches === false && (
-            <span className="flex items-center gap-1 text-warning-700">
-              <Truck size={12} aria-hidden /> No delivery to {myCounty}
-              {shop.pickupEnabled ? " - pickup only" : ""}
+          <span>
+            {shop.productCount} {shop.productCount === 1 ? "product" : "products"}
+          </span>
+          {shop.deliveryEnabled && (
+            <span className={`flex items-center gap-1 ${reach.delivers === true ? "font-medium text-success-600" : reach.delivers === false ? "text-warning-700" : ""}`}>
+              <Truck size={12} aria-hidden /> {reach.label}
+              {reach.delivers === false && shop.pickupEnabled ? " - pickup only" : ""}
             </span>
           )}
         </div>

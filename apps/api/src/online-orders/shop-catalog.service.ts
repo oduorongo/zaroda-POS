@@ -24,6 +24,11 @@ export interface LiveShop {
   deliveryEnabled: boolean;
   /** Counties the shop listed for delivery (empty = its branch's own county). */
   deliveryCounties: string[];
+  locationArea: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  deliveryReach: string;
+  deliveryRadiusKm: number | null;
   commissionRate: number | null;
   paymentGateway: string;
   /** ZARODA has taken this business's hotel rooms off the marketplace. */
@@ -77,6 +82,11 @@ export class ShopCatalogService {
         pickupEnabled: store.pickupEnabled,
         deliveryEnabled: store.deliveryEnabled,
         deliveryCounties: store.deliveryCounties,
+        locationArea: store.locationArea,
+        latitude: store.latitude,
+        longitude: store.longitude,
+        deliveryReach: store.deliveryReach,
+        deliveryRadiusKm: store.deliveryRadiusKm,
         commissionRate: store.commissionRate != null ? Number(store.commissionRate) : null,
         paymentGateway: store.paymentGateway,
         hotelBlocked: store.hotelBlockedAt !== null,
@@ -194,6 +204,11 @@ export class ShopCatalogService {
           county: normalizeCounty(branch?.county) ?? branch?.county ?? null,
           subCounty: branch?.subCounty ?? null,
           deliveryCounties: servedCounties(store.deliveryCounties, branch?.county),
+          area: store.locationArea,
+          lat: store.latitude,
+          lng: store.longitude,
+          deliveryReach: store.deliveryReach,
+          deliveryRadiusKm: store.deliveryRadiusKm,
           productCount: products.length,
           coverImage: cover ? this.storage.publicUrl(cover.storageKey) : null,
           pickupEnabled: store.pickupEnabled,
@@ -202,7 +217,7 @@ export class ShopCatalogService {
       }
       if (!needle) return shops;
       return shops.filter((s) =>
-        [s.name, s.description, s.county, s.subCounty].some((v) => v?.toLowerCase().includes(needle)),
+        [s.name, s.description, s.county, s.subCounty, s.area].some((v) => v?.toLowerCase().includes(needle)),
       );
     }, { timeout: 30_000, maxWait: 15_000 });
   }
@@ -270,6 +285,11 @@ export class ShopCatalogService {
         pickupEnabled: shop.pickupEnabled,
         deliveryEnabled: shop.deliveryEnabled,
         deliveryCounties: servedCounties(shop.deliveryCounties, branch?.county),
+        area: shop.locationArea,
+        lat: shop.latitude,
+        lng: shop.longitude,
+        deliveryReach: shop.deliveryReach,
+        deliveryRadiusKm: shop.deliveryRadiusKm,
         // Added to the cart at checkout (rounded to the nearest shilling); the shop collects it and sends it to Zaroda.
         convenienceFeeRate: shop.commissionRate ?? DEFAULT_COMMISSION_RATE,
         location: branch ? { branchName: branch.name, county: normalizeCounty(branch.county) ?? branch.county, subCounty: branch.subCounty } : null,

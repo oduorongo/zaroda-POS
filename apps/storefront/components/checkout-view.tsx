@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { KENYA_COUNTIES } from "@zaroda/ui";
 import { ApiError, createGuestOrder, createOrder } from "../lib/api";
 import { useMyCounty } from "../lib/my-county";
+import { distanceKm, kmLabel, useMyLocation } from "../lib/my-location";
 import { displayPhone, formatQty, kes, variantTitle } from "../lib/format";
 import { checkoutDetails, guestOrderPath, rememberCheckoutDetails, rememberGuestOrder } from "../lib/remember";
 import type { Shop } from "../lib/types";
@@ -84,10 +85,15 @@ export default function CheckoutView({ shop }: { shop: Shop }) {
   }, [shop, cartFor]);
 
   const { amountDue, items: itemsTotal, fee } = cartTotals(lines, shop.convenienceFeeRate);
-  // Food and goods cannot travel across the country: a shop that has said where it delivers only offers those counties.
-  const served = shop.deliveryCounties;
+  // Where the shop delivers: within a distance of its pin (needs the shopper's location), its counties, or anywhere in Kenya.
+  const byDistance = shop.deliveryReach === "RADIUS" && Boolean(shop.deliveryRadiusKm) && shop.lat != null && shop.lng != null;
+  const anywhere = shop.deliveryReach === "KENYA";
+  const served = anywhere || byDistance ? null : shop.deliveryCounties;
   const deliveryCounties: readonly string[] = served ?? KENYA_COUNTIES;
   const myCountyServed = !myCounty || served === null || served.includes(myCounty);
+  const { spot, locating, error: locateError, locate } = useMyLocation();
+  const awayKm = byDistance && spot ? distanceKm(spot, { lat: shop.lat!, lng: shop.lng! }) : null;
+  const tooFar = awayKm !== null && awayKm > (shop.deliveryRadiusKm ?? 0);
   useEffect(() => {
     setCounty((current) => (current && deliveryCounties.includes(current) ? current : myCounty && deliveryCounties.includes(myCounty) ? myCounty : deliveryCounties.length === 1 ? deliveryCounties[0] : ""));
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -96,7 +102,7 @@ export default function CheckoutView({ shop }: { shop: Shop }) {
   const farPickup = fulfilment === "PICKUP" && Boolean(myCounty) && Boolean(shopCounty) && myCounty !== shopCounty;
   const phoneKnown = paymentPhone.trim().length >= 9 && !editPhone;
   const nameKnown = name.trim().length > 0 && !editName;
-  const deliveryReady = fulfilment !== "DELIVERY" || (address.trim().length >= 5 && Boolean(county));
+  const deliveryReady = fulfilment !== "DELIVERY" || (address.trim().length >= 5 && (byDistance ? Boolean(spot) && !tooFar : Boolean(county)));
 
   async function placeOrder(e: React.FormEvent) {
     e.preventDefault();
@@ -105,8 +111,12 @@ export default function CheckoutView({ shop }: { shop: Shop }) {
       setError("Enter the M-Pesa number you will pay with.");
       return;
     }
-    if (fulfilment === "DELIVERY" && !county) {
+    if (fulfilment === "DELIVERY" && !byDistance && !county) {
       setError("Choose the county we are delivering to.");
+      return;
+    }
+    if (fulfilment === "DELIVERY" && byDistance && !spot) {
+      setError(`Share your location so we can check you are within ${shop.deliveryRadiusKm} km, or choose pickup.`);
       return;
     }
     setBusy(true);
@@ -116,7 +126,8 @@ export default function CheckoutView({ shop }: { shop: Shop }) {
       lines: lines.map((l) => ({ variantId: l.variantId, quantity: l.quantity })),
       fulfilmentType: fulfilment,
       deliveryAddress: fulfilment === "DELIVERY" ? address.trim() : undefined,
-      deliveryCounty: fulfilment === "DELIVERY" ? county : undefined,
+      deliveryCounty: fulfilment === "DELIVERY" ? county || undefined : undefined,
+      ...(fulfilment === "DELIVERY" && spot ? { deliveryLat: spot.lat, deliveryLng: spot.lng } : {}),
       note: note.trim() || undefined,
       buyerName: name.trim() || undefined,
       paymentPhone: paymentPhone.trim(),
@@ -212,7 +223,41 @@ export default function CheckoutView({ shop }: { shop: Shop }) {
                 {served ? ` Delivers in ${served.join(", ")} only.` : ""}
               </p>
               {!myCountyServed && <p className="text-xs font-medium text-warning-700">This shop cannot deliver to {myCounty}. Choose pickup, or order from a shop in {myCounty}.</p>}
-              {deliveryCounties.length > 1 && (
+              {byDistance && (
+                <div className="rounded-md border border-border bg-surface p-3 text-sm">
+                  {!spot ? (
+                    <>
+                      <p>
+                        {shop.name} delivers within <strong>{shop.deliveryRadiusKm} km</strong>. Share your location so we can check it reaches you.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => void locate()}
+                        disabled={locating}
+                        className="mt-2 rounded-md bg-primary-600 px-3 py-2 text-sm font-semibold text-white hover:bg-primary-700 disabled:opacity-50"
+                      >
+                        {locating ? "Finding you..." : "Share my location"}
+                      </button>
+                      {locateError && <p className="mt-1 text-xs text-warning-700">{locateError}</p>}
+                    </>
+                  ) : tooFar ? (
+                    <p className="text-warning-700">
+                      You are about {kmLabel(awayKm!)} away, and {shop.name} delivers within {shop.deliveryRadiusKm} km. Choose pickup, or order from a shop nearer you.{" "}
+                      <button type="button" onClick={() => void locate()} className="underline">
+                        Check again
+                      </button>
+                    </p>
+                  ) : (
+                    <p className="text-success-600">
+                      You are about {kmLabel(awayKm!)} from the shop: it delivers to you.{" "}
+                      <button type="button" onClick={() => void locate()} className="text-secondary-500 underline">
+                        Update
+                      </button>
+                    </p>
+                  )}
+                </div>
+              )}
+              {!byDistance && deliveryCounties.length > 1 && (
                 <div>
                   <label htmlFor="delivery-county" className="block text-sm font-medium">
                     County

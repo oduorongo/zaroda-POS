@@ -64,3 +64,51 @@ export function checkDeliveryCounty(served: string[] | null, shopperCounty: stri
     message: `${shopName} only delivers in ${where}, so it cannot deliver to ${chosen}. You can choose pickup, or order from a shop in ${chosen}.`,
   };
 }
+
+export const DELIVERY_REACHES = ['COUNTIES', 'RADIUS', 'KENYA'] as const;
+export type DeliveryReach = (typeof DELIVERY_REACHES)[number];
+
+/** Roughly Kenya's borders, so a mistyped or far-away pin is refused. */
+export const inKenya = (lat: number, lng: number) => lat >= -5 && lat <= 5.5 && lng >= 33.5 && lng <= 42.5;
+
+/** Straight-line distance in km between two map points (roads are longer; shops set their radius with that in mind). */
+export function distanceKm(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {
+  const rad = (d: number) => (d * Math.PI) / 180;
+  const dLat = rad(b.lat - a.lat);
+  const dLng = rad(b.lng - a.lng);
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.sin(dLng / 2) ** 2;
+  return 2 * 6371 * Math.asin(Math.sqrt(h));
+}
+
+export interface ShopReach {
+  name: string;
+  reach: string;
+  radiusKm: number | null;
+  lat: number | null;
+  lng: number | null;
+  served: string[] | null;
+  /** The county of the shop's branch, used for a distance-delivery order when the shopper did not pick one. */
+  ownCounty: string | null;
+}
+
+/**
+ * Can this shop deliver to the shopper? By distance (needs the shopper's location), by county (as before), or anywhere in
+ * Kenya. A distance shop that has not dropped its pin yet falls back to its counties, so it keeps working while it sets up.
+ */
+export function checkDelivery(shop: ShopReach, shopper: { county?: string | null; lat?: number | null; lng?: number | null }): DeliveryCheck {
+  if (shop.reach === 'KENYA') {
+    const county = normalizeCounty(shopper.county);
+    return county ? { ok: true, county, message: '' } : { ok: false, county: null, message: 'Choose the county we are delivering to' };
+  }
+  if (shop.reach === 'RADIUS' && shop.radiusKm && shop.lat != null && shop.lng != null) {
+    if (shopper.lat == null || shopper.lng == null) {
+      return { ok: false, county: null, message: `${shop.name} delivers within ${shop.radiusKm} km. Share your location so we can check you are close enough, or choose pickup.` };
+    }
+    const km = distanceKm({ lat: shop.lat, lng: shop.lng }, { lat: shopper.lat, lng: shopper.lng });
+    if (km > shop.radiusKm) {
+      return { ok: false, county: null, message: `${shop.name} delivers within ${shop.radiusKm} km, and you are about ${Math.round(km)} km away. You can choose pickup, or order from a shop nearer you.` };
+    }
+    return { ok: true, county: normalizeCounty(shopper.county) ?? shop.ownCounty, message: '' };
+  }
+  return checkDeliveryCounty(shop.served, shopper.county, shop.name);
+}
