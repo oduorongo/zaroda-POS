@@ -8,7 +8,8 @@ import { ApiError, getReservationInfo } from "../../../../lib/api";
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Reserve a table" };
 
-export default async function ReservePage({ params }: { params: { slug: string } }) {
+export default async function ReservePage(props: { params: Promise<{ slug: string }> }) {
+  const params = await props.params;
   let info: { enabled: boolean; restaurant: string };
   try {
     info = await getReservationInfo(params.slug);

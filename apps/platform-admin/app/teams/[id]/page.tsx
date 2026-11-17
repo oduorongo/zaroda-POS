@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import Link from "next/link";
 import { apiGet, apiPatch, apiPost, ApiError } from "../../../lib/api";
 import { getSession, type Session } from "../../../lib/auth";
 import { Nav } from "../../../components/nav";
@@ -326,9 +327,9 @@ export default function TeamDetailPage() {
     <div className="min-h-screen bg-background text-foreground">
       <Nav session={session} />
       <main className="mx-auto max-w-4xl space-y-6 p-6">
-        <a href="/teams" className="text-sm text-secondary-500 hover:text-foreground">
+        <Link href="/teams" className="text-sm text-secondary-500 hover:text-foreground">
           &larr; All teams
-        </a>
+        </Link>
         {loading && <LoadingState label="Loading team..." />}
         {error && <p className="text-sm text-error-600">{error}</p>}
 

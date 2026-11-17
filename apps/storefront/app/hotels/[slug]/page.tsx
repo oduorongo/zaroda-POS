@@ -15,7 +15,8 @@ interface Search {
   checkOut?: string;
 }
 
-export async function generateMetadata({ params }: { params: { slug: string } }): Promise<Metadata> {
+export async function generateMetadata(props: { params: Promise<{ slug: string }> }): Promise<Metadata> {
+  const params = await props.params;
   try {
     const hotel = await getHotel(params.slug);
     return { title: hotel.name, description: hotel.description ?? `Book a room at ${hotel.name} with an M-Pesa deposit.` };
@@ -24,7 +25,9 @@ export async function generateMetadata({ params }: { params: { slug: string } })
   }
 }
 
-export default async function HotelPage({ params, searchParams }: { params: { slug: string }; searchParams: Search }) {
+export default async function HotelPage(props: { params: Promise<{ slug: string }>; searchParams: Promise<Search> }) {
+  const params = await props.params;
+  const searchParams = await props.searchParams;
   let hotel;
   try {
     hotel = await getHotel(params.slug, searchParams.checkIn, searchParams.checkOut);

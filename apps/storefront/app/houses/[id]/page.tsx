@@ -19,7 +19,8 @@ async function load(id: string): Promise<HouseDetail> {
   }
 }
 
-export async function generateMetadata({ params }: { params: { id: string } }): Promise<Metadata> {
+export async function generateMetadata(props: { params: Promise<{ id: string }> }): Promise<Metadata> {
+  const params = await props.params;
   try {
     const house = await getHouse(params.id);
     const description = `${houseTypeLabel(house.unitType)} in ${house.area} - ${kes(house.monthlyRent)} a month.`;
@@ -29,7 +30,8 @@ export async function generateMetadata({ params }: { params: { id: string } }): 
   }
 }
 
-export default async function HousePage({ params }: { params: { id: string } }) {
+export default async function HousePage(props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const house = await load(params.id);
   const phone = intlPhone(house.contactPhone);
   const whatsappText = encodeURIComponent(`Hello, I saw "${house.title}" in ${house.area} on Zaroda Marketplace. Is it still available?`);

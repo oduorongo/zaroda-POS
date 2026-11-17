@@ -56,7 +56,8 @@ function HouseCard({ house }: { house: HouseSummary }) {
   );
 }
 
-export default async function HousesPage({ searchParams }: { searchParams: Search }) {
+export default async function HousesPage(props: { searchParams: Promise<Search> }) {
+  const searchParams = await props.searchParams;
   const page = Math.max(0, Number.parseInt(searchParams.page ?? "0", 10) || 0);
   let result: { houses: HouseSummary[]; hasMore: boolean } = { houses: [], hasMore: false };
   let failed = false;
