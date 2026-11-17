@@ -307,6 +307,17 @@ describe('BuyerAuthService one login with the rider account', () => {
     expect(withPin.prisma.buyer.update.mock.calls[0][0].data.pinFailCount).toBe(1); // still counts as a wrong try
   });
 
+  it('is not a free way to guess the rider PIN: wrong guesses count against the rider, and a locked rider gives no hint', async () => {
+    const guess = setup({ rider: rider('4821') });
+    guess.prisma.buyer.findUnique.mockResolvedValue({ id: 'buyer-9', phone: '254712345678', pinHash: null, pinFailCount: 0, pinLockedUntil: null });
+    await expect(guess.service.loginWithPin('0712345678', '0000')).rejects.toThrow('Wrong phone number or PIN');
+    expect(guess.prisma.rider.update.mock.calls[0][0].data.pinFailCount).toBe(1);
+
+    const locked = setup({ rider: rider('4821', { pinLockedUntil: new Date(Date.now() + 60_000) }) });
+    locked.prisma.buyer.findUnique.mockResolvedValue({ id: 'buyer-9', phone: '254712345678', pinHash: null, pinFailCount: 0, pinLockedUntil: null });
+    await expect(locked.service.loginWithPin('0712345678', '4821')).rejects.toThrow('Wrong phone number or PIN');
+  });
+
   it('still just says "wrong PIN" when it matches neither account', async () => {
     const { service, prisma } = setup({ rider: rider('4821') });
     prisma.buyer.findUnique.mockResolvedValue({ id: 'buyer-9', phone: '254712345678', pinHash: hashPin('9999', SECRET), pinFailCount: 0, pinLockedUntil: null });

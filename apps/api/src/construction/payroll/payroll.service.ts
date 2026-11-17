@@ -1,4 +1,4 @@
-import { randomBytes, randomUUID } from 'crypto';
+import { randomBytes, randomUUID, timingSafeEqual } from 'crypto';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Prisma, Role } from '@prisma/client';
@@ -18,6 +18,12 @@ import { dayValue, maskPhone } from '../site/site.util';
 import { PAYROLL_KEYS, casualDeductions, mpesaPhone, payrollRates, payslipText, periodDays } from './payroll.util';
 import { PageQueryDto, pageOf } from '../dto/query.dto';
 import { smsParts } from '../plans/con-addons.util';
+
+const safeEqual = (a: string, b: string) => {
+  const x = Buffer.from(a);
+  const y = Buffer.from(b);
+  return x.length === y.length && timingSafeEqual(x, y);
+};
 import { ConUsageService } from '../plans/con-usage.service';
 
 const n = (v: Prisma.Decimal | number | null | undefined) => (v === null || v === undefined ? 0 : Number(v));
@@ -224,7 +230,7 @@ export class PayrollService {
     return tenantContext.run({ organizationId, orgUserId: 'system:mpesa', role: Role.CASHIER }, async () => {
       const done = await asOrg(this.prisma, organizationId, async (tx) => {
         const s = await tx.conPayoutSettings.findUnique({ where: { organizationId } });
-        if (!s || s.callbackSecret !== secret) throw new ForbiddenException();
+        if (!s || !s.callbackSecret || !safeEqual(s.callbackSecret, secret)) throw new ForbiddenException();
         if (!reqId) return null;
         const line = await tx.conPayrollLine.findUnique({ where: { requestId: reqId } });
         if (!line || line.status !== 'SENDING') return null;
