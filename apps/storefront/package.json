@@ -13,7 +13,7 @@
     "@zaroda/ui": "workspace:*",
     "@zxing/browser": "^0.2.1",
     "lucide-react": "^0.462.0",
-    "next": "14.2.35",
+    "next": "15.5.28",
     "react": "^18",
     "react-dom": "^18"
   },
