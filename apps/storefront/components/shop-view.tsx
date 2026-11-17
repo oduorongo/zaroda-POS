@@ -150,6 +150,7 @@ export default function ShopView({ shop, canReserve = false }: { shop: Shop; can
 
         <CartSummary shopSlug={shop.slug} feeRate={shop.convenienceFeeRate} />
       </div>
+      {!shop.practice && <p className="pt-6 text-center text-xs text-secondary-500">Payments go directly to {shop.name} through M-Pesa.</p>}
       {scanOpen && <ShopScanner onDetected={onScanned} onClose={() => setScanOpen(false)} statusMessage={scanMessage} />}
     </div>
   );

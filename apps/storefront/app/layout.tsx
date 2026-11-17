@@ -6,6 +6,7 @@ import Header from "../components/header";
 import InstallPrompt from "../components/install-prompt";
 import ShopperAlerts from "../components/shopper-alerts";
 import ShopOnly from "../components/shop-only";
+import FooterNote from "../components/footer-note";
 import { StoreProvider } from "../components/store-provider";
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://shop.zarodashop.com";
@@ -31,8 +32,8 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
           <main className="mx-auto min-h-[70vh] max-w-6xl px-4 py-6">{children}</main>
           <ShopOnly>
             <InstallPrompt />
-            <p className="px-4 pb-4 text-center text-xs text-secondary-500">Payments go directly to each shop through M-Pesa.</p>
           </ShopOnly>
+          <FooterNote />
           <BottomRibbon>
             <ShopOnly>
               <span className="hidden sm:inline"> · </span>
