@@ -2,6 +2,21 @@
 
 A restaurant sells **dishes made from ingredients** at **tables**. Orders go to the **kitchen**, the table runs a **bill** while the diners eat, and it is paid at the end (all at once, in parts, or split between people). Your stock goes down by the ingredients each dish uses, not just the dish.
 
+### How many devices you need
+Any tablet or phone works. There is no special hardware to buy, and you can start with one and add more as you get busier.
+
+| Your restaurant | Devices | What each one does |
+|---|---|---|
+| **Small** (kiosk, café, a few tables) | **1** | One tablet or phone at the counter is the till: open table bills and take cash or M-Pesa. |
+| **Typical** (sit-down restaurant) | **2** | One till at the counter, and one tablet in the kitchen showing the **kitchen screen**: orders appear there by themselves and the cook marks them ready. |
+| **Busy** (several stations or waiters) | **3 to 5** | One or two tills (counter, bar), a kitchen screen for each station (kitchen, grill, bar), and if you like a phone for each waiter to open bills at the table. |
+
+- **What counts towards your plan.** Your plan covers a number of **tills**: each device set up in the till app, including a waiter's phone. The kitchen screen is opened in the back office (**Tables & Kitchen → Floor & kitchen**), so it is not a till. The usual two-device restaurant uses **one till**.
+- **Table QR codes save devices.** Diners order and pay by M-Pesa on their own phones, and the order goes straight to the kitchen, so you need fewer waiter phones.
+- **The back office** works on the owner's own phone or computer. It does not need a device of its own.
+- **No internet?** The till keeps taking cash and sends the sales when the connection is back.
+- **Optional extras:** a receipt printer at the till, and a label printer only if you put barcodes on your own items.
+
 ### Set up (once)
 1. **Products**: add your **ingredients** (sold by weight or volume, with their cost) and your **dishes**. Give each dish a **recipe** (Products → Recipe): how much of each ingredient one portion uses. Selling a dish takes its ingredients out of stock and gives you the true cost of the plate.
 2. **Tables & Kitchen → Menu & kitchen setup**: your **tables** and your **kitchen stations** (kitchen, grill, bar...), and which station makes each dish.
