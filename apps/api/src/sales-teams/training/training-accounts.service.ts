@@ -32,6 +32,9 @@ const between = (lo: number, hi: number) => lo + randomInt(hi - lo + 1);
 export const trainingEmail = (teamId: string, industryType: string) =>
   `${industryType.toLowerCase().replace(/_/g, '-')}.${teamId.replace(/-/g, '').slice(0, 6)}@${TRAINING_EMAIL_DOMAIN}`;
 
+// Business types with no Online Shop of their own.
+const NO_ONLINE_SHOP = ['RENTAL', 'CONSTRUCTION'];
+
 export interface TrainingAccountView {
   industryType: string;
   signInUrl: string | null;
@@ -40,6 +43,8 @@ export interface TrainingAccountView {
   ownerEmail: string;
   organizationId: string;
   passwordSetAt: Date;
+  /** Online Shop switched on; null for business types without one (rentals, construction). */
+  onlineShop?: boolean | null;
   password?: string;
 }
 
@@ -60,9 +65,20 @@ export class TrainingAccountsService {
       where: { teamId },
       include: { organization: { select: { name: true } } },
     });
+    // Whether each practice shop has the Online Shop switched on (null for rentals and construction, which have none).
+    const online = new Map<string, boolean>();
+    for (const r of rows.filter((x) => !NO_ONLINE_SHOP.includes(x.industryType))) {
+      const store = await this.prisma.$transaction(async (tx) => {
+        await tx.$executeRaw`SELECT set_config('app.current_tenant', ${r.organizationId}, true)`;
+        return tx.onlineStore.findUnique({ where: { organizationId: r.organizationId }, select: { addonActive: true } });
+      });
+      online.set(r.organizationId, store?.addonActive ?? false);
+    }
     return TRAINING_TYPES.flatMap((t) => {
       const r = rows.find((x) => x.industryType === t);
-      return r ? [{ industryType: t, signInUrl: signInUrl(t), label: kitLabel(t), businessName: r.organization.name, ownerEmail: r.ownerEmail, organizationId: r.organizationId, passwordSetAt: r.passwordSetAt }] : [];
+      return r
+        ? [{ industryType: t, signInUrl: signInUrl(t), label: kitLabel(t), businessName: r.organization.name, ownerEmail: r.ownerEmail, organizationId: r.organizationId, passwordSetAt: r.passwordSetAt, onlineShop: online.get(r.organizationId) ?? null }]
+        : [];
     });
   }
 

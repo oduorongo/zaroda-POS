@@ -189,10 +189,20 @@ Ask Zaroda to switch the online shop on, then set it up under **Online Shop**:
 1. Your **shop link** (lowercase letters, numbers and hyphens; changing it breaks links you have already shared).
 2. **Payments**: connect your own M-Pesa (Tuma, or your own Paybill/Till). Buyers pay **you** directly.
 3. The **branch that fulfils online orders**: online stock comes from it, and buyers collect pickup orders there.
-4. **Pickup and delivery**, and the **counties you deliver to**.
-5. Mark which **products** are online, with photos and descriptions.
+4. **Where is your shop?** Type the **shopping centre or estate** (e.g. "Kondele Market, Kisumu"); shoppers see it and can search by it. Then, standing in the shop, tap **Use my location** to drop your **map pin**, and use **check it on the map** to make sure it is right.
+5. **Pickup and delivery**, and **how far you deliver**:
+   - **Nearby, within a distance**: type how many km (e.g. 3 or 5). Best for food, groceries and everyday items carried by boda riders. Distance is measured in a straight line, so allow for roads being longer. Needs your map pin.
+   - **Whole counties**: tick the counties you deliver to (none ticked = your branch's own county).
+   - **Anywhere in Kenya**: for goods sent by vehicle or courier, such as hardware and big items.
+6. Mark which **products** are online, with photos and descriptions.
 
-Your shop appears on the Zaroda marketplace and at its own link. Buyers sign in with their phone, order and pay by M-Pesa.
+Your shop appears on the Zaroda marketplace and at its own link. Shoppers who share their location see the nearest shops first, with the distance, and whether you deliver to them.
+
+### How shoppers order
+- **No account needed.** A shopper types their **M-Pesa number** (and an address for delivery) and taps **Pay**. The M-Pesa prompt on their phone proves the number is theirs. They follow the order through a **private link**, which is also saved on their phone under **My orders**. Shoppers can still create an account (phone number and PIN) to see all their orders anywhere.
+- **One short screen.** Their phone remembers their name, number, pickup or delivery, and address, so next time they just check the total and tap Pay.
+- **Delivery checks.** If you deliver within a distance, the shopper shares their location at checkout and Zaroda checks they are inside your km before taking the order. Too far away, they can choose pickup instead.
+- **Buy again.** On a finished order, **Buy again** puts the same items back in the cart at today's prices (anything sold out is left out).
 
 ### Online orders
 **Online Orders**: **accept** a paid order, **prepare** it, and hand it over (pickup, or delivery by a rider). Delivery is by your own riders or Zaroda's approved riders, who quote a delivery fee the buyer accepts and are paid cash on delivery.

@@ -1,5 +1,11 @@
 # Changelog
 
+## Online shop for training (demo) shops; user guide (2026-11-17)
+
+- Training businesses are hidden from the tenant list, so their Online Shop could not be switched on. The sales team page in the platform admin now has "Switch on online shop" / "switch off" beside each practice shop (not rentals or construction). It uses the same switch as a real tenant.
+- Practice shops never appear in the public shop directory or the hotels list, so real shoppers cannot order from them. They open from their own link for demos once their payments are set up (Tuma or M-Pesa), like any shop.
+- User guide (POS): where the shop is (estate + map pin), how far it delivers (km / counties / all Kenya), and how shoppers order now (no account needed, private order link, remembered details, location check, Buy again). No DB step.
+
 ## Shops placed by estate and map pin; delivery by distance, county or all Kenya (2026-11-17)
 
 - A shop sets its shopping centre or estate (shown and searchable) and a map pin ("Use my location" while standing in the shop) under Online shop settings, and chooses how far it delivers: within N km of the pin (boda riders), whole counties (as before, the default), or anywhere in Kenya (hardware and big items by vehicle).

@@ -449,6 +449,7 @@ export default function TeamDetailPage() {
               load={() => apiGet<TrainingAccount[]>(`/platform-admin/sales-teams/${id}/training-accounts`)}
               create={() => apiPost<{ accounts: TrainingAccount[]; failed: string[] }>(`/platform-admin/sales-teams/${id}/training-accounts`, {})}
               reset={(type) => apiPost<{ password: string }>(`/platform-admin/sales-teams/${id}/training-accounts/${type}/reset-password`, {})}
+              setOnlineShop={(organizationId, on) => apiPatch(`/platform-admin/organizations/${organizationId}/online-store`, { addonActive: on })}
             />
 
           </>

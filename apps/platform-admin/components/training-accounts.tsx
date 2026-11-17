@@ -13,6 +13,8 @@ export interface TrainingAccount {
   passwordSetAt: string;
   signInUrl: string | null;
   password?: string;
+  /** Online Shop switched on; null for rentals and construction, which have none. */
+  onlineShop?: boolean | null;
 }
 
 interface Props {
@@ -21,12 +23,14 @@ interface Props {
   create?: () => Promise<{ accounts: TrainingAccount[]; failed: string[] }>;
   /** Platform admin and team leader: a new password, shown once. */
   reset?: (industryType: string) => Promise<{ password: string }>;
+  /** Platform admin only: switch a practice shop's Online Shop on or off (it stays off the public shop list either way). */
+  setOnlineShop?: (organizationId: string, on: boolean) => Promise<unknown>;
   /** Passwords handed over from the create-team screen, shown once (sessionStorage key, removed after reading). */
   handoverKey?: string;
 }
 
 /** A team's training businesses (sample data, one shared owner login each). Passwords show once, when made or reset. */
-export function TrainingAccounts({ load, create, reset, handoverKey }: Props) {
+export function TrainingAccounts({ load, create, reset, setOnlineShop, handoverKey }: Props) {
   const [rows, setRows] = useState<TrainingAccount[] | null>(null);
   const [shown, setShown] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState<string | null>(null);
@@ -84,6 +88,20 @@ export function TrainingAccounts({ load, create, reset, handoverKey }: Props) {
     }
   }
 
+  async function toggleOnline(a: TrainingAccount) {
+    if (!setOnlineShop) return;
+    setBusy(`online:${a.industryType}`);
+    setError(null);
+    try {
+      await setOnlineShop(a.organizationId, !a.onlineShop);
+      setRows((current) => current?.map((r) => (r.organizationId === a.organizationId ? { ...r, onlineShop: !a.onlineShop } : r)) ?? null);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not change the online shop.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
   const missing = rows !== null && rows.length < 8;
 
   return (
@@ -122,11 +140,18 @@ export function TrainingAccounts({ load, create, reset, handoverKey }: Props) {
                   </a>
                 )}
               </div>
-              {reset && (
-                <Button size="sm" variant="secondary" onClick={() => newPassword(a.industryType)} disabled={busy !== null}>
-                  {busy === a.industryType ? "Resetting…" : "New password"}
-                </Button>
-              )}
+              <div className="flex flex-wrap gap-2">
+                {setOnlineShop && a.onlineShop !== null && a.onlineShop !== undefined && (
+                  <Button size="sm" variant={a.onlineShop ? "secondary" : "primary"} onClick={() => void toggleOnline(a)} disabled={busy !== null}>
+                    {busy === `online:${a.industryType}` ? "Saving…" : a.onlineShop ? "Online shop on - switch off" : "Switch on online shop"}
+                  </Button>
+                )}
+                {reset && (
+                  <Button size="sm" variant="secondary" onClick={() => newPassword(a.industryType)} disabled={busy !== null}>
+                    {busy === a.industryType ? "Resetting…" : "New password"}
+                  </Button>
+                )}
+              </div>
             </li>
           ))}
         </ul>
