@@ -29,6 +29,12 @@ describe('publishBlockers', () => {
     tumaApiKeyEncrypted: 'v1:...',
   };
 
+  it('a practice (training) shop can publish without payments, but still needs the rest', () => {
+    expect(publishBlockers({ ...ready, tumaApiKeyEncrypted: null }, true)).toEqual([]);
+    expect(publishBlockers({ ...ready, tumaApiKeyEncrypted: null })).toHaveLength(1);
+    expect(publishBlockers({ ...ready, slug: null, tumaApiKeyEncrypted: null }, true)).toEqual(['Choose a shop link']);
+  });
+
   it('is empty when everything is set', () => {
     expect(publishBlockers(ready)).toEqual([]);
   });

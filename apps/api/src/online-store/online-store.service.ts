@@ -61,12 +61,15 @@ export function toTenantView(store: OnlineStore | null) {
 export function publishBlockers(
   store: Pick<OnlineStore, 'slug' | 'displayName' | 'fulfilmentBranchId' | 'pickupEnabled' | 'deliveryEnabled' | 'tumaApiKeyEncrypted'> &
     Partial<Omit<OnlineStore, 'slug' | 'displayName' | 'fulfilmentBranchId' | 'pickupEnabled' | 'deliveryEnabled' | 'tumaApiKeyEncrypted'>>,
+  practice = false,
 ): string[] {
   const blockers: string[] = [];
   if (!store.slug) blockers.push('Choose a shop link');
   if (!store.displayName) blockers.push('Enter a shop name');
   if (!store.fulfilmentBranchId) blockers.push('Choose which branch fulfils online orders');
   if (!store.pickupEnabled && !store.deliveryEnabled) blockers.push('Turn on pickup or delivery');
+  // A training shop needs no payments: its checkout pretends to pay.
+  if (practice) return blockers;
   if (gatewayOf(store) === 'DARAJA') {
     if (!darajaConnected(store)) blockers.push('Finish connecting your M-Pesa Paybill or Till so buyers can pay you');
   } else if (!store.tumaApiKeyEncrypted) {
@@ -84,12 +87,24 @@ export class OnlineStoreService {
     private readonly config: ConfigService,
   ) {}
 
+  /** A sales team training business: its online shop works in practice mode (checkout pretends to pay, no M-Pesa needed). */
+  private async isPractice(organizationId: string): Promise<boolean> {
+    const org = await this.tenantPrisma.run((tx) => tx.organization.findUnique({ where: { id: organizationId }, select: { isDemo: true } }));
+    return org?.isDemo ?? false;
+  }
+
+  private async view(store: OnlineStore) {
+    const practice = await this.isPractice(store.organizationId);
+    return { ...toTenantView(store), practice, publishBlockers: publishBlockers(store, practice) };
+  }
+
   async getMine() {
     const { organizationId } = getTenantStore();
     const store = await this.tenantPrisma.run((tx) =>
       tx.onlineStore.findUnique({ where: { organizationId } }),
     );
-    return { ...toTenantView(store), publishBlockers: store ? publishBlockers(store) : [] };
+    const practice = await this.isPractice(organizationId);
+    return { ...toTenantView(store), practice, publishBlockers: store ? publishBlockers(store, practice) : [] };
   }
 
   /** The row only exists once a platform admin has enabled the add-on - a tenant can't create it. */
@@ -160,7 +175,7 @@ export class OnlineStoreService {
         const wantsPublished = dto.isPublished ?? current.isPublished;
         if (wantsPublished) {
           const merged = { ...current, ...stripUndefined(data) };
-          const blockers = publishBlockers(merged);
+          const blockers = publishBlockers(merged, await this.isPractice(organizationId));
           if (blockers.length > 0) {
             throw new BadRequestException(`Can't publish yet: ${blockers.join('; ')}`);
           }
@@ -168,7 +183,7 @@ export class OnlineStoreService {
 
         return tx.onlineStore.update({ where: { organizationId }, data });
       });
-      return { ...toTenantView(store), publishBlockers: publishBlockers(store) };
+      return this.view(store);
     } catch (e) {
       if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
         throw new ConflictException('That shop link is already taken - try another');
@@ -196,7 +211,7 @@ export class OnlineStoreService {
         data: { tumaEmail: email, tumaApiKeyEncrypted: encryptSecret(apiKey, key) },
       });
     });
-    return { ...toTenantView(store), publishBlockers: publishBlockers(store) };
+    return this.view(store);
   }
 
   /** Disconnecting Tuma unpublishes the shop unless its own M-Pesa is connected - a live shop with no way to take payment would just fail every checkout. */
@@ -213,7 +228,7 @@ export class OnlineStoreService {
         },
       });
     });
-    return { ...toTenantView(store), publishBlockers: publishBlockers(store) };
+    return this.view(store);
   }
 
   /**
@@ -250,7 +265,7 @@ export class OnlineStoreService {
         },
       });
     });
-    return { ...toTenantView(store), publishBlockers: publishBlockers(store) };
+    return this.view(store);
   }
 
   /** Removing the M-Pesa details falls back to Tuma; with no Tuma either, the shop unpublishes (it could not take payment). */
@@ -273,7 +288,7 @@ export class OnlineStoreService {
         },
       });
     });
-    return { ...toTenantView(store), publishBlockers: publishBlockers(store) };
+    return this.view(store);
   }
 
   /** Switch which connected gateway buyers pay through. Only a fully connected one can be chosen. */
@@ -287,7 +302,7 @@ export class OnlineStoreService {
       }
       return tx.onlineStore.update({ where: { organizationId }, data: { paymentGateway: gateway } });
     });
-    return { ...toTenantView(store), publishBlockers: publishBlockers(store) };
+    return this.view(store);
   }
 }
 

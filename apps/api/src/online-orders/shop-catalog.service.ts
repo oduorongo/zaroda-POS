@@ -29,6 +29,8 @@ export interface LiveShop {
   longitude: number | null;
   deliveryReach: string;
   deliveryRadiusKm: number | null;
+  /** A sales team training shop: checkout pretends to pay (no real money). */
+  practice: boolean;
   commissionRate: number | null;
   paymentGateway: string;
   /** ZARODA has taken this business's hotel rooms off the marketplace. */
@@ -60,10 +62,11 @@ export class ShopCatalogService {
       const store = await tx.onlineStore.findUnique({ where: { slug: slug.toLowerCase() } });
       // Policy already hides unpublished/unpaid shops; the field checks
       // here also cover a half-configured shop that slipped through.
-      if (!store || !store.fulfilmentBranchId || !store.displayName || !paymentsReady(store)) {
-        throw new NotFoundException('Shop not found');
-      }
+      if (!store || !store.fulfilmentBranchId || !store.displayName) throw new NotFoundException('Shop not found');
       await tx.$executeRaw`SELECT set_config('app.current_tenant', ${store.organizationId}, true)`;
+      // A sales team training shop runs in practice mode: no M-Pesa needed, checkout pretends to pay.
+      const practice = (await tx.organization.findUnique({ where: { id: store.organizationId }, select: { isDemo: true } }))?.isDemo ?? false;
+      if (!practice && !paymentsReady(store)) throw new NotFoundException('Shop not found');
       // A shop with commission unpaid past its grace period is closed to
       // buyers: same "not found" as an offline shop, so no new orders can be
       // placed. Orders already in progress are untouched (they don't come
@@ -87,6 +90,7 @@ export class ShopCatalogService {
         longitude: store.longitude,
         deliveryReach: store.deliveryReach,
         deliveryRadiusKm: store.deliveryRadiusKm,
+        practice,
         commissionRate: store.commissionRate != null ? Number(store.commissionRate) : null,
         paymentGateway: store.paymentGateway,
         hotelBlocked: store.hotelBlockedAt !== null,
@@ -294,6 +298,7 @@ export class ShopCatalogService {
         lng: shop.longitude,
         deliveryReach: shop.deliveryReach,
         deliveryRadiusKm: shop.deliveryRadiusKm,
+        practice: shop.practice,
         // Added to the cart at checkout (rounded to the nearest shilling); the shop collects it and sends it to Zaroda.
         convenienceFeeRate: shop.commissionRate ?? DEFAULT_COMMISSION_RATE,
         location: branch ? { branchName: branch.name, county: normalizeCounty(branch.county) ?? branch.county, subCounty: branch.subCounty } : null,

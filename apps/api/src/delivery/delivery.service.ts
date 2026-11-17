@@ -145,6 +145,8 @@ export class DeliveryService {
       const order = await tx.onlineOrder.findUnique({ where: { id: orderId }, include: { lines: true } });
       if (!order) throw new NotFoundException('Order not found');
       if (order.fulfilmentType !== FulfilmentType.DELIVERY) throw new BadRequestException('This order is for pickup - it needs no rider');
+      // Real riders are never asked for a practice order (sales team training shops): mark it ready and complete it instead.
+      if (order.mpesaReceiptNumber?.startsWith('PRACTICE-')) throw new BadRequestException('This is a practice order, so no real rider is called. Mark it ready, then complete it.');
       if (order.status !== OnlineOrderStatus.ACCEPTED && order.status !== OnlineOrderStatus.READY) {
         throw new BadRequestException(
           order.status === OnlineOrderStatus.PAID ? 'Accept the order first, then ask for a rider' : `This order is ${order.status.toLowerCase().replace('_', ' ')} - it can't be delivered`,

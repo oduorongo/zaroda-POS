@@ -10,6 +10,7 @@ import { guestKeyFor } from "../lib/remember";
 import type { Order } from "../lib/types";
 import AuthForm from "./auth-form";
 import DeliveryPanel from "./delivery-panel";
+import PracticeBanner from "./practice-banner";
 import OrderStatusBadge, { PROGRESS_STEPS, progressIndex } from "./order-status";
 import { useStore } from "./store-provider";
 
@@ -184,6 +185,11 @@ export default function OrderDetail({ orderId, guestKey }: { orderId: string; gu
           </Link>{" "}
           on {new Date(order.createdAt).toLocaleString("en-KE")}
         </p>
+        {order.practice && (
+          <div className="mt-2">
+            <PracticeBanner>This order was placed at a training shop. Nothing was paid and no rider will come.</PracticeBanner>
+          </div>
+        )}
         {access?.kind === "guest" && (
           <p className="mt-2 rounded-md bg-secondary-500/5 p-2 text-xs text-secondary-600">
             This page&apos;s link is your private link to this order, and it is saved on this phone under My orders. Keep it to follow your order on another device.
@@ -328,7 +334,9 @@ export default function OrderDetail({ orderId, guestKey }: { orderId: string; gu
           <span>Total</span>
           <span>{kes(order.amountDue)}</span>
         </div>
-        {order.mpesaReceiptNumber && <p className="text-xs text-secondary-500">Paid by M-Pesa, receipt {order.mpesaReceiptNumber}</p>}
+        {order.mpesaReceiptNumber && (
+          <p className="text-xs text-secondary-500">{order.practice ? "Practice order: no money was taken." : `Paid by M-Pesa, receipt ${order.mpesaReceiptNumber}`}</p>
+        )}
       </section>
 
       <section className="rounded-lg border border-border bg-surface p-4 text-sm">

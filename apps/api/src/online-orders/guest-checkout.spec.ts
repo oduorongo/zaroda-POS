@@ -80,3 +80,23 @@ describe('guest link secret', () => {
     expect(guestSecretMatches(null, 's')).toBe(false);
   });
 });
+
+describe('practice mode (sales team training shops)', () => {
+  it('pretends to pay: no M-Pesa prompt, marked paid with a PRACTICE receipt, and the order says so', async () => {
+    const tx: any = {
+      $executeRaw: jest.fn(),
+      organization: { findUnique: jest.fn().mockResolvedValue({ isDemo: true }) },
+      onlineStore: { findUnique: jest.fn().mockResolvedValue({ addonActive: true }) },
+      onlineOrder: { update: jest.fn(({ data }) => Promise.resolve({ id: ORDER, organizationId: ORG, fulfilmentType: FulfilmentType.PICKUP, paymentDeadline: new Date(Date.now() + 60_000), lines: [], ...data })) },
+    };
+    const tuma = { stkPush: jest.fn() };
+    const daraja = { stkPush: jest.fn() };
+    const service = new OnlineOrdersService({ $transaction: jest.fn((fn: any) => fn(tx)) } as any, {} as any, {} as any, tuma as any, daraja as any, {} as any, {} as any, { get: () => undefined } as any);
+    const view: any = await (service as any).startPayment({ id: ORDER, organizationId: ORG, fulfilmentType: FulfilmentType.PICKUP, lines: [] });
+    expect(tuma.stkPush).not.toHaveBeenCalled();
+    expect(daraja.stkPush).not.toHaveBeenCalled();
+    expect(tx.onlineOrder.update.mock.calls[0][0].data).toMatchObject({ status: OnlineOrderStatus.PAID });
+    expect(view.mpesaReceiptNumber).toMatch(/^PRACTICE-/);
+    expect(view.practice).toBe(true);
+  });
+});
