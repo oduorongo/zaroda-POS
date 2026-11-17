@@ -7,7 +7,8 @@ import type { ShopSummary } from "../lib/types";
 // sells out shows up quickly without hitting the API on every visit.
 export const revalidate = 30;
 
-export default async function HomePage({ searchParams }: { searchParams: { q?: string } }) {
+export default async function HomePage(props: { searchParams: Promise<{ q?: string }> }) {
+  const searchParams = await props.searchParams;
   const q = searchParams.q?.trim() || undefined;
   let shops: ShopSummary[] = [];
   let failed = false;

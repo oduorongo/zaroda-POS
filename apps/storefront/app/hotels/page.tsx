@@ -20,7 +20,8 @@ interface Search {
   checkOut?: string;
 }
 
-export default async function HotelsPage({ searchParams }: { searchParams: Search }) {
+export default async function HotelsPage(props: { searchParams: Promise<Search> }) {
+  const searchParams = await props.searchParams;
   let hotels: HotelSummary[] = [];
   let failed = false;
   try {

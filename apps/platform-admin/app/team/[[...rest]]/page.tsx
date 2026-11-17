@@ -4,7 +4,8 @@ import { redirect } from "next/navigation";
 const teamApp = (process.env.NEXT_PUBLIC_TEAM_URL || process.env.NEXT_PUBLIC_BACKOFFICE_URL || "").replace(/\/+$/, "");
 
 /** The team portal moved to the ZARODA Team app; old links land there on the same page. */
-export default function TeamMoved({ params }: { params: { rest?: string[] } }) {
+export default async function TeamMoved(props: { params: Promise<{ rest?: string[] }> }) {
+  const params = await props.params;
   const path = `/team${params.rest?.length ? `/${params.rest.join("/")}` : ""}`;
   if (teamApp) redirect(`${teamApp}${path}`);
   return (

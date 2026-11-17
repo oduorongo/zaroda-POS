@@ -7,7 +7,8 @@ import { ApiError, getShopFresh, getTable } from "../../../../../lib/api";
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Order at your table", robots: { index: false } };
 
-export default async function TablePage({ params }: { params: { slug: string; tableId: string } }) {
+export default async function TablePage(props: { params: Promise<{ slug: string; tableId: string }> }) {
+  const params = await props.params;
   try {
     const [shop, table] = await Promise.all([getShopFresh(params.slug), getTable(params.slug, params.tableId)]);
     return <TableMenu shop={shop} table={table} />;

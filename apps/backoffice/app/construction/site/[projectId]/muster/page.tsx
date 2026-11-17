@@ -35,7 +35,7 @@ function Muster() {
   const [waiting, setWaiting] = useState(0);
   const [offline, setOffline] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const timer = useRef<ReturnType<typeof setTimeout>>();
+  const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   const applyQueued = useCallback((s: Sheet) => {
     const q = queuedMarks().filter((m) => m.projectId === projectId && m.date === s.date);

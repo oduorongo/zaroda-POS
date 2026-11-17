@@ -16,7 +16,8 @@ async function loadShop(slug: string): Promise<Shop> {
   }
 }
 
-export async function generateMetadata({ params }: { params: { slug: string } }): Promise<Metadata> {
+export async function generateMetadata(props: { params: Promise<{ slug: string }> }): Promise<Metadata> {
+  const params = await props.params;
   try {
     const shop = await getShop(params.slug);
     const description = shop.description ?? `Order from ${shop.name} and pay with M-Pesa.`;
@@ -30,7 +31,8 @@ export async function generateMetadata({ params }: { params: { slug: string } })
   }
 }
 
-export default async function ShopPage({ params }: { params: { slug: string } }) {
+export default async function ShopPage(props: { params: Promise<{ slug: string }> }) {
+  const params = await props.params;
   const shop = await loadShop(params.slug);
   // Never let a hiccup here break the shop page: no button is better than no page.
   const canReserve = await getReservationInfo(params.slug).then((r) => r.enabled).catch(() => false);

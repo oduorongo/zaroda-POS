@@ -5,7 +5,8 @@ import BookingStatus from "../../../components/booking-status";
 // A guest's own booking page: private to whoever holds the link, and never worth indexing.
 export const metadata: Metadata = { title: "Your booking", robots: { index: false } };
 
-export default function BookingPage({ params }: { params: { id: string } }) {
+export default async function BookingPage(props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   return (
     <Suspense fallback={<p className="py-10 text-center text-secondary-500">Loading your booking...</p>}>
       <BookingStatus bookingId={params.id} />

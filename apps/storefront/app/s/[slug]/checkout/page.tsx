@@ -7,7 +7,8 @@ import { ApiError, getShop } from "../../../../lib/api";
 // worth indexing here.
 export const metadata: Metadata = { title: "Review and pay", robots: { index: false } };
 
-export default async function CheckoutPage({ params }: { params: { slug: string } }) {
+export default async function CheckoutPage(props: { params: Promise<{ slug: string }> }) {
+  const params = await props.params;
   try {
     const shop = await getShop(params.slug);
     return <CheckoutView shop={shop} />;

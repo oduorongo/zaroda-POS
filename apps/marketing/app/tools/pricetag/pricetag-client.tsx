@@ -97,7 +97,7 @@ export default function PriceTagClient() {
   );
 }
 
-function BarcodeMirror({ sourceRef }: { sourceRef: RefObject<HTMLCanvasElement> }) {
+function BarcodeMirror({ sourceRef }: { sourceRef: RefObject<HTMLCanvasElement | null> }) {
   const [src, setSrc] = useState<string | null>(null);
 
   useEffect(() => {

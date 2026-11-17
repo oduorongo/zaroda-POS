@@ -16,11 +16,11 @@
   "devDependencies": {
     "tailwindcss": "^3.4.1",
     "typescript": "^5",
-    "@types/react": "^18",
-    "@types/react-dom": "^18"
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.0"
   },
   "peerDependencies": {
-    "react": "^18",
-    "react-dom": "^18"
+    "react": "^18 || ^19",
+    "react-dom": "^18 || ^19"
   }
 }
