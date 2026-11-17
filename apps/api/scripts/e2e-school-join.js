@@ -86,6 +86,9 @@ async function supplier(tag, n) {
   await sleep(61_000); // the join and sign-in routes allow 5 calls a minute
   const again = await api('POST', '/school-auth/join', { body: { slug: s1.slug, ...form, pin: '4821' } });
   check('asking again with the same phone is refused as already waiting', again.status === 409 && /already asked/.test(again.json?.message), again);
+  const otherPhone = `07${String(Date.now() + 7).slice(-8)}`;
+  const sameName = await api('POST', '/school-auth/join', { body: { slug: s1.slug, ...form, name: `  kisumu girls' ${tag.toUpperCase()} `, phone: otherPhone, pin: '4821' } });
+  check('the same school name (written another way, another phone) is refused', sameName.status === 409 && /waiting for approval/.test(sameName.json?.message) && !sameName.json.message.includes(phone), sameName);
 
   const list1 = await api('GET', '/school-supplier/schools', { token: s1.token });
   const mine = list1.json.find((s) => s.phone.endsWith(phone.slice(1)));
@@ -110,6 +113,11 @@ async function supplier(tag, n) {
   check('an approved school cannot be "turned down"', (await api('DELETE', `/school-supplier/schools/${mine.id}/join-request`, { token: s1.token })).status === 400);
   const in1 = await api('POST', '/school-auth/login', { body: { slug: s1.slug, phone, pin: '4821' } });
   check('the approved school signs in to supplier 1 with the PIN it chose', in1.status === 200 && Boolean(in1.json.accessToken), in1);
+  await sleep(61_000);
+  const twice = await api('POST', '/school-auth/join', { body: { slug: s1.slug, ...form, name: `Kisumu Girls ${tag} Sch.`, phone: otherPhone, pin: '4821' } });
+  check('an approved school cannot be onboarded twice under its name', twice.status === 409 && /already registered/.test(twice.json?.message), twice);
+  const other = await api('POST', '/school-auth/join', { body: { slug: s1.slug, ...form, name: `Kisumu Boys ${tag}`, phone: `07${String(Date.now() + 13).slice(-8)}`, pin: '4821' } });
+  check('a different school with a similar name can still join', other.status === 201, other);
   const out2 = await api('POST', '/school-auth/login', { body: { slug: s2.slug, phone, pin: '7319' } });
   check('it is still waiting at supplier 2', out2.status === 403, out2);
   const declined = await api('DELETE', `/school-supplier/schools/${theirs.id}/join-request`, { token: s2.token });
