@@ -4,6 +4,7 @@ import { useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { CalendarClock, MapPin, Phone, ScanBarcode, Search } from "lucide-react";
 import { formatQty, locationLabel, variantTitle } from "../lib/format";
+import PracticeBanner from "./practice-banner";
 import type { Shop } from "../lib/types";
 import CartSummary from "./cart-summary";
 import ProductCard from "./product-card";
@@ -66,6 +67,7 @@ export default function ShopView({ shop, canReserve = false }: { shop: Shop; can
 
   return (
     <div className="space-y-6 pb-24 lg:pb-0">
+      {shop.practice && <PracticeBanner />}
       <div>
         <Link href="/" className="text-sm text-primary-600 hover:underline">
           All shops

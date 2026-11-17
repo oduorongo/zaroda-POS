@@ -59,6 +59,8 @@ export interface Shop {
   deliveryRadiusKm?: number | null;
   /** Added to the cart at checkout (e.g. 0.03 = 3%, rounded to the nearest shilling); the shop collects it and passes it to Zaroda. */
   convenienceFeeRate: number;
+  /** A sales team training shop: checkout pretends to pay, nothing is real. */
+  practice?: boolean;
   location: { branchName: string; county: string | null; subCounty: string | null } | null;
   products: ShopProduct[];
 }
@@ -94,6 +96,8 @@ export interface Order {
   /** A tip included in amountDue (table orders). */
   tipAmount?: number;
   paymentPhone: string;
+  /** Placed at a training shop: no money was taken. */
+  practice?: boolean;
   paymentDeadline: string;
   mpesaReceiptNumber: string | null;
   lastPaymentError: string | null;
@@ -283,6 +287,8 @@ export interface RoomBooking {
   depositAmount: number;
   balanceDue: number;
   paymentPhone: string;
+  /** Placed at a training shop: no money was taken. */
+  practice?: boolean;
   paymentDeadline: string;
   mpesaReceiptNumber: string | null;
   paidAt: string | null;

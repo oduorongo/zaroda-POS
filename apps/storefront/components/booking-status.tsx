@@ -7,6 +7,7 @@ import { BedDouble, CalendarDays, CheckCircle2, Clock } from "lucide-react";
 import { ApiError, checkBooking, getBooking, retryBooking } from "../lib/api";
 import { displayPhone, kes } from "../lib/format";
 import type { RoomBooking } from "../lib/types";
+import PracticeBanner from "./practice-banner";
 
 const BOOKINGS_KEY = "zaroda_room_bookings";
 const POLL_MS = 5_000;
@@ -114,6 +115,8 @@ export default function BookingStatus({ bookingId }: { bookingId: string }) {
         <h1 className="text-xl font-bold">Booking {booking.bookingNumber}</h1>
       </div>
 
+      {booking.practice && <PracticeBanner>This booking was made at a training hotel. Nothing was paid and no room is held.</PracticeBanner>}
+
       {waiting && (
         <div className="space-y-3 rounded-lg border border-border bg-surface p-4">
           <p className="flex items-center gap-2 font-semibold">
@@ -143,7 +146,7 @@ export default function BookingStatus({ bookingId }: { bookingId: string }) {
             <CheckCircle2 size={22} aria-hidden /> {booking.status === "CHECKED_OUT" ? "Thank you for staying with us" : booking.status === "CHECKED_IN" ? "Enjoy your stay" : "Your room is booked"}
           </p>
           <p className="text-sm">
-            Deposit {kes(booking.depositAmount)} paid{booking.mpesaReceiptNumber ? ` (M-Pesa ${booking.mpesaReceiptNumber})` : ""}. Show your booking number <strong>{booking.bookingNumber}</strong> at the front desk.
+            {booking.practice ? "Practice booking: no deposit was taken." : `Deposit ${kes(booking.depositAmount)} paid${booking.mpesaReceiptNumber ? ` (M-Pesa ${booking.mpesaReceiptNumber})` : ""}.`} Show your booking number <strong>{booking.bookingNumber}</strong> at the front desk.
           </p>
           {booking.lastPaymentError && <p className="rounded-md bg-warning-50 p-2 text-sm text-warning-700">{booking.lastPaymentError}</p>}
         </div>

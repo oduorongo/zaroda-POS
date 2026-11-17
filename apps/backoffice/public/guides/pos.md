@@ -204,6 +204,9 @@ Your shop appears on the Zaroda marketplace and at its own link. Shoppers who sh
 - **Delivery checks.** If you deliver within a distance, the shopper shares their location at checkout and Zaroda checks they are inside your km before taking the order. Too far away, they can choose pickup instead.
 - **Buy again.** On a finished order, **Buy again** puts the same items back in the cart at today's prices (anything sold out is left out).
 
+### Practice shops (sales team training)
+Each sales team's training businesses can have the online shop switched on by Zaroda (platform admin: **Teams**, open the team, **Training accounts**, **Switch on online shop**). A practice shop needs no M-Pesa: publish it in **Online Shop** and open its link. It is marked **Practice shop** everywhere, checkout pretends to pay (the order is marked paid at once with a PRACTICE receipt), no money is taken, no rider is called, and it is never listed where real shoppers browse. Accept, prepare and complete the order in **Online Orders** to show the whole flow.
+
 ### Online orders
 **Online Orders**: **accept** a paid order, **prepare** it, and hand it over (pickup, or delivery by a rider). Delivery is by your own riders or Zaroda's approved riders, who quote a delivery fee the buyer accepts and are paid cash on delivery.
 

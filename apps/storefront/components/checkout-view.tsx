@@ -12,6 +12,7 @@ import { checkoutDetails, guestOrderPath, rememberCheckoutDetails, rememberGuest
 import type { Shop } from "../lib/types";
 import AuthForm from "./auth-form";
 import { cartTotals, percentLabel } from "./cart-summary";
+import PracticeBanner from "./practice-banner";
 import { useStore } from "./store-provider";
 
 type Fulfilment = "PICKUP" | "DELIVERY";
@@ -170,6 +171,11 @@ export default function CheckoutView({ shop }: { shop: Shop }) {
           Back to {shop.name}
         </Link>
         <h1 className="mt-1 text-2xl font-bold">Review and pay</h1>
+        {shop.practice && (
+          <div className="mt-2">
+            <PracticeBanner>Your order is marked paid straight away. No M-Pesa prompt is sent and no money is taken.</PracticeBanner>
+          </div>
+        )}
         {!buyer && (
           <p className="mt-1 text-sm text-secondary-600">
             No account needed.{" "}
@@ -396,7 +402,7 @@ export default function CheckoutView({ shop }: { shop: Shop }) {
             disabled={busy || lines.length === 0 || !paymentPhone.trim() || !deliveryReady}
             className="w-full rounded-md bg-primary-600 px-4 py-3 font-semibold text-white hover:bg-primary-700 disabled:opacity-50"
           >
-            {busy ? "Placing order..." : `Pay ${kes(amountDue)}`}
+            {busy ? "Placing order..." : shop.practice ? `Place practice order (${kes(amountDue)})` : `Pay ${kes(amountDue)}`}
           </button>
         </aside>
       </form>

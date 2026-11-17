@@ -82,6 +82,8 @@ export function toOrderView(order: OrderWithLines) {
     paymentPhone: order.paymentPhone,
     paymentDeadline: order.paymentDeadline,
     mpesaReceiptNumber: order.mpesaReceiptNumber,
+    // A practice order from a sales team training shop: no real money changed hands.
+    practice: order.mpesaReceiptNumber?.startsWith('PRACTICE-') ?? false,
     paidAt: order.paidAt,
     lastPaymentError: order.lastPaymentError,
     acceptedAt: order.acceptedAt,
@@ -375,10 +377,32 @@ export class OnlineOrdersService {
    * shop's key revoked) doesn't fail the request - the order is returned
    * with lastPaymentError so the buyer can retry from their order page.
    */
-  private async startPayment(order: OrderWithLines) {
-    const store = await this.runAsTenant(order.organizationId, (tx) =>
-      tx.onlineStore.findUnique({ where: { organizationId: order.organizationId } }),
+  /**
+   * Practice mode, for sales team training shops: no M-Pesa prompt and no money. The order is marked paid at once with a
+   * PRACTICE- receipt, so the whole flow (accept, prepare, hand over) can be shown. Nobody is texted.
+   */
+  private async pretendToPay(order: OrderWithLines) {
+    const receipt = `PRACTICE-${generateOrderNumber().slice(3)}${Date.now().toString(36).slice(-4).toUpperCase()}`;
+    const updated = await this.runAsTenant(order.organizationId, (tx) =>
+      tx.onlineOrder.update({
+        where: { id: order.id },
+        data: { status: OnlineOrderStatus.PAID, paidAt: new Date(), paymentAttemptedAt: new Date(), mpesaReceiptNumber: receipt, lastPaymentError: null },
+        include: { lines: true },
+      }),
     );
+    if (order.fulfilmentType === FulfilmentType.DINE_IN) {
+      await this.autoAcceptTableOrder(order.organizationId, order.id);
+      return toOrderView(await this.runAsTenant(order.organizationId, (tx) => tx.onlineOrder.findUniqueOrThrow({ where: { id: order.id }, include: { lines: true } })));
+    }
+    return toOrderView(updated);
+  }
+
+  private async startPayment(order: OrderWithLines) {
+    const { store, practice } = await this.runAsTenant(order.organizationId, async (tx) => ({
+      store: await tx.onlineStore.findUnique({ where: { organizationId: order.organizationId } }),
+      practice: (await tx.organization.findUnique({ where: { id: order.organizationId }, select: { isDemo: true } }))?.isDemo ?? false,
+    }));
+    if (practice) return this.pretendToPay(order);
     let tumaMerchantRequestId: string | null = null;
     let lastPaymentError: string | null = null;
     try {

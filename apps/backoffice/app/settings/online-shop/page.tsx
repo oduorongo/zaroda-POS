@@ -36,6 +36,8 @@ interface OnlineStore {
   mpesaTillNumber: string | null;
   mpesaEnvironment: "production" | "sandbox";
   publishBlockers: string[];
+  /** A sales team training business: checkout pretends to pay, so no M-Pesa is needed. */
+  practice?: boolean;
 }
 
 interface CommissionInvoice {
@@ -779,6 +781,12 @@ export default function OnlineShopSettingsPage() {
                 <CardTitle>How you get paid</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
+                {store?.practice && (
+                  <p className="rounded-md border-2 border-dashed border-warning-600 bg-warning-50 p-3 text-sm text-warning-900">
+                    <strong>Practice shop.</strong> This is a training business, so you do not need to connect M-Pesa: checkout pretends to pay, orders are marked
+                    paid straight away with a PRACTICE receipt, no money is taken and no rider is called. Publish the shop and open its link to show the whole flow.
+                  </p>
+                )}
                 <p className="text-sm text-secondary-600">
                   Buyers pay you directly by M-Pesa and the money goes to you, not to Zaroda. Choose how: through a TUMA account, or through
                   your own M-Pesa Paybill or Till.

@@ -68,6 +68,7 @@ export function toBookingView(b: RoomBooking) {
     paymentPhone: b.paymentPhone,
     paymentDeadline: b.paymentDeadline,
     mpesaReceiptNumber: b.mpesaReceiptNumber,
+    practice: b.mpesaReceiptNumber?.startsWith('PRACTICE-') ?? false,
     paidAt: b.paidAt,
     lastPaymentError: b.lastPaymentError,
     cancelReason: b.cancelReason,
@@ -208,7 +209,22 @@ export class RoomBookingsService {
 
   /** Sends the deposit prompt. A failure to START the payment does not fail the booking: the guest can retry from their page. */
   private async startPayment(booking: RoomBooking) {
-    const store = await this.runAsTenant(booking.organizationId, (tx) => tx.onlineStore.findUnique({ where: { organizationId: booking.organizationId } }));
+    const { store, practice } = await this.runAsTenant(booking.organizationId, async (tx) => ({
+      store: await tx.onlineStore.findUnique({ where: { organizationId: booking.organizationId } }),
+      practice: (await tx.organization.findUnique({ where: { id: booking.organizationId }, select: { isDemo: true } }))?.isDemo ?? false,
+    }));
+    // A sales team training hotel: no M-Pesa prompt, no money, nobody texted. The booking is confirmed at once with a PRACTICE- receipt.
+    if (practice) {
+      const receipt = `PRACTICE-${booking.bookingNumber.slice(3)}${Date.now().toString(36).slice(-4).toUpperCase()}`;
+      return toBookingView(
+        await this.runAsTenant(booking.organizationId, (tx) =>
+          tx.roomBooking.update({
+            where: { id: booking.id },
+            data: { status: RoomBookingStatus.CONFIRMED, paidAt: new Date(), paymentAttemptedAt: new Date(), mpesaReceiptNumber: receipt, lastPaymentError: null },
+          }),
+        ),
+      );
+    }
     let requestId: string | null = null;
     let lastPaymentError: string | null = null;
     try {

@@ -460,7 +460,7 @@ export class CommissionService {
   private async reconcilePendingPayments(): Promise<number> {
     if (!this.tuma.hasPlatformCredentials()) return 0;
     const since = new Date(Date.now() - RECONCILE_WINDOW_MS);
-    const organizations = await this.prisma.organization.findMany({ select: { id: true } });
+    const organizations = await this.prisma.organization.findMany({ where: { isDemo: false }, select: { id: true } });
     let confirmed = 0;
     for (const org of organizations) {
       const pending = await this.runAsTenant(org.id, (tx) =>
@@ -484,7 +484,7 @@ export class CommissionService {
       return { sent: 0, skipped: 0 };
     }
     const now = new Date();
-    const organizations = await this.prisma.organization.findMany({ select: { id: true } });
+    const organizations = await this.prisma.organization.findMany({ where: { isDemo: false }, select: { id: true } });
     let sent = 0;
     let skipped = 0;
     for (const org of organizations) {
@@ -587,7 +587,7 @@ export class CommissionService {
    */
   private async issueDailyFeeInvoices(now: Date = new Date()): Promise<number> {
     const before = nairobiHour(now) >= FEE_DAY_CLOSE_HOUR ? undefined : dayBounds(dayOf(now)).start;
-    const organizations = await this.prisma.organization.findMany({ select: { id: true } });
+    const organizations = await this.prisma.organization.findMany({ where: { isDemo: false }, select: { id: true } });
     let made = 0;
     for (const org of organizations) {
       try {
@@ -607,7 +607,7 @@ export class CommissionService {
   private async sendFeeNotices(now: Date = new Date()): Promise<number> {
     const hour = nairobiHour(now);
     if (hour < 6 || hour >= 22) return 0;
-    const organizations = await this.prisma.organization.findMany({ select: { id: true } });
+    const organizations = await this.prisma.organization.findMany({ where: { isDemo: false }, select: { id: true } });
     let sent = 0;
     for (const org of organizations) {
       const open = await this.runAsTenant(org.id, async (tx) => {
@@ -669,7 +669,7 @@ export class CommissionService {
     }
     const now = new Date();
     const currentMonthStart = monthBounds(monthOf(now)).start;
-    const organizations = await this.prisma.organization.findMany({ select: { id: true, name: true } });
+    const organizations = await this.prisma.organization.findMany({ where: { isDemo: false }, select: { id: true, name: true } });
 
     const created: { organizationName: string; invoiceNumber: string; periodMonth: string; commissionTotal: number }[] = [];
 
