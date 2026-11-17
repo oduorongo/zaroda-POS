@@ -383,3 +383,37 @@ export const tenantReportProblem = (token: string, input: { leaseId: string; tit
 export const getTenantReceipt = (token: string, paymentId: string) => request<TenantReceipt>(`/tenant-portal/payments/${paymentId}`, { token });
 
 export const getTenantStatement = (token: string, leaseId: string) => request<TenantStatement>(`/tenant-portal/leases/${leaseId}/statement`, { token });
+
+// ── Guest orders (no account) ────────────────────────────────────────────
+
+/** An order placed with only an M-Pesa number. guestToken is the order's private link key, returned once. */
+export const createGuestOrder = (input: CreateOrderInput) =>
+  request<Order & { guestToken: string }>("/public/orders", { method: "POST", body: JSON.stringify(input) });
+
+/** How the order page reaches an order: a signed-in shopper's token, or a guest's private link key. */
+export type OrderAccess = { kind: "buyer"; token: string } | { kind: "guest"; key: string };
+
+export function orderApi(access: OrderAccess) {
+  if (access.kind === "buyer") {
+    const t = access.token;
+    return {
+      get: (id: string) => getOrder(t, id),
+      check: (id: string) => checkOrderPayment(t, id),
+      pay: (id: string, phone?: string) => payOrder(t, id, phone),
+      cancel: (id: string) => cancelOrder(t, id),
+      delivery: (id: string) => getOrderDelivery(t, id),
+      acceptQuote: (id: string, quoteId: string) => acceptDeliveryQuote(t, id, quoteId),
+    };
+  }
+  const key = access.key;
+  const base = (id: string) => `/public/orders/${id}`;
+  const post = <T,>(path: string, extra: Record<string, unknown> = {}) => request<T>(path, { method: "POST", body: JSON.stringify({ token: key, ...extra }) });
+  return {
+    get: (id: string) => request<Order>(`${base(id)}?k=${encodeURIComponent(key)}`),
+    check: (id: string) => post<OrderCheck>(`${base(id)}/check`),
+    pay: (id: string, phone?: string) => post<Order>(`${base(id)}/pay`, phone ? { phone } : {}),
+    cancel: (id: string) => post<Order>(`${base(id)}/cancel`),
+    delivery: (id: string) => request<BuyerDelivery | null>(`${base(id)}/delivery?k=${encodeURIComponent(key)}`),
+    acceptQuote: (id: string, quoteId: string) => post<BuyerDelivery>(`${base(id)}/delivery/quotes/${quoteId}/accept`),
+  };
+}

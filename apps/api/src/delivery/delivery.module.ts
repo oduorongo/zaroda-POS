@@ -1,13 +1,13 @@
 import { Module } from '@nestjs/common';
 import { DeliveryRiderService } from './delivery-rider.service';
-import { DeliveryBuyerController, DeliveryRiderController, DeliveryStaffController } from './delivery.controller';
+import { DeliveryBuyerController, DeliveryGuestController, DeliveryRiderController, DeliveryStaffController } from './delivery.controller';
 import { DeliveryService } from './delivery.service';
 import { DeliveryNotifier } from './delivery-notifier';
 
 // The buyer and rider guards use the JWT strategies registered by OnlineOrdersModule and RidersModule
 // (Passport strategies are application-wide), so nothing needs importing here.
 @Module({
-  controllers: [DeliveryStaffController, DeliveryBuyerController, DeliveryRiderController],
+  controllers: [DeliveryStaffController, DeliveryBuyerController, DeliveryGuestController, DeliveryRiderController],
   providers: [DeliveryService, DeliveryRiderService, DeliveryNotifier],
 })
 export class DeliveryModule {}

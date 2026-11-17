@@ -318,3 +318,50 @@ export class TableOrdersController {
     return this.orders.checkPaymentForGuest(id, dto.token);
   }
 }
+
+/**
+ * Shop orders without an account. The shopper gives only their M-Pesa number; the order is followed through the secret
+ * link returned once (guestToken), never by phone number. Same per-address limits as signed-in checkout.
+ */
+@Controller('public/orders')
+export class GuestOrdersController {
+  constructor(private readonly orders: OnlineOrdersService) {}
+
+  @Public()
+  @Throttle(CHECKOUT_THROTTLE)
+  @Post()
+  create(@Body() dto: CreateOnlineOrderDto) {
+    return this.orders.createOrder(null, dto);
+  }
+
+  @Public()
+  @Throttle({ default: { limit: 60, ttl: 60_000 } })
+  @Get(':id')
+  get(@Param('id', ParseUUIDPipe) id: string, @Query('k') token: string) {
+    return this.orders.getForGuest(id, token ?? '');
+  }
+
+  @Public()
+  @Throttle(CHECKOUT_THROTTLE)
+  @Post(':id/pay')
+  @HttpCode(200)
+  pay(@Param('id', ParseUUIDPipe) id: string, @Body() dto: GuestTokenDto) {
+    return this.orders.retryForGuest(id, dto.token, dto.phone);
+  }
+
+  @Public()
+  @Throttle(CHECK_THROTTLE)
+  @Post(':id/check')
+  @HttpCode(200)
+  check(@Param('id', ParseUUIDPipe) id: string, @Body() dto: GuestTokenDto) {
+    return this.orders.checkPaymentForGuest(id, dto.token);
+  }
+
+  @Public()
+  @Throttle(CHECKOUT_THROTTLE)
+  @Post(':id/cancel')
+  @HttpCode(200)
+  cancel(@Param('id', ParseUUIDPipe) id: string, @Body() dto: GuestTokenDto) {
+    return this.orders.cancelForGuest(id, dto.token);
+  }
+}

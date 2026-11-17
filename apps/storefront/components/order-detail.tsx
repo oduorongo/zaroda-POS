@@ -1,10 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Check } from "lucide-react";
-import { ApiError, cancelOrder, checkOrderPayment, getOrder, payOrder } from "../lib/api";
-import { displayPhone, formatQty, kes } from "../lib/format";
+import { ApiError, getShop, orderApi, type OrderAccess } from "../lib/api";
+import { displayPhone, formatQty, kes, variantTitle } from "../lib/format";
+import { guestKeyFor } from "../lib/remember";
 import type { Order } from "../lib/types";
 import AuthForm from "./auth-form";
 import DeliveryPanel from "./delivery-panel";
@@ -19,8 +21,16 @@ const POLL_IN_PROGRESS_MS = 20_000;
 // Only after this long without a confirmation do we offer the manual check (it costs the shop KES 1).
 const SHOW_CHECK_AFTER_MS = 45_000;
 
-export default function OrderDetail({ orderId }: { orderId: string }) {
-  const { ready, buyer, token, signOut } = useStore();
+export default function OrderDetail({ orderId, guestKey }: { orderId: string; guestKey?: string }) {
+  const router = useRouter();
+  const { ready, token, signOut, cartFor, setLineQuantity } = useStore();
+  // A guest's private link key (from the address, or remembered on this device) opens the order without an account.
+  const [savedKey, setSavedKey] = useState<string | null>(null);
+  useEffect(() => setSavedKey(guestKeyFor(orderId)), [orderId]);
+  const key = guestKey || savedKey;
+  const access = useMemo<OrderAccess | null>(() => (key ? { kind: "guest", key } : token ? { kind: "buyer", token } : null), [key, token]);
+  const api = useMemo(() => (access ? orderApi(access) : null), [access]);
+  const [buyingAgain, setBuyingAgain] = useState(false);
   const [order, setOrder] = useState<Order | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -31,16 +41,16 @@ export default function OrderDetail({ orderId }: { orderId: string }) {
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const load = useCallback(async () => {
-    if (!token) return;
+    if (!api) return;
     try {
-      const result = await getOrder(token, orderId);
+      const result = await api.get(orderId);
       setOrder(result);
       setError(null);
     } catch (err) {
-      if (err instanceof ApiError && err.status === 401) signOut();
+      if (err instanceof ApiError && err.status === 401 && access?.kind === "buyer") signOut();
       else setError(err instanceof ApiError ? err.message : "Could not load this order.");
     }
-  }, [token, orderId, signOut]);
+  }, [api, access, orderId, signOut]);
 
   useEffect(() => {
     void load();
@@ -73,13 +83,42 @@ export default function OrderDetail({ orderId }: { orderId: string }) {
     return () => clearTimeout(t);
   }, [waiting]);
 
+  /** Puts the same items back in this shop's cart at today's prices (anything sold out is left out), then opens checkout. */
+  async function buyAgain() {
+    if (!order) return;
+    setBuyingAgain(true);
+    setActionError(null);
+    try {
+      const shop = await getShop(order.shop.slug);
+      const variants = new Map(shop.products.flatMap((p) => p.variants.map((v) => [v.id, { v, p }] as const)));
+      let added = 0;
+      for (const line of order.lines) {
+        const found = line.variantId ? variants.get(line.variantId) : undefined;
+        if (!found || found.v.available <= 0) continue;
+        const already = cartFor(shop.slug).find((l) => l.variantId === found.v.id)?.quantity ?? 0;
+        setLineQuantity(
+          shop.slug,
+          { variantId: found.v.id, productName: variantTitle(found.p.name, found.v.name), sku: found.v.sku, price: found.v.price, quantityMode: found.v.quantityMode },
+          Math.min(already + line.quantity, found.v.available),
+        );
+        added++;
+      }
+      if (added === 0) setActionError("None of these items are available right now.");
+      else router.push(`/s/${shop.slug}/checkout`);
+    } catch (err) {
+      setActionError(err instanceof ApiError ? err.message : "Could not open the shop right now.");
+    } finally {
+      setBuyingAgain(false);
+    }
+  }
+
   async function checkNow() {
-    if (!token || !order) return;
+    if (!api || !order) return;
     setBusy(true);
     setActionError(null);
     setCheckMessage(null);
     try {
-      const result = await checkOrderPayment(token, order.id);
+      const result = await api.check(order.id);
       setOrder(result);
       if (result.checkResult === "not-paid-yet") setCheckMessage("We haven't received your payment yet. If you've just entered your PIN, give it a minute and try again.");
       if (result.checkResult === "unavailable") setCheckMessage("We couldn't check just now. If you've paid, the shop will confirm it - you can also contact them with your M-Pesa message.");
@@ -104,7 +143,7 @@ export default function OrderDetail({ orderId }: { orderId: string }) {
 
   if (!ready) return <p className="py-10 text-center text-secondary-500">Loading...</p>;
 
-  if (!buyer || !token) {
+  if (!api) {
     return (
       <div className="mx-auto max-w-md space-y-4 rounded-lg border border-border bg-surface p-6">
         <h1 className="text-xl font-semibold">Sign in to see this order</h1>
@@ -145,6 +184,22 @@ export default function OrderDetail({ orderId }: { orderId: string }) {
           </Link>{" "}
           on {new Date(order.createdAt).toLocaleString("en-KE")}
         </p>
+        {access?.kind === "guest" && (
+          <p className="mt-2 rounded-md bg-secondary-500/5 p-2 text-xs text-secondary-600">
+            This page&apos;s link is your private link to this order, and it is saved on this phone under My orders. Keep it to follow your order on another device.
+          </p>
+        )}
+        {["COMPLETED", "CANCELLED", "EXPIRED"].includes(order.status) && order.fulfilmentType !== "DINE_IN" && (
+          <button
+            type="button"
+            onClick={() => void buyAgain()}
+            disabled={buyingAgain}
+            className="mt-3 rounded-md bg-primary-600 px-4 py-2 text-sm font-semibold text-white hover:bg-primary-700 disabled:opacity-50"
+          >
+            {buyingAgain ? "Opening..." : "Buy again"}
+          </button>
+        )}
+        {actionError && !waiting && <p className="mt-2 text-sm text-error-600">{actionError}</p>}
       </div>
 
       {waiting && (
@@ -176,7 +231,7 @@ export default function OrderDetail({ orderId }: { orderId: string }) {
               />
             </div>
             <button
-              onClick={() => void act(() => payOrder(token, order.id, retryPhone.trim()))}
+              onClick={() => void act(() => api.pay(order.id, retryPhone.trim()))}
               disabled={busy || !retryPhone.trim()}
               className="rounded-md bg-primary-600 px-4 py-2 text-sm font-semibold text-white hover:bg-primary-700 disabled:opacity-50"
             >
@@ -184,7 +239,7 @@ export default function OrderDetail({ orderId }: { orderId: string }) {
             </button>
             <button
               onClick={() => {
-                if (confirm("Cancel this order?")) void act(() => cancelOrder(token, order.id));
+                if (confirm("Cancel this order?")) void act(() => api.cancel(order.id));
               }}
               disabled={busy}
               className="rounded-md border border-border px-4 py-2 text-sm hover:bg-secondary-500/5"
@@ -283,8 +338,8 @@ export default function OrderDetail({ orderId }: { orderId: string }) {
         {order.buyerNote && <p className="mt-1 text-secondary-600">Your note: {order.buyerNote}</p>}
       </section>
 
-      {order.fulfilmentType === "DELIVERY" && ["ACCEPTED", "READY", "COMPLETED"].includes(order.status) && token && (
-        <DeliveryPanel token={token} orderId={order.id} onUnauthorized={signOut} />
+      {order.fulfilmentType === "DELIVERY" && ["ACCEPTED", "READY", "COMPLETED"].includes(order.status) && access && (
+        <DeliveryPanel access={access} orderId={order.id} onUnauthorized={signOut} />
       )}
     </div>
   );

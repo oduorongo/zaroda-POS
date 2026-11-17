@@ -54,6 +54,7 @@ export interface Shop {
 export type OrderStatus = "PENDING_PAYMENT" | "PAID" | "ACCEPTED" | "READY" | "COMPLETED" | "CANCELLED" | "EXPIRED";
 
 export interface OrderLine {
+  variantId?: string;
   id: string;
   productName: string;
   variantSku: string;
