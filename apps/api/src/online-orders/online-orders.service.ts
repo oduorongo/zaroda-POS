@@ -2,6 +2,8 @@ import { createHmac, timingSafeEqual } from 'crypto';
 import {
   BadRequestException,
   ConflictException,
+  HttpException,
+  HttpStatus,
   Injectable,
   Logger,
   NotFoundException,
@@ -33,8 +35,9 @@ import { recordOnlineSale, voidOnlineSale } from './online-order-sale';
 import { loadRecipeMap, stockNeeds } from './dish-stock.util';
 import { kitchenProgress, sendTableOrderToKitchen, stationsFor } from './dine-in';
 import { ShopCatalogService } from './shop-catalog.service';
+import { guestSecretMatches, parseGuestToken } from './guest-token';
 import { CancelOnlineOrderDto, CreateOnlineOrderDto, CreateTableOrderDto } from './dto/online-order.dto';
-import { generateCallbackToken, generateOrderNumber, normalizeKenyanPhone, roundMoney, sha256 } from './online-orders.util';
+import { generateCallbackToken, generateOrderNumber, normalizeKenyanPhone, roundMoney } from './online-orders.util';
 import { checkDeliveryCounty, servedCounties } from './delivery-area';
 import { totalWithFee } from './convenience-fee';
 import { variantTitle } from '../catalog/variant-title';
@@ -43,6 +46,8 @@ const TX_OPTIONS = { timeout: 15_000, maxWait: 15_000 };
 // How long an unpaid order holds stock. An M-Pesa prompt itself times out
 // in about a minute; this leaves room for a retry or two.
 const PAYMENT_WINDOW_MS = 15 * 60_000;
+// Unpaid orders a guest's number may have at one shop at a time (each one sent an M-Pesa prompt).
+const MAX_OPEN_GUEST_ORDERS = 3;
 // A retry before this would risk two live prompts for one order.
 const RETRY_COOLDOWN_MS = 60_000;
 // "I've paid, check now" costs the shop KES 1 each time (Tuma's status check is
@@ -183,12 +188,20 @@ export class OnlineOrdersService {
 
   // ── Buyer: checkout and payment ───────────────────────────────────────
 
-  async createOrder(buyerId: string, dto: CreateOnlineOrderDto) {
-    const buyer = await this.prisma.buyer.findUnique({ where: { id: buyerId } });
-    if (!buyer) throw new NotFoundException('Buyer not found');
+  /**
+   * A shop order: from a signed-in shopper (buyerId), or from a guest (null) who needs no account. A guest gives only the
+   * M-Pesa number: the prompt proves they hold that phone, nothing is handed over before it is paid, and they follow the
+   * order through a secret link (only its hash is kept), exactly like a table order. Guest orders are never joined to an
+   * account by phone number, because accounts are not phone-verified.
+   */
+  async createOrder(buyerId: string | null, dto: CreateOnlineOrderDto) {
+    const buyer = buyerId ? await this.prisma.buyer.findUnique({ where: { id: buyerId } }) : null;
+    if (buyerId && !buyer) throw new NotFoundException('Buyer not found');
+    if (dto.fulfilmentType === FulfilmentType.DINE_IN) throw new BadRequestException('To order at a table, scan the QR code on the table');
     // A shopper who signed in by email has no phone on file until they give one here: it is
     // both the number M-Pesa prompts and how the shop reaches them about the order.
-    const paymentPhone = dto.paymentPhone ? normalizeKenyanPhone(dto.paymentPhone) : buyer.phone;
+    const paymentPhone = dto.paymentPhone ? normalizeKenyanPhone(dto.paymentPhone) : (buyer?.phone ?? null);
+    const guest = buyerId ? null : generateCallbackToken();
     if (!paymentPhone) {
       throw new BadRequestException(
         dto.paymentPhone ? 'Enter a valid M-Pesa number, e.g. 0712 345 678' : 'Enter the M-Pesa phone number you will pay with, e.g. 0712 345 678',
@@ -220,6 +233,17 @@ export class OnlineOrdersService {
               const area = checkDeliveryCounty(servedCounties(shop.deliveryCounties, branch?.county), dto.deliveryCounty, shop.displayName);
               if (!area.ok) throw new BadRequestException(area.message);
               deliveryCounty = area.county;
+            }
+
+            // A guest's number gets at most a few unpaid orders (and so M-Pesa prompts) at this shop at a time, so
+            // typing someone else's number can't be used to pester them.
+            if (guest) {
+              const open = await tx.onlineOrder.count({
+                where: { buyerId: null, buyerPhone: paymentPhone, status: OnlineOrderStatus.PENDING_PAYMENT, createdAt: { gte: new Date(Date.now() - PAYMENT_WINDOW_MS) } },
+              });
+              if (open >= MAX_OPEN_GUEST_ORDERS) {
+                throw new HttpException('This number already has orders waiting for payment here - pay or cancel them first, or try again in 15 minutes', HttpStatus.TOO_MANY_REQUESTS);
+              }
             }
 
             // Serializes checkouts per branch so two buyers can't both take
@@ -268,8 +292,9 @@ export class OnlineOrdersService {
                 deliveryAddress: dto.fulfilmentType === FulfilmentType.DELIVERY ? dto.deliveryAddress!.trim() : null,
                 deliveryCounty,
                 buyerNote: dto.note?.trim() || null,
-                buyerName: dto.buyerName?.trim() || buyer.name,
+                buyerName: dto.buyerName?.trim() || buyer?.name || null,
                 buyerPhone: paymentPhone,
+                guestTokenHash: guest?.hash ?? null,
                 shopName: shop.displayName,
                 shopSlug: shop.slug,
                 subtotal,
@@ -283,7 +308,7 @@ export class OnlineOrdersService {
               include: { lines: true },
             });
           },
-          { buyerId },
+          buyerId ? { buyerId } : undefined,
         );
       } catch (e) {
         // Order-number collision (1 in ~10^9) - just try another number.
@@ -296,13 +321,16 @@ export class OnlineOrdersService {
     }
     if (!created) throw new ServiceUnavailableException('Could not create the order - try again');
 
-    // Remember the number for next time. Best effort: a phone belongs to at most one
-    // shopper account, so if another account already has it we simply don't save it.
-    if (!buyer.phone) {
-      await this.prisma.buyer.update({ where: { id: buyerId }, data: { phone: paymentPhone } }).catch(() => undefined);
+    // Remember the number and name for next time, so checkout asks for neither again. Best effort: a phone belongs to
+    // at most one shopper account, so if another account already has it we simply don't save it.
+    if (buyer && buyerId) {
+      const name = dto.buyerName?.trim();
+      const remember = { ...(!buyer.phone ? { phone: paymentPhone } : {}), ...(!buyer.name && name ? { name } : {}) };
+      if (Object.keys(remember).length) await this.prisma.buyer.update({ where: { id: buyerId }, data: remember }).catch(() => undefined);
     }
 
-    return this.startPayment(created);
+    const view = await this.startPayment(created);
+    return guest ? { ...view, guestToken: `${created.organizationId}.${guest.token}` } : view;
   }
 
   async retryPayment(buyerId: string, orderId: string, paymentPhoneInput?: string) {
@@ -496,21 +524,28 @@ export class OnlineOrdersService {
     return { ...view, guestToken: `${created.organizationId}.${token}` };
   }
 
-  /** Finds a table order from the secret its diner holds, or says "not found" - never which part was wrong. */
+  /** Finds a guest's order (a table order, or a shop order placed without an account) from its secret link, or says "not found" - never which part was wrong. */
   private async findGuestOrder(guestToken: string, orderId: string): Promise<OrderWithLines> {
-    const [organizationId, secret] = guestToken.split('.');
-    const valid = /^[0-9a-f-]{36}$/.test(organizationId ?? '') && !!secret;
-    const order = valid
-      ? await this.runAsTenant(organizationId, (tx) =>
-          tx.onlineOrder.findFirst({ where: { id: orderId, organizationId, fulfilmentType: FulfilmentType.DINE_IN }, include: { lines: true } }),
-        )
+    const parsed = parseGuestToken(guestToken);
+    const order = parsed
+      ? await this.runAsTenant(parsed.organizationId, (tx) => tx.onlineOrder.findFirst({ where: { id: orderId, organizationId: parsed.organizationId }, include: { lines: true } }))
       : null;
-    const expected = order?.guestTokenHash ? Buffer.from(order.guestTokenHash) : null;
-    const actual = Buffer.from(sha256(secret ?? ''));
-    if (!order || !expected || expected.length !== actual.length || !timingSafeEqual(expected, actual)) {
-      throw new NotFoundException('Order not found');
-    }
+    if (!order || !parsed || !guestSecretMatches(order.guestTokenHash, parsed.secret)) throw new NotFoundException('Order not found');
     return order;
+  }
+
+  /** A guest cancels before paying, like a signed-in shopper (cancelByBuyer). */
+  async cancelForGuest(orderId: string, guestToken: string) {
+    const found = await this.findGuestOrder(guestToken, orderId);
+    const order = await this.runAsTenant(found.organizationId, async (tx) => {
+      const result = await tx.onlineOrder.updateMany({
+        where: { id: orderId, status: OnlineOrderStatus.PENDING_PAYMENT },
+        data: { status: OnlineOrderStatus.CANCELLED, cancelledAt: new Date(), cancelledBy: 'BUYER', cancelReason: 'Cancelled by buyer' },
+      });
+      if (result.count !== 1) throw new BadRequestException('Paid orders can only be cancelled by the shop - contact them directly');
+      return tx.onlineOrder.findUniqueOrThrow({ where: { id: orderId }, include: { lines: true } });
+    });
+    return toOrderView(order);
   }
 
   /** The diner's status page: their order plus how far the kitchen has got. Plain reads - never calls Tuma. */

@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ApiError, listOrders, setBuyerPin } from "../lib/api";
 import { kes } from "../lib/format";
+import { guestOrderPath, guestOrders, type GuestOrderRef } from "../lib/remember";
 import type { Order } from "../lib/types";
 import AuthForm from "./auth-form";
 import OrderStatusBadge from "./order-status";
@@ -15,6 +16,8 @@ export default function OrdersView() {
   const { ready, buyer, token, signOut, setBuyer } = useStore();
   const [orders, setOrders] = useState<Order[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [deviceOrders, setDeviceOrders] = useState<GuestOrderRef[]>([]);
+  useEffect(() => setDeviceOrders(guestOrders()), []);
 
   useEffect(() => {
     if (!token) return;
@@ -35,9 +38,13 @@ export default function OrdersView() {
 
   if (!buyer) {
     return (
-      <div className="mx-auto max-w-md space-y-4 rounded-lg border border-border bg-surface p-6">
-        <h1 className="text-xl font-semibold">Sign in to see your orders</h1>
-        <AuthForm />
+      <div className="mx-auto max-w-2xl space-y-4">
+        <h1 className="text-2xl font-bold">My orders</h1>
+        {deviceOrders.length > 0 && <DeviceOrders orders={deviceOrders} />}
+        <div className="max-w-md space-y-4 rounded-lg border border-border bg-surface p-6">
+          <h2 className="text-lg font-semibold">{deviceOrders.length > 0 ? "Have an account? Sign in to see all your orders" : "Sign in to see your orders"}</h2>
+          <AuthForm />
+        </div>
       </div>
     );
   }
@@ -82,7 +89,30 @@ export default function OrdersView() {
           </li>
         ))}
       </ul>
+      {deviceOrders.length > 0 && <DeviceOrders orders={deviceOrders} />}
     </div>
+  );
+}
+
+/** Orders placed on this phone without signing in, opened through their private links. */
+function DeviceOrders({ orders }: { orders: GuestOrderRef[] }) {
+  return (
+    <section className="space-y-2">
+      <h2 className="text-sm font-semibold text-secondary-600">Ordered on this phone without signing in</h2>
+      <ul className="space-y-2">
+        {orders.map((o) => (
+          <li key={o.id}>
+            <Link href={guestOrderPath(o.id, o.key)} className="flex items-center justify-between gap-3 rounded-lg border border-border bg-surface p-3 hover:shadow-md">
+              <span>
+                <span className="block font-semibold">{o.shopName}</span>
+                <span className="font-mono text-xs text-secondary-500">{o.orderNumber}</span>
+              </span>
+              <span className="text-sm text-secondary-600">{new Date(o.createdAt).toLocaleDateString("en-KE")}</span>
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 

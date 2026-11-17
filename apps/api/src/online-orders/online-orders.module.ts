@@ -11,6 +11,7 @@ import { BuyerAuthService } from './buyer-auth.service';
 import {
   BuyerAuthController,
   BuyerController,
+  GuestOrdersController,
   OnlineOrdersController,
   PublicShopsController,
   TableOrdersController,
@@ -40,6 +41,7 @@ import { ShopCatalogService } from './shop-catalog.service';
   controllers: [
     PublicShopsController,
     TableOrdersController,
+    GuestOrdersController,
     TumaCallbackController,
     BuyerAuthController,
     BuyerController,

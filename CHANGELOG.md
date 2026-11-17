@@ -1,5 +1,12 @@
 # Changelog
 
+## Shorter online checkout (2026-11-17)
+
+- No account needed to order: a shopper gives only their M-Pesa number and pays. The M-Pesa prompt proves the phone is theirs. They follow the order through a private link (`/orders/<id>?k=...`, only a hash kept, page sends no referrer), also saved on that phone under My orders, including choosing a rider and the delivery code. New public endpoints under `/public/orders` (create, view, pay again, check, cancel, delivery, choose rider), throttled per address; a number gets at most 3 unpaid guest orders per shop at a time. Guest orders are never joined to an account by phone number (accounts are not phone-verified), so a guest's address can't leak to someone who registered their number.
+- One short checkout screen: pick-up/delivery as two buttons, the M-Pesa number and name shown as text with "Change" once known, note hidden behind "+ Add a note", far-pickup tick box replaced by a warning line. The phone remembers name, number, pick-up/delivery, county and address; signed-in shoppers' name is saved to their account.
+- "Buy again" on finished orders puts the same items back in the cart at today's prices (sold-out items left out) and opens checkout.
+- No DB step.
+
 ## Zaroda School subscriptions in ZARODA's books (2027-01-01 migration)
 
 - Zaroda School now reports every school's successful subscription payment (marketer or not) to `POST /sales-sync/school` (`receipts`). They are stored in `school_subscription_receipts` and posted to ZARODA's own books (platform admin > Accounts) as money in "M-Pesa and Tuma" and income in the new account 4090 "Zaroda School subscriptions" (source "Zaroda School subscription", memo shows the school and M-Pesa receipt). Payments before the books' start date are not posted, like every other source.

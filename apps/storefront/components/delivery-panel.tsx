@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Bike, Phone } from "lucide-react";
-import { acceptDeliveryQuote, ApiError, getOrderDelivery } from "../lib/api";
+import { ApiError, orderApi, type OrderAccess } from "../lib/api";
 import { displayPhone, kes } from "../lib/format";
 import type { BuyerDelivery, VehicleType } from "../lib/types";
 
@@ -17,7 +17,7 @@ const time = (iso: string) => new Date(iso).toLocaleTimeString("en-KE", { hour: 
  * The delivery part of a shopper's order: the prices riders have offered (pick one), then the rider's
  * details, the cash to pay at the door, and the 4-digit code to give the rider when the goods arrive.
  */
-export default function DeliveryPanel({ token, orderId, onUnauthorized }: { token: string; orderId: string; onUnauthorized: () => void }) {
+export default function DeliveryPanel({ access, orderId, onUnauthorized }: { access: OrderAccess; orderId: string; onUnauthorized: () => void }) {
   const [delivery, setDelivery] = useState<BuyerDelivery | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -25,7 +25,7 @@ export default function DeliveryPanel({ token, orderId, onUnauthorized }: { toke
 
   const load = useCallback(async () => {
     try {
-      setDelivery(await getOrderDelivery(token, orderId));
+      setDelivery(await orderApi(access).delivery(orderId));
       setError(null);
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) onUnauthorized();
@@ -33,7 +33,7 @@ export default function DeliveryPanel({ token, orderId, onUnauthorized }: { toke
     } finally {
       setLoaded(true);
     }
-  }, [token, orderId, onUnauthorized]);
+  }, [access, orderId, onUnauthorized]);
 
   useEffect(() => {
     void load();
@@ -50,7 +50,7 @@ export default function DeliveryPanel({ token, orderId, onUnauthorized }: { toke
     setChoosing(quoteId);
     setError(null);
     try {
-      setDelivery(await acceptDeliveryQuote(token, orderId, quoteId));
+      setDelivery(await orderApi(access).acceptQuote(orderId, quoteId));
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) onUnauthorized();
       else setError(err instanceof ApiError ? err.message : "Could not choose that rider.");

@@ -1,4 +1,5 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Post, Query, UseGuards } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { Role } from '@prisma/client';
 import { Public } from '../auth/public.decorator';
 import { Roles } from '../auth/roles.decorator';
@@ -7,6 +8,7 @@ import { CurrentRiderId, RiderAuthGuard } from '../riders/rider-auth';
 import { DeliveryRiderService } from './delivery-rider.service';
 import { DeliveryService } from './delivery.service';
 import { CancelDeliveryDto, DeliverDto, QuoteDto, RequestDeliveryDto } from './dto/delivery.dto';
+import { GuestTokenDto } from '../online-orders/dto/online-order.dto';
 
 /** The business asks for a rider for an accepted delivery order - staff JWT (global guard), tenant-scoped. */
 @Controller('online-orders')
@@ -88,5 +90,26 @@ export class DeliveryRiderController {
   @HttpCode(200)
   deliver(@CurrentRiderId() riderId: string, @Param('id', ParseUUIDPipe) id: string, @Body() dto: DeliverDto) {
     return this.jobs.deliver(riderId, id, dto);
+  }
+}
+
+/** A guest's delivery (an order placed without an account), reached through the order's secret link. */
+@Controller('public/orders')
+export class DeliveryGuestController {
+  constructor(private readonly delivery: DeliveryService) {}
+
+  @Public()
+  @Throttle({ default: { limit: 60, ttl: 60_000 } })
+  @Get(':id/delivery')
+  get(@Param('id', ParseUUIDPipe) id: string, @Query('k') token: string) {
+    return this.delivery.getForGuest(token ?? '', id);
+  }
+
+  @Public()
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
+  @Post(':id/delivery/quotes/:quoteId/accept')
+  @HttpCode(200)
+  accept(@Param('id', ParseUUIDPipe) id: string, @Param('quoteId', ParseUUIDPipe) quoteId: string, @Body() dto: GuestTokenDto) {
+    return this.delivery.acceptQuoteForGuest(dto.token, id, quoteId);
   }
 }

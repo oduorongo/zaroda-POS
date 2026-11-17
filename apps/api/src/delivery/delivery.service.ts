@@ -18,6 +18,7 @@ import { getTenantStore } from '../common/tenant/tenant-context';
 import { CancelDeliveryDto, RequestDeliveryDto } from './dto/delivery.dto';
 import { deliveryCodeFor, effectiveJobStatus, isActiveJobStatus, MAX_CODE_ATTEMPTS, QUOTE_WINDOW_MS, summarizeDropoff } from './delivery.util';
 import { DeliveryNotifier, MAX_JOB_EMAILS, RiderContact } from './delivery-notifier';
+import { guestSecretMatches, parseGuestToken } from '../online-orders/guest-token';
 
 const TX_OPTIONS = { timeout: 15_000, maxWait: 15_000 };
 
@@ -231,6 +232,30 @@ export class DeliveryService {
     return order;
   }
 
+  /** A guest (no account) reaches their order's delivery through the order's secret link - same view and choice as a signed-in shopper. */
+  private runAsGuest<T>(guestToken: string, orderId: string, fn: (tx: TenantTx) => Promise<T>): Promise<T> {
+    const parsed = parseGuestToken(guestToken);
+    if (!parsed) throw new NotFoundException('Order not found');
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT set_config('app.current_tenant', ${parsed.organizationId}, true)`;
+      const order = await tx.onlineOrder.findFirst({ where: { id: orderId, organizationId: parsed.organizationId }, select: { guestTokenHash: true } });
+      if (!order || !guestSecretMatches(order.guestTokenHash, parsed.secret)) throw new NotFoundException('Order not found');
+      return fn(tx);
+    }, TX_OPTIONS);
+  }
+
+  async getForGuest(guestToken: string, orderId: string) {
+    const job = await this.runAsGuest(guestToken, orderId, async (tx) => {
+      await this.expireStale(tx, orderId);
+      return tx.deliveryJob.findFirst({ where: { orderId }, orderBy: { createdAt: 'desc' }, include: JOB_INCLUDE });
+    });
+    return job ? toBuyerJobView(job, this.codeFor(job.id)) : null;
+  }
+
+  async acceptQuoteForGuest(guestToken: string, orderId: string, quoteId: string) {
+    return this.chooseQuote((fn) => this.runAsGuest(guestToken, orderId, fn), orderId, quoteId);
+  }
+
   async getForBuyer(buyerId: string, orderId: string) {
     const job = await this.runAsBuyer(buyerId, async (tx) => {
       await this.buyerOrder(tx, buyerId, orderId);
@@ -242,8 +267,19 @@ export class DeliveryService {
 
   /** The buyer picks one quote: that rider gets the job, the price is fixed, the other quotes are closed. */
   async acceptQuote(buyerId: string, orderId: string, quoteId: string) {
-    const job = await this.runAsBuyer(buyerId, async (tx) => {
-      await this.buyerOrder(tx, buyerId, orderId);
+    return this.chooseQuote(
+      (fn) =>
+        this.runAsBuyer(buyerId, async (tx) => {
+          await this.buyerOrder(tx, buyerId, orderId);
+          return fn(tx);
+        }),
+      orderId,
+      quoteId,
+    );
+  }
+
+  private async chooseQuote(run: <T>(fn: (tx: TenantTx) => Promise<T>) => Promise<T>, orderId: string, quoteId: string) {
+    const job = await run(async (tx) => {
       await this.expireStale(tx, orderId);
       const open = await tx.deliveryJob.findFirst({ where: { orderId, status: DeliveryJobStatus.OPEN }, orderBy: { createdAt: 'desc' } });
       if (!open) throw new BadRequestException('This delivery request is no longer open for quotes');
