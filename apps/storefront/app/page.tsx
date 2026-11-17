@@ -1,5 +1,5 @@
 import CountyBar from "../components/county-bar";
-import ShopCard from "../components/shop-card";
+import ShopGrid from "../components/shop-grid";
 import { listShops } from "../lib/api";
 import type { ShopSummary } from "../lib/types";
 
@@ -28,7 +28,7 @@ export default async function HomePage({ searchParams }: { searchParams: { q?: s
           <input
             name="q"
             defaultValue={q}
-            placeholder="Search shops by name or county"
+            placeholder="Search by shop, estate or county"
             aria-label="Search shops"
             className="min-w-0 flex-1 rounded-md px-4 py-3 text-base text-slate-900"
           />
@@ -53,11 +53,7 @@ export default async function HomePage({ searchParams }: { searchParams: { q?: s
             {q ? "No shops match your search." : "No shops are open yet - check back soon."}
           </p>
         ) : (
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {shops.map((shop) => (
-              <ShopCard key={shop.slug} shop={shop} />
-            ))}
-          </div>
+          <ShopGrid shops={shops} />
         )}
       </section>
     </div>

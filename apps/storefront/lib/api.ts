@@ -207,6 +207,8 @@ export interface CreateOrderInput {
   fulfilmentType: "PICKUP" | "DELIVERY";
   deliveryAddress?: string;
   deliveryCounty?: string;
+  deliveryLat?: number;
+  deliveryLng?: number;
   note?: string;
   buyerName?: string;
   paymentPhone?: string;

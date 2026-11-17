@@ -14,6 +14,12 @@ export interface ShopSummary {
   deliveryEnabled: boolean;
   /** Counties it delivers to; null when the shop has not said where it is yet (then delivery is not limited). */
   deliveryCounties: string[] | null;
+  /** Shopping centre or estate, the shop map pin, and how far it delivers (RADIUS = within deliveryRadiusKm of the pin; KENYA = anywhere). */
+  area?: string | null;
+  lat?: number | null;
+  lng?: number | null;
+  deliveryReach?: "COUNTIES" | "RADIUS" | "KENYA";
+  deliveryRadiusKm?: number | null;
 }
 
 export interface ShopVariant {
@@ -45,6 +51,12 @@ export interface Shop {
   pickupEnabled: boolean;
   deliveryEnabled: boolean;
   deliveryCounties: string[] | null;
+  /** Shopping centre or estate, the shop map pin, and how far it delivers (RADIUS = within deliveryRadiusKm of the pin; KENYA = anywhere). */
+  area?: string | null;
+  lat?: number | null;
+  lng?: number | null;
+  deliveryReach?: "COUNTIES" | "RADIUS" | "KENYA";
+  deliveryRadiusKm?: number | null;
   /** Added to the cart at checkout (e.g. 0.03 = 3%, rounded to the nearest shilling); the shop collects it and passes it to Zaroda. */
   convenienceFeeRate: number;
   location: { branchName: string; county: string | null; subCounty: string | null } | null;

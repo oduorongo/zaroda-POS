@@ -60,7 +60,9 @@ export default function ShopView({ shop, canReserve = false }: { shop: Shop; can
   }, [shop.products, query, category]);
 
   const location = shop.location ? locationLabel(shop.location.subCounty, shop.location.county) : "";
-  const fulfilment = [shop.pickupEnabled && "Pickup", shop.deliveryEnabled && "Delivery"].filter(Boolean).join(" or ");
+  const reachText =
+    shop.deliveryReach === "KENYA" ? "Delivery anywhere in Kenya" : shop.deliveryReach === "RADIUS" && shop.deliveryRadiusKm ? `Delivery within ${shop.deliveryRadiusKm} km` : "Delivery";
+  const fulfilment = [shop.pickupEnabled && "Pickup", shop.deliveryEnabled && reachText].filter(Boolean).join(" or ");
 
   return (
     <div className="space-y-6 pb-24 lg:pb-0">
@@ -71,9 +73,9 @@ export default function ShopView({ shop, canReserve = false }: { shop: Shop; can
         <h1 className="mt-1 text-2xl font-bold sm:text-3xl">{shop.name}</h1>
         {shop.description && <p className="mt-2 max-w-2xl text-secondary-600">{shop.description}</p>}
         <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1 text-sm text-secondary-500">
-          {location && (
+          {(shop.area || location) && (
             <span className="flex items-center gap-1">
-              <MapPin size={14} aria-hidden /> {shop.location?.branchName}, {location}
+              <MapPin size={14} aria-hidden /> {shop.area || `${shop.location?.branchName}, ${location}`}
             </span>
           )}
           {shop.contactPhone && (

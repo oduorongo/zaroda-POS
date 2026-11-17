@@ -1,4 +1,4 @@
-import { checkDeliveryCounty, KENYA_COUNTIES, normalizeCounties, normalizeCounty, servedCounties } from './delivery-area';
+import { checkDelivery, checkDeliveryCounty, distanceKm, inKenya, KENYA_COUNTIES, normalizeCounties, normalizeCounty, servedCounties } from './delivery-area';
 
 describe('counties', () => {
   it('lists all 47 counties, each once', () => {
@@ -73,5 +73,42 @@ describe('checkDeliveryCounty', () => {
   it('does not limit a shop whose area is not known yet', () => {
     expect(checkDeliveryCounty(null, 'Migori', 'S')).toEqual({ ok: true, county: 'Migori', message: '' });
     expect(checkDeliveryCounty(null, undefined, 'S')).toEqual({ ok: true, county: null, message: '' });
+  });
+});
+
+describe('delivery reach: distance, counties or Kenya', () => {
+  // Kondele and Milimani in Kisumu are about 3 km apart; Nairobi is about 265 km from Kisumu.
+  const kondele = { lat: -0.0886, lng: 34.7681 };
+  const milimani = { lat: -0.1022, lng: 34.7476 };
+  const nairobi = { lat: -1.2864, lng: 36.8172 };
+  const shop = { name: 'Mama Shop', reach: 'RADIUS', radiusKm: 5, lat: kondele.lat, lng: kondele.lng, served: ['Kisumu'], ownCounty: 'Kisumu' };
+
+  it('measures distance in km', () => {
+    expect(distanceKm(kondele, milimani)).toBeGreaterThan(2);
+    expect(distanceKm(kondele, milimani)).toBeLessThan(4);
+    expect(Math.round(distanceKm(kondele, nairobi))).toBeGreaterThan(250);
+  });
+
+  it('a distance shop delivers inside its km, refuses farther away, and needs the shopper location', () => {
+    expect(checkDelivery(shop, milimani)).toMatchObject({ ok: true, county: 'Kisumu' });
+    expect(checkDelivery(shop, nairobi)).toMatchObject({ ok: false });
+    expect(checkDelivery(shop, nairobi).message).toMatch(/within 5 km.*about \d+ km away/);
+    expect(checkDelivery(shop, { county: 'Kisumu' }).message).toMatch(/Share your location/);
+  });
+
+  it('a distance shop without its pin yet falls back to its counties', () => {
+    expect(checkDelivery({ ...shop, lat: null, lng: null }, { county: 'Kisumu' })).toMatchObject({ ok: true });
+    expect(checkDelivery({ ...shop, lat: null, lng: null }, { county: 'Nairobi' })).toMatchObject({ ok: false });
+  });
+
+  it('a Kenya-wide shop (hardware by vehicle) delivers to any county, and a county shop works as before', () => {
+    expect(checkDelivery({ ...shop, reach: 'KENYA' }, { county: 'mombasa' })).toMatchObject({ ok: true, county: 'Mombasa' });
+    expect(checkDelivery({ ...shop, reach: 'KENYA' }, {})).toMatchObject({ ok: false });
+    expect(checkDelivery({ ...shop, reach: 'COUNTIES' }, { county: 'Nairobi' })).toMatchObject({ ok: false });
+  });
+
+  it('knows roughly where Kenya is', () => {
+    expect(inKenya(kondele.lat, kondele.lng)).toBe(true);
+    expect(inKenya(51.5, -0.12)).toBe(false);
   });
 });

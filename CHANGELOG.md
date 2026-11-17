@@ -1,5 +1,12 @@
 # Changelog
 
+## Shops placed by estate and map pin; delivery by distance, county or all Kenya (2026-11-17)
+
+- A shop sets its shopping centre or estate (shown and searchable) and a map pin ("Use my location" while standing in the shop) under Online shop settings, and chooses how far it delivers: within N km of the pin (boda riders), whole counties (as before, the default), or anywhere in Kenya (hardware and big items by vehicle).
+- Shoppers tap "Use my location" (kept on the phone) or pick a county: shops are listed nearest first with the distance, and each card says whether it delivers to them. Checkout for a km-based shop asks for the shopper's location; the server checks the distance again (straight line), and a km shop without a pin yet falls back to its counties. A Kenya-wide shop offers all 47 counties.
+- The shopper's location is stored on a delivery order (`deliveryLat/deliveryLng`) only when they shared it.
+- Migration `20270102100000_shop_location_reach` (columns only, no RLS change): migrate deploy BEFORE merge.
+
 ## Shorter online checkout (2026-11-17)
 
 - No account needed to order: a shopper gives only their M-Pesa number and pays. The M-Pesa prompt proves the phone is theirs. They follow the order through a private link (`/orders/<id>?k=...`, only a hash kept, page sends no referrer), also saved on that phone under My orders, including choosing a rider and the delivery code. New public endpoints under `/public/orders` (create, view, pay again, check, cancel, delivery, choose rider), throttled per address; a number gets at most 3 unpaid guest orders per shop at a time. Guest orders are never joined to an account by phone number (accounts are not phone-verified), so a guest's address can't leak to someone who registered their number.

@@ -22,6 +22,11 @@ interface OnlineStore {
   deliveryEnabled: boolean;
   onlineStockBuffer: number;
   deliveryCounties: string[];
+  locationArea: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  deliveryReach: "COUNTIES" | "RADIUS" | "KENYA";
+  deliveryRadiusKm: number | null;
   tumaEmail: string | null;
   tumaConnected: boolean;
   paymentGateway: "TUMA" | "DARAJA";
@@ -100,6 +105,12 @@ export default function OnlineShopSettingsPage() {
   const [deliveryEnabled, setDeliveryEnabled] = useState(false);
   const [stockBuffer, setStockBuffer] = useState("0");
   const [deliveryCounties, setDeliveryCounties] = useState<string[]>([]);
+  const [locationArea, setLocationArea] = useState("");
+  const [pin, setPin] = useState<{ lat: number; lng: number } | null>(null);
+  const [pinError, setPinError] = useState<string | null>(null);
+  const [locating, setLocating] = useState(false);
+  const [deliveryReach, setDeliveryReach] = useState<OnlineStore["deliveryReach"]>("COUNTIES");
+  const [radiusKm, setRadiusKm] = useState("5");
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
@@ -156,6 +167,10 @@ export default function OnlineShopSettingsPage() {
     setDeliveryEnabled(result.deliveryEnabled);
     setStockBuffer(String(result.onlineStockBuffer ?? 0));
     setDeliveryCounties(result.deliveryCounties ?? []);
+    setLocationArea(result.locationArea ?? "");
+    setPin(result.latitude != null && result.longitude != null ? { lat: result.latitude, lng: result.longitude } : null);
+    setDeliveryReach(result.deliveryReach ?? "COUNTIES");
+    setRadiusKm(String(result.deliveryRadiusKm ?? 5));
     setTumaEmail(result.tumaEmail ?? "");
     setPayTab(result.paymentGateway ?? "TUMA");
     setMpesaAccountType(result.mpesaAccountType ?? "PAYBILL");
@@ -200,6 +215,11 @@ export default function OnlineShopSettingsPage() {
         deliveryEnabled,
         onlineStockBuffer: Math.max(0, Math.min(1000, Math.floor(Number(stockBuffer) || 0))),
         deliveryCounties,
+        locationArea: locationArea.trim(),
+        latitude: pin?.lat ?? null,
+        longitude: pin?.lng ?? null,
+        deliveryReach,
+        deliveryRadiusKm: deliveryReach === "RADIUS" ? Math.max(1, Math.min(300, Math.round(Number(radiusKm) || 0))) : null,
       });
       applyStore(result);
       setSaved(true);
@@ -209,6 +229,27 @@ export default function OnlineShopSettingsPage() {
     } finally {
       setSaving(false);
     }
+  }
+
+  /** The shop's pin: taken from this phone while standing in the shop. */
+  function takeMyLocation() {
+    setPinError(null);
+    if (!navigator.geolocation) {
+      setPinError("This device cannot give its location.");
+      return;
+    }
+    setLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setPin({ lat: Number(pos.coords.latitude.toFixed(6)), lng: Number(pos.coords.longitude.toFixed(6)) });
+        setLocating(false);
+      },
+      () => {
+        setPinError("Could not get your location. Allow location for this site, and try again standing in the shop.");
+        setLocating(false);
+      },
+      { enableHighAccuracy: true, timeout: 20_000 },
+    );
   }
 
   async function connectTuma() {
@@ -623,6 +664,33 @@ export default function OnlineShopSettingsPage() {
                   </select>
                   <p className="mt-1 text-xs text-secondary-500">Online stock comes from this branch, and buyers collect pickup orders here.</p>
                 </div>
+                <div className="space-y-2 rounded-md border border-border p-3">
+                  <p className="text-sm font-medium">Where is your shop?</p>
+                  <div>
+                    <Label>Shopping centre or estate</Label>
+                    <Input value={locationArea} onChange={(e) => setLocationArea(e.target.value)} maxLength={120} placeholder="e.g. Kondele Market, Kisumu" />
+                    <p className="mt-1 text-xs text-secondary-500">Shown to shoppers, and they can search by it.</p>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button type="button" variant="outline" size="sm" onClick={takeMyLocation} disabled={locating}>
+                      {locating ? "Finding you..." : pin ? "Update map pin" : "Use my location"}
+                    </Button>
+                    {pin ? (
+                      <span className="text-xs text-secondary-600">
+                        Pin set:{" "}
+                        <a href={`https://www.openstreetmap.org/?mlat=${pin.lat}&mlon=${pin.lng}#map=17/${pin.lat}/${pin.lng}`} target="_blank" rel="noopener noreferrer" className="underline">
+                          check it on the map
+                        </a>{" "}
+                        <button type="button" onClick={() => setPin(null)} className="underline">
+                          remove
+                        </button>
+                      </span>
+                    ) : (
+                      <span className="text-xs text-secondary-500">Tap while standing in the shop, so shoppers nearby find you and distances are right.</span>
+                    )}
+                  </div>
+                  {pinError && <p className="text-xs text-error-600">{pinError}</p>}
+                </div>
                 <div className="space-y-2">
                   <label className="flex items-center gap-2 text-sm">
                     <input type="checkbox" checked={pickupEnabled} onChange={(e) => setPickupEnabled(e.target.checked)} className="h-4 w-4" />
@@ -643,6 +711,38 @@ export default function OnlineShopSettingsPage() {
                   </label>
                 </div>
                 {deliveryEnabled && (
+                  <div className="space-y-2 rounded-md border border-border p-3">
+                    <p className="text-sm font-medium">How far do you deliver?</p>
+                    <div className="space-y-1">
+                      {(
+                        [
+                          ["RADIUS", "Nearby, within a distance", "Best for boda riders: food, groceries, everyday items."],
+                          ["COUNTIES", "Whole counties", "You choose the counties below."],
+                          ["KENYA", "Anywhere in Kenya", "For goods sent by vehicle or courier, e.g. hardware and big items."],
+                        ] as const
+                      ).map(([value, label, hint]) => (
+                        <label key={value} className="flex items-start gap-2 text-sm">
+                          <input type="radio" name="reach" className="mt-1 h-4 w-4" checked={deliveryReach === value} onChange={() => setDeliveryReach(value)} />
+                          <span>
+                            {label}
+                            <span className="block text-xs text-secondary-500">{hint}</span>
+                          </span>
+                        </label>
+                      ))}
+                    </div>
+                    {deliveryReach === "RADIUS" && (
+                      <label className="block text-sm">
+                        Deliver within
+                        <input type="number" min={1} max={300} value={radiusKm} onChange={(e) => setRadiusKm(e.target.value)} className="mx-2 w-20 rounded-md border border-border bg-surface p-1 text-sm" />
+                        km of the shop
+                        <span className="block text-xs text-secondary-500">
+                          Straight-line distance; roads are longer. {pin ? "" : "Set your map pin above first."} Shoppers share their location at checkout so this can be checked.
+                        </span>
+                      </label>
+                    )}
+                  </div>
+                )}
+                {deliveryEnabled && deliveryReach === "COUNTIES" && (
                   <div className="space-y-2 rounded-md border border-border p-3">
                     <p className="text-sm font-medium">Which counties do you deliver to?</p>
                     <p className="text-xs text-secondary-500">

@@ -5,6 +5,7 @@ import {
   IsEmail,
   IsInt,
   IsIn,
+  IsNumber,
   IsOptional,
   IsString,
   IsUUID,
@@ -72,6 +73,36 @@ export class UpdateOnlineStoreDto {
   @MaxLength(40, { each: true })
   @IsOptional()
   deliveryCounties?: string[];
+
+  // The shopping centre or estate the shop is in ('' clears it).
+  @IsString()
+  @MaxLength(120)
+  @IsOptional()
+  locationArea?: string;
+
+  // The shop's map pin; null clears it. Checked to be inside Kenya in the service.
+  @IsNumber()
+  @Min(-90)
+  @Max(90)
+  @IsOptional()
+  latitude?: number | null;
+
+  @IsNumber()
+  @Min(-180)
+  @Max(180)
+  @IsOptional()
+  longitude?: number | null;
+
+  // How far it delivers: within deliveryRadiusKm of the pin, its counties, or anywhere in Kenya.
+  @IsIn(['COUNTIES', 'RADIUS', 'KENYA'])
+  @IsOptional()
+  deliveryReach?: 'COUNTIES' | 'RADIUS' | 'KENYA';
+
+  @IsInt()
+  @Min(1)
+  @Max(300)
+  @IsOptional()
+  deliveryRadiusKm?: number | null;
 }
 
 /** Connecting TUMA is its own request so credentials are verified with TUMA before anything is saved. */
