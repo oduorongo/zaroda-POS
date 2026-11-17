@@ -27,6 +27,34 @@ import { SchoolJwtPayload } from './school-auth';
 
 const TX_OPTIONS = { timeout: 30_000, maxWait: 10_000 };
 
+const SHORT_FORMS: Record<string, string> = {
+  sch: 'school',
+  schl: 'school',
+  sec: 'secondary',
+  secondry: 'secondary',
+  pri: 'primary',
+  prim: 'primary',
+  pry: 'primary',
+  acad: 'academy',
+  hs: 'high school',
+  sss: 'secondary school',
+  st: 'saint',
+};
+
+/** A school's name reduced so "St. Mary's Girls Sec. Sch." and "st marys girls secondary" count as the same school ("school" itself is ignored). */
+export function schoolNameKey(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/&/g, ' and ')
+    .replace(/['’`]/g, '')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+    .split(' ')
+    .flatMap((w) => (SHORT_FORMS[w] ?? w).split(' '))
+    .filter((w) => w && w !== 'the' && w !== 'school')
+    .join(' ');
+}
+
 /**
  * School sign-in: the portal's link name, the contact's phone number and the PIN the supplier gave them. Like the rider PIN
  * it is only safe because guesses are rationed: 5 wrong PINs lock that school's sign-in for 15 minutes. Unknown link, unknown
@@ -83,7 +111,14 @@ export class SchoolAuthService {
         },
         select: { status: true },
       });
-      if (existing) return existing.status;
+      if (existing) return { kind: 'phone' as const, status: existing.status };
+      // one join at a time per supplier, so two forms for the same school cannot both get in
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`school-join:${portal.organizationId}`}))`;
+      const key = schoolNameKey(name);
+      const twin = (
+        await tx.supplierSchool.findMany({ select: { name: true, status: true } })
+      ).find((s) => schoolNameKey(s.name) === key);
+      if (twin) return { kind: 'name' as const, status: twin.status, name: twin.name };
       await tx.supplierSchool.create({
         data: {
           organizationId: portal.organizationId,
@@ -101,13 +136,17 @@ export class SchoolAuthService {
       return null;
     }, TX_OPTIONS);
 
-    if (created === SchoolStatus.PENDING)
+    if (created?.kind === 'phone')
       throw new ConflictException(
-        `This phone number has already asked to join ${portal.displayName}. They will approve it soon.`,
+        created.status === SchoolStatus.PENDING
+          ? `This phone number has already asked to join ${portal.displayName}. They will approve it soon.`
+          : `This phone number is already registered with ${portal.displayName}. Sign in with it, or ask them for a new PIN.`,
       );
-    if (created)
+    if (created?.kind === 'name')
       throw new ConflictException(
-        `This phone number is already registered with ${portal.displayName}. Sign in with it, or ask them for a new PIN.`,
+        created.status === SchoolStatus.PENDING
+          ? `"${created.name}" has already asked to join ${portal.displayName} and is waiting for approval. There is no need to fill in the form again.`
+          : `"${created.name}" is already registered with ${portal.displayName}. Sign in with the phone number your school used, or ask ${portal.displayName} to change the contact or give you a new PIN.`,
       );
 
     void tenantContext.run(

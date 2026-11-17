@@ -4,7 +4,8 @@
 
 - A school supplier shares a joining link (`/schools/<slug>/join`, copy / WhatsApp / text / email on Schools). The school fills in its details and chooses its own PIN; it waits as PENDING (no sign-in, no orders) until the supplier approves or turns it down. The supplier is emailed; the school is texted/emailed on approval. "Stop new schools joining" switches the link off.
 - A school can join any number of suppliers with the same email and phone; each supplier keeps its own record, PIN and credit terms.
-- Migration 20270103100000_school_join_link (enum value SchoolStatus PENDING, school_portals.joinEnabled). No new tables. Test: scripts/e2e-school-join.js (24 checks).
+- The joining form refuses a school already registered (or waiting) with that supplier by phone or by name; names are compared ignoring case, punctuation, "the", "school" and short forms (Sec., Sch., Pri., St.).
+- Migration 20270103100000_school_join_link (enum value SchoolStatus PENDING, school_portals.joinEnabled). No new tables. Test: scripts/e2e-school-join.js (27 checks).
 
 ## Online shop for training (demo) shops; user guide (2026-11-17)
 
