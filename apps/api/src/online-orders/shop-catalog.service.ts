@@ -187,6 +187,8 @@ export class ShopCatalogService {
         if (!paymentsReady(store)) continue; // the gateway it chose must be fully set up
         await tx.$executeRaw`SELECT set_config('app.current_tenant', ${store.organizationId}, true)`;
         if (await hasOverdueCommission(tx)) continue;
+        // Sales team practice shops open from their own link for demos, but never appear where real shoppers browse.
+        if ((await tx.organization.findUnique({ where: { id: store.organizationId }, select: { isDemo: true } }))?.isDemo) continue;
         const [branch, products] = await Promise.all([
           tx.branch.findUnique({
             where: { id: store.fulfilmentBranchId! },
@@ -249,6 +251,8 @@ export class ShopCatalogService {
         if (!paymentsReady(store)) continue;
         await tx.$executeRaw`SELECT set_config('app.current_tenant', ${store.organizationId}, true)`;
         if (await hasOverdueCommission(tx)) continue;
+        // Sales team practice shops open from their own link for demos, but never appear where real shoppers browse.
+        if ((await tx.organization.findUnique({ where: { id: store.organizationId }, select: { isDemo: true } }))?.isDemo) continue;
         const result = await fn(tx, {
           organizationId: store.organizationId,
           slug: store.slug!,
