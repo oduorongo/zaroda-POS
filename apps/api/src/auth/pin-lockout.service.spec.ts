@@ -33,6 +33,12 @@ describe('PinLockoutService', () => {
     expect(service.getLockoutRemainingSeconds(terminalId, 'org-user-2')).toBeNull();
   });
 
+  it('locks the user out everywhere when guesses are spread over made-up terminal ids', () => {
+    for (let i = 0; i < 10; i++) service.recordFailure(`fake-terminal-${i}`, orgUserId);
+    expect(service.getLockoutRemainingSeconds('another-fake', orgUserId)).not.toBeNull();
+    expect(service.getLockoutRemainingSeconds(terminalId, 'org-user-2')).toBeNull();
+  });
+
   it('a success clears the failure history entirely', () => {
     for (let i = 0; i < 4; i++) service.recordFailure(terminalId, orgUserId);
     service.recordSuccess(terminalId, orgUserId);

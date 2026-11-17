@@ -232,7 +232,17 @@ export class BuyerAuthService {
    */
   private async riderPinHint(phone: string, pin: string, shopperHasPin: boolean): Promise<Error | null> {
     const rider = await this.prisma.rider.findUnique({ where: { phone } });
-    if (!rider?.pinHash || !verifyPin(pin, rider.pinHash, this.pepper)) return null;
+    // Checking the rider PIN here is a guess at it too: it obeys the rider's lock and counts against it, or this would be an unlimited PIN oracle.
+    if (!rider?.pinHash || (rider.pinLockedUntil && rider.pinLockedUntil > new Date())) return null;
+    if (!verifyPin(pin, rider.pinHash, this.pepper)) {
+      const failures = rider.pinFailCount + 1;
+      const lock = failures >= MAX_PIN_FAILURES;
+      await this.prisma.rider.update({
+        where: { id: rider.id },
+        data: { pinFailCount: lock ? 0 : failures, pinLockedUntil: lock ? new Date(Date.now() + PIN_LOCK_MS) : undefined },
+      });
+      return null;
+    }
     return new UnauthorizedException(
       shopperHasPin
         ? "That is the PIN of your rider account. This number also has a separate shopper account with its own PIN. Use your shopper PIN, or tap 'Forgot your PIN?' - the new PIN you choose there is set for both."
