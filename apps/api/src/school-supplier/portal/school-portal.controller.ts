@@ -17,6 +17,7 @@ import {
   ConfirmReceiptDto,
   RetentionRequestDto,
   DeclineQuoteDto,
+  SchoolJoinDto,
   SchoolLoginDto,
   StatementQueryDto,
   SubmitSchoolOrderDto,
@@ -38,6 +39,14 @@ export class SchoolAuthController {
   @Get('portal/:slug')
   portal(@Param('slug') slug: string) {
     return this.auth.portalInfo(slug);
+  }
+
+  /** A school asks to join this supplier from the joining link; the supplier approves it. */
+  @Public()
+  @Throttle(AUTH_THROTTLE)
+  @Post('join')
+  join(@Body() dto: SchoolJoinDto) {
+    return this.auth.join(dto);
   }
 
   @Public()

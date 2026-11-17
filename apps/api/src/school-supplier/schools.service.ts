@@ -5,13 +5,14 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Prisma, SupplierSchool } from '@prisma/client';
+import { Prisma, SchoolStatus, SupplierSchool } from '@prisma/client';
 import { TenantScopedPrismaService } from '../common/prisma/tenant-scoped-prisma.service';
 import { getTenantStore } from '../common/tenant/tenant-context';
 import { normalizeKenyanPhone } from '../online-orders/online-orders.util';
 import { generatePin, hashPin } from '../riders/rider-pin.util';
 import { CreateSchoolDto, UpdateSchoolDto } from './dto/school-supplier.dto';
 import { SchoolLedgerService } from './school-ledger.service';
+import { SchoolNotifierService } from './school-notifier.service';
 
 const clean = (v: string | undefined | null) =>
   v === undefined ? undefined : v?.trim() || null;
@@ -44,6 +45,7 @@ export class SchoolsService {
     private readonly tenantPrisma: TenantScopedPrismaService,
     private readonly ledger: SchoolLedgerService,
     private readonly config: ConfigService,
+    private readonly notifier: SchoolNotifierService,
   ) {}
 
   private pinHashFor(pin: string): string {
@@ -137,10 +139,11 @@ export class SchoolsService {
   }
 
   async update(id: string, dto: UpdateSchoolDto) {
+    let approved: { school: SupplierSchool; supplier: string; slug?: string } | null = null;
     try {
-      return await this.tenantPrisma.run(async (tx) => {
-        if (!(await tx.supplierSchool.findUnique({ where: { id } })))
-          throw new NotFoundException('School not found');
+      const view = await this.tenantPrisma.run(async (tx) => {
+        const before = await tx.supplierSchool.findUnique({ where: { id } });
+        if (!before) throw new NotFoundException('School not found');
         const school = await tx.supplierSchool.update({
           where: { id },
           data: {
@@ -161,11 +164,44 @@ export class SchoolsService {
             notes: clean(dto.notes),
           },
         });
+        if (before.status === SchoolStatus.PENDING && school.status === SchoolStatus.ACTIVE) {
+          const portal = await tx.schoolPortal.findUnique({ where: { organizationId: school.organizationId } });
+          const org = await tx.organization.findUnique({ where: { id: school.organizationId }, select: { name: true } });
+          approved = { school, supplier: portal?.displayName ?? org?.name ?? 'Your supplier', slug: portal?.slug };
+        }
         return toSchoolView(school);
       });
+      if (approved) void this.tellApproved(approved);
+      return view;
     } catch (e) {
       return this.duplicate(e);
     }
+  }
+
+  private async tellApproved({ school, supplier, slug }: { school: SupplierSchool; supplier: string; slug?: string }) {
+    const base = (this.config.get<string>('STOREFRONT_BASE_URL') ?? 'https://shop.zarodashop.com').replace(/\/+$/, '');
+    const url = slug ? `${base}/schools/${slug}` : undefined;
+    await this.notifier.notify(
+      { name: school.contactName ?? school.name, phone: school.phone, email: school.email },
+      supplier,
+      `${school.name} can now order from ${supplier}`,
+      `Your school is approved. Sign in${url ? ` at ${url}` : ''} with your phone number and the PIN you chose, and send your orders.`,
+      url ? { link: { label: 'Sign in and order', url } } : undefined,
+    );
+  }
+
+  /** Removes a join request the supplier does not want. A school already approved is suspended instead, never deleted. */
+  async declineJoin(id: string) {
+    return this.tenantPrisma.run(async (tx) => {
+      const school = await tx.supplierSchool.findUnique({ where: { id } });
+      if (!school) throw new NotFoundException('School not found');
+      if (school.status !== SchoolStatus.PENDING)
+        throw new BadRequestException(
+          'Only a school still asking to join can be turned down. Stop this school ordering instead.',
+        );
+      await tx.supplierSchool.delete({ where: { id } });
+      return { declined: true };
+    });
   }
 
   /** A new PIN (the old one stops working and any lock is cleared). Shown once. */

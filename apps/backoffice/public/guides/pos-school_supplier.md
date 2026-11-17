@@ -5,7 +5,11 @@ As a school supplier you sell to schools **on credit**: a school orders, you del
 The school never sees your back office. Each school gets its own **sign-in to your ordering page**, where it sees your school price list, places orders, follows deliveries and sees what it owes.
 
 ### The flow, step by step
-1. **Add the school** (Schools): its name, contact person, phone, email, **credit days** (how long it has to pay) and, if you like, a **credit limit**. Zaroda gives the school a **PIN**, shown once: share it with the school together with your **ordering link** (shown on Schools). A school you supply under a tender or contract is still added here first.
+1. **Add the school**, in one of two ways:
+   - **Send your joining link** (Schools → **Invite schools to join**: copy it, or share it on WhatsApp, by text or email). The school fills in its name, contact person, phone, email, county and address, and **chooses its own PIN**. You get an email, and the school appears under **Asking to join**. Use **Change** to set its credit days and limit, then **Approve** (the school is told it can sign in) or **Turn down**. A school cannot sign in or order until you approve it. **Stop new schools joining** switches the link off.
+   - **Add it yourself** (Schools): its name, contact person, phone, email, **credit days** (how long it has to pay) and, if you like, a **credit limit**. Zaroda gives the school a **PIN**, shown once: share it with the school together with your **ordering link** (shown on Schools).
+
+   A school that buys from several suppliers on Zaroda joins each one with the **same email and phone**: each supplier keeps its own account for the school, with its own PIN, prices and credit terms. A school you supply under a tender or contract is still added here first.
 2. **Put items on the school price list** (School price list): choose which products schools can order and, if it differs from your shop price, the **school price**. Prices are before VAT; the VAT comes from each product's tax class. Schools only see prices after they sign in.
 3. **The school orders**: it signs in with its phone and PIN, picks the items and quantities and gives its own **LPO number**. You and your managers get an alert and an email.
 4. **Confirm the order** (School orders → Waiting): check the LPO (tick **LPO received**), and confirm. You may lower a quantity you cannot supply. The **promised to others** column shows stock already promised to earlier orders.

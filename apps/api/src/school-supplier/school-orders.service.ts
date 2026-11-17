@@ -1134,6 +1134,7 @@ export class SchoolOrdersService {
     subject: string,
     message: string,
     detailHtml?: string,
+    page = { path: 'school-orders', label: 'Open School orders' },
   ) {
     const { organizationId } = getTenantStore();
     const { org, emails } = await this.tenantPrisma.run(async (tx) => {
@@ -1165,8 +1166,8 @@ export class SchoolOrdersService {
         detailHtml,
         link: base
           ? {
-              label: 'Open School orders',
-              url: `${base.replace(/\/+$/, '')}/school-orders`,
+              label: page.label,
+              url: `${base.replace(/\/+$/, '')}/${page.path}`,
             }
           : undefined,
       },

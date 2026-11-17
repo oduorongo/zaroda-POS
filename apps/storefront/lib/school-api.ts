@@ -108,7 +108,19 @@ export interface SchoolReceipt {
   receivedOn: string;
 }
 
-export const schoolPortalInfo = (slug: string) => call<{ displayName: string } | null>(`/school-auth/portal/${encodeURIComponent(slug)}`);
+export const schoolPortalInfo = (slug: string) => call<{ displayName: string; joinEnabled: boolean } | null>(`/school-auth/portal/${encodeURIComponent(slug)}`);
+export interface SchoolJoinForm {
+  name: string;
+  contactName: string;
+  phone: string;
+  email: string;
+  address?: string;
+  county?: string;
+  notes?: string;
+  pin: string;
+}
+export const schoolJoin = (slug: string, form: SchoolJoinForm) =>
+  call<{ supplierName: string; status: "PENDING" }>("/school-auth/join", { method: "POST", body: JSON.stringify({ slug, ...form }) });
 export const schoolLogin = (slug: string, phone: string, pin: string) =>
   call<{ accessToken: string; school: { id: string; name: string }; supplierName: string }>("/school-auth/login", { method: "POST", body: JSON.stringify({ slug, phone, pin }) });
 export const schoolMe = (token: string) => call<SchoolMe>("/school-portal/me", { token });

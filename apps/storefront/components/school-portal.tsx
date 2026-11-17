@@ -66,12 +66,14 @@ const METHOD: Record<string, string> = { CHEQUE: "Cheque", BANK_TRANSFER: "Bank 
 export default function SchoolPortal({ slug }: { slug: string }) {
   const [ready, setReady] = useState(false);
   const [supplierName, setSupplierName] = useState<string | null>(null);
+  const [canJoin, setCanJoin] = useState(false);
   const [token, setToken] = useState<string | null>(null);
 
   useEffect(() => {
     void (async () => {
       const info = await schoolPortalInfo(slug).catch(() => null);
       setSupplierName(info?.displayName ?? null);
+      setCanJoin(!!info?.joinEnabled);
       const saved = readToken(slug);
       if (saved) {
         try {
@@ -99,6 +101,7 @@ export default function SchoolPortal({ slug }: { slug: string }) {
       <SignIn
         slug={slug}
         supplierName={supplierName}
+        canJoin={canJoin}
         onSignedIn={(t) => {
           writeToken(slug, t);
           setToken(t);
@@ -118,7 +121,7 @@ export default function SchoolPortal({ slug }: { slug: string }) {
   );
 }
 
-function SignIn({ slug, supplierName, onSignedIn }: { slug: string; supplierName: string; onSignedIn: (token: string) => void }) {
+function SignIn({ slug, supplierName, canJoin, onSignedIn }: { slug: string; supplierName: string; canJoin: boolean; onSignedIn: (token: string) => void }) {
   const [phone, setPhone] = useState("");
   const [pin, setPin] = useState("");
   const [busy, setBusy] = useState(false);
@@ -160,6 +163,14 @@ function SignIn({ slug, supplierName, onSignedIn }: { slug: string; supplierName
         </button>
         <p className="text-center text-xs text-secondary-500">Lost your PIN? Ask {supplierName} for a new one.</p>
       </form>
+      {canJoin && (
+        <p className="text-center text-sm">
+          New school?{" "}
+          <Link href={`/schools/${slug}/join`} className="font-semibold text-primary-600 hover:underline">
+            Ask to join {supplierName}
+          </Link>
+        </p>
+      )}
     </div>
   );
 }

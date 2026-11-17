@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { apiGet, apiPatch, apiPost, apiPut, ApiError } from "../../lib/api";
+import { apiDelete, apiGet, apiPatch, apiPost, apiPut, ApiError } from "../../lib/api";
 import { getSession, clearSession, isBackofficeRole, type Session } from "../../lib/auth";
 import { Nav } from "../../components/nav";
 import { PageHeader } from "../../components/page-header";
@@ -20,8 +20,9 @@ interface School {
   creditDays: number;
   retentionPercent: number;
   retentionReleaseDays: number;
-  status: "ACTIVE" | "SUSPENDED";
+  status: "ACTIVE" | "SUSPENDED" | "PENDING";
   lastLoginAt: string | null;
+  createdAt: string;
   notes: string | null;
   owed: number;
   overdue: number;
@@ -32,6 +33,7 @@ interface Portal {
   slug: string;
   displayName: string;
   enabled: boolean;
+  joinEnabled: boolean;
 }
 interface Org {
   name: string;
@@ -203,13 +205,55 @@ export default function SchoolsPage() {
     }
   }
 
+  async function approve(s: School) {
+    if (!window.confirm(`Approve ${s.name}? They can sign in and order straight away, paying in ${s.creditDays} days with ${s.creditLimit === null ? "no credit limit" : `a limit of ${kes(s.creditLimit)}`}. Use "Change" first to set different terms.`)) return;
+    setError(null);
+    try {
+      await apiPatch(`/school-supplier/schools/${s.id}`, { status: "ACTIVE" });
+      setNotice(`${s.name} is approved. We told them they can sign in.`);
+      await load();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not approve that school.");
+    }
+  }
+
+  async function decline(s: School) {
+    if (!window.confirm(`Turn down ${s.name}? Their request is removed.`)) return;
+    setError(null);
+    try {
+      await apiDelete(`/school-supplier/schools/${s.id}/join-request`);
+      await load();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not turn that down.");
+    }
+  }
+
+  async function changePortal(change: Partial<Portal>) {
+    if (!portal) return;
+    try {
+      await apiPut("/school-supplier/portal", { slug: portal.slug, displayName: portal.displayName, enabled: portal.enabled, joinEnabled: portal.joinEnabled, ...change });
+      await load();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not change that.");
+    }
+  }
+
+  async function copyJoinLink(url: string) {
+    try {
+      await navigator.clipboard.writeText(url);
+      setNotice("Joining link copied. Paste it in a message to the school.");
+    } catch {
+      setNotice(`Joining link: ${url}`);
+    }
+  }
+
   async function savePortal(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
     setError(null);
     setNotice(null);
     try {
-      await apiPut("/school-supplier/portal", { slug: slug.trim().toLowerCase(), displayName: displayName.trim(), enabled: portal?.enabled ?? true });
+      await apiPut("/school-supplier/portal", { slug: slug.trim().toLowerCase(), displayName: displayName.trim(), enabled: portal?.enabled ?? true, joinEnabled: portal?.joinEnabled ?? true });
       setNotice("Ordering link saved.");
       await load();
     } catch (err) {
@@ -237,6 +281,10 @@ export default function SchoolsPage() {
 
   if (!session) return null;
   const link = portal ? `${STOREFRONT.replace(/\/+$/, "")}/schools/${portal.slug}` : null;
+  const joinLink = link && portal?.enabled && portal.joinEnabled ? `${link}/join` : null;
+  const waiting = schools?.filter((s) => s.status === "PENDING") ?? [];
+  const customers = schools?.filter((s) => s.status !== "PENDING") ?? null;
+  const joinMessage = joinLink && portal ? `${portal.displayName} invites your school to order supplies on account. Fill in your school's details here: ${joinLink}` : "";
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -265,6 +313,72 @@ export default function SchoolsPage() {
             <p className="mt-2 text-xs text-amber-200/80">This PIN is shown only now. If it is lost, use &quot;New PIN&quot; on the school.</p>
             <button onClick={() => setPinNotice(null)} className="mt-2 text-xs text-primary-600 hover:underline">Done - hide this</button>
           </div>
+        )}
+
+        {canEdit && portal && (
+          <section className="space-y-3 rounded-lg border border-border bg-surface p-4">
+            <h2 className="font-semibold">Invite schools to join</h2>
+            {joinLink ? (
+              <>
+                <p className="text-sm text-secondary-500">
+                  Send this link to schools. They fill in their details and choose their own PIN, then wait for you to approve them here. A school that already buys from other suppliers on Zaroda can join you with the same email and phone.
+                </p>
+                <p className="select-all break-all rounded-md bg-background p-2 font-mono text-sm">{joinLink}</p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button type="button" onClick={() => void copyJoinLink(joinLink)} className="rounded-md bg-primary-600 px-4 py-2 text-sm font-semibold text-white hover:bg-primary-700">
+                    Copy link
+                  </button>
+                  <a href={`https://wa.me/?text=${encodeURIComponent(joinMessage)}`} target="_blank" rel="noreferrer" className="rounded-md border border-border px-4 py-2 text-sm hover:bg-secondary-500/10">
+                    Share on WhatsApp
+                  </a>
+                  <a href={`sms:?&body=${encodeURIComponent(joinMessage)}`} className="rounded-md border border-border px-4 py-2 text-sm hover:bg-secondary-500/10">
+                    Text it
+                  </a>
+                  <a href={`mailto:?subject=${encodeURIComponent(`Order from ${portal.displayName} on account`)}&body=${encodeURIComponent(joinMessage)}`} className="rounded-md border border-border px-4 py-2 text-sm hover:bg-secondary-500/10">
+                    Email it
+                  </a>
+                  <button type="button" onClick={() => void changePortal({ joinEnabled: false })} className="text-sm text-error-600 hover:underline">
+                    Stop new schools joining
+                  </button>
+                </div>
+              </>
+            ) : (
+              <div className="flex flex-wrap items-center gap-3 text-sm text-secondary-500">
+                <span>{!portal.enabled ? "Switch ordering on (below) to use the joining link." : "The joining link is switched off."}</span>
+                {portal.enabled && (
+                  <button type="button" onClick={() => void changePortal({ joinEnabled: true })} className="text-primary-600 hover:underline">
+                    Switch the joining link on
+                  </button>
+                )}
+              </div>
+            )}
+          </section>
+        )}
+
+        {waiting.length > 0 && (
+          <section className="space-y-2 rounded-lg border border-amber-500/50 bg-surface p-4">
+            <h2 className="font-semibold">Asking to join ({waiting.length})</h2>
+            <p className="text-xs text-secondary-500">Check each school, set its credit terms with &quot;Change&quot; if you like, then approve it. They cannot sign in or order until you do.</p>
+            <ul className="divide-y divide-border">
+              {waiting.map((s) => (
+                <li key={s.id} className="space-y-1 py-2 text-sm">
+                  <p className="font-semibold">{s.name}</p>
+                  <p className="text-xs text-secondary-500">
+                    {[s.contactName, s.phone.replace(/^254/, "0"), s.email, s.county, s.address].filter(Boolean).join(" · ")}
+                  </p>
+                  {s.notes && <p className="text-xs text-secondary-500">{s.notes}</p>}
+                  <p className="text-xs text-secondary-500">Asked on {new Date(s.createdAt).toLocaleDateString("en-KE")} · pays in {s.creditDays} days{s.creditLimit !== null ? ` · limit ${kes(s.creditLimit)}` : " · no limit set"}</p>
+                  {canEdit && (
+                    <div className="flex flex-wrap gap-4 pt-1 text-xs">
+                      <button onClick={() => void approve(s)} className="font-semibold text-primary-600 hover:underline">Approve</button>
+                      <button onClick={() => startEdit(s)} className="text-primary-600 hover:underline">Change</button>
+                      <button onClick={() => void decline(s)} className="text-error-600 hover:underline">Turn down</button>
+                    </div>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </section>
         )}
 
         {canEdit && (
@@ -326,9 +440,9 @@ export default function SchoolsPage() {
 
         <section className="space-y-2">
           {!schools && !error && <p className="text-sm text-secondary-500">Loading...</p>}
-          {schools && schools.length === 0 && <p className="rounded-lg border border-border bg-surface p-4 text-sm text-secondary-500">No schools yet. Add your first one above.</p>}
+          {customers && customers.length === 0 && <p className="rounded-lg border border-border bg-surface p-4 text-sm text-secondary-500">No schools yet. Add your first one above, or send schools your joining link.</p>}
           <ul className="divide-y divide-border rounded-lg border border-border bg-surface">
-            {schools?.map((s) => (
+            {customers?.map((s) => (
               <li key={s.id} className="space-y-2 p-3 text-sm">
                 <div className="flex flex-wrap items-start justify-between gap-2">
                   <div>
@@ -388,14 +502,7 @@ export default function SchoolsPage() {
                 {portal && (
                   <button
                     type="button"
-                    onClick={async () => {
-                      try {
-                        await apiPut("/school-supplier/portal", { slug: portal.slug, displayName: portal.displayName, enabled: !portal.enabled });
-                        await load();
-                      } catch (err) {
-                        setError(err instanceof ApiError ? err.message : "Could not change that.");
-                      }
-                    }}
+                    onClick={() => void changePortal({ enabled: !portal.enabled })}
                     className="text-sm text-primary-600 hover:underline"
                   >
                     {portal.enabled ? "Switch ordering off" : "Switch ordering on"}
