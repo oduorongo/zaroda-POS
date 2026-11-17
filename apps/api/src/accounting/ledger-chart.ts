@@ -24,7 +24,7 @@ export const SYSTEM_ACCOUNTS = [
   { key: 'SHIF', code: '2130', name: 'SHIF owed', type: 'LIABILITY' },
   { key: 'HOUSING_LEVY', code: '2140', name: 'Housing levy owed', type: 'LIABILITY' },
   { key: 'TIPS_PAYABLE', code: '2150', name: 'Tips owed to staff', type: 'LIABILITY' },
-  { key: 'CUSTOMER_DEPOSITS', code: '2200', name: 'Customer deposits (layaways)', type: 'LIABILITY' },
+  { key: 'CUSTOMER_DEPOSITS', code: '2200', name: 'Customer deposits (lipa polepole)', type: 'LIABILITY' },
   { key: 'TENANT_DEPOSITS', code: '2210', name: 'Tenant deposits held', type: 'LIABILITY' },
   { key: 'CAPITAL', code: '3000', name: "Owner's capital", type: 'EQUITY' },
   { key: 'DRAWINGS', code: '3010', name: "Owner's drawings", type: 'EQUITY' },

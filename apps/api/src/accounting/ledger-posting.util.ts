@@ -248,7 +248,7 @@ export function wasteDraft(w: { date: string; branchId?: string | null; label: s
 
 /** A layaway instalment: the money is the customer's until the goods are collected. */
 export function layawayPaymentDraft(l: { date: string; branchId?: string | null; reference: string; amountCents: number; method: string }): Draft {
-  return { date: l.date, branchId: l.branchId, memo: `Layaway payment (${l.reference})`, lines: tidy([dr(saleMethodAccount(l.method), l.amountCents), cr('CUSTOMER_DEPOSITS', l.amountCents)]) };
+  return { date: l.date, branchId: l.branchId, memo: `Lipa polepole payment (${l.reference})`, lines: tidy([dr(saleMethodAccount(l.method), l.amountCents), cr('CUSTOMER_DEPOSITS', l.amountCents)]) };
 }
 
 /** A layaway collected: the deposits become a sale, and the goods leave stock. */
@@ -256,7 +256,7 @@ export function layawayCompleteDraft(l: { date: string; branchId?: string | null
   const tax = Math.min(l.taxCents, l.totalCents);
   const lines = [dr('CUSTOMER_DEPOSITS', l.totalCents), cr('SALES', l.totalCents - tax), cr('VAT_OUTPUT', tax)];
   if (l.costCents > 0) lines.push(dr('COGS', l.costCents), cr('INVENTORY', l.costCents));
-  return { date: l.date, branchId: l.branchId, memo: `Layaway collected (${l.reference})`, lines: tidy(lines) };
+  return { date: l.date, branchId: l.branchId, memo: `Lipa polepole collected (${l.reference})`, lines: tidy(lines) };
 }
 
 /** A hotel guest paying (or being paid back) at the desk, before the stay is settled. */
