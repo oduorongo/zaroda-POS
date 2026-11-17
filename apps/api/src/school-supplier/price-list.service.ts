@@ -88,6 +88,7 @@ export class PriceListService {
           slug: portal.slug,
           displayName: portal.displayName,
           enabled: portal.enabled,
+          joinEnabled: portal.joinEnabled,
         }
       : null;
   }
@@ -108,11 +109,13 @@ export class PriceListService {
             slug,
             displayName: dto.displayName.trim(),
             enabled: dto.enabled ?? true,
+            joinEnabled: dto.joinEnabled ?? true,
           },
           update: {
             slug,
             displayName: dto.displayName.trim(),
             enabled: dto.enabled,
+            joinEnabled: dto.joinEnabled,
           },
         }),
       );
@@ -120,6 +123,7 @@ export class PriceListService {
         slug: portal.slug,
         displayName: portal.displayName,
         enabled: portal.enabled,
+        joinEnabled: portal.joinEnabled,
       };
     } catch (e) {
       if (

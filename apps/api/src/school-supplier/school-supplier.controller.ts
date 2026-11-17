@@ -103,6 +103,13 @@ export class SchoolSupplierController {
     return this.schools.update(id, dto);
   }
 
+  /** Turns down a school that asked to join (only while it is still waiting). */
+  @Roles(Role.MANAGER, Role.OWNER)
+  @Delete('schools/:id/join-request')
+  declineJoin(@Param('id', ParseUUIDPipe) id: string) {
+    return this.schools.declineJoin(id);
+  }
+
   @Roles(Role.MANAGER, Role.OWNER)
   @Post('schools/:id/reset-pin')
   @HttpCode(200)

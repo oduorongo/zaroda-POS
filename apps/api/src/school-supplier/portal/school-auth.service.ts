@@ -1,21 +1,28 @@
 import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
   HttpException,
   HttpStatus,
   Injectable,
+  NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
-import { SchoolStatus } from '@prisma/client';
+import { Role, SchoolStatus } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { tenantContext } from '../../common/tenant/tenant-context';
 import { normalizeKenyanPhone } from '../../online-orders/online-orders.util';
 import { normalizeSlug } from '../../online-store/online-store.constants';
 import {
+  hashPin,
   MAX_PIN_FAILURES,
   PIN_LOCK_MS,
   verifyPin,
 } from '../../riders/rider-pin.util';
-import { SchoolLoginDto } from '../dto/school-supplier.dto';
+import { SchoolJoinDto, SchoolLoginDto } from '../dto/school-supplier.dto';
+import { SchoolOrdersService } from '../school-orders.service';
 import { SchoolJwtPayload } from './school-auth';
 
 const TX_OPTIONS = { timeout: 30_000, maxWait: 10_000 };
@@ -31,6 +38,7 @@ export class SchoolAuthService {
     private readonly prisma: PrismaService,
     private readonly jwt: JwtService,
     private readonly config: ConfigService,
+    private readonly orders: SchoolOrdersService,
   ) {}
 
   /** The business behind a portal link, for the sign-in page's heading. Public. */
@@ -38,7 +46,87 @@ export class SchoolAuthService {
     const slug = normalizeSlug(rawSlug);
     if (!slug) return null;
     const portal = await this.findPortal(slug);
-    return portal ? { displayName: portal.displayName } : null;
+    return portal
+      ? { displayName: portal.displayName, joinEnabled: portal.joinEnabled }
+      : null;
+  }
+
+  /**
+   * A school asks to join this supplier from the joining link. It waits as PENDING (no sign-in, no orders) until the
+   * supplier approves it and sets its credit terms. Each supplier keeps its own record, so the same school, email and
+   * phone can join any number of suppliers.
+   */
+  async join(dto: SchoolJoinDto) {
+    const slug = normalizeSlug(dto.slug);
+    const portal = slug ? await this.findPortal(slug) : null;
+    if (!portal || !portal.joinEnabled)
+      throw new NotFoundException(
+        'This joining link is not working. Ask your supplier for a new one.',
+      );
+    const phone = normalizeKenyanPhone(dto.phone);
+    if (!phone)
+      throw new BadRequestException(
+        'Enter a valid Kenyan mobile number, e.g. 0712 345 678',
+      );
+    const pepper = this.config.getOrThrow<string>('BUYER_JWT_SECRET');
+    const name = dto.name.trim();
+    const email = dto.email.trim().toLowerCase();
+
+    const created = await this.prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT set_config('app.current_tenant', ${portal.organizationId}, true)`;
+      const existing = await tx.supplierSchool.findUnique({
+        where: {
+          organizationId_phone: {
+            organizationId: portal.organizationId,
+            phone,
+          },
+        },
+        select: { status: true },
+      });
+      if (existing) return existing.status;
+      await tx.supplierSchool.create({
+        data: {
+          organizationId: portal.organizationId,
+          name,
+          contactName: dto.contactName.trim(),
+          phone,
+          email,
+          address: dto.address?.trim() || null,
+          county: dto.county?.trim() || null,
+          notes: dto.notes?.trim() ? `From the joining form: ${dto.notes.trim()}` : null,
+          status: SchoolStatus.PENDING,
+          pinHash: hashPin(dto.pin, pepper),
+        },
+      });
+      return null;
+    }, TX_OPTIONS);
+
+    if (created === SchoolStatus.PENDING)
+      throw new ConflictException(
+        `This phone number has already asked to join ${portal.displayName}. They will approve it soon.`,
+      );
+    if (created)
+      throw new ConflictException(
+        `This phone number is already registered with ${portal.displayName}. Sign in with it, or ask them for a new PIN.`,
+      );
+
+    void tenantContext.run(
+      {
+        organizationId: portal.organizationId,
+        orgUserId: 'school-join',
+        role: Role.CASHIER,
+      },
+      () =>
+        this.orders
+          .tellStaff(
+            `New school asking to join: ${name}`,
+            `${name} (${dto.contactName.trim()}, ${dto.phone.trim()}, ${email}) filled in your school joining form. Open Schools to approve it and set its credit terms.`,
+            undefined,
+            { path: 'schools', label: 'Open Schools' },
+          )
+          .catch(() => undefined),
+    );
+    return { supplierName: portal.displayName, status: 'PENDING' as const };
   }
 
   private findPortal(slug: string) {
@@ -69,7 +157,7 @@ export class SchoolAuthService {
           },
         },
       });
-      if (!school || school.status !== SchoolStatus.ACTIVE)
+      if (!school || school.status === SchoolStatus.SUSPENDED)
         return { kind: 'invalid' as const };
       if (school.pinLockedUntil && school.pinLockedUntil > new Date())
         return { kind: 'locked' as const };
@@ -86,6 +174,9 @@ export class SchoolAuthService {
         });
         return { kind: lock ? ('locked' as const) : ('invalid' as const) };
       }
+      // only someone who knows the PIN learns the request is still waiting
+      if (school.status === SchoolStatus.PENDING)
+        return { kind: 'pending' as const };
       await tx.supplierSchool.update({
         where: { id: school.id },
         data: {
@@ -104,6 +195,10 @@ export class SchoolAuthService {
       );
     }
     if (outcome.kind === 'invalid') throw invalid;
+    if (outcome.kind === 'pending')
+      throw new ForbiddenException(
+        `${portal.displayName} has not approved your school yet. You can sign in as soon as they do.`,
+      );
 
     const payload: SchoolJwtPayload = {
       sub: outcome.school.id,

@@ -199,6 +199,10 @@ export class SavePortalDto {
   @IsBoolean()
   @IsOptional()
   enabled?: boolean;
+
+  @IsBoolean()
+  @IsOptional()
+  joinEnabled?: boolean;
 }
 
 // ── Orders, from the school's side and the supplier's ─────────────────────
@@ -930,6 +934,49 @@ export class SchoolLoginDto {
   phone!: string;
 
   @Matches(/^\d{4,6}$/, { message: 'Your PIN is 4 to 6 digits' })
+  pin!: string;
+}
+
+/** A school asking to join a supplier through the supplier's joining link. It chooses its own PIN. */
+export class SchoolJoinDto {
+  @IsString()
+  @MaxLength(60)
+  slug!: string;
+
+  @IsString()
+  @MinLength(2)
+  @MaxLength(120)
+  name!: string;
+
+  @IsString()
+  @MinLength(2)
+  @MaxLength(100)
+  contactName!: string;
+
+  @IsString()
+  @MaxLength(20, { message: PHONE_MESSAGE })
+  phone!: string;
+
+  @IsEmail({}, { message: 'Enter a valid email address' })
+  @MaxLength(200)
+  email!: string;
+
+  @IsString()
+  @IsOptional()
+  @MaxLength(300)
+  address?: string;
+
+  @IsString()
+  @IsOptional()
+  @MaxLength(40)
+  county?: string;
+
+  @IsString()
+  @IsOptional()
+  @MaxLength(500)
+  notes?: string;
+
+  @Matches(/^\d{4,6}$/, { message: 'Choose a PIN of 4 to 6 digits' })
   pin!: string;
 }
 

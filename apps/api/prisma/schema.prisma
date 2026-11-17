@@ -4271,6 +4271,8 @@ model RentalTenantOtp {
 enum SchoolStatus {
   ACTIVE
   SUSPENDED
+  /// Asked to join through the supplier's joining link; cannot sign in until the supplier approves.
+  PENDING
 }
 
 enum SchoolOrderStatus {
@@ -4635,6 +4637,8 @@ model SchoolPortal {
   slug           String   @unique
   displayName    String
   enabled        Boolean  @default(true)
+  /// Schools may ask to join through /schools/<slug>/join; the supplier still approves each one.
+  joinEnabled    Boolean  @default(true)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
