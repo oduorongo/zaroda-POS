@@ -1,11 +1,26 @@
 import { BadRequestException } from '@nestjs/common';
 import { signInUrl, trainingEmail, TRAINING_EMAIL_DOMAIN } from './training-accounts.service';
-import { TRAINING_KITS, TRAINING_TYPES } from './training-kits';
+import { TRAINING_KITS, TRAINING_TYPES, UNIFORM_RECIPES, UNIFORM_SETS } from './training-kits';
 import { TrainingTypePipe } from './training-type.pipe';
 
 describe('training accounts', () => {
   it('covers each offered business type once (pharmacy hidden)', () => {
-    expect(TRAINING_TYPES).toEqual(['RETAIL', 'RESTAURANT','SALON', 'HOTEL', 'SCHOOL_SUPPLIER', 'RENTAL', 'CONSTRUCTION']);
+    expect(TRAINING_TYPES).toEqual(['RETAIL', 'RESTAURANT','SALON', 'HOTEL', 'SCHOOL_SUPPLIER', 'UNIFORM_MAKER', 'RENTAL', 'CONSTRUCTION']);
+  });
+
+  it('the uniform kit names only products it has, and a set is never stocked or sold at random', () => {
+    const kit = TRAINING_KITS.find((k) => k.industryType === 'UNIFORM_MAKER')!;
+    const has = new Set(kit.products.map((p) => p.name));
+    for (const [piece, r] of Object.entries(UNIFORM_RECIPES)) {
+      expect(has.has(piece)).toBe(true);
+      for (const [m] of r.uses) expect(has.has(m)).toBe(true);
+    }
+    for (const [set, parts] of Object.entries(UNIFORM_SETS)) {
+      const s = kit.products.find((p) => p.name === set)!;
+      expect(s.stock).toBe(0);
+      expect(s.notSold).toBe(true);
+      for (const [piece] of parts) expect(has.has(piece)).toBe(true);
+    }
   });
 
   it('gives each kit products with a price above cost and customers', () => {

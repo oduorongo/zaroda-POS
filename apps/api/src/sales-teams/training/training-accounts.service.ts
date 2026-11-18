@@ -6,7 +6,7 @@ import { PrismaService } from '../../common/prisma/prisma.service';
 import { generateTempPassword } from '../../common/crypto/temp-password';
 import { ConSetupService } from '../../construction/common/con-setup.service';
 import { FREE_PLAN_UNTIL, needsDeviceSubscription } from '../../platform-admin/subscriptions.util';
-import { CONSTRUCTION_KIT, Kit, kitLabel, RENTAL_KIT, TRAINING_KITS, TRAINING_TYPES } from './training-kits';
+import { CONSTRUCTION_KIT, Kit, kitLabel, RENTAL_KIT, TRAINING_KITS, TRAINING_TYPES, UNIFORM_RECIPES, UNIFORM_SETS } from './training-kits';
 
 type Tx = Prisma.TransactionClient;
 const DAY = 86_400_000;
@@ -143,7 +143,8 @@ export class TrainingAccountsService {
       // The books start before the sample sales, or the accounts would post none of them (they start on the day first opened).
       await tx.ledgerSettings.create({ data: { organizationId, startDate: startOfDay(-SALE_DAYS - 1) } });
 
-      if (kit) await this.seedShop(tx, organizationId, branch.id, terminal.id, owner.id, kit);
+      const items = kit ? await this.seedShop(tx, organizationId, branch.id, terminal.id, owner.id, kit) : new Map<string, string>();
+      if (industryType === 'UNIFORM_MAKER') await this.seedUniforms(tx, organizationId, branch.id, items);
       if (industryType === 'RESTAURANT') await this.seedRestaurant(tx, organizationId, branch.id);
       if (industryType === 'HOTEL') await this.seedHotel(tx, organizationId, branch.id);
       if (industryType === 'SALON') await tx.salonResource.createMany({ data: ['Chair 1 - Esther', 'Chair 2 - Wanjiku', 'Nail station'].map((name) => ({ organizationId, branchId: branch.id, name })) });
@@ -162,8 +163,17 @@ export class TrainingAccountsService {
     const items = kit.products.map((x, i) => ({ ...x, productId: randomUUID(), variantId: randomUUID(), sku: `TRN-${String(i + 1).padStart(3, '0')}`, sold: 0 }));
     await tx.product.createMany({ data: items.map((x) => ({ id: x.productId, organizationId, categoryId: catIds.get(x.category), name: x.name, baseUnit: x.unit ?? 'each' })) });
     await tx.productVariant.createMany({
-      data: items.map((x) => ({ id: x.variantId, productId: x.productId, sku: x.sku, price: x.price, cost: x.cost || null, ...(x.schoolPrice ? { onSchoolList: true, schoolPrice: x.schoolPrice } : {}) })),
+      data: items.map((x) => ({
+        id: x.variantId,
+        productId: x.productId,
+        sku: x.sku,
+        price: x.price,
+        cost: x.cost || null,
+        ...(x.quantityMode ? { quantityMode: x.quantityMode } : {}),
+        ...(x.schoolPrice ? { onSchoolList: true, schoolPrice: x.schoolPrice } : {}),
+      })),
     });
+    const sellable = items.filter((x) => !x.notSold);
 
     const customerIds = kit.customers.map(() => randomUUID());
     await tx.customer.createMany({ data: kit.customers.map((name, i) => ({ id: customerIds[i], organizationId, name })) });
@@ -183,9 +193,9 @@ export class TrainingAccountsService {
         const at = new Date(day.getTime() + between(5 * 60, 16 * 60) * 60_000);
         let total = 0;
         const chosen = new Set<number>();
-        for (let n = between(1, 3); n > 0; n--) chosen.add(randomInt(items.length));
+        for (let n = between(1, 3); n > 0; n--) chosen.add(randomInt(sellable.length));
         for (const i of chosen) {
-          const it = items[i];
+          const it = sellable[i];
           const qty = it.price >= 2000 ? 1 : between(1, 3);
           it.sold += qty;
           total += qty * it.price;
@@ -198,13 +208,88 @@ export class TrainingAccountsService {
     }
 
     const opening = startOfDay(-SALE_DAYS - 1);
-    moves.unshift(...items.map((it) => ({ branchId, variantId: it.variantId, type: 'RECEIPT' as const, quantityDelta: it.stock + it.sold, unitCost: it.cost || null, createdAt: opening })));
-    await tx.inventoryItem.createMany({ data: items.map((it) => ({ branchId, variantId: it.variantId, quantity: it.stock, lowStockThreshold: Math.max(2, Math.round(it.stock / 8)) })) });
+    const stocked = items.filter((it) => it.stock + it.sold > 0);
+    moves.unshift(...stocked.map((it) => ({ branchId, variantId: it.variantId, type: 'RECEIPT' as const, quantityDelta: it.stock + it.sold, unitCost: it.cost || null, createdAt: opening })));
+    await tx.inventoryItem.createMany({ data: stocked.map((it) => ({ branchId, variantId: it.variantId, quantity: it.stock, lowStockThreshold: Math.max(2, Math.round(it.stock / 8)) })) });
     await tx.cashierSession.createMany({ data: sessions });
     await tx.sale.createMany({ data: sales });
     await tx.saleLineItem.createMany({ data: lines });
     await tx.salePayment.createMany({ data: payments });
     await tx.inventoryTransaction.createMany({ data: moves });
+    return new Map(items.map((it) => [it.name, it.variantId]));
+  }
+
+  /**
+   * A uniform maker's workshop: each piece's materials and tailor rate, a set made of pieces, two tailors, one finished job
+   * (with a reject) partly paid and one job still with the tailor. Stock moves and costs match what the real screens do.
+   */
+  private async seedUniforms(tx: Tx, organizationId: string, branchId: string, ids: Map<string, string>) {
+    const id = (name: string) => {
+      const v = ids.get(name);
+      if (!v) throw new Error(`Uniform kit is missing ${name}`);
+      return v;
+    };
+    const kit = TRAINING_KITS.find((k) => k.industryType === 'UNIFORM_MAKER')!;
+    const costOf = (name: string) => kit.products.find((x) => x.name === name)?.cost ?? 0;
+    for (const [piece, r] of Object.entries(UNIFORM_RECIPES)) {
+      await tx.recipeIngredient.createMany({ data: r.uses.map(([m, qty]) => ({ variantId: id(piece), ingredientVariantId: id(m), quantity: qty })) });
+      await tx.productVariant.update({ where: { id: id(piece) }, data: { madeAhead: true, tailorRate: r.rate } });
+    }
+    for (const [set, parts] of Object.entries(UNIFORM_SETS)) {
+      await tx.recipeIngredient.createMany({ data: parts.map(([piece, qty]) => ({ variantId: id(set), ingredientVariantId: id(piece), quantity: qty })) });
+    }
+
+    // Made-up people get no phone numbers, so no text can ever reach a real one.
+    const akinyi = await tx.tailor.create({ data: { organizationId, name: 'Akinyi Odera', notes: 'Shirts, works in the workshop' } });
+    const otieno = await tx.tailor.create({ data: { organizationId, name: 'Otieno Ouma', notes: 'Shorts and trousers, works from home' } });
+    const year = startOfDay(0).getUTCFullYear();
+    const jobs = [
+      { tailorId: akinyi.id, piece: 'School shirt (white) - size 12', quantity: 40, givenOn: -10, handIns: [[-7, 30, 0], [-4, 8, 2]] as [number, number, number][], notes: 'For Kisumu Boys Primary' },
+      { tailorId: otieno.id, piece: 'School shorts (grey) - size 12', quantity: 30, givenOn: -5, handIns: [[-2, 10, 0]] as [number, number, number][], notes: null },
+    ];
+    let n = 0;
+    for (const j of jobs) {
+      n++;
+      const r = UNIFORM_RECIPES[j.piece];
+      const materials = r.uses.map(([m, qty]) => ({ variantId: id(m), quantity: Math.round(qty * j.quantity * 1000) / 1000, unitCost: costOf(m) }));
+      const materialsCost = Math.round(materials.reduce((t, m) => t + m.quantity * m.unitCost, 0) * 100) / 100;
+      const unitCost = Math.round((materialsCost / j.quantity + r.rate) * 100) / 100;
+      const good = j.handIns.reduce((t, h) => t + h[1], 0);
+      const rejected = j.handIns.reduce((t, h) => t + h[2], 0);
+      const done = good + rejected >= j.quantity;
+      const job = await tx.tailorJob.create({
+        data: {
+          organizationId,
+          jobNumber: `TJ-${year}-${String(n).padStart(4, '0')}`,
+          branchId,
+          tailorId: j.tailorId,
+          variantId: id(j.piece),
+          quantity: j.quantity,
+          ratePerPiece: r.rate,
+          materialsCost,
+          quantityGood: good,
+          quantityRejected: rejected,
+          status: done ? 'DONE' : 'OPEN',
+          dueDate: startOfDay(j.givenOn + 10),
+          notes: j.notes,
+          createdByName: kit.ownerName,
+          createdAt: startOfDay(j.givenOn),
+          closedAt: done ? startOfDay(j.handIns[j.handIns.length - 1][0]) : null,
+          materials: { create: materials.map((m) => ({ organizationId, ...m })) },
+        },
+      });
+      for (const m of materials) {
+        await tx.inventoryItem.update({ where: { branchId_variantId: { branchId, variantId: m.variantId } }, data: { quantity: { decrement: m.quantity } } });
+        await tx.inventoryTransaction.create({ data: { branchId, variantId: m.variantId, type: 'TAILORING', quantityDelta: -m.quantity, referenceId: job.id, createdAt: startOfDay(j.givenOn) } });
+      }
+      for (const [day, g, rej] of j.handIns) {
+        await tx.tailorHandIn.create({ data: { organizationId, jobId: job.id, goodQty: g, rejectedQty: rej, labourAmount: g * r.rate, unitCost, receivedByName: kit.ownerName, createdAt: startOfDay(day) } });
+        await tx.inventoryItem.update({ where: { branchId_variantId: { branchId, variantId: id(j.piece) } }, data: { quantity: { increment: g } } });
+        await tx.inventoryTransaction.create({ data: { branchId, variantId: id(j.piece), type: 'TAILORING', quantityDelta: g, referenceId: job.id, createdAt: startOfDay(day) } });
+      }
+    }
+    await tx.$executeRaw`INSERT INTO document_counters ("organizationId", "kind", "year", "last") VALUES (${organizationId}, 'TJ', ${year}, ${n})`;
+    await tx.tailorPayment.create({ data: { organizationId, tailorId: akinyi.id, amount: 2000, method: 'MPESA', reference: 'SKD4TRAIN1', paidOn: startOfDay(-3), recordedByName: kit.ownerName } });
   }
 
   private async seedRestaurant(tx: Tx, organizationId: string, branchId: string) {

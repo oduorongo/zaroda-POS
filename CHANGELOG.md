@@ -7,6 +7,7 @@
 - Books: work handed in posts Stock / Owed to tailors (new account 2160); payments post Owed to tailors / cash, M-Pesa or bank; a voided payment is reversed.
 - "Made in advance" (`madeAhead`) on items: the recipe is then a bill of materials used when the item is made, and a sale takes the item itself. Recipes on everything else are used at sale as before. Sets are items whose recipe is finished pieces: the till, the online shop and school deliveries take the pieces (and a delivered set is costed from them; the order screen shows how many complete sets the pieces make). Items made by production orders are marked made in advance too, which stops a sale of a finished good also taking its raw materials.
 - Fix: school order, delivery note, invoice, credit note, receipt, quote and contract numbers were unique across ALL businesses while each business numbers from 0001, so a second school supplier's first document failed. They are now unique per business.
+- Sales team training businesses gain "Vazi Bora Uniforms": materials, shirts and shorts by size with their materials and tailor rates, a full set, two tailors (a finished job with a reject, partly paid; a job still open), and two weeks of till sales. Teams get it by pressing "Create training accounts" again.
 - Migrations 20270104100000_uniform_maker (5 new tables, enum values, variant columns) and 20270104110000_school_numbers_per_business; run `prisma migrate deploy` then `apply-rls` BEFORE merging. Test: scripts/e2e-uniform-maker.js (62 checks).
 
 ## School joining link (2026-11-17)

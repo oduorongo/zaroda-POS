@@ -8,6 +8,10 @@ export interface KitProduct {
   stock: number;
   unit?: string;
   schoolPrice?: number;
+  /** Sold in decimals (fabric by the metre). */
+  quantityMode?: 'WEIGHT';
+  /** Left out of the sample till sales (materials, and sets, which are sold from their pieces). */
+  notSold?: boolean;
 }
 
 export interface Kit {
@@ -155,7 +159,44 @@ export const TRAINING_KITS: Kit[] = [
     ],
     customers: ['Uriri Day Secondary School', 'Rongo Girls High School', 'Awendo Mixed Primary', 'Migori Boys High School'],
   },
+  {
+    industryType: 'UNIFORM_MAKER',
+    label: 'School uniforms',
+    businessName: 'Vazi Bora Uniforms',
+    ownerName: 'Rose Achieng',
+    branchName: 'Workshop',
+    county: 'Kisumu',
+    salesPerDay: [2, 5],
+    products: [
+      p('White shirting fabric (metre)', 'Materials', 300, 220, 150, { unit: 'metre', quantityMode: 'WEIGHT', notSold: true }),
+      p('Grey suiting fabric (metre)', 'Materials', 350, 250, 120, { unit: 'metre', quantityMode: 'WEIGHT', notSold: true }),
+      p('Buttons', 'Materials', 5, 2, 1000, { notSold: true }),
+      p('Thread (cone)', 'Materials', 120, 80, 40, { quantityMode: 'WEIGHT', notSold: true }),
+      p('School shirt (white) - size 10', 'Uniforms', 550, 290, 40, { schoolPrice: 500 }),
+      p('School shirt (white) - size 12', 'Uniforms', 600, 362, 25, { schoolPrice: 550 }),
+      p('School shirt (white) - size 14', 'Uniforms', 650, 400, 30, { schoolPrice: 600 }),
+      p('School shorts (grey) - size 10', 'Uniforms', 450, 270, 35, { schoolPrice: 420 }),
+      p('School shorts (grey) - size 12', 'Uniforms', 500, 322, 20, { schoolPrice: 460 }),
+      p('School sweater (grey) - size 12', 'Uniforms', 1200, 800, 15, { schoolPrice: 1100 }),
+      p('Boys full set - size 12', 'Sets', 2700, 0, 0, { schoolPrice: 2500, notSold: true }),
+    ],
+    customers: ['Kisumu Boys Primary', 'Lions Primary School', 'Mama Atieno (parent)', 'Mr. Owino (parent)'],
+  },
 ];
+
+/** Uniform makers: what one piece uses ([material, quantity]) and the tailor's pay per piece, by kit product name. */
+export const UNIFORM_RECIPES: Record<string, { rate: number; uses: [string, number][] }> = {
+  'School shirt (white) - size 10': { rate: 70, uses: [['White shirting fabric (metre)', 1], ['Buttons', 7], ['Thread (cone)', 0.05]] },
+  'School shirt (white) - size 12': { rate: 80, uses: [['White shirting fabric (metre)', 1.2], ['Buttons', 7], ['Thread (cone)', 0.05]] },
+  'School shirt (white) - size 14': { rate: 90, uses: [['White shirting fabric (metre)', 1.4], ['Buttons', 7], ['Thread (cone)', 0.05]] },
+  'School shorts (grey) - size 10': { rate: 60, uses: [['Grey suiting fabric (metre)', 0.8], ['Buttons', 2], ['Thread (cone)', 0.04]] },
+  'School shorts (grey) - size 12': { rate: 65, uses: [['Grey suiting fabric (metre)', 1], ['Buttons', 2], ['Thread (cone)', 0.04]] },
+};
+
+/** A uniform set: the pieces in it. */
+export const UNIFORM_SETS: Record<string, [string, number][]> = {
+  'Boys full set - size 12': [['School shirt (white) - size 12', 2], ['School shorts (grey) - size 12', 1], ['School sweater (grey) - size 12', 1]],
+};
 
 export const RENTAL_KIT = {
   industryType: 'RENTAL',
