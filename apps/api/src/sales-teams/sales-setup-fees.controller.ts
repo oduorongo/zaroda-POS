@@ -8,7 +8,7 @@ import { EarningsMonthQueryDto } from './dto/sales-earnings.dto';
 import { AuthenticatedAgent, CurrentAgent, PasswordChangedGuard, SalesAgentAuthGuard } from './sales-agent-auth';
 import { ANY_TYPE, SalesSetupFeesService, SETUP_SIZES } from './sales-setup-fees.service';
 
-const TYPES = [ANY_TYPE, 'RETAIL', 'RESTAURANT', 'PHARMACY', 'SALON', 'RENTAL', 'SCHOOL_SUPPLIER', 'HOTEL', 'CONSTRUCTION'];
+const TYPES = [ANY_TYPE, 'RETAIL', 'RESTAURANT', 'PHARMACY', 'SALON', 'RENTAL', 'SCHOOL_SUPPLIER', 'UNIFORM_MAKER', 'HOTEL', 'CONSTRUCTION'];
 
 class RecordSetupFeeDto {
   @IsUUID()

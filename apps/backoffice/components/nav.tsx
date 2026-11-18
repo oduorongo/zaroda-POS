@@ -32,6 +32,7 @@ const VERTICAL_LINKS: Record<string, { href: string; label: string }> = {
   SERVICE: { href: "/service-jobs", label: "Job Orders" },
   RENTAL: { href: "/rentals", label: "Rentals" },
   SCHOOL_SUPPLIER: { href: "/school-orders", label: "School Orders" },
+  UNIFORM_MAKER: { href: "/school-orders", label: "School Orders" },
   HOTEL: { href: "/front-desk", label: "Front desk" },
   CONSTRUCTION: { href: "/construction", label: "Construction" },
 };
@@ -112,7 +113,12 @@ export function Nav({ session }: { session: Session }) {
           </RibbonLink>
         </>
       )}
-      {session.industryType === "SCHOOL_SUPPLIER" && (session.role === "OWNER" || session.role === "MANAGER") && (
+      {session.industryType === "UNIFORM_MAKER" && !caretaker && (
+        <RibbonLink href="/tailoring" LinkComponent={Link} active={!!pathname?.startsWith("/tailoring")} className="text-amber-300">
+          Tailoring
+        </RibbonLink>
+      )}
+      {(session.industryType === "SCHOOL_SUPPLIER" || session.industryType === "UNIFORM_MAKER") && (session.role === "OWNER" || session.role === "MANAGER") && (
         <RibbonLink href="/subscription" LinkComponent={Link} active={!!pathname?.startsWith("/subscription")}>
           My subscription
         </RibbonLink>

@@ -62,6 +62,9 @@ export class ProductionOrdersService {
         },
         include: ORDER_INCLUDE,
       });
+      // Made by production = made ahead and stocked: a sale takes the finished item, not its materials again.
+      if (!variant.madeAhead)
+        await tx.productVariant.update({ where: { id: dto.variantId }, data: { madeAhead: true } });
 
       await this.auditLog.logInTx(tx, {
         action: 'productionOrder.created',

@@ -37,6 +37,8 @@ import {
   toCents,
   wasteDraft,
   writeOffDraft,
+  tailorWorkDraft,
+  tailorPaymentDraft,
 } from './ledger-posting.util';
 import { CON_PAYMENT_LABEL, conPayrollDraft, conZarodaDraft, ipcReceiptDraft, materialIssueDraft, retentionDraft, subPaymentDraft, subValuationDraft } from './construction-posting.util';
 
@@ -353,6 +355,33 @@ export class LedgerPosterService {
         if (!w || w.totalCost === null) return null;
         const item = [w.variant.product.name, w.variant.name].filter(Boolean).join(' ');
         return wasteDraft({ date: nairobiDayOf(w.createdAt), branchId: w.branchId, label: `${item} x ${Number(w.quantity)} (${w.reason.toLowerCase()})`, costCents: toCents(w.totalCost) });
+      },
+    },
+    {
+      type: 'TAILOR_WORK',
+      candidates: (tx, c) =>
+        ids(tx, Prisma.sql`SELECT t.id FROM tailor_hand_ins t WHERE t."labourAmount" > 0 AND t."createdAt" >= ${c.since} AND ${unposted('TAILOR_WORK')} ORDER BY t."createdAt" LIMIT ${BATCH}`),
+      draft: async (tx, id) => {
+        const h = await tx.tailorHandIn.findUnique({
+          where: { id },
+          include: { job: { select: { jobNumber: true, branchId: true, tailor: { select: { name: true } }, variant: { select: { name: true, product: { select: { name: true } } } } } } },
+        });
+        if (!h || Number(h.labourAmount) <= 0) return null;
+        const item = [h.job.variant.product.name, h.job.variant.name].filter(Boolean).join(' ');
+        return tailorWorkDraft({ date: nairobiDayOf(h.createdAt), branchId: h.job.branchId, label: `${h.job.tailor.name}, ${h.goodQty} x ${item} (${h.job.jobNumber})`, amountCents: toCents(h.labourAmount) });
+      },
+    },
+    {
+      type: 'TAILOR_PAYMENT',
+      candidates: async (tx, c) => [
+        ...(await ids(tx, Prisma.sql`SELECT t.id FROM tailor_payments t WHERE t."voidedAt" IS NULL AND t."paidOn" >= ${c.sinceDay} AND ${unposted('TAILOR_PAYMENT')} ORDER BY t."createdAt" LIMIT ${BATCH}`)),
+        // voided after it was posted: the entry is reversed
+        ...(await ids(tx, postedWhere('TAILOR_PAYMENT', 'tailor_payments', Prisma.sql`t."voidedAt" IS NOT NULL`))),
+      ],
+      draft: async (tx, id) => {
+        const p = await tx.tailorPayment.findUnique({ where: { id }, include: { tailor: { select: { name: true } } } });
+        if (!p || p.voidedAt) return null;
+        return tailorPaymentDraft({ date: dateKey(p.paidOn), tailor: p.tailor.name, amountCents: toCents(p.amount), method: p.method });
       },
     },
     {

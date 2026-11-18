@@ -39,6 +39,7 @@ import {
   ConciergeBell,
   FileText,
   Tags,
+  Shirt,
 } from "lucide-react";
 import { getSession, clearSession, isBackofficeRole, homePath, type Session } from "../../lib/auth";
 import { useIdleLogout } from "../../hooks/use-idle-logout";
@@ -191,6 +192,13 @@ const VERTICAL_TILES: Record<string, Tile> = {
     icon: ConciergeBell,
     tone: "bg-amber-600",
   },
+  UNIFORM_MAKER: {
+    href: "/school-orders",
+    label: "School orders",
+    description: "Orders from schools to confirm and deliver.",
+    icon: ClipboardList,
+    tone: "bg-amber-600",
+  },
   SCHOOL_SUPPLIER: {
     href: "/school-orders",
     label: "School orders",
@@ -237,8 +245,11 @@ export default function DashboardPage() {
     (t) => !HIDDEN_FOR[t.href]?.includes(session.industryType),
   );
   if (verticalTile) tiles.push(verticalTile);
-  // A school supplier also gets the schools, the school price list and the money screens.
-  if (session.industryType === "SCHOOL_SUPPLIER") {
+  // A school supplier also gets the schools, the school price list and the money screens; a uniform maker, tailoring too.
+  if (session.industryType === "UNIFORM_MAKER") {
+    tiles.push({ href: "/tailoring", label: "Tailoring", description: "Tailors, the jobs you give them, pieces handed in and their pay.", icon: Shirt, tone: "bg-amber-600" });
+  }
+  if (session.industryType === "SCHOOL_SUPPLIER" || session.industryType === "UNIFORM_MAKER") {
     tiles.push(
       { href: "/schools", label: "Schools", description: "The schools you supply, their PINs and ordering link.", icon: GraduationCap, tone: "bg-amber-600" },
       { href: "/school-prices", label: "School price list", description: "What schools can order and what they pay.", icon: Tags, tone: "bg-amber-600" },

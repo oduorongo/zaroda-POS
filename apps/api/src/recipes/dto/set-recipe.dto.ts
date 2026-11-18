@@ -1,6 +1,9 @@
 import { Type } from 'class-transformer';
 import {
   IsArray,
+  IsBoolean,
+  IsOptional,
+  Min,
   IsNumber,
   IsPositive,
   IsUUID,
@@ -27,4 +30,15 @@ export class SetRecipeDto {
   @ValidateNested({ each: true })
   @Type(() => RecipeIngredientDto)
   ingredients!: RecipeIngredientDto[];
+
+  /** Made in advance and kept in stock: the recipe is its bill of materials when it is made, and a sale takes the item itself. */
+  @IsOptional()
+  @IsBoolean()
+  madeAhead?: boolean;
+
+  /** Uniform makers: what a tailor is paid per piece of this size (null clears it). */
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  tailorRate?: number | null;
 }

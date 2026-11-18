@@ -20,6 +20,7 @@ const INDUSTRY_TYPES = [
   { value: "SALON", label: "Salon" },
   { value: "RENTAL", label: "Property rentals (landlord)" },
   { value: "SCHOOL_SUPPLIER", label: "School supplier (sells to schools on credit)" },
+  { value: "UNIFORM_MAKER", label: "School uniforms (makes uniforms with tailors, sells to schools)" },
   { value: "HOTEL", label: "Hotel / lodge (rooms, front desk)" },
 ];
 

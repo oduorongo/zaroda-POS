@@ -173,7 +173,7 @@ export class TenderBoardService {
         bodyHtml: `<p><strong>${escapeHtml(advert.title)}</strong></p><p>${escapeHtml(advert.buyer.name)}, ${escapeHtml(advert.county)}. Closes ${closing}.</p><p>${escapeHtml(advert.description.slice(0, 400))}</p>${link ? `<p style="margin-top:16px">${link}</p>` : ''}`,
       });
       const orgs = await this.prisma.organization.findMany({
-        where: { industryType: 'SCHOOL_SUPPLIER' },
+        where: { industryType: { in: ['SCHOOL_SUPPLIER', 'UNIFORM_MAKER'] } },
         select: { id: true, email: true },
         take: MAX_ALERTED,
       });

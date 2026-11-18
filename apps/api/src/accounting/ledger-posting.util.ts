@@ -374,3 +374,13 @@ export function nextDay(day: string): string {
 
 /** The date a posting is entered on: its own day, or the first open day after the books were closed. */
 export const postingDate = (day: string, lockDate: string | null): string => (lockDate && day <= lockDate ? nextDay(lockDate) : day);
+
+/** Finished pieces handed in by a tailor: their pay becomes part of the stock's value, and is owed to the tailor until paid. */
+export function tailorWorkDraft(w: { date: string; branchId?: string | null; label: string; amountCents: number }): Draft {
+  return { date: w.date, branchId: w.branchId, memo: `Tailoring: ${w.label}`, lines: tidy([dr('INVENTORY', w.amountCents), cr('TAILORS_PAYABLE', w.amountCents)]) };
+}
+
+/** Money paid to a tailor. */
+export function tailorPaymentDraft(p: { date: string; tailor: string; amountCents: number; method: string }): Draft {
+  return { date: p.date, memo: `Paid ${p.tailor} (tailoring)`, lines: tidy([dr('TAILORS_PAYABLE', p.amountCents), cr(moneyAccount(p.method), p.amountCents)]) };
+}

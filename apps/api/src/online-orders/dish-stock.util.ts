@@ -8,7 +8,8 @@ export async function loadRecipeMap(tx: TenantTx, variantIds: string[]): Promise
   const recipes: RecipeMap = new Map();
   if (ids.length === 0) return recipes;
   const rows = await tx.recipeIngredient.findMany({
-    where: { variantId: { in: ids } },
+    // an item made ahead is sold from its own stock: its recipe is only used when it is made
+    where: { variantId: { in: ids }, variant: { madeAhead: false } },
     select: { variantId: true, ingredientVariantId: true, quantity: true },
   });
   for (const row of rows) {

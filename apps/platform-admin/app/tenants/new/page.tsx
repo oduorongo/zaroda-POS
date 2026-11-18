@@ -18,7 +18,7 @@ interface Plan {
   maxBranches: number;
 }
 
-const INDUSTRY_TYPES = ["RETAIL", "RESTAURANT", "SALON", "RENTAL", "SCHOOL_SUPPLIER", "HOTEL"];
+const INDUSTRY_TYPES = ["RETAIL", "RESTAURANT", "SALON", "RENTAL", "SCHOOL_SUPPLIER", "UNIFORM_MAKER", "HOTEL"];
 
 /**
  * Admin-driven onboarding wizard - creates the tenant, owner account,
@@ -135,7 +135,7 @@ export default function NewTenantPage() {
                     setIndustryType(e.target.value);
                     // School suppliers start on the seasonal (per term) plan; the admin can still pick another.
                     const seasonal = plans.find((p) => p.billingCycle === "SEASONAL" && p.active !== false);
-                    if (e.target.value === "SCHOOL_SUPPLIER" && seasonal) setPlanTier(seasonal.tier);
+                    if ((e.target.value === "SCHOOL_SUPPLIER" || e.target.value === "UNIFORM_MAKER") && seasonal) setPlanTier(seasonal.tier);
                     else if (seasonal && planTier === seasonal.tier && plans[0]) setPlanTier(plans.find((p) => p.billingCycle !== "SEASONAL")?.tier ?? plans[0].tier);
                   }} className="w-full rounded-md border border-border bg-background p-2.5 text-sm">
                     {INDUSTRY_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}

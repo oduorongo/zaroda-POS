@@ -9,12 +9,16 @@ import { getSession } from "../../lib/auth";
 // Business types with their own guide section (public/guides/pos-<type>.md), shown after Getting started.
 const BUSINESS_GUIDES: Record<string, string> = {
   SCHOOL_SUPPLIER: "School supplier",
+  UNIFORM_MAKER: "School uniforms",
   HOTEL: "Hotel",
   RESTAURANT: "Restaurant",
   SALON: "Salon",
   MANUFACTURING: "Production",
   SERVICE: "Service business",
 };
+
+// A business type that also uses another type's whole section (a uniform maker sells to schools like a school supplier).
+const ALSO: Record<string, string> = { UNIFORM_MAKER: "SCHOOL_SUPPLIER" };
 
 const fetchText = (path: string) => fetch(path).then((r) => (r.ok ? r.text() : Promise.reject()));
 
@@ -57,7 +61,7 @@ export default function PosGuide() {
     const type = [asked, session?.industryType].find((t) => t && BUSINESS_GUIDES[t]) ?? null;
     const reader = asked || session?.industryType || null;
     setBusiness(type);
-    Promise.all([fetchText("/guides/pos.md"), type ? fetchText(`/guides/pos-${type.toLowerCase()}.md`).catch(() => "") : ""])
+    Promise.all([fetchText("/guides/pos.md"), type ? Promise.all((ALSO[type] ? [type, ALSO[type]] : [type]).map((t) => fetchText(`/guides/pos-${t.toLowerCase()}.md`).catch(() => ""))).then((parts) => parts.filter(Boolean).join("\n\n---\n")) : ""])
       .then(([main, extra]) => {
         const at = main.indexOf("\n## Products and categories");
         setSource(forBusiness(extra && at > 0 ? `${main.slice(0, at)}\n${extra.trim()}\n\n---\n${main.slice(at)}` : main, reader));
