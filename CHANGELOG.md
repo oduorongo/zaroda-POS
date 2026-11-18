@@ -1,5 +1,14 @@
 # Changelog
 
+## School uniforms: a business type that makes uniforms with tailors (2026-11-18)
+
+- New business type at sign-up: "School uniforms" (`UNIFORM_MAKER`). It has every school supplier screen (schools, price list, orders, invoices, quotes, tenders, school-term plans) plus **Tailoring**.
+- Tailoring: tailors (not staff logins); jobs (TJ- numbers) give a tailor N pieces of one size, and the materials (the piece's recipe x N) leave stock at once, refused if short; hand-ins of good and rejected pieces put good pieces into stock at materials share + pay per piece (weighted into the piece's cost) and earn the tailor the rate; close a job early with a reason, or cancel one nothing came back on (materials return); tailor payments (cash, M-Pesa, bank; voided, never edited), balances, advances and statements. Everything audit-logged.
+- Books: work handed in posts Stock / Owed to tailors (new account 2160); payments post Owed to tailors / cash, M-Pesa or bank; a voided payment is reversed.
+- "Made in advance" (`madeAhead`) on items: the recipe is then a bill of materials used when the item is made, and a sale takes the item itself. Recipes on everything else are used at sale as before. Sets are items whose recipe is finished pieces: the till, the online shop and school deliveries take the pieces (and a delivered set is costed from them; the order screen shows how many complete sets the pieces make). Items made by production orders are marked made in advance too, which stops a sale of a finished good also taking its raw materials.
+- Fix: school order, delivery note, invoice, credit note, receipt, quote and contract numbers were unique across ALL businesses while each business numbers from 0001, so a second school supplier's first document failed. They are now unique per business.
+- Migrations 20270104100000_uniform_maker (5 new tables, enum values, variant columns) and 20270104110000_school_numbers_per_business; run `prisma migrate deploy` then `apply-rls` BEFORE merging. Test: scripts/e2e-uniform-maker.js (62 checks).
+
 ## School joining link (2026-11-17)
 
 - A school supplier shares a joining link (`/schools/<slug>/join`, copy / WhatsApp / text / email on Schools). The school fills in its details and chooses its own PIN; it waits as PENDING (no sign-in, no orders) until the supplier approves or turns it down. The supplier is emailed; the school is texted/emailed on approval. "Stop new schools joining" switches the link off.

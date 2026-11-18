@@ -79,7 +79,7 @@ const STATUS_VARIANT: Record<string, "primary" | "success" | "warning" | "error"
   SUSPENDED: "error",
 };
 
-const INDUSTRY_TYPES = ["RETAIL", "RESTAURANT", "SALON", "RENTAL", "SCHOOL_SUPPLIER", "HOTEL"] as const;
+const INDUSTRY_TYPES = ["RETAIL", "RESTAURANT", "SALON", "RENTAL", "SCHOOL_SUPPLIER", "UNIFORM_MAKER", "HOTEL"] as const;
 
 export default function OrganizationDetailPage() {
   const params = useParams<{ id: string }>();

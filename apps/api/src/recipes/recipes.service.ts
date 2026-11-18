@@ -67,6 +67,12 @@ export class RecipesService {
         }
       }
 
+      if (dto.madeAhead !== undefined || dto.tailorRate !== undefined) {
+        await tx.productVariant.update({
+          where: { id: variantId },
+          data: { madeAhead: dto.madeAhead, tailorRate: dto.tailorRate },
+        });
+      }
       await tx.recipeIngredient.deleteMany({ where: { variantId } });
       if (dto.ingredients.length > 0) {
         await tx.recipeIngredient.createMany({
@@ -96,7 +102,8 @@ export class RecipesService {
    */
   async loadRecipesInTx(tx: TenantTx, variantIds: string[]) {
     const rows = await tx.recipeIngredient.findMany({
-      where: { variantId: { in: variantIds } },
+      // an item made ahead is sold from its own stock: its recipe is only used when it is made
+      where: { variantId: { in: variantIds }, variant: { madeAhead: false } },
       include: { ingredientVariant: true },
     });
     const byVariant = new Map<string, typeof rows>();

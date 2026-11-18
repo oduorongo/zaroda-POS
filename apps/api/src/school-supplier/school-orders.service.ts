@@ -653,41 +653,64 @@ export class SchoolOrdersService {
         cost: number | null;
       }[] = [];
       const newDeliveryId = randomUUID();
-      for (const l of current.lines) {
-        const qty = plan.quantities.get(l.id) ?? 0;
-        if (qty <= 0) continue;
+      // A set (a uniform set: shirt + shorts + sweater) is made when sold: its recipe's pieces leave stock, not the set itself.
+      const toDeliver = current.lines
+        .map((l) => ({ l, qty: plan.quantities.get(l.id) ?? 0 }))
+        .filter((d) => d.qty > 0);
+      const sets = await tx.recipeIngredient.findMany({
+        where: {
+          variantId: { in: toDeliver.map((d) => d.l.variantId) },
+          variant: { madeAhead: false },
+        },
+        include: { ingredientVariant: { include: { product: { select: { name: true } } } } },
+      });
+      const needs = new Map<string, { qty: number; name: string }>();
+      for (const { l, qty } of toDeliver) {
+        const parts = sets.filter((s) => s.variantId === l.variantId);
+        const items = parts.length
+          ? parts.map((p) => ({
+              variantId: p.ingredientVariantId,
+              qty: Number(p.quantity) * qty,
+              name: [p.ingredientVariant.product.name, p.ingredientVariant.name].filter(Boolean).join(' '),
+            }))
+          : [{ variantId: l.variantId, qty, name: l.productName }];
+        for (const i of items) {
+          const n = needs.get(i.variantId);
+          needs.set(i.variantId, { qty: (n?.qty ?? 0) + i.qty, name: i.name });
+        }
+      }
+      for (const [variantId, need] of needs) {
         const stock = await tx.inventoryItem.findUnique({
-          where: {
-            branchId_variantId: {
-              branchId: dto.branchId,
-              variantId: l.variantId,
-            },
-          },
+          where: { branchId_variantId: { branchId: dto.branchId, variantId } },
         });
-        if (Number(stock?.quantity ?? 0) < qty) {
+        if (Number(stock?.quantity ?? 0) < need.qty) {
           throw new BadRequestException(
-            `Not enough stock of ${l.productName}: ${Number(stock?.quantity ?? 0)} in stock, ${qty} to deliver`,
+            `Not enough stock of ${need.name}: ${Number(stock?.quantity ?? 0)} in stock, ${need.qty} to deliver`,
           );
         }
         await this.inventory.recordInTx(tx, {
           branchId: dto.branchId,
-          variantId: l.variantId,
+          variantId,
           type: InventoryTxnType.CREDIT_SALE,
-          quantityDelta: -qty,
+          quantityDelta: -need.qty,
           referenceId: newDeliveryId,
         });
-        const variant = await tx.productVariant.findUnique({
-          where: { id: l.variantId },
-          select: { cost: true },
-        });
-        delivered.push({
-          line: l,
-          quantity: qty,
-          cost:
-            variant?.cost === null || variant === null
-              ? null
-              : Number(variant.cost),
-        });
+      }
+      for (const { l, qty } of toDeliver) {
+        const parts = sets.filter((s) => s.variantId === l.variantId);
+        let cost: number | null;
+        if (parts.length) {
+          cost = parts.some((p) => p.ingredientVariant.cost === null)
+            ? null
+            : Math.round(parts.reduce((t, p) => t + Number(p.ingredientVariant.cost) * Number(p.quantity), 0) * 100) / 100;
+        } else {
+          const variant = await tx.productVariant.findUnique({
+            where: { id: l.variantId },
+            select: { cost: true },
+          });
+          cost = variant?.cost === null || variant === null ? null : Number(variant.cost);
+        }
+        delivered.push({ line: l, quantity: qty, cost });
       }
 
       const now = new Date();
@@ -1002,14 +1025,23 @@ export class SchoolOrdersService {
         include: { lines: true },
       });
       if (!order) throw new NotFoundException('Order not found');
+      // a set has no stock of its own: how many can go out is what its scarcest piece allows
+      const sets = await tx.recipeIngredient.findMany({
+        where: { variantId: { in: order.lines.map((l) => l.variantId) }, variant: { madeAhead: false } },
+        select: { variantId: true, ingredientVariantId: true, quantity: true },
+      });
       const items = await tx.inventoryItem.findMany({
         where: {
           branchId,
-          variantId: { in: order.lines.map((l) => l.variantId) },
+          variantId: { in: [...order.lines.map((l) => l.variantId), ...sets.map((s) => s.ingredientVariantId)] },
         },
         select: { variantId: true, quantity: true },
       });
       const have = new Map(items.map((i) => [i.variantId, Number(i.quantity)]));
+      for (const setId of new Set(sets.map((s) => s.variantId))) {
+        const parts = sets.filter((s) => s.variantId === setId);
+        have.set(setId, Math.min(...parts.map((p) => Math.floor((have.get(p.ingredientVariantId) ?? 0) / Number(p.quantity)))));
+      }
       // what OTHER confirmed orders are still waiting to be delivered of the same products (promised, but still on the shelf)
       const others = await tx.schoolOrderLine.findMany({
         where: {

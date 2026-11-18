@@ -16,6 +16,8 @@ interface Variant {
   name?: string | null;
   quantityMode: QuantityMode;
   product: { name: string };
+  madeAhead?: boolean;
+  tailorRate?: string | number | null;
 }
 
 interface Product {
@@ -54,6 +56,8 @@ export default function RecipeEditorPage() {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  const [madeAhead, setMadeAhead] = useState(false);
+  const [tailorRate, setTailorRate] = useState("");
 
   useEffect(() => {
     const s = getSession();
@@ -81,7 +85,10 @@ export default function RecipeEditorPage() {
       ]);
       setProducts(productResult);
       const flat = productResult.flatMap((p) => p.variants.map((v) => ({ ...v, product: { name: p.name } })));
-      setDish(flat.find((v) => v.id === params.variantId) ?? null);
+      const found = flat.find((v) => v.id === params.variantId) ?? null;
+      setDish(found);
+      setMadeAhead(!!found?.madeAhead);
+      setTailorRate(found?.tailorRate === null || found?.tailorRate === undefined ? "" : String(Number(found.tailorRate)));
       setLines(
         recipeResult.map((r) => ({
           ingredientVariantId: r.ingredientVariant.id,
@@ -130,6 +137,8 @@ export default function RecipeEditorPage() {
     setLines((prev) => prev.filter((l) => l.ingredientVariantId !== ingredientVariantId));
   }
 
+  const uniforms = session?.industryType === "UNIFORM_MAKER";
+
   async function save(nextLines: DraftLine[]) {
     setSaving(true);
     setSaveError(null);
@@ -137,6 +146,8 @@ export default function RecipeEditorPage() {
     try {
       await apiPut(`/recipes/${params.variantId}`, {
         ingredients: nextLines.map((l) => ({ ingredientVariantId: l.ingredientVariantId, quantity: Number(l.quantity) })),
+        madeAhead,
+        ...(uniforms ? { tailorRate: tailorRate.trim() === "" ? null : Number(tailorRate) } : {}),
       });
       setLines(nextLines);
       setSaved(true);
@@ -169,8 +180,34 @@ export default function RecipeEditorPage() {
             <p className="mt-1 text-sm text-secondary-500">
               {lines.length === 0
                 ? "No recipe set - this is a plain stocked item: it's received and its own stock decrements on sale, same as any other product."
-                : "Recipe set - selling this item decrements the ingredients below instead of its own stock. Nothing ever needs to be \"received\" for this item itself."}
+                : madeAhead
+                  ? "Made in advance - the list below is what making ONE uses (by production or a tailor). Selling it takes the finished item from stock."
+                  : "Made when sold - selling this item takes the items below from stock instead of its own stock (a dish, or a uniform set made of pieces)."}
             </p>
+
+            <div className="mt-4 space-y-2 rounded-lg border border-border p-4 text-sm">
+              <h2 className="font-semibold text-secondary-600">How this item is made</h2>
+              <label className="flex items-start gap-2">
+                <input type="radio" name="made" checked={!madeAhead} onChange={() => setMadeAhead(false)} className="mt-1" />
+                <span>
+                  <strong>Made when sold</strong>: a restaurant dish, or a <strong>uniform set</strong>. List the pieces in the set (e.g. 2 x Shirt size 12, 1 x Shorts size 12); selling or delivering one set takes those pieces out of stock.
+                </span>
+              </label>
+              <label className="flex items-start gap-2">
+                <input type="radio" name="made" checked={madeAhead} onChange={() => setMadeAhead(true)} className="mt-1" />
+                <span>
+                  <strong>Made in advance and kept in stock</strong>: a uniform piece your tailors sew, or bread from production. List the materials ONE piece uses (e.g. 1.2 metres of fabric, 7 buttons); making it uses them, selling it takes the finished piece.
+                </span>
+              </label>
+              {uniforms && madeAhead && (
+                <label className="block pt-2">
+                  Tailor&apos;s pay per piece (KES)
+                  <input type="number" min={0} step="0.01" value={tailorRate} onChange={(e) => setTailorRate(e.target.value)} placeholder="e.g. 80" className="mt-1 block w-40 rounded-md border border-border bg-background p-2" />
+                  <span className="mt-1 block text-xs text-secondary-500">The usual rate for this piece and size; you can change it on each tailoring job.</span>
+                </label>
+              )}
+              <p className="text-xs text-secondary-500">Press <strong>Save recipe</strong> below to keep this choice.</p>
+            </div>
 
             <div className="mt-6 rounded-lg border border-border p-4">
               <h2 className="mb-3 text-sm font-semibold text-secondary-600">Ingredients</h2>

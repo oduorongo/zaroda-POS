@@ -42,6 +42,7 @@ const TYPES = [
   ["SALON", "Salon / spa"],
   ["HOTEL", "Hotel / lodge"],
   ["SCHOOL_SUPPLIER", "School supplier"],
+  ["UNIFORM_MAKER", "School uniforms"],
   ["RENTAL", "Rentals / landlord"],
   ["CONSTRUCTION", "Construction"],
 ] as const;

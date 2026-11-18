@@ -2138,3 +2138,35 @@ CREATE POLICY sync_key_lookup ON stock_sync_keys FOR SELECT
 -- written only by the key-protected /sales-sync/school call, read scoped by team in SchoolSalesService).
 -- school_subscription_receipts: platform-level (every Zaroda School subscription payment, for ZARODA's own books; written only
 -- by the key-protected /sales-sync/school call, read by PlatformLedgerService).
+
+-- ── Uniform makers: tailors, their jobs, materials handed out, hand-ins and pay ─────────────────
+ALTER TABLE tailors ENABLE ROW LEVEL SECURITY;
+ALTER TABLE tailors FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON tailors;
+CREATE POLICY tenant_isolation ON tailors
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+ALTER TABLE tailor_jobs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE tailor_jobs FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON tailor_jobs;
+CREATE POLICY tenant_isolation ON tailor_jobs
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+ALTER TABLE tailor_job_materials ENABLE ROW LEVEL SECURITY;
+ALTER TABLE tailor_job_materials FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON tailor_job_materials;
+CREATE POLICY tenant_isolation ON tailor_job_materials
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+ALTER TABLE tailor_hand_ins ENABLE ROW LEVEL SECURITY;
+ALTER TABLE tailor_hand_ins FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON tailor_hand_ins;
+CREATE POLICY tenant_isolation ON tailor_hand_ins
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+ALTER TABLE tailor_payments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE tailor_payments FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON tailor_payments;
+CREATE POLICY tenant_isolation ON tailor_payments
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));

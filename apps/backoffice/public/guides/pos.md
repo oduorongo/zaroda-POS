@@ -247,6 +247,7 @@ When you sign up you choose your kind of business, and its own screens appear on
 | **Manufacturing** | Production runs and recipes |
 | **Service business** | Job orders and their status |
 | **School supplier** | Schools, school price lists, school orders and deliveries, invoices and payments, quotes, tenders, contracts and cash flow |
+| **School uniforms** | Everything a school supplier has, plus Tailoring: tailors, jobs with the materials handed out, finished pieces taken in, and tailor pay; uniforms sold as pieces or sets |
 
 Landlords use **ZARODA RENTALS** and contractors use **Zaroda Build**: each has its own site and its own user guide.
 

@@ -55,7 +55,7 @@ export class SeasonalBillingService {
 
   /** The plan a school supplier starts on when nobody chose one: the oldest active seasonal plan, if there is one. */
   defaultPlanFor(tx: Tx, industryType: string) {
-    if (industryType !== 'SCHOOL_SUPPLIER') return Promise.resolve(null);
+    if (industryType !== 'SCHOOL_SUPPLIER' && industryType !== 'UNIFORM_MAKER') return Promise.resolve(null);
     return tx.plan.findFirst({ where: { billingCycle: 'SEASONAL', active: true }, orderBy: { createdAt: 'asc' } });
   }
 

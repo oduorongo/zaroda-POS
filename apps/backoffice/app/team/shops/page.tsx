@@ -18,6 +18,7 @@ const INDUSTRIES = [
   ["SALON", "Salon"],
   ["RENTAL", "Rental landlord"],
   ["SCHOOL_SUPPLIER", "School supplier"],
+  ["UNIFORM_MAKER", "School uniforms"],
   ["HOTEL", "Hotel / lodge"],
 ] as const;
 

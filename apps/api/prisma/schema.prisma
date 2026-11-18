@@ -614,6 +614,12 @@ model ProductVariant {
   // What this size/option is called to people ("Large loaf 800g"). Optional: without it the product code is all there is to tell
   // options apart. Shown with the product name in the shop, on the till and in orders.
   name         String?
+  // Made in advance and kept in stock (a uniform a tailor sewed, bread from production): its recipe is the bill of materials
+  // used when it is MADE, and a sale takes the item itself out of stock. False (the default) = made when sold, so a sale takes
+  // the recipe's ingredients instead (a restaurant dish, a uniform set made of pieces).
+  madeAhead    Boolean      @default(false)
+  // Uniform makers: what a tailor is paid for each piece of this size (the default on a new tailoring job).
+  tailorRate   Decimal?     @db.Decimal(12, 2)
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
 
@@ -653,6 +659,8 @@ model ProductVariant {
   conRequisitionLines  ConRequisitionLine[]
   conMaterialIssues    ConMaterialIssue[]
   conMaterialBudgets   ConMaterialBudget[]
+  tailorJobs           TailorJob[]
+  tailorJobMaterials   TailorJobMaterial[]
 
   @@map("product_variants")
 }
@@ -780,6 +788,8 @@ enum InventoryTxnType {
   CREDIT_SALE
   // Construction: material taken from a project site store for the works (con_material_issues).
   SITE_ISSUE
+  // Uniform makers: material handed to a tailor for a job (down), and finished pieces handed in (up). See tailor_jobs.
+  TAILORING
 }
 
 model InventoryTransaction {
@@ -4528,7 +4538,7 @@ model SchoolContract {
   schoolId       String
   tenderId       String?              @unique
   /// "CT-2026-0001"
-  contractNumber String               @unique
+  contractNumber String               
   /// The institution's own contract reference.
   reference      String?
   title          String
@@ -4556,6 +4566,7 @@ model SchoolContract {
 
   @@index([organizationId, status])
   @@index([schoolId])
+  @@unique([organizationId, contractNumber])
   @@map("school_contracts")
 }
 
@@ -4581,7 +4592,7 @@ model SchoolQuote {
   organizationId String
   schoolId       String
   /// "QT-2026-0001", given when the quotation is issued (a draft has none).
-  quoteNumber    String?           @unique
+  quoteNumber    String?           
   status         SchoolQuoteStatus @default(DRAFT)
   validUntil     DateTime?         @db.Date
   terms          String?
@@ -4608,6 +4619,7 @@ model SchoolQuote {
 
   @@index([organizationId, status])
   @@index([schoolId])
+  @@unique([organizationId, quoteNumber])
   @@map("school_quotes")
 }
 
@@ -4693,7 +4705,7 @@ model SchoolOrder {
   organizationId   String
   schoolId         String
   /// "SO-2026-0001": the supplier's own number, quoted by both sides.
-  orderNumber      String            @unique
+  orderNumber      String            
   /// The school's own order number (LPO), if it has one.
   lpoNumber        String?
   /// The school's LPO was received and checked against its signed copy (who, and when).
@@ -4736,6 +4748,7 @@ model SchoolOrder {
   @@index([organizationId, status])
   @@index([schoolId])
   @@index([contractId])
+  @@unique([organizationId, orderNumber])
   @@map("school_orders")
 }
 
@@ -4770,7 +4783,7 @@ model SchoolDelivery {
   /// 1, 2, 3... within the order.
   sequence           Int
   /// "DN-2026-0001"
-  deliveryNoteNumber String    @unique
+  deliveryNoteNumber String    
   deliveredAt        DateTime
   branchId           String?
   receivedByName     String
@@ -4789,6 +4802,7 @@ model SchoolDelivery {
 
   @@unique([orderId, sequence])
   @@index([organizationId])
+  @@unique([organizationId, deliveryNoteNumber])
   @@map("school_deliveries")
 }
 
@@ -4829,7 +4843,7 @@ model SupplierInvoice {
   /// What has been written off as a bad debt (taken off what is owed).
   writtenOffAmount     Decimal   @default(0) @db.Decimal(12, 2)
   /// "INV-2026-0001"
-  invoiceNumber  String                @unique
+  invoiceNumber  String                
   issueDate      DateTime              @db.Date
   dueDate        DateTime              @db.Date
   subtotal       Decimal               @db.Decimal(12, 2)
@@ -4869,6 +4883,7 @@ model SupplierInvoice {
   @@index([schoolId])
   @@index([orderId])
   @@index([contractId])
+  @@unique([organizationId, invoiceNumber])
   @@map("supplier_invoices")
 }
 
@@ -5048,7 +5063,7 @@ model SupplierCreditNote {
   schoolId       String
   invoiceId      String
   /// "CN-2026-0001"
-  creditNumber   String             @unique
+  creditNumber   String             
   issueDate      DateTime           @db.Date
   reason         SchoolCreditReason
   note           String?
@@ -5068,6 +5083,7 @@ model SupplierCreditNote {
   @@index([organizationId, issueDate])
   @@index([schoolId])
   @@index([invoiceId])
+  @@unique([organizationId, creditNumber])
   @@map("supplier_credit_notes")
 }
 
@@ -5098,7 +5114,7 @@ model SupplierPayment {
   organizationId String
   schoolId       String
   /// "RC-2026-0001"
-  receiptNumber  String                @unique
+  receiptNumber  String                
   amount         Decimal               @db.Decimal(12, 2)
   method         SupplierPaymentMethod
   /// The cheque number, bank reference or M-Pesa code.
@@ -5122,6 +5138,7 @@ model SupplierPayment {
 
   @@index([organizationId, receivedOn])
   @@index([schoolId])
+  @@unique([organizationId, receiptNumber])
   @@map("supplier_payments")
 }
 
@@ -7999,4 +8016,136 @@ model SalesSetupFee {
   @@index([organizationId])
   @@index([agentId, receivedAt])
   @@map("sales_setup_fees")
+}
+
+// ── Uniform makers (industryType "UNIFORM_MAKER"): tailors sew uniforms from the business's own materials ─────────────────
+
+/// Someone who sews for the business, usually paid by the piece. Not a staff login: the business records their work and pay.
+model Tailor {
+  id             String   @id @default(uuid())
+  organizationId String
+  name           String
+  /// Normalized 2547XXXXXXXX, optional.
+  phone          String?
+  idNumber       String?
+  notes          String?
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  jobs     TailorJob[]
+  payments TailorPayment[]
+
+  @@index([organizationId])
+  @@map("tailors")
+}
+
+enum TailorJobStatus {
+  OPEN // materials handed out, pieces still to come
+  DONE // every piece handed in (or the rest written off)
+  CANCELLED // nothing was handed in; the materials went back to stock
+}
+
+/// A batch of one piece and size given to a tailor ("50 shirts, size 12"). The materials (the item's recipe x quantity) leave
+/// stock when the job is given out; finished pieces come in through hand-ins, each worth the rate per piece to the tailor.
+model TailorJob {
+  id               String          @id @default(uuid())
+  organizationId   String
+  /// "TJ-2026-0001"
+  jobNumber        String
+  branchId         String
+  tailorId         String
+  variantId        String
+  quantity         Int
+  ratePerPiece     Decimal         @db.Decimal(12, 2)
+  /// What the materials handed out cost in all (at their cost when handed out); per piece = this / quantity.
+  materialsCost    Decimal         @db.Decimal(12, 2)
+  quantityGood     Int             @default(0)
+  quantityRejected Int             @default(0)
+  status           TailorJobStatus @default(OPEN)
+  dueDate          DateTime?       @db.Date
+  notes            String?
+  createdByName    String?
+  closedAt         DateTime?
+  closeNote        String?
+  cancelledAt      DateTime?
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  tailor    Tailor              @relation(fields: [tailorId], references: [id])
+  variant   ProductVariant      @relation(fields: [variantId], references: [id])
+  materials TailorJobMaterial[]
+  handIns   TailorHandIn[]
+
+  @@unique([organizationId, jobNumber])
+  @@index([organizationId])
+  @@index([tailorId])
+  @@map("tailor_jobs")
+}
+
+/// What was handed to the tailor for a job, as it was at the time (the recipe may change later).
+model TailorJobMaterial {
+  id             String   @id @default(uuid())
+  organizationId String
+  jobId          String
+  variantId      String
+  quantity       Decimal  @db.Decimal(14, 3)
+  unitCost       Decimal? @db.Decimal(12, 2)
+
+  job     TailorJob      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  variant ProductVariant @relation(fields: [variantId], references: [id])
+
+  @@index([jobId])
+  @@map("tailor_job_materials")
+}
+
+/// Finished pieces handed in against a job. Good pieces go into stock at materials + rate per piece and earn the tailor
+/// goodQty x rate; rejected pieces earn nothing and do not go into stock. Never edited: a mistake is put right by a new job.
+model TailorHandIn {
+  id             String   @id @default(uuid())
+  organizationId String
+  jobId          String
+  goodQty        Int
+  rejectedQty    Int      @default(0)
+  /// goodQty x the job's rate per piece: what the tailor earned.
+  labourAmount   Decimal  @db.Decimal(12, 2)
+  /// Materials + labour for one good piece.
+  unitCost       Decimal  @db.Decimal(12, 2)
+  notes          String?
+  receivedByName String?
+  createdAt      DateTime @default(now())
+
+  job TailorJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, createdAt])
+  @@index([jobId])
+  @@map("tailor_hand_ins")
+}
+
+enum TailorPaymentMethod {
+  CASH
+  MPESA
+  BANK
+}
+
+/// Money paid to a tailor. A mistake is voided (and the books reverse it), never edited.
+model TailorPayment {
+  id             String              @id @default(uuid())
+  organizationId String
+  tailorId       String
+  amount         Decimal             @db.Decimal(12, 2)
+  method         TailorPaymentMethod
+  reference      String?
+  paidOn         DateTime            @db.Date
+  notes          String?
+  recordedByName String?
+  voidedAt       DateTime?
+  voidReason     String?
+  createdAt      DateTime            @default(now())
+
+  tailor Tailor @relation(fields: [tailorId], references: [id])
+
+  @@index([organizationId, paidOn])
+  @@index([tailorId])
+  @@map("tailor_payments")
 }
