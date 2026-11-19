@@ -2170,3 +2170,25 @@ DROP POLICY IF EXISTS tenant_isolation ON tailor_payments;
 CREATE POLICY tenant_isolation ON tailor_payments
   USING ("organizationId" = current_setting('app.current_tenant', true))
   WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+-- ── Petty cash: a business's boxes and entries ─────────────────
+ALTER TABLE petty_cash_boxes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE petty_cash_boxes FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON petty_cash_boxes;
+CREATE POLICY tenant_isolation ON petty_cash_boxes
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+ALTER TABLE petty_cash_entries ENABLE ROW LEVEL SECURITY;
+ALTER TABLE petty_cash_entries FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON petty_cash_entries;
+CREATE POLICY tenant_isolation ON petty_cash_entries
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+-- ZARODA's own petty cash: like the rest of ZARODA's books, only when NO tenant is set.
+ALTER TABLE platform_petty_cash_entries ENABLE ROW LEVEL SECURITY;
+ALTER TABLE platform_petty_cash_entries FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON platform_petty_cash_entries;
+CREATE POLICY tenant_isolation ON platform_petty_cash_entries
+  USING (NULLIF(current_setting('app.current_tenant', true), '') IS NULL)
+  WITH CHECK (NULLIF(current_setting('app.current_tenant', true), '') IS NULL);

@@ -225,4 +225,11 @@ export class PlatformLedgerSettingsDto extends LedgerSettingsDto {
   @Max(100)
   @IsOptional()
   titheRate?: number;
+
+  /** What ZARODA's petty cash is topped back up to. */
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  @Max(10_000_000)
+  @IsOptional()
+  pettyCashFloat?: number;
 }

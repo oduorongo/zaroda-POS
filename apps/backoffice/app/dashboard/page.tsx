@@ -40,6 +40,7 @@ import {
   FileText,
   Tags,
   Shirt,
+  Coins,
 } from "lucide-react";
 import { getSession, clearSession, isBackofficeRole, homePath, type Session } from "../../lib/auth";
 import { useIdleLogout } from "../../hooks/use-idle-logout";
@@ -114,6 +115,13 @@ const MANAGER_TILES: Tile[] = [
     label: "Expenses",
     description: "Record rent, power, transport and other money you spend.",
     icon: Banknote,
+    tone: "bg-rose-600",
+  },
+  {
+    href: "/petty-cash",
+    label: "Petty cash",
+    description: "A cash box for small costs: vouchers, top-ups, counts and the petty cash book.",
+    icon: Coins,
     tone: "bg-rose-600",
   },
   {

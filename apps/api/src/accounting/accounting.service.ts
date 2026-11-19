@@ -48,6 +48,7 @@ export const SOURCE_LABELS: Record<string, string> = {
   WASTE: 'Waste',
   TAILOR_WORK: 'Tailoring work handed in',
   TAILOR_PAYMENT: 'Tailor paid',
+  PETTY_CASH: 'Petty cash',
   LAYAWAY_PAYMENT: 'Lipa polepole payment',
   LAYAWAY_DONE: 'Lipa polepole collected',
   FOLIO_MONEY: 'Hotel guest payment',

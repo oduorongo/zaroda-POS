@@ -6,6 +6,7 @@ export type LedgerAccountType = 'ASSET' | 'LIABILITY' | 'EQUITY' | 'INCOME' | 'E
 
 export const SYSTEM_ACCOUNTS = [
   { key: 'CASH', code: '1000', name: 'Cash on hand', type: 'ASSET' },
+  { key: 'PETTY_CASH', code: '1005', name: 'Petty cash', type: 'ASSET' },
   { key: 'MPESA', code: '1010', name: 'M-Pesa', type: 'ASSET' },
   { key: 'BANK', code: '1020', name: 'Bank', type: 'ASSET' },
   { key: 'CARD_CLEARING', code: '1030', name: 'Card payments not yet in the bank', type: 'ASSET' },
@@ -89,6 +90,7 @@ export function expenseAccount(category: string): AccountKey {
 /** ZARODA's own chart (the platform's books, kept apart from every business's). */
 export const PLATFORM_ACCOUNTS = [
   { key: 'CASH', code: '1000', name: 'Cash on hand', type: 'ASSET' },
+  { key: 'PETTY_CASH', code: '1005', name: 'Petty cash', type: 'ASSET' },
   { key: 'MPESA', code: '1010', name: 'M-Pesa and Tuma', type: 'ASSET' },
   { key: 'BANK', code: '1020', name: 'Bank', type: 'ASSET' },
   { key: 'RECEIVABLE', code: '1100', name: 'Businesses who owe ZARODA', type: 'ASSET' },

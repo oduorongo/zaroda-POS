@@ -79,6 +79,8 @@ export function saleMethodAccount(method: string): AccountKey {
 /** Where money paid out or received by other means lands (expenses, supplier bills, school receipts, rent). */
 export function moneyAccount(method: string | null | undefined): AccountKey {
   switch (method) {
+    case 'PETTY_CASH':
+      return 'PETTY_CASH';
     case 'MPESA':
     case 'TUMA':
     case 'DARAJA':
@@ -383,4 +385,18 @@ export function tailorWorkDraft(w: { date: string; branchId?: string | null; lab
 /** Money paid to a tailor. */
 export function tailorPaymentDraft(p: { date: string; tailor: string; amountCents: number; method: string }): Draft {
   return { date: p.date, memo: `Paid ${p.tailor} (tailoring)`, lines: tidy([dr('TAILORS_PAYABLE', p.amountCents), cr(moneyAccount(p.method), p.amountCents)]) };
+}
+
+/** Money put into a petty cash box from the till, M-Pesa or the bank: it only moves, nothing is spent. */
+export function pettyTopUpDraft(t: { date: string; branchId?: string | null; box: string; amountCents: number; from: string | null }): Draft {
+  return { date: t.date, branchId: t.branchId, memo: `Petty cash top-up: ${t.box}`, lines: tidy([dr('PETTY_CASH', t.amountCents), cr(moneyAccount(t.from), t.amountCents)]) };
+}
+
+/** A petty cash count: a shortage is a cost, a surplus other income. */
+export function pettyCountDraft(c: { date: string; branchId?: string | null; box: string; differenceCents: number }): Draft {
+  const d = c.differenceCents;
+  const memo = `Petty cash count: ${c.box} ${d < 0 ? "short" : "over"}`;
+  return d < 0
+    ? { date: c.date, branchId: c.branchId, memo, lines: tidy([dr('EXP_OTHER', -d), cr('PETTY_CASH', -d)]) }
+    : { date: c.date, branchId: c.branchId, memo, lines: tidy([dr('PETTY_CASH', d), cr('OTHER_INCOME', d)]) };
 }

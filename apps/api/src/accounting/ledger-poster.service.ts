@@ -39,6 +39,8 @@ import {
   writeOffDraft,
   tailorWorkDraft,
   tailorPaymentDraft,
+  pettyTopUpDraft,
+  pettyCountDraft,
 } from './ledger-posting.util';
 import { CON_PAYMENT_LABEL, conPayrollDraft, conZarodaDraft, ipcReceiptDraft, materialIssueDraft, retentionDraft, subPaymentDraft, subValuationDraft } from './construction-posting.util';
 
@@ -369,6 +371,22 @@ export class LedgerPosterService {
         if (!h || Number(h.labourAmount) <= 0) return null;
         const item = [h.job.variant.product.name, h.job.variant.name].filter(Boolean).join(' ');
         return tailorWorkDraft({ date: nairobiDayOf(h.createdAt), branchId: h.job.branchId, label: `${h.job.tailor.name}, ${h.goodQty} x ${item} (${h.job.jobNumber})`, amountCents: toCents(h.labourAmount) });
+      },
+    },
+    {
+      type: 'PETTY_CASH',
+      candidates: async (tx, c) => [
+        ...(await ids(tx, Prisma.sql`SELECT t.id FROM petty_cash_entries t WHERE t.kind::text IN ('TOP_UP', 'COUNT') AND t.amount <> 0 AND t."voidedAt" IS NULL AND t."occurredOn" >= ${c.sinceDay} AND ${unposted('PETTY_CASH')} ORDER BY t."createdAt" LIMIT ${BATCH}`)),
+        // voided after it was posted: the entry is reversed
+        ...(await ids(tx, postedWhere('PETTY_CASH', 'petty_cash_entries', Prisma.sql`t."voidedAt" IS NOT NULL`))),
+      ],
+      draft: async (tx, id) => {
+        const e = await tx.pettyCashEntry.findUnique({ where: { id }, include: { box: { select: { name: true, branchId: true } } } });
+        if (!e || e.voidedAt || Number(e.amount) === 0) return null;
+        const base = { date: dateKey(e.occurredOn), branchId: e.box.branchId, box: e.box.name };
+        if (e.kind === 'TOP_UP') return pettyTopUpDraft({ ...base, amountCents: toCents(e.amount), from: e.topUpFrom });
+        if (e.kind === 'COUNT') return pettyCountDraft({ ...base, differenceCents: toCents(e.amount) });
+        return null;
       },
     },
     {

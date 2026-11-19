@@ -52,6 +52,7 @@ import { PharmacyModule } from './pharmacy/pharmacy.module';
 import { SalonModule } from './salon/salon.module';
 import { ManufacturingModule } from './manufacturing/manufacturing.module';
 import { TailoringModule } from './tailoring/tailoring.module';
+import { PettyCashModule } from './petty-cash/petty-cash.module';
 import { ServiceJobsModule } from './service-jobs/service-jobs.module';
 import { PayrollModule } from './payroll/payroll.module';
 import { RosterModule } from './roster/roster.module';
@@ -166,6 +167,7 @@ import { DeliveryModule } from './delivery/delivery.module';
     SalonModule,
     ManufacturingModule,
     TailoringModule,
+    PettyCashModule,
     ServiceJobsModule,
   ],
   controllers: [AppController],

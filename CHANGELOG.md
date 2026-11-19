@@ -1,5 +1,12 @@
 # Changelog
 
+## Petty cash, for businesses and for ZARODA (2026-11-19)
+
+- Businesses (every type): /petty-cash. Boxes per branch with a float and a keeper; vouchers (PCV-) that are also Expenses paid with PETTY_CASH (so profit, the VAT return and the books include them), refused above what the box holds; top-ups from the till, M-Pesa or bank (default: back to the float); counts (shortage = cost, surplus = other income); voids with a reason (a voucher's expense is removed; a top-up only while unspent); a printable petty cash book with balances brought and carried forward. Petty-cash expenses cannot be changed or deleted on Expenses. Audit-logged.
+- Books: new account 1005 Petty cash (counts as money in the cash flow); top-ups and counts post as source PETTY_CASH; voided ones are reversed.
+- ZARODA: Petty cash tab in ZARODA's books: vouchers (ZPCV-) charged to any ZARODA cost account except income tax, top-ups, counts, a float setting, the book; each posted at once as an automatic entry (cannot be reversed by hand), voiding reverses it. Platform-admin audit log.
+- Migration 20270106100000_petty_cash (3 tables, an enum, platform_ledger_settings.pettyCashFloat); run `prisma migrate deploy` then `apply-rls` BEFORE merging. Test: scripts/e2e-petty-cash.js (42 checks).
+
 ## ZARODA's books: tax and tithe before net profit (2026-11-19)
 
 - ZARODA's profit and loss now runs: income, less expenses = profit before tax; less income tax (new account 6800) = profit after tax; less the tithe (20% of the profit after tax, nothing in a loss) = net profit. The rate is a setting on the books page (0-100%).
