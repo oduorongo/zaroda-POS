@@ -28,6 +28,7 @@ const LINKS = [
 ];
 const CORE_LINKS = [
   { href: "/accounting", label: "Accounts" },
+  { href: "/petty-cash", label: "Petty cash" },
   { href: "/suppliers", label: "Suppliers" },
   { href: "/construction/materials", label: "Materials" },
 ];

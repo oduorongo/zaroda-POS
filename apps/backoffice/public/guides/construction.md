@@ -116,6 +116,17 @@ VAT, PAYE, NSSF, SHIF, Housing Levy and tips held, as the books stand. Record a 
 
 ---
 
+## Petty cash (office and site)
+Open **Petty cash** in the top menu (Director and office managers). Keep a small cash box for the office or each site, apart from the bank: fuel for the pickup, a boda to the hardware, airtime, small tools.
+- **Set up a box** per office or site with its **float** (e.g. KES 10,000), who keeps it (often the site supervisor or storekeeper), and where the float came from (cash, M-Pesa or the bank).
+- **Pay out**: every payment gets a **voucher (PCV-)** with what it was for and who took the money. It cannot be more than the box holds. Each voucher is also a company **expense**, so it is in the books and the profit and loss; add the VAT, KRA PIN and eTIMS invoice number when there is an eTIMS receipt.
+- **Top up** back to the float from M-Pesa or the bank; **count** the box now and then (a shortage is a cost, a surplus other income).
+- **Petty cash book**: every voucher, top-up and count with the running balance; print it to sign off. A wrong entry is **voided** with a reason, never edited.
+
+Petty cash vouchers are company running costs. Materials for a project still go through **requisitions and purchases** so they reach the project's costs.
+
+---
+
 ## Power lines (electrical contractors)
 For line extensions such as REREC and KPLC jobs, choose **Electrical & mechanical** as the works class and enter the **line voltage (kV)** on the tender or project.
 - **EPRA licence**: the Compliance Officer uploads the company's EPRA electrical contractor licence as a compliance document and picks its class. Under **EPRA licence classes** on the Compliance page, set the highest voltage each class covers (confirm the limits with EPRA). A tender or project whose voltage is not covered by a valid licence is refused; only the Director can override it, with a reason.
