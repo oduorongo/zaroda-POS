@@ -127,8 +127,23 @@ export default function PlatformAccountingPage() {
                 commission and shopper convenience-fee invoices (and their payments), rental plan and rent collection invoices, house advert
                 fees, construction payments, Zaroda School subscriptions (reported by Zaroda School every 30 minutes) and sales-agent payouts
                 are posted automatically every few minutes. A waived invoice is taken back out. Enter ZARODA&apos;s
-                own costs (hosting, SMS, salaries, marketing), owners&apos; money, loans and tax payments as journals.
+                own costs (hosting, SMS, salaries, marketing), owners&apos; money and loans as journals.
               </p>
+              <ul className="list-disc space-y-1 pl-5 text-secondary-600">
+                <li>
+                  <strong>Income tax</strong> paid to KRA: a journal debiting <strong>6800 Income tax</strong> and crediting the bank or M-Pesa. It shows on
+                  its own line in the profit and loss, after the running costs.
+                </li>
+                <li>
+                  <strong>Tithe</strong>: {data.titheRate}% of the profit after tax is set aside before the net profit (nothing in a loss). It is worked out,
+                  not posted, and shows as owed under <strong>2200 Tithe set aside</strong>. When you give it, record a journal debiting 2200 and crediting
+                  the bank or M-Pesa. The rate is under Settings below.
+                </li>
+                <li>
+                  <strong>Petty cash</strong>: small payments are vouchers on the <Link href="/accounting/petty-cash" className="text-primary-600 hover:underline">Petty cash</Link> tab,
+                  charged to a cost account and posted at once. Top it up there from the bank or M-Pesa, and count it now and then.
+                </li>
+              </ul>
               <ul className="space-y-1">
                 <li>
                   Posting from <strong>{niceDay(data.startDate)}</strong> ({data.entries.toLocaleString()} entries so far)
