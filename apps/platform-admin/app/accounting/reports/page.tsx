@@ -27,6 +27,12 @@ interface ProfitLoss {
   grossProfit: number;
   expenses: Row[];
   totalExpenses: number;
+  profitBeforeTax: number;
+  tax: Row[];
+  totalTax: number;
+  profitAfterTax: number;
+  titheRate: number;
+  tithe: number;
   netProfit: number;
 }
 interface BalanceSheet {
@@ -37,6 +43,7 @@ interface BalanceSheet {
   totalLiabilities: number;
   equity: Row[];
   profitToDate: number;
+  titheToDate: number;
   totalEquity: number;
   balanced: boolean;
 }
@@ -103,7 +110,9 @@ export default function StatementsPage() {
       part("Cost of sales", pl.costOfSales, pl.totalCostOfSales);
       rows.push(["", "Gross profit", pl.grossProfit]);
       part("Expenses", pl.expenses, pl.totalExpenses);
-      rows.push(["", "Net profit", pl.netProfit]);
+      rows.push(["", "Profit before tax", pl.profitBeforeTax]);
+      part("Tax", pl.tax, pl.totalTax);
+      rows.push(["", "Profit after tax", pl.profitAfterTax], ["", `Tithe (${pl.titheRate}% of profit after tax)`, pl.tithe], ["", "Net profit", pl.netProfit]);
       downloadCsv(`profit-and-loss-${pl.from}-${pl.to}.csv`, csv(rows));
     } else if (tab === "bs" && bs) {
       const rows: (string | number)[][] = [["Balance sheet", bs.asOf], [], ["Code", "Account", "Amount"]];
@@ -114,7 +123,7 @@ export default function StatementsPage() {
       }
       rows.push(["Equity"]);
       for (const r of bs.equity) rows.push([r.code, r.name, r.amount]);
-      rows.push(["", "Profit not yet moved to equity", bs.profitToDate], ["", "Total equity", bs.totalEquity]);
+      rows.push(["", "Profit not yet moved to equity (after tithe)", bs.profitToDate], ["", "Total equity", bs.totalEquity]);
       downloadCsv(`balance-sheet-${bs.asOf}.csv`, csv(rows));
     } else if (tab === "tb" && tb) {
       downloadCsv(
@@ -199,7 +208,15 @@ export default function StatementsPage() {
             <Section title="Cost of sales" rows={pl.costOfSales} total={pl.totalCostOfSales} />
             <Total label="Gross profit" value={pl.grossProfit} />
             <Section title="Expenses" rows={pl.expenses} total={pl.totalExpenses} />
+            <Total label={pl.profitBeforeTax >= 0 ? "Profit before tax" : "Loss before tax"} value={pl.profitBeforeTax} />
+            <Section title="Tax" rows={pl.tax} total={pl.totalTax} />
+            <Total label={pl.profitAfterTax >= 0 ? "Profit after tax" : "Loss after tax"} value={pl.profitAfterTax} />
+            <Line label={`Tithe (${pl.titheRate}% of the profit after tax)`} value={-pl.tithe} />
             <Total label={pl.netProfit >= 0 ? "Net profit" : "Net loss"} value={pl.netProfit} big />
+            <p className="pt-1 text-xs text-secondary-500">
+              The tithe is set aside from the profit after all expenses and tax; in a loss nothing is set aside. Record income tax paid against
+              6800 Income tax, and tithe given against 2200 Tithe set aside (a journal: debit 2200, credit the bank or M-Pesa).
+            </p>
           </div>
         )}
 
@@ -209,7 +226,8 @@ export default function StatementsPage() {
             <Section title="What the business has (assets)" rows={bs.assets} total={bs.totalAssets} />
             <Section title="What it owes (liabilities)" rows={bs.liabilities} total={bs.totalLiabilities} />
             <Section title="Owner's money (equity)" rows={bs.equity} />
-            <Line label="Profit not yet moved to equity" value={bs.profitToDate} />
+            <Line label="Profit not yet moved to equity (after tithe)" value={bs.profitToDate} />
+            {bs.titheToDate > 0 && <p className="pl-3 text-xs text-secondary-500">{kes(bs.titheToDate)} of the profit to date is tithe; what is not yet given shows under 2200 Tithe set aside.</p>}
             <Total label="Total equity" value={bs.totalEquity} />
             <Total label="Liabilities + equity" value={bs.totalLiabilities + bs.totalEquity} big />
             <p className={`pt-2 text-xs ${bs.balanced ? "text-green-700" : "text-red-600"}`}>

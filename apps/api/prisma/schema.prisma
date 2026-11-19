@@ -5807,6 +5807,8 @@ model PlatformLedgerSettings {
   id           String    @id @default("default")
   startDate    DateTime  @db.Date
   lockDate     DateTime? @db.Date
+  /// Share of the profit after tax set aside as tithe before the net profit (percent).
+  titheRate    Decimal   @default(20) @db.Decimal(5, 2)
   lastPassAt   DateTime?
   lastPassNote String?
   createdAt    DateTime  @default(now())

@@ -129,3 +129,34 @@ export function cashFlow(accounts: AccountInfo[], effects: Map<string, number>, 
   const net = operating.total + investing.total + financing.total;
   return { opening: openingCents, operating, investing, financing, net, closing: closingCents, reconciles: openingCents + net === closingCents };
 }
+
+/**
+ * ZARODA's own profit and loss: running costs come off first, then income tax (account INCOME_TAX) gives the profit after tax,
+ * then the tithe - `ratePct` of that profit, nothing in a loss - is set aside before the net profit. The tithe is worked out
+ * from the books, not posted; giving it is recorded against TITHE_PAYABLE ("Tithe set aside, not yet given").
+ */
+export function profitWithTithe(accounts: AccountInfo[], sums: Sums, ratePct: number) {
+  const isTax = (a: AccountInfo) => a.systemKey === 'INCOME_TAX';
+  const base = profitAndLoss(accounts.filter((a) => !isTax(a)), sums);
+  const tax = rows(accounts, sums, isTax);
+  const totalTax = total(tax);
+  const profitBeforeTax = base.netProfit;
+  const profitAfterTax = profitBeforeTax - totalTax;
+  const tithe = profitAfterTax > 0 ? Math.round((profitAfterTax * ratePct) / 100) : 0;
+  return { ...base, profitBeforeTax, tax, totalTax, profitAfterTax, titheRate: ratePct, tithe, netProfit: profitAfterTax - tithe };
+}
+
+/** ZARODA's balance sheet with the tithe on the profit to date owed (set aside) and kept out of the owners' profit. */
+export function balanceSheetWithTithe(accounts: AccountInfo[], sums: Sums, ratePct: number) {
+  const bs = balanceSheet(accounts, sums);
+  const { tithe } = profitWithTithe(accounts, sums, ratePct);
+  const payable = accounts.find((a) => a.systemKey === 'TITHE_PAYABLE');
+  const liabilities = bs.liabilities.filter((r) => r.accountId !== payable?.id);
+  const given = bs.liabilities.find((r) => r.accountId === payable?.id)?.amount ?? 0;
+  if (payable && tithe + given !== 0) liabilities.push({ accountId: payable.id, code: payable.code, name: payable.name, amount: tithe + given });
+  liabilities.sort(byCode);
+  const totalLiabilities = bs.totalLiabilities + tithe;
+  const profitToDate = bs.profitToDate - tithe;
+  const totalEquity = bs.totalEquity - tithe;
+  return { ...bs, liabilities, totalLiabilities, profitToDate, totalEquity, titheToDate: tithe, balanced: bs.totalAssets === totalLiabilities + totalEquity };
+}

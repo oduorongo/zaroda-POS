@@ -217,3 +217,12 @@ export class VatQueryDto {
   @IsOptional()
   month?: string;
 }
+
+/** ZARODA's own books: the business settings plus the share of profit after tax set aside as tithe. */
+export class PlatformLedgerSettingsDto extends LedgerSettingsDto {
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  @Max(100)
+  @IsOptional()
+  titheRate?: number;
+}

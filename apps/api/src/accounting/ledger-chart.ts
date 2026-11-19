@@ -95,6 +95,7 @@ export const PLATFORM_ACCOUNTS = [
   { key: 'AP', code: '2000', name: 'Suppliers ZARODA owes', type: 'LIABILITY' },
   { key: 'WHT_PAYABLE', code: '2100', name: 'Withholding tax held from agents (owed to KRA)', type: 'LIABILITY' },
   { key: 'VAT_OUTPUT', code: '2110', name: 'VAT owed to KRA', type: 'LIABILITY' },
+  { key: 'TITHE_PAYABLE', code: '2200', name: 'Tithe set aside, not yet given', type: 'LIABILITY' },
   { key: 'CAPITAL', code: '3000', name: "Owners' capital", type: 'EQUITY' },
   { key: 'OPENING_BALANCE', code: '3100', name: 'Opening balances', type: 'EQUITY' },
   { key: 'RETAINED_EARNINGS', code: '3200', name: 'Profit kept from earlier years', type: 'EQUITY' },
@@ -115,6 +116,7 @@ export const PLATFORM_ACCOUNTS = [
   { key: 'PAYMENT_CHARGES', code: '6030', name: 'M-Pesa and payment charges', type: 'EXPENSE' },
   { key: 'SALARIES', code: '6040', name: 'Salaries and wages', type: 'EXPENSE' },
   { key: 'MARKETING', code: '6050', name: 'Marketing and advertising', type: 'EXPENSE' },
+  { key: 'INCOME_TAX', code: '6800', name: 'Income tax (corporation tax)', type: 'EXPENSE' },
   { key: 'OTHER_EXPENSES', code: '6900', name: 'Other expenses', type: 'EXPENSE' },
 ] as const satisfies readonly { key: string; code: string; name: string; type: LedgerAccountType }[];
 
