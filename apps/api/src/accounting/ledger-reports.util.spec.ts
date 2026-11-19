@@ -1,4 +1,4 @@
-import { AccountInfo, balanceSheet, profitAndLoss, Sums, trialBalance, withRunningBalance } from './ledger-reports.util';
+import { AccountInfo, balanceSheet, balanceSheetWithTithe, profitAndLoss, profitWithTithe, Sums, trialBalance, withRunningBalance } from './ledger-reports.util';
 
 const acc = (id: string, code: string, type: AccountInfo['type']): AccountInfo => ({ id, code, name: id, type, systemKey: null });
 const accounts = [
@@ -52,5 +52,56 @@ describe('ledger statements', () => {
   it('running balance follows the account side', () => {
     expect(withRunningBalance('ASSET', 100, [{ debit: 50, credit: 0 }, { debit: 0, credit: 30 }]).map((l) => l.balance)).toEqual([150, 120]);
     expect(withRunningBalance('LIABILITY', 0, [{ debit: 0, credit: 50 }]).map((l) => l.balance)).toEqual([50]);
+  });
+});
+
+describe("ZARODA's profit with the tithe", () => {
+  const key = (id: string, code: string, type: AccountInfo['type'], systemKey: string): AccountInfo => ({ id, code, name: id, type, systemKey });
+  const books = [
+    key('bank', '1020', 'ASSET', 'BANK'),
+    key('tithe', '2200', 'LIABILITY', 'TITHE_PAYABLE'),
+    key('subs', '4000', 'INCOME', 'SUBSCRIPTION_INCOME'),
+    key('hosting', '6010', 'EXPENSE', 'HOSTING'),
+    key('tax', '6800', 'EXPENSE', 'INCOME_TAX'),
+  ];
+  // 100,000 subscriptions in the bank; 30,000 hosting and 21,000 income tax paid from it.
+  const sums: Sums = new Map([
+    ['bank', { debit: 10_000_000, credit: 5_100_000 }],
+    ['subs', { debit: 0, credit: 10_000_000 }],
+    ['hosting', { debit: 3_000_000, credit: 0 }],
+    ['tax', { debit: 2_100_000, credit: 0 }],
+  ]);
+
+  it('takes running costs, then tax, then 20% tithe before the net profit', () => {
+    const pl = profitWithTithe(books, sums, 20);
+    expect(pl.totalExpenses).toBe(3_000_000);
+    expect(pl.expenses.map((r) => r.code)).toEqual(['6010']);
+    expect(pl.profitBeforeTax).toBe(7_000_000);
+    expect(pl.totalTax).toBe(2_100_000);
+    expect(pl.profitAfterTax).toBe(4_900_000);
+    expect(pl.tithe).toBe(980_000);
+    expect(pl.netProfit).toBe(3_920_000);
+  });
+
+  it('sets no tithe aside in a loss', () => {
+    const loss: Sums = new Map([['subs', { debit: 0, credit: 100 }], ['hosting', { debit: 500, credit: 0 }]]);
+    const pl = profitWithTithe(books, loss, 20);
+    expect(pl.tithe).toBe(0);
+    expect(pl.netProfit).toBe(-400);
+  });
+
+  it('the balance sheet owes the tithe until it is given, and still balances', () => {
+    const before = balanceSheetWithTithe(books, sums, 20);
+    expect(before.balanced).toBe(true);
+    expect(before.liabilities.find((r) => r.code === '2200')?.amount).toBe(980_000);
+    expect(before.profitToDate).toBe(3_920_000);
+    // 500,000 of it given from the bank
+    const after = new Map(sums);
+    after.set('bank', { debit: 10_000_000, credit: 5_600_000 });
+    after.set('tithe', { debit: 500_000, credit: 0 });
+    const bs = balanceSheetWithTithe(books, after, 20);
+    expect(bs.balanced).toBe(true);
+    expect(bs.liabilities.find((r) => r.code === '2200')?.amount).toBe(480_000);
+    expect(bs.profitToDate).toBe(3_920_000);
   });
 });

@@ -7,7 +7,7 @@ import { dateOf, dayOf, todayKey } from './ledger-books.service';
 import { PLATFORM_ACCOUNTS } from './ledger-chart';
 import { CON_PAYMENT_INCOME, CON_PAYMENT_LABEL } from './construction-posting.util';
 import { Draft, DraftLine, fingerprint, isBalanced, manualProblem, postingDate } from './ledger-posting.util';
-import { AccountInfo, balanceSheet, profitAndLoss, Sums, trialBalance, withRunningBalance } from './ledger-reports.util';
+import { AccountInfo, balanceSheetWithTithe, profitWithTithe, Sums, trialBalance, withRunningBalance } from './ledger-reports.util';
 import {
   platformConPaymentDraft,
   platformSchoolPaymentDraft,
@@ -380,6 +380,7 @@ export class PlatformLedgerService {
       return {
         startDate: dayOf(s.startDate),
         lockDate: dayOf(s.lockDate),
+        titheRate: Number(s.titheRate),
         lastPassAt: s.lastPassAt,
         lastPassNote: s.lastPassNote,
         entries: await tx.platformJournalEntry.count(),
@@ -388,7 +389,7 @@ export class PlatformLedgerService {
     });
   }
 
-  async updateSettings(dto: { startDate?: string; lockDate?: string | null }) {
+  async updateSettings(dto: { startDate?: string; lockDate?: string | null; titheRate?: number }) {
     await this.platform(async (tx) => {
       await this.lock(tx);
       const s = await this.settings(tx);
@@ -403,6 +404,7 @@ export class PlatformLedgerService {
         if (dto.lockDate && dto.lockDate >= todayKey()) throw new BadRequestException('The books can only be closed up to yesterday.');
         data.lockDate = dto.lockDate ? dateOf(dto.lockDate) : null;
       }
+      if (dto.titheRate !== undefined) data.titheRate = dto.titheRate;
       await tx.platformLedgerSettings.update({ where: { id: 'default' }, data });
     });
     return this.overview();
@@ -575,7 +577,7 @@ export class PlatformLedgerService {
     const from = q.from ?? `${to.slice(0, 7)}-01`;
     if (from > to) throw new BadRequestException('The start day is after the end day.');
     return this.platform(async (tx) => {
-      const pl = profitAndLoss(await this.accountInfo(tx), await this.sums(tx, { from, to }));
+      const pl = profitWithTithe(await this.accountInfo(tx), await this.sums(tx, { from, to }), Number((await this.settings(tx)).titheRate));
       const m = <T extends { amount: number }>(rows: T[]) => rows.map((r) => ({ ...r, amount: money(r.amount) }));
       return {
         from,
@@ -588,6 +590,12 @@ export class PlatformLedgerService {
         grossProfit: money(pl.grossProfit),
         expenses: m(pl.expenses),
         totalExpenses: money(pl.totalExpenses),
+        profitBeforeTax: money(pl.profitBeforeTax),
+        tax: m(pl.tax),
+        totalTax: money(pl.totalTax),
+        profitAfterTax: money(pl.profitAfterTax),
+        titheRate: pl.titheRate,
+        tithe: money(pl.tithe),
         netProfit: money(pl.netProfit),
       };
     });
@@ -595,7 +603,7 @@ export class PlatformLedgerService {
 
   async balanceSheet(asOf = todayKey()) {
     return this.platform(async (tx) => {
-      const bs = balanceSheet(await this.accountInfo(tx), await this.sums(tx, { to: asOf }));
+      const bs = balanceSheetWithTithe(await this.accountInfo(tx), await this.sums(tx, { to: asOf }), Number((await this.settings(tx)).titheRate));
       const m = <T extends { amount: number }>(rows: T[]) => rows.map((r) => ({ ...r, amount: money(r.amount) }));
       return {
         asOf,
@@ -605,6 +613,7 @@ export class PlatformLedgerService {
         totalLiabilities: money(bs.totalLiabilities),
         equity: m(bs.equity),
         profitToDate: money(bs.profitToDate),
+        titheToDate: money(bs.titheToDate),
         totalEquity: money(bs.totalEquity),
         balanced: bs.balanced,
       };

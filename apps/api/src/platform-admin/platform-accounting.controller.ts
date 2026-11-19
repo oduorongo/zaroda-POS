@@ -2,7 +2,7 @@ import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, Query, Req, U
 import { Request } from 'express';
 import { Public } from '../auth/public.decorator';
 import { PrismaService } from '../common/prisma/prisma.service';
-import { AsOfQueryDto, CreateAccountDto, CreateJournalDto, JournalListQueryDto, LedgerSettingsDto, RangeQueryDto, ReverseJournalDto, UpdateAccountDto } from '../accounting/dto/accounting.dto';
+import { AsOfQueryDto, CreateAccountDto, CreateJournalDto, JournalListQueryDto, PlatformLedgerSettingsDto, RangeQueryDto, ReverseJournalDto, UpdateAccountDto } from '../accounting/dto/accounting.dto';
 import { PlatformLedgerService } from '../accounting/platform-ledger.service';
 import { PlatformAdminAuthGuard } from './platform-admin-auth.guard';
 import { PlatformAuditLogService } from './platform-audit-log.service';
@@ -38,8 +38,8 @@ export class PlatformAccountingController {
   }
 
   @Patch('settings')
-  async updateSettings(@Req() req: PlatformAdminRequest, @Body() dto: LedgerSettingsDto) {
-    const r = await this.ledger.updateSettings({ startDate: dto.startDate, lockDate: dto.lockDate });
+  async updateSettings(@Req() req: PlatformAdminRequest, @Body() dto: PlatformLedgerSettingsDto) {
+    const r = await this.ledger.updateSettings({ startDate: dto.startDate, lockDate: dto.lockDate, titheRate: dto.titheRate });
     await this.log(req, 'settings_changed');
     return r;
   }

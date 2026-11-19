@@ -8,6 +8,7 @@ import { API, AccountingTabs, inputClass, kes, niceDay, quietButtonClass, button
 interface Overview {
   startDate: string;
   lockDate: string | null;
+  titheRate: number;
   lastPassAt: string | null;
   lastPassNote: string | null;
   entries: number;
@@ -27,6 +28,7 @@ interface BalanceSheet {
 interface ProfitLoss {
   totalIncome: number;
   totalExpenses: number;
+  tithe: number;
   netProfit: number;
 }
 
@@ -41,6 +43,7 @@ export default function PlatformAccountingPage() {
   const [busy, setBusy] = useState(false);
   const [startDate, setStartDate] = useState("");
   const [lockDate, setLockDate] = useState("");
+  const [titheRate, setTitheRate] = useState("");
 
   const load = useCallback(async () => {
     try {
@@ -48,6 +51,7 @@ export default function PlatformAccountingPage() {
       setData(o);
       setStartDate(o.startDate);
       setLockDate(o.lockDate ?? "");
+      setTitheRate(String(o.titheRate));
       const [b, p] = await Promise.all([
         apiGet<BalanceSheet>(`${API}/reports/balance-sheet`),
         apiGet<ProfitLoss>(`${API}/reports/profit-loss?from=${todayKey().slice(0, 7)}-01&to=${todayKey()}`),
@@ -112,7 +116,7 @@ export default function PlatformAccountingPage() {
             <div className="grid gap-3 sm:grid-cols-3">
               <Tile label="What ZARODA has" value={bs ? kes(bs.totalAssets) : "..."} />
               <Tile label="Income this month" value={pl ? kes(pl.totalIncome) : "..."} />
-              <Tile label="Profit this month" value={pl ? kes(pl.netProfit) : "..."} tone={pl && pl.netProfit < 0 ? "text-red-600" : "text-green-600"} />
+              <Tile label="Net profit this month (after tax and tithe)" value={pl ? kes(pl.netProfit) : "..."} tone={pl && pl.netProfit < 0 ? "text-red-600" : "text-green-600"} />
             </div>
             {bs && !bs.balanced && <p className="rounded-md bg-warning-50 p-3 text-sm text-warning-900">The balance sheet does not balance. This should never happen.</p>}
 
@@ -181,6 +185,20 @@ export default function PlatformAccountingPage() {
                       </button>
                     )}
                   </div>
+                </div>
+                <div>
+                  <label className="block">
+                    Tithe (% of profit after tax)
+                    <input type="number" min={0} max={100} step="0.01" value={titheRate} onChange={(e) => setTitheRate(e.target.value)} className={inputClass} />
+                  </label>
+                  <p className="mt-1 text-xs text-secondary-500">Set aside from the profit after all expenses and tax, before the net profit. Nothing is set aside in a loss.</p>
+                  <button
+                    disabled={busy || titheRate === "" || Number(titheRate) === data.titheRate || Number(titheRate) < 0 || Number(titheRate) > 100}
+                    onClick={() => void save({ titheRate: Number(titheRate) }, `The tithe is now ${Number(titheRate)}% of the profit after tax.`)}
+                    className={`${quietButtonClass} mt-2`}
+                  >
+                    Save tithe
+                  </button>
                 </div>
               </div>
             </div>
