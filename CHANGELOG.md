@@ -1,5 +1,11 @@
 # Changelog
 
+## ZARODA's books: tax and tithe before net profit (2026-11-19)
+
+- ZARODA's profit and loss now runs: income, less expenses = profit before tax; less income tax (new account 6800) = profit after tax; less the tithe (20% of the profit after tax, nothing in a loss) = net profit. The rate is a setting on the books page (0-100%).
+- The tithe is worked out from the books, not posted. The balance sheet shows it owed under 2200 Tithe set aside, not yet given (and keeps it out of the owners' profit); giving it is a journal (debit 2200, credit the bank or M-Pesa).
+- Migration 20270105100000_platform_tithe (platform_ledger_settings.titheRate, default 20). No RLS step. e2e-ledger.js now 179 checks.
+
 ## School uniforms: a business type that makes uniforms with tailors (2026-11-18)
 
 - New business type at sign-up: "School uniforms" (`UNIFORM_MAKER`). It has every school supplier screen (schools, price list, orders, invoices, quotes, tenders, school-term plans) plus **Tailoring**.
