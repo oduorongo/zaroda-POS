@@ -52,5 +52,6 @@ providers later is an infrastructure change, not a code change.
 | `DATABASE_URL` / `DIRECT_URL` | High | DB credentials - `DATABASE_URL` must be the least-privilege `zaroda_app` role, never the owner (see `apps/api/prisma/README.md`) |
 | `JWT_SECRET` / `PLATFORM_ADMIN_JWT_SECRET` | High | Deliberately separate secrets - a leak of one must not compromise the other (see `platform-admin.module.ts`'s own comment) |
 | `MPESA_CONSUMER_SECRET`, `MPESA_PASSKEY` | High | Daraja credentials - real money movement |
+| `ETIMS_SANDBOX_CONSUMER_KEY` / `_SECRET`, `ETIMS_PRODUCTION_CONSUMER_KEY` / `_SECRET` | High | ZARODA's KRA GavaConnect (developer.go.ke) app credentials: every business's eTIMS calls go through them. Never logged; the token is kept in memory only |
 | `AFRICAS_TALKING_API_KEY` | Medium | SMS sending - abuse risk (spam/cost), not a financial or data-access risk |
 | `SENTRY_DSN` | Low | Not itself sensitive, but should still be provisioned the same way as everything else for consistency |
