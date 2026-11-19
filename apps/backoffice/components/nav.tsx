@@ -88,6 +88,9 @@ export function Nav({ session }: { session: Session }) {
           <RibbonLink href="/accounting" LinkComponent={Link} active={!!pathname?.startsWith("/accounting")}>
             Accounts
           </RibbonLink>
+          <RibbonLink href="/petty-cash" LinkComponent={Link} active={!!pathname?.startsWith("/petty-cash")}>
+            Petty cash
+          </RibbonLink>
           <RibbonLink href="/staff" LinkComponent={Link} active={!!pathname?.startsWith("/staff")}>
             Staff
           </RibbonLink>

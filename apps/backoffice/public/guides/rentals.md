@@ -162,6 +162,17 @@ On **Expenses**, record what each property costs you: choose the **property**, t
 
 ---
 
+## Petty cash
+Open **Petty cash** in the top menu to keep a small cash box (yours or the caretaker's) for small costs: a plumber's washer, a padlock, cleaning things, airtime.
+- **Set up a box** with its **float** (e.g. KES 3,000), who keeps it, and where the float came from (cash, M-Pesa or the bank).
+- **Pay out**: each payment gets a **voucher (PCV-)** with what it was for and who took the money; it cannot be more than the box holds.
+- **Top up** back to the float; **count** the box now and then (a shortage is a cost, a surplus other income).
+- **Petty cash book**: every voucher, top-up and count with the running balance; print it to sign off. A wrong entry is **voided** with a reason, never edited.
+
+Petty cash payments go into **Accounts** (your books) as costs, but not into one property's **net income**. For a cost that belongs to a property, record it on **Expenses** with that property (paid with cash) instead.
+
+---
+
 ## Maintenance (repairs)
 
 On **Maintenance**, log anything that needs fixing:
