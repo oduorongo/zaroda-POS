@@ -169,6 +169,16 @@ If the internet drops, the till keeps selling for **cash**: sales are saved on t
 ### Expenses
 **Expenses** records money you spend (rent, power, transport, supplies...): the category, amount, how it was paid and the date. If it has VAT on a supplier's eTIMS receipt, enter the VAT, their **KRA PIN** and the **eTIMS invoice number** so you can claim it.
 
+### Petty cash
+**Petty cash** is a small cash box for small costs (a boda, cleaning things, tea, a small repair), kept apart from the till's cash.
+1. **Set up a box**: its name, branch, the **float** (what it is kept topped up to, e.g. KES 5,000), who keeps it, and where the float came from (the till, M-Pesa or the bank).
+2. **Pay out**: each payment gets a **voucher number (PCV-)**: the amount, what it was for, the details and who took the money. A payment cannot be more than the box holds. It is also an **expense** (paid with petty cash), so it reaches Profit & loss and the books; add the VAT, KRA PIN and eTIMS invoice number if it has an eTIMS receipt.
+3. **Top up**: puts money back in from the till, M-Pesa or the bank. Leave the amount as shown to bring the box back to its float. A top-up is not a cost: the money only moves.
+4. **Count the box**: enter the cash in it. A shortage is recorded as a cost, a surplus as other income.
+5. **The petty cash book**: every voucher, top-up and count for any dates, with the balance brought and carried forward. **Print** it to sign off.
+
+A wrong entry is **voided** with the reason, never changed; the books are corrected by themselves. A voucher's expense can only be voided on Petty cash, not on Expenses.
+
 ### Accounts (the books)
 **Accounts** is a full set of double-entry books that **keep themselves**: sales, refunds, expenses, supplier bills and payments, stock counts, waste, payroll and more are posted for you every few minutes.
 - **Statements**: profit and loss (for the whole business or one branch), balance sheet, trial balance, **cash flow**, **aged debtors**, **aged creditors** and the monthly **VAT return** with the purchases list for iTax. Each downloads as a spreadsheet.

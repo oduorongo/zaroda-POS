@@ -73,6 +73,7 @@ const TABS = [
   ["/accounting", "Overview"],
   ["/accounting/reports", "Statements"],
   ["/accounting/journals", "Journals"],
+  ["/accounting/petty-cash", "Petty cash"],
   ["/accounting/accounts", "Chart of accounts"],
 ] as const;
 

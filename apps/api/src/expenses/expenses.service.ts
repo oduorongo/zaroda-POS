@@ -36,7 +36,7 @@ export function toExpenseView(e: Expense & { branch?: { name: string } | null })
 }
 
 /** A date that is plausible for money already spent: not in the future (beyond today in Nairobi), not years ago. */
-function checkDay(day: string) {
+export function checkDay(day: string) {
   const today = nairobiToday();
   if (day > today) throw new BadRequestException('That date is in the future - record an expense once the money has been spent');
   if (toDate(day).getTime() < toDate(today).getTime() - 5 * 366 * DAY_MS) throw new BadRequestException('That date is too long ago');
@@ -118,6 +118,7 @@ export class ExpensesService {
     return this.tenantPrisma.run(async (tx) => {
       const before = await tx.expense.findUnique({ where: { id }, include: { branch: { select: { name: true } } } });
       if (!before) throw new NotFoundException('Expense not found');
+      if (before.paidWith === 'PETTY_CASH') throw new BadRequestException('This was paid from petty cash. Void its voucher on the Petty cash screen instead.');
       const differs = <T>(v: T | undefined, was: T) => v !== undefined && v !== was;
       if (
         before.etimsInvoiceId &&
@@ -154,6 +155,7 @@ export class ExpensesService {
     return this.tenantPrisma.run(async (tx) => {
       const before = await tx.expense.findUnique({ where: { id }, include: { branch: { select: { name: true } } } });
       if (!before) throw new NotFoundException('Expense not found');
+      if (before.paidWith === 'PETTY_CASH') throw new BadRequestException('This was paid from petty cash. Void its voucher on the Petty cash screen instead.');
       await tx.expense.delete({ where: { id } });
       await this.audit.logInTx(tx, { action: 'expense.deleted', entityType: 'Expense', entityId: id, before: toExpenseView(before) });
       return { deleted: true };

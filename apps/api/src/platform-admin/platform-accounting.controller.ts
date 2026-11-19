@@ -4,6 +4,7 @@ import { Public } from '../auth/public.decorator';
 import { PrismaService } from '../common/prisma/prisma.service';
 import { AsOfQueryDto, CreateAccountDto, CreateJournalDto, JournalListQueryDto, PlatformLedgerSettingsDto, RangeQueryDto, ReverseJournalDto, UpdateAccountDto } from '../accounting/dto/accounting.dto';
 import { PlatformLedgerService } from '../accounting/platform-ledger.service';
+import { CountDto, PlatformPettyPayDto, TopUpDto, VoidEntryDto } from '../petty-cash/dto/petty-cash.dto';
 import { PlatformAdminAuthGuard } from './platform-admin-auth.guard';
 import { PlatformAuditLogService } from './platform-audit-log.service';
 
@@ -39,7 +40,7 @@ export class PlatformAccountingController {
 
   @Patch('settings')
   async updateSettings(@Req() req: PlatformAdminRequest, @Body() dto: PlatformLedgerSettingsDto) {
-    const r = await this.ledger.updateSettings({ startDate: dto.startDate, lockDate: dto.lockDate, titheRate: dto.titheRate });
+    const r = await this.ledger.updateSettings({ startDate: dto.startDate, lockDate: dto.lockDate, titheRate: dto.titheRate, pettyCashFloat: dto.pettyCashFloat });
     await this.log(req, 'settings_changed');
     return r;
   }
@@ -110,5 +111,39 @@ export class PlatformAccountingController {
   @Get('reports/balance-sheet')
   balanceSheet(@Query() q: AsOfQueryDto) {
     return this.ledger.balanceSheet(q.asOf);
+  }
+
+  // ── ZARODA's petty cash ──
+  @Get('petty-cash')
+  pettyCash(@Query() q: RangeQueryDto) {
+    return this.ledger.pettyCashBook(q);
+  }
+
+  @Post('petty-cash/pay')
+  async pettyPay(@Req() req: PlatformAdminRequest, @Body() dto: PlatformPettyPayDto) {
+    const r = await this.ledger.pettyPay(dto, await this.admin(req));
+    await this.log(req, 'petty_cash_paid', r.id);
+    return r;
+  }
+
+  @Post('petty-cash/top-up')
+  async pettyTopUp(@Req() req: PlatformAdminRequest, @Body() dto: TopUpDto) {
+    const r = await this.ledger.pettyTopUp(dto, await this.admin(req));
+    await this.log(req, 'petty_cash_topped_up', r.id);
+    return r;
+  }
+
+  @Post('petty-cash/count')
+  async pettyCount(@Req() req: PlatformAdminRequest, @Body() dto: CountDto) {
+    const r = await this.ledger.pettyCount(dto, await this.admin(req));
+    await this.log(req, 'petty_cash_counted', r.id);
+    return r;
+  }
+
+  @Post('petty-cash/:id/void')
+  async pettyVoid(@Req() req: PlatformAdminRequest, @Param('id', ParseUUIDPipe) id: string, @Body() dto: VoidEntryDto) {
+    const r = await this.ledger.pettyVoid(id, dto, await this.admin(req));
+    await this.log(req, 'petty_cash_voided', id);
+    return r;
   }
 }

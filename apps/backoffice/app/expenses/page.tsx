@@ -345,14 +345,19 @@ export default function ExpensesPage() {
                   <p className="text-xs text-secondary-500">
                     {niceDay(x.spentOn)}
                     {x.branchName ? ` · ${x.branchName}` : ""}
-                    {x.paidWith ? ` · ${PAID_WITH.find(([k]) => k === x.paidWith)?.[1] ?? x.paidWith}` : ""}
+                    {x.paidWith ? ` · ${x.paidWith === "PETTY_CASH" ? "Petty cash" : (PAID_WITH.find(([k]) => k === x.paidWith)?.[1] ?? x.paidWith)}` : ""}
                   </p>
                   {x.description && <p className="text-xs text-secondary-600">{x.description}</p>}
                 </div>
                 <div className="flex items-center gap-3">
                   <span className="font-mono font-semibold">{kes(x.amount)}</span>
                   {x.taxAmount > 0 && <span className="block"><VatClaimNote claim={x.vatClaim} vat={x.taxAmount} kes={kes} /></span>}
-                  {canEdit && (
+                  {canEdit && x.paidWith === "PETTY_CASH" && (
+                    <Link href="/petty-cash" className="text-xs text-primary-600 hover:underline">
+                      On Petty cash
+                    </Link>
+                  )}
+                  {canEdit && x.paidWith !== "PETTY_CASH" && (
                     <>
                       <button onClick={() => startEdit(x)} className="text-xs text-primary-600 hover:underline">
                         Change

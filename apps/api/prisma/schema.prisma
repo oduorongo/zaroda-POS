@@ -5809,6 +5809,8 @@ model PlatformLedgerSettings {
   lockDate     DateTime? @db.Date
   /// Share of the profit after tax set aside as tithe before the net profit (percent).
   titheRate    Decimal   @default(20) @db.Decimal(5, 2)
+  /// ZARODA's petty cash float: what the box is topped back up to.
+  pettyCashFloat Decimal @default(0) @db.Decimal(12, 2)
   lastPassAt   DateTime?
   lastPassNote String?
   createdAt    DateTime  @default(now())
@@ -8150,4 +8152,89 @@ model TailorPayment {
   @@index([organizationId, paidOn])
   @@index([tailorId])
   @@map("tailor_payments")
+}
+
+// ── Petty cash: a small cash box for small costs, kept apart from the till's cash ──────────────────────────────────────────
+
+/// A business's petty cash box (one per branch, or more). The float is what it is topped back up to.
+model PettyCashBox {
+  id             String   @id @default(uuid())
+  organizationId String
+  branchId       String?
+  name           String
+  floatAmount    Decimal  @db.Decimal(12, 2)
+  /// Who keeps the box (free text: it is often someone without a login).
+  holderName     String?
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  entries PettyCashEntry[]
+
+  @@index([organizationId])
+  @@map("petty_cash_boxes")
+}
+
+enum PettyCashKind {
+  PAYMENT // money paid out of the box (a voucher); also an Expense paid with PETTY_CASH
+  TOP_UP // money put into the box from the till, M-Pesa or the bank
+  COUNT // the box counted: amount = counted - expected (negative = short)
+}
+
+/// Everything that moves money in or out of a petty cash box. Never edited: a mistake is voided (and the books reverse it).
+model PettyCashEntry {
+  id             String        @id @default(uuid())
+  organizationId String
+  boxId          String
+  kind           PettyCashKind
+  /// "PCV-2026-0001" for payments.
+  voucherNumber  String?
+  occurredOn     DateTime      @db.Date
+  /// Payments and top-ups: the amount (positive). Counts: counted - expected.
+  amount         Decimal       @db.Decimal(12, 2)
+  category       String?
+  description    String?
+  receivedBy     String?
+  /// Top-ups: where the money came from (CASH = the till, MPESA, BANK).
+  topUpFrom      String?
+  countedAmount  Decimal?      @db.Decimal(12, 2)
+  expectedAmount Decimal?      @db.Decimal(12, 2)
+  /// Payments: the Expense it is (so it reaches profit, the VAT return and the books).
+  expenseId      String?       @unique
+  recordedByName String?
+  voidedAt       DateTime?
+  voidReason     String?
+  createdAt      DateTime      @default(now())
+
+  box PettyCashBox @relation(fields: [boxId], references: [id])
+
+  @@unique([organizationId, voucherNumber])
+  @@index([boxId, occurredOn])
+  @@map("petty_cash_entries")
+}
+
+/// ZARODA's own petty cash (platform-level, no business): each entry is posted straight to ZARODA's books.
+model PlatformPettyCashEntry {
+  id             String        @id @default(uuid())
+  kind           PettyCashKind
+  voucherNumber  String?       @unique
+  occurredOn     DateTime      @db.Date
+  amount         Decimal       @db.Decimal(12, 2)
+  /// Payments: the ZARODA cost account it is charged to.
+  accountId      String?
+  description    String?
+  receivedBy     String?
+  topUpFrom      String?
+  countedAmount  Decimal?      @db.Decimal(12, 2)
+  expectedAmount Decimal?      @db.Decimal(12, 2)
+  /// The journal it was posted as.
+  entryId        String?
+  recordedById   String?
+  recordedByName String?
+  voidedAt       DateTime?
+  voidReason     String?
+  createdAt      DateTime      @default(now())
+
+  @@index([occurredOn])
+  @@map("platform_petty_cash_entries")
 }

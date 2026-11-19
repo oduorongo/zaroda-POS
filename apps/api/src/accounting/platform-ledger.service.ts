@@ -7,6 +7,8 @@ import { dateOf, dayOf, todayKey } from './ledger-books.service';
 import { PLATFORM_ACCOUNTS } from './ledger-chart';
 import { CON_PAYMENT_INCOME, CON_PAYMENT_LABEL } from './construction-posting.util';
 import { Draft, DraftLine, fingerprint, isBalanced, manualProblem, postingDate } from './ledger-posting.util';
+import { CountDto, PlatformPettyPayDto, TopUpDto, VoidEntryDto } from '../petty-cash/dto/petty-cash.dto';
+import { boxBalance, topUpNeeded, withBalance } from '../petty-cash/petty-cash.util';
 import { AccountInfo, balanceSheetWithTithe, profitWithTithe, Sums, trialBalance, withRunningBalance } from './ledger-reports.util';
 import {
   platformConPaymentDraft,
@@ -28,6 +30,7 @@ const NAIROBI_OFFSET_MS = 3 * 3600_000;
 
 export const PLATFORM_SOURCE_LABELS: Record<string, string> = {
   P_SUBSCRIPTION: 'Subscription paid',
+  P_PETTY_CASH: 'Petty cash',
   P_COMMISSION_INVOICE: 'Commission / convenience-fee invoice',
   P_COMMISSION_PAID: 'Commission / convenience-fee invoice paid',
   P_RENTAL_INVOICE: 'Rental plan invoice',
@@ -381,6 +384,7 @@ export class PlatformLedgerService {
         startDate: dayOf(s.startDate),
         lockDate: dayOf(s.lockDate),
         titheRate: Number(s.titheRate),
+        pettyCashFloat: Number(s.pettyCashFloat),
         lastPassAt: s.lastPassAt,
         lastPassNote: s.lastPassNote,
         entries: await tx.platformJournalEntry.count(),
@@ -389,7 +393,7 @@ export class PlatformLedgerService {
     });
   }
 
-  async updateSettings(dto: { startDate?: string; lockDate?: string | null; titheRate?: number }) {
+  async updateSettings(dto: { startDate?: string; lockDate?: string | null; titheRate?: number; pettyCashFloat?: number }) {
     await this.platform(async (tx) => {
       await this.lock(tx);
       const s = await this.settings(tx);
@@ -405,6 +409,7 @@ export class PlatformLedgerService {
         data.lockDate = dto.lockDate ? dateOf(dto.lockDate) : null;
       }
       if (dto.titheRate !== undefined) data.titheRate = dto.titheRate;
+      if (dto.pettyCashFloat !== undefined) data.pettyCashFloat = dto.pettyCashFloat;
       await tx.platformLedgerSettings.update({ where: { id: 'default' }, data });
     });
     return this.overview();
@@ -658,6 +663,149 @@ export class PlatformLedgerService {
         lines: run.map((l) => ({ ...l, debit: money(l.debit), credit: money(l.credit), balance: money(l.balance) })),
         truncated: lines.length === 2000,
       };
+    });
+  }
+
+  // ── ZARODA's petty cash ──────────────────────────────────────────────────
+  // Each entry is posted at once (kind AUTO, source P_PETTY_CASH, so it cannot be reversed by hand); voiding reverses it.
+
+  private async pettyBalance(tx: Tx, before?: string) {
+    const rows = await tx.platformPettyCashEntry.findMany({
+      where: before ? { occurredOn: { lt: dateOf(before) } } : {},
+      select: { kind: true, amount: true, voidedAt: true },
+    });
+    return boxBalance(rows.map((r) => ({ kind: r.kind, amount: Number(r.amount), voided: !!r.voidedAt })));
+  }
+
+  private pettyDay(on?: string) {
+    const d = on ?? todayKey();
+    if (d > todayKey()) throw new BadRequestException('That date is in the future.');
+    return d;
+  }
+
+  private async pettyPost(
+    tx: Tx,
+    data: Prisma.PlatformPettyCashEntryUncheckedCreateInput,
+    memo: string,
+    lines: (DraftLine | { accountId: string; debit: number; credit: number })[],
+    by: { id: string; name: string | null },
+  ) {
+    const row = await tx.platformPettyCashEntry.create({ data: { ...data, recordedById: by.id, recordedByName: by.name } });
+    if (!lines.length) return row;
+    const e = await this.write(tx, { date: dayOf(row.occurredOn)!, kind: JournalKind.AUTO, memo, sourceType: 'P_PETTY_CASH', sourceId: row.id, lines, by });
+    return tx.platformPettyCashEntry.update({ where: { id: row.id }, data: { entryId: e.id } });
+  }
+
+  async pettyCashBook(q: RangeQueryDto) {
+    const to = q.to ?? todayKey();
+    const from = q.from ?? `${to.slice(0, 7)}-01`;
+    if (from > to) throw new BadRequestException('The start day is after the end day.');
+    return this.platform(async (tx) => {
+      const s = await this.settings(tx);
+      const opening = await this.pettyBalance(tx, from);
+      const accounts = await tx.platformLedgerAccount.findMany({ select: { id: true, code: true, name: true } });
+      const rows = await tx.platformPettyCashEntry.findMany({ where: { occurredOn: { gte: dateOf(from), lte: dateOf(to) } }, orderBy: [{ occurredOn: 'asc' }, { createdAt: 'asc' }] });
+      const lines = withBalance(
+        opening,
+        rows.map((r) => {
+          const a = accounts.find((x) => x.id === r.accountId);
+          return {
+            id: r.id,
+            kind: r.kind,
+            voided: !!r.voidedAt,
+            amount: Number(r.amount),
+            date: dayOf(r.occurredOn),
+            voucherNumber: r.voucherNumber,
+            account: a ? `${a.code} ${a.name}` : null,
+            description: r.description,
+            receivedBy: r.receivedBy,
+            topUpFrom: r.topUpFrom,
+            countedAmount: r.countedAmount === null ? null : Number(r.countedAmount),
+            recordedByName: r.recordedByName,
+            voidReason: r.voidReason,
+          };
+        }),
+      );
+      const balance = await this.pettyBalance(tx);
+      const float = Number(s.pettyCashFloat);
+      return { float, balance, topUpNeeded: topUpNeeded(float, balance), from, to, opening, lines, closing: lines.length ? lines[lines.length - 1].balance : opening };
+    });
+  }
+
+  async pettyPay(dto: PlatformPettyPayDto, by: { id: string; name: string | null }) {
+    const on = this.pettyDay(dto.occurredOn);
+    return this.platform(async (tx) => {
+      await this.lock(tx);
+      const account = await tx.platformLedgerAccount.findUnique({ where: { id: dto.accountId } });
+      if (!account || account.type !== 'EXPENSE' || !account.active) throw new BadRequestException("Choose one of ZARODA's cost accounts.");
+      if (account.systemKey === 'INCOME_TAX') throw new BadRequestException('Income tax is not paid from petty cash.');
+      const balance = await this.pettyBalance(tx);
+      if (dto.amount > balance) throw new BadRequestException(`Only KES ${balance.toLocaleString('en-KE')} is in petty cash. Top it up first.`);
+      const year = on.slice(0, 4);
+      const last = await tx.platformPettyCashEntry.count({ where: { voucherNumber: { startsWith: `ZPCV-${year}-` } } });
+      const voucherNumber = `ZPCV-${year}-${String(last + 1).padStart(4, '0')}`;
+      const amount = cents(dto.amount);
+      return this.pettyPost(
+        tx,
+        { kind: 'PAYMENT', voucherNumber, occurredOn: dateOf(on), amount: dto.amount, accountId: account.id, description: dto.description.trim(), receivedBy: dto.receivedBy.trim() },
+        `Petty cash ${voucherNumber}: ${dto.description.trim()} (to ${dto.receivedBy.trim()})`,
+        [{ accountId: account.id, debit: amount, credit: 0 }, { account: 'PETTY_CASH', debit: 0, credit: amount }],
+        by,
+      );
+    });
+  }
+
+  async pettyTopUp(dto: TopUpDto, by: { id: string; name: string | null }) {
+    const on = this.pettyDay(dto.occurredOn);
+    return this.platform(async (tx) => {
+      await this.lock(tx);
+      const s = await this.settings(tx);
+      const amount = dto.amount ?? topUpNeeded(Number(s.pettyCashFloat), await this.pettyBalance(tx));
+      if (amount <= 0) throw new BadRequestException('Petty cash is already at its float. Set the float under Settings, or enter an amount.');
+      const from = dto.from === 'MPESA' ? 'MPESA' : dto.from === 'BANK' ? 'BANK' : 'CASH';
+      return this.pettyPost(
+        tx,
+        { kind: 'TOP_UP', occurredOn: dateOf(on), amount, topUpFrom: dto.from, description: dto.description?.trim() || null },
+        'Petty cash top-up',
+        [{ account: 'PETTY_CASH', debit: cents(amount), credit: 0 }, { account: from, debit: 0, credit: cents(amount) }],
+        by,
+      );
+    });
+  }
+
+  async pettyCount(dto: CountDto, by: { id: string; name: string | null }) {
+    const on = this.pettyDay(dto.occurredOn);
+    return this.platform(async (tx) => {
+      await this.lock(tx);
+      const expected = await this.pettyBalance(tx);
+      const diff = Math.round((dto.counted - expected) * 100) / 100;
+      const d = cents(diff);
+      const lines: DraftLine[] =
+        d < 0
+          ? [{ account: 'OTHER_EXPENSES', debit: -d, credit: 0 }, { account: 'PETTY_CASH', debit: 0, credit: -d }]
+          : d > 0
+            ? [{ account: 'PETTY_CASH', debit: d, credit: 0 }, { account: 'OTHER_INCOME', debit: 0, credit: d }]
+            : [];
+      return this.pettyPost(
+        tx,
+        { kind: 'COUNT', occurredOn: dateOf(on), amount: diff, countedAmount: dto.counted, expectedAmount: expected, description: dto.description?.trim() || (d === 0 ? 'Counted: correct' : d < 0 ? 'Counted: short' : 'Counted: over') },
+        `Petty cash count: ${d < 0 ? 'short' : 'over'}`,
+        lines,
+        by,
+      );
+    });
+  }
+
+  async pettyVoid(id: string, dto: VoidEntryDto, by: { id: string; name: string | null }) {
+    return this.platform(async (tx) => {
+      await this.lock(tx);
+      const row = await tx.platformPettyCashEntry.findUnique({ where: { id } });
+      if (!row) throw new NotFoundException('Entry not found');
+      if (row.voidedAt) throw new BadRequestException('This entry is already voided.');
+      if (row.kind === 'TOP_UP' && (await this.pettyBalance(tx)) - Number(row.amount) < 0)
+        throw new BadRequestException('Petty cash has already spent part of this top-up, so it cannot be voided. Void the payments first, or record a count.');
+      if (row.entryId) await this.reverse(tx, row.entryId, todayKey(), `Voided: ${dto.reason.trim()}`, by);
+      return tx.platformPettyCashEntry.update({ where: { id }, data: { voidedAt: new Date(), voidReason: dto.reason.trim() } });
     });
   }
 }
