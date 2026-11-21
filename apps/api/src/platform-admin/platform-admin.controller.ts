@@ -20,7 +20,7 @@ import { PlatformAuditLogService } from './platform-audit-log.service';
 import { PlatformAdminLoginDto } from './dto/platform-admin-login.dto';
 import { CreatePlanDto, UpdatePlanDto } from './dto/create-plan.dto';
 import { OnboardTenantDto } from './dto/onboard-tenant.dto';
-import { ChangePlanDto, SetAgreedPriceDto, RecordPaymentDto, SetSuspensionDto } from './dto/record-payment.dto';
+import { ChangePlanDto, SetAgreedPriceDto, SetExtraTillsDto, RecordPaymentDto, SetSuspensionDto } from './dto/record-payment.dto';
 import { SetOnlineStoreAddonDto, SetOrganizationActiveDto, UpdateOrganizationDto } from './dto/update-organization.dto';
 import { ResetUserPasswordDto } from './dto/reset-user-password.dto';
 import { CommissionService } from '../online-store/commission.service';
@@ -295,6 +295,21 @@ export class PlatformAdminController {
     await this.auditLog.log({
       platformAdminId: req.user!.platformAdminId,
       action: `platform_admin.set_agreed_price:${result.before}->${result.after}`,
+      entityType: 'Subscription',
+      entityId: result.subscription.id,
+      organizationId: id,
+    });
+    return result.subscription;
+  }
+
+  @Public()
+  @UseGuards(PlatformAdminAuthGuard)
+  @Patch('organizations/:id/extra-tills')
+  async setExtraTills(@Req() req: PlatformAdminRequest, @Param('id', ParseUUIDPipe) id: string, @Body() dto: SetExtraTillsDto) {
+    const result = await this.platformAdmin.setExtraTills(id, dto.extraTills);
+    await this.auditLog.log({
+      platformAdminId: req.user!.platformAdminId,
+      action: `platform_admin.set_extra_tills:${result.before}->${result.after}`,
       entityType: 'Subscription',
       entityId: result.subscription.id,
       organizationId: id,

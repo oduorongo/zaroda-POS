@@ -47,7 +47,7 @@ export function AgreedPrice({
 
   return (
     <div className="mt-4 border-t border-border pt-3">
-      <p className="mb-2 text-xs uppercase tracking-wide text-secondary-500">Monthly price</p>
+      <p className="mb-2 text-xs uppercase tracking-wide text-secondary-500">Monthly price per till</p>
       <div className="flex flex-wrap items-center gap-2">
         <input
           type="number"

@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { apiGet, apiPatch, ApiError } from "../../../lib/api";
 import { ChangePlan } from "./change-plan";
 import { AgreedPrice } from "./agreed-price";
+import { ExtraTill } from "./extra-till";
 import { getSession, type Session } from "../../../lib/auth";
 import { Nav } from "../../../components/nav";
 import { Badge } from "@zaroda/ui";
@@ -39,9 +40,12 @@ interface Subscription {
   isTrial: boolean;
   manuallySuspended: boolean;
   status: "TRIAL" | "ACTIVE" | "GRACE" | "SUSPENDED";
-  plan: { name: string; tier: string; priceKes: string; minPriceKes: string | null };
-  /** The price this business pays a month (agreed price, else the plan's). */
+  plan: { name: string; tier: string; priceKes: string; minPriceKes: string | null; maxDevices: number; maxExtraTills: number };
+  /** The price this business pays a month: its till price for every till, extra till included. */
   monthlyPriceKes: number;
+  /** One till a month (agreed price, else the plan's). */
+  tillPriceKes: number;
+  extraTills: number;
   payments: SubscriptionPayment[];
 }
 
@@ -379,7 +383,15 @@ export default function OrganizationDetailPage() {
                 <div className="p-3 text-sm">
                   <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                     <div><p className="text-xs text-secondary-500">Plan</p><p>{org.subscription.plan.name}</p></div>
-                    <div><p className="text-xs text-secondary-500">Price a month</p><p>KES {org.subscription.monthlyPriceKes.toLocaleString()}</p></div>
+                    <div>
+                      <p className="text-xs text-secondary-500">Price a month</p>
+                      <p>KES {org.subscription.monthlyPriceKes.toLocaleString()}</p>
+                      {org.subscription.extraTills > 0 && (
+                        <p className="text-xs text-secondary-500">
+                          {org.subscription.plan.maxDevices + org.subscription.extraTills} tills × KES {org.subscription.tillPriceKes.toLocaleString()}
+                        </p>
+                      )}
+                    </div>
                     <div><p className="text-xs text-secondary-500">Billed through</p><p>{new Date(org.subscription.currentPeriodEnd).toLocaleDateString()}</p></div>
                     <div><p className="text-xs text-secondary-500">Grace period</p><p>{org.subscription.graceDays} days</p></div>
                   </div>
@@ -393,13 +405,14 @@ export default function OrganizationDetailPage() {
                     {togglingSuspend ? "..." : org.subscription.manuallySuspended ? "Reactivate tenant" : "Suspend tenant"}
                   </button>
                   <AgreedPrice
-                    key={org.subscription.monthlyPriceKes}
+                    key={org.subscription.tillPriceKes}
                     organizationId={org.id}
                     plan={org.subscription.plan}
-                    monthlyPriceKes={org.subscription.monthlyPriceKes}
+                    monthlyPriceKes={org.subscription.tillPriceKes}
                     onboardedByTeam={!!org.salesAgentId}
                     onChanged={load}
                   />
+                  <ExtraTill organizationId={org.id} plan={org.subscription.plan} extraTills={org.subscription.extraTills} tillPriceKes={org.subscription.tillPriceKes} onChanged={load} />
                   <ChangePlan organizationId={org.id} currentTier={org.subscription.plan.tier} onChanged={load} />
 
                   {org.subscription.payments.length > 0 && (

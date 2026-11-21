@@ -23,6 +23,7 @@ export class PublicPlansController {
         name: true,
         priceKes: true,
         minPriceKes: true,
+        maxExtraTills: true,
         billingPeriodDays: true,
         maxDevices: true,
         maxBranches: true,

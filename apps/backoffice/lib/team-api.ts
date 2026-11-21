@@ -60,7 +60,7 @@ export interface TeamShop {
   isActive: boolean;
   createdAt: string;
   onboardedBy: { id: string; fullName: string } | null;
-  subscription: { planName: string; monthlyPriceKes: number; status: "TRIAL" | "ACTIVE" | "GRACE" | "SUSPENDED"; currentPeriodEnd: string; isTrial: boolean } | null;
+  subscription: { planName: string; monthlyPriceKes: number; extraTills: number; status: "TRIAL" | "ACTIVE" | "GRACE" | "SUSPENDED"; currentPeriodEnd: string; isTrial: boolean } | null;
   onlineShop: { addonActive: boolean; isPublished: boolean };
   saleCount: number;
   lastSaleAt: string | null;
@@ -94,11 +94,11 @@ export interface TeamMember extends AgentProfile {
 export const teamApiBase = defaultBase;
 
 /** The Basic plan's monthly price range per device (set by ZARODA on the Billing screen). */
-export async function basicPriceRange(): Promise<{ min: number; max: number }> {
-  const plans = await request<{ tier: string; priceKes: string; minPriceKes: string | null }[]>("/public/plans", { method: "GET" }, false);
+export async function basicPriceRange(): Promise<{ min: number; max: number; extraTills: number }> {
+  const plans = await request<{ tier: string; priceKes: string; minPriceKes: string | null; maxExtraTills?: number }[]>("/public/plans", { method: "GET" }, false);
   const basic = plans.find((p) => p.tier === "BASIC");
   const max = Number(basic?.priceKes ?? 2500);
-  return { min: basic?.minPriceKes != null ? Number(basic.minPriceKes) : max, max };
+  return { min: basic?.minPriceKes != null ? Number(basic.minPriceKes) : max, max, extraTills: basic?.maxExtraTills ?? 0 };
 }
 
 export const teamLogin = (email: string, password: string) =>

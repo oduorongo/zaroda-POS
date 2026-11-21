@@ -89,7 +89,7 @@ export class SalesPortalService {
         createdAt: org.createdAt,
         onboardedBy: org.salesAgentId ? { id: org.salesAgentId, fullName: names.get(org.salesAgentId) ?? 'Unknown' } : null,
         subscription: sub
-          ? { planName: sub.plan.name, monthlyPriceKes: monthlyPrice(sub), status: effectiveStatus(sub), currentPeriodEnd: sub.currentPeriodEnd, isTrial: sub.isTrial }
+          ? { planName: sub.plan.name, monthlyPriceKes: monthlyPrice(sub), extraTills: sub.extraTills, status: effectiveStatus(sub), currentPeriodEnd: sub.currentPeriodEnd, isTrial: sub.isTrial }
           : null,
         onlineShop: { addonActive: detail.store?.addonActive ?? false, isPublished: detail.store?.isPublished ?? false },
         saleCount: detail.saleCount,
@@ -106,7 +106,7 @@ export class SalesPortalService {
     const generated = !dto.ownerPassword;
     const ownerPassword = dto.ownerPassword ?? generateTempPassword();
     const result = await this.platformAdmin.onboardTenant(
-      { ...dto, ownerPassword, planTier: 'BASIC' } as OnboardTenantDto,
+      { ...dto, ownerPassword, planTier: 'BASIC', terminalCount: 1 + (dto.extraTills ?? 0) } as OnboardTenantDto,
       { attribution: { salesTeamId: agent.teamId, salesAgentId: agent.agentId }, trial: true },
     );
     return {

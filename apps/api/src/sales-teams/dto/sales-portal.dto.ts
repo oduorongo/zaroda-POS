@@ -62,6 +62,13 @@ export class OnboardTenantByAgentDto {
   @IsInt()
   @Min(1)
   monthlyPriceKes?: number;
+
+  /** 1 = a second till at the same agreed price (the plan's limit is checked). */
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(1)
+  extraTills?: number;
 }
 
 export class AddMemberDto {

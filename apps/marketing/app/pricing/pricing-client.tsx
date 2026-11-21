@@ -10,6 +10,7 @@ interface Plan {
   name: string;
   priceKes: string;
   minPriceKes?: string | null;
+  maxExtraTills?: number;
   billingPeriodDays: number;
   maxDevices: number;
   maxBranches: number;
@@ -77,7 +78,10 @@ export default function PricingClient() {
                 )}
                 <p className="mt-2 text-sm text-secondary-500">{TAGLINES[plan.tier] ?? ""}</p>
                 <ul className="mt-4 space-y-2 text-sm text-secondary-600">
-                  <li>✓ Up to {plan.maxDevices} device{plan.maxDevices > 1 ? "s" : ""}</li>
+                  <li>
+                    ✓ Up to {plan.maxDevices} device{plan.maxDevices > 1 ? "s" : ""}
+                    {(plan.maxExtraTills ?? 0) > 0 ? ` - add ${plan.maxExtraTills === 1 ? "a second till" : `${plan.maxExtraTills} more tills`} at the same price` : ""}
+                  </li>
                   <li>✓ Up to {plan.maxBranches} branch{plan.maxBranches > 1 ? "es" : ""}</li>
                   <li>✓ M-Pesa STK push</li>
                   <li>✓ Offline-capable terminal</li>

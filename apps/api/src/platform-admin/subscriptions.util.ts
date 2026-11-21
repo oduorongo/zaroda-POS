@@ -42,9 +42,19 @@ export function isFreePlan(plan: { priceKes: unknown }): boolean {
   return Number(plan.priceKes) === 0;
 }
 
-/** What a business pays a month: the price agreed with it, else the plan's price. */
-export function monthlyPrice(sub: { agreedPriceKes?: unknown; plan: { priceKes: unknown } }): number {
+/** The price of one till a month: the price agreed with the business, else the plan's price. */
+export function tillPrice(sub: { agreedPriceKes?: unknown; plan: { priceKes: unknown } }): number {
   return sub.agreedPriceKes != null ? Number(sub.agreedPriceKes) : Number(sub.plan.priceKes);
+}
+
+/** What a business pays a month: its till price, plus the same again for each extra till. */
+export function monthlyPrice(sub: { agreedPriceKes?: unknown; extraTills?: number | null; plan: { priceKes: unknown } }): number {
+  return tillPrice(sub) * (1 + (sub.extraTills ?? 0));
+}
+
+/** How many tills the business may have: its plan's, plus the extra tills it pays for. */
+export function tillLimit(sub: { extraTills?: number | null; plan: { maxDevices: number } }): number {
+  return sub.plan.maxDevices + (sub.extraTills ?? 0);
 }
 
 /** Why a price can't be agreed on this plan, or null. A plan without minPriceKes has one fixed price. */
