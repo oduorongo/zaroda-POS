@@ -21,6 +21,13 @@ export class SetSuspensionDto {
   suspended!: boolean;
 }
 
+export class SetAgreedPriceDto {
+  /** Whole shillings a month, inside the plan's range. */
+  @IsNumber()
+  @IsPositive()
+  monthlyPriceKes!: number;
+}
+
 export class ChangePlanDto {
   @IsString()
   @MaxLength(40)

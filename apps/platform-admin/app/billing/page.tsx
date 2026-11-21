@@ -12,6 +12,7 @@ interface Plan {
   tier: string;
   name: string;
   priceKes: string;
+  minPriceKes: string | null;
   billingPeriodDays: number;
   billingCycle?: string;
   maxDevices: number;
@@ -25,6 +26,7 @@ interface Organization {
   subscription: {
     planTier: string;
     planName: string;
+    monthlyPriceKes: number;
     currentPeriodEnd: string;
     status: "TRIAL" | "ACTIVE" | "GRACE" | "SUSPENDED";
   } | null;
@@ -55,6 +57,8 @@ export default function BillingPage() {
 
   const [editingPlan, setEditingPlan] = useState<Plan | null>(null);
   const [editPrice, setEditPrice] = useState("");
+  const [editMin, setEditMin] = useState("");
+  const [planError, setPlanError] = useState<string | null>(null);
   const [savingPlan, setSavingPlan] = useState(false);
 
   const [payingOrg, setPayingOrg] = useState<Organization | null>(null);
@@ -96,14 +100,20 @@ export default function BillingPage() {
     if (!editingPlan) return;
     const price = Number(editPrice);
     if (!Number.isFinite(price) || price <= 0) return;
+    const min = editMin.trim() === "" ? null : Number(editMin);
+    if (min !== null && (!Number.isFinite(min) || min <= 0 || min > price)) {
+      setPlanError("The lowest price must be above 0 and not above the full price");
+      return;
+    }
     setSavingPlan(true);
+    setPlanError(null);
     try {
       // A seasonal plan's price is its annual price (billed in term instalments).
-      await apiPatch(`/platform-admin/plans/${editingPlan.id}`, editingPlan.billingCycle === "SEASONAL" ? { priceKes: price, annualPriceKes: price } : { priceKes: price });
+      await apiPatch(`/platform-admin/plans/${editingPlan.id}`, editingPlan.billingCycle === "SEASONAL" ? { priceKes: price, annualPriceKes: price } : { priceKes: price, minPriceKes: min });
       setEditingPlan(null);
       await load();
-    } catch {
-      // Inline error omitted here for brevity - the modal simply stays open on failure.
+    } catch (err) {
+      setPlanError(err instanceof ApiError ? err.message : "Could not save the price.");
     } finally {
       setSavingPlan(false);
     }
@@ -158,12 +168,13 @@ export default function BillingPage() {
                         {!plan.active && <Badge variant="neutral">Retired</Badge>}
                       </div>
                       <p className="mt-1 text-2xl font-bold text-amber-400">
-                        KES {Number(plan.priceKes).toLocaleString()}
+                        {plan.minPriceKes != null && Number(plan.minPriceKes) < Number(plan.priceKes) ? `KES ${Number(plan.minPriceKes).toLocaleString()} - ` : "KES "}
+                        {Number(plan.priceKes).toLocaleString()}
                         <span className="text-xs font-normal text-secondary-500">{plan.billingCycle === "SEASONAL" ? "/year" : `/${plan.billingPeriodDays}d`}</span>
                       </p>
                       <p className="mt-1 text-xs text-secondary-500">{plan.maxDevices} devices · {plan.maxBranches} branches</p>
                       <button
-                        onClick={() => { setEditingPlan(plan); setEditPrice(plan.priceKes); }}
+                        onClick={() => { setEditingPlan(plan); setEditPrice(plan.priceKes); setEditMin(plan.minPriceKes ?? ""); setPlanError(null); }}
                         className="mt-3 text-sm text-amber-400 hover:underline"
                       >
                         Edit price
@@ -186,13 +197,13 @@ export default function BillingPage() {
                         <div>
                           <p className="font-medium">{org.name}</p>
                           <p className="text-xs text-secondary-500">
-                            {org.subscription!.planName} · billed through {new Date(org.subscription!.currentPeriodEnd).toLocaleDateString()}
+                            {org.subscription!.planName} · KES {org.subscription!.monthlyPriceKes.toLocaleString()} a month · billed through {new Date(org.subscription!.currentPeriodEnd).toLocaleDateString()}
                           </p>
                         </div>
                         <div className="flex items-center gap-3">
                           <Badge variant={STATUS_VARIANT[org.subscription!.status]}>{org.subscription!.status}</Badge>
                           <button
-                            onClick={() => setPayingOrg(org)}
+                            onClick={() => { setPayingOrg(org); setPayAmount(String(org.subscription!.monthlyPriceKes)); }}
                             className="rounded-md bg-amber-500 px-3 py-1.5 text-sm font-semibold text-zinc-950 hover:bg-amber-400"
                           >
                             Record payment
@@ -208,8 +219,19 @@ export default function BillingPage() {
         )}
 
         <Modal open={!!editingPlan} onClose={() => setEditingPlan(null)} title={editingPlan ? `Edit ${editingPlan.name} price` : ""}>
-          <label className="mb-1.5 block text-sm text-secondary-500">Price (KES / period)</label>
+          <label className="mb-1.5 block text-sm text-secondary-500">Full price (KES / period)</label>
           <Input type="number" value={editPrice} onChange={(e) => setEditPrice(e.target.value)} />
+          {editingPlan?.billingCycle !== "SEASONAL" && (
+            <>
+              <label className="mb-1.5 mt-3 block text-sm text-secondary-500">Lowest price a team member may agree (KES, optional)</label>
+              <Input type="number" value={editMin} onChange={(e) => setEditMin(e.target.value)} placeholder="Leave empty for one fixed price" />
+              <p className="mt-1 text-xs text-secondary-500">
+                With a lowest price, the team member onboarding a business chooses its monthly price between the two (for self-registered
+                businesses, you set it on the business&apos;s page). Prices already agreed stay as they are.
+              </p>
+            </>
+          )}
+          {planError && <p className="mt-2 text-sm text-error-600">{planError}</p>}
           <ModalFooter>
             <Button onClick={() => setEditingPlan(null)} variant="secondary">Cancel</Button>
             <Button onClick={() => void savePlanPrice()} disabled={savingPlan}>{savingPlan ? "Saving..." : "Save"}</Button>

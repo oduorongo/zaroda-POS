@@ -60,7 +60,7 @@ describe('SalesPortalService scoping', () => {
 });
 
 describe('SalesPortalService.onboardTenant', () => {
-  const dto: any = { organizationName: 'Mama Mboga', industryType: 'RETAIL', ownerFullName: 'Mama', ownerEmail: 'mama@example.com', branchName: 'Main' };
+  const dto: any = { organizationName: 'Mama Mboga', industryType: 'RETAIL', ownerFullName: 'Mama', ownerEmail: 'mama@example.com', branchName: 'Main', monthlyPriceKes: 1200 };
 
   it('credits the member and team, starts a free trial on the entry plan, and shows a made-up password once', async () => {
     const { service, platformAdmin } = setup();
@@ -68,6 +68,7 @@ describe('SalesPortalService.onboardTenant', () => {
     const [sent, options] = platformAdmin.onboardTenant.mock.calls[0];
     expect(options).toEqual({ attribution: { salesTeamId: TEAM, salesAgentId: 'member-1' }, trial: true });
     expect(sent.planTier).toBe('BASIC');
+    expect(sent.monthlyPriceKes).toBe(1200);
     expect(sent.ownerPassword).toHaveLength(12);
     expect(result.temporaryPassword).toBe(sent.ownerPassword);
   });
@@ -76,6 +77,13 @@ describe('SalesPortalService.onboardTenant', () => {
     const { service } = setup();
     const result = await service.onboardTenant(member, { ...dto, ownerPassword: 'chosen-on-the-spot' });
     expect(result).not.toHaveProperty('temporaryPassword');
+  });
+
+  it('needs the agreed monthly price for a business with tills, but not for a landlord', async () => {
+    const { service } = setup();
+    const { monthlyPriceKes: _drop, ...noPrice } = dto;
+    await expect(service.onboardTenant(member, noPrice)).rejects.toThrow(/monthly price/);
+    await expect(service.onboardTenant(member, { ...noPrice, industryType: 'RENTAL' })).resolves.toBeDefined();
   });
 });
 

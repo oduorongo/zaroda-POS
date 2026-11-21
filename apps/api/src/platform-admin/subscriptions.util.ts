@@ -41,3 +41,21 @@ export const FREE_PLAN_UNTIL = new Date('2099-12-31T00:00:00Z');
 export function isFreePlan(plan: { priceKes: unknown }): boolean {
   return Number(plan.priceKes) === 0;
 }
+
+/** What a business pays a month: the price agreed with it, else the plan's price. */
+export function monthlyPrice(sub: { agreedPriceKes?: unknown; plan: { priceKes: unknown } }): number {
+  return sub.agreedPriceKes != null ? Number(sub.agreedPriceKes) : Number(sub.plan.priceKes);
+}
+
+/** Why a price can't be agreed on this plan, or null. A plan without minPriceKes has one fixed price. */
+export function priceProblem(plan: { name: string; priceKes: unknown; minPriceKes?: unknown }, price: number): string | null {
+  const max = Number(plan.priceKes);
+  const min = plan.minPriceKes != null ? Number(plan.minPriceKes) : max;
+  if (!Number.isFinite(price) || price !== Math.round(price)) return 'Enter the monthly price in whole shillings';
+  if (price < min || price > max) {
+    return min === max
+      ? `The ${plan.name} plan has one price: KES ${max.toLocaleString('en-KE')} a month`
+      : `The ${plan.name} plan is KES ${min.toLocaleString('en-KE')} - ${max.toLocaleString('en-KE')} a month`;
+  }
+  return null;
+}

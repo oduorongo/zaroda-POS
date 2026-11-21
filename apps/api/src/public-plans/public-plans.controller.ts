@@ -22,6 +22,7 @@ export class PublicPlansController {
         tier: true,
         name: true,
         priceKes: true,
+        minPriceKes: true,
         billingPeriodDays: true,
         maxDevices: true,
         maxBranches: true,

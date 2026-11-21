@@ -56,4 +56,10 @@ export class OnboardTenantDto {
   // (Plan rows), not a fixed code-level enum.
   @IsString()
   planTier!: string;
+
+  /** The agreed monthly price, inside the plan's range (Basic: 1,000 - 2,500). Left out: the plan's full price. */
+  @IsInt()
+  @IsPositive()
+  @IsOptional()
+  monthlyPriceKes?: number;
 }

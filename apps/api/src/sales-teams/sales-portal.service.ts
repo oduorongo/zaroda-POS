@@ -1,10 +1,10 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { ForbiddenException, Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { SalesAgentRole, SalesAgentStatus } from '@prisma/client';
 import { generateTempPassword } from '../common/crypto/temp-password';
 import { PrismaService } from '../common/prisma/prisma.service';
 import { OnboardTenantDto } from '../platform-admin/dto/onboard-tenant.dto';
 import { PlatformAdminService } from '../platform-admin/platform-admin.service';
-import { effectiveStatus } from '../platform-admin/subscriptions.util';
+import { effectiveStatus, monthlyPrice, needsDeviceSubscription } from '../platform-admin/subscriptions.util';
 import { CreateShopRiderDto } from '../riders/dto/rider.dto';
 import { RidersService } from '../riders/riders.service';
 import { AddMemberDto, OnboardTenantByAgentDto } from './dto/sales-portal.dto';
@@ -89,7 +89,7 @@ export class SalesPortalService {
         createdAt: org.createdAt,
         onboardedBy: org.salesAgentId ? { id: org.salesAgentId, fullName: names.get(org.salesAgentId) ?? 'Unknown' } : null,
         subscription: sub
-          ? { planName: sub.plan.name, status: effectiveStatus(sub), currentPeriodEnd: sub.currentPeriodEnd, isTrial: sub.isTrial }
+          ? { planName: sub.plan.name, monthlyPriceKes: monthlyPrice(sub), status: effectiveStatus(sub), currentPeriodEnd: sub.currentPeriodEnd, isTrial: sub.isTrial }
           : null,
         onlineShop: { addonActive: detail.store?.addonActive ?? false, isPublished: detail.store?.isPublished ?? false },
         saleCount: detail.saleCount,
@@ -100,6 +100,9 @@ export class SalesPortalService {
   }
 
   async onboardTenant(agent: AuthenticatedAgent, dto: OnboardTenantByAgentDto) {
+    if (needsDeviceSubscription(dto.industryType) && dto.monthlyPriceKes == null) {
+      throw new BadRequestException('Choose the monthly price agreed with the business');
+    }
     const generated = !dto.ownerPassword;
     const ownerPassword = dto.ownerPassword ?? generateTempPassword();
     const result = await this.platformAdmin.onboardTenant(

@@ -16,6 +16,12 @@ export class CreatePlanDto {
   @Min(0)
   priceKes!: number;
 
+  /** Lowest monthly price that may be agreed with a business (null or left out: priceKes is the only price). */
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  minPriceKes?: number | null;
+
   @IsInt()
   @Min(0)
   maxDevices!: number;

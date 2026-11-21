@@ -22,7 +22,7 @@ interface Instalment {
 interface Mine {
   cycle: "MONTHLY" | "SEASONAL";
   free: boolean;
-  plan: { name: string; annualPriceKes: number };
+  plan: { name: string; annualPriceKes: number; monthlyPriceKes: number };
   status: "TRIAL" | "ACTIVE" | "GRACE" | "SUSPENDED" | "READ_ONLY";
   instalments: Instalment[];
   payInFull: { schoolYear: number; full: number; discount: number; amount: number; discountRate: number } | null;
@@ -124,7 +124,7 @@ export default function SubscriptionPage() {
           <p className="rounded-lg border border-border bg-surface p-4 text-sm">
             {data.free
               ? `You are on the free ${data.plan.name} plan: nothing to pay. ZARODA earns only the 3% convenience fee your online shoppers pay. Contact ZARODA if you want ZARODA tills as well.`
-              : `You are on the ${data.plan.name} plan, billed monthly. Contact ZARODA to change it.`}
+              : `You are on the ${data.plan.name} plan at KES ${data.plan.monthlyPriceKes.toLocaleString("en-KE")} a month. Contact ZARODA to change it.`}
           </p>
         )}
         {data && data.cycle === "SEASONAL" && (

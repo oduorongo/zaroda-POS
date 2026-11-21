@@ -2597,6 +2597,8 @@ model Plan {
   annualPriceKes    Decimal? @db.Decimal(12, 2)
   maxDevices        Int
   maxBranches       Int
+  /// Lowest monthly price ZARODA may agree with a business on this plan (null = fixed at priceKes). Basic: 1000-2500 per device.
+  minPriceKes       Decimal? @db.Decimal(12, 2)
   // Retiring a plan without deleting it - existing subscriptions on a
   // retired plan keep working, it just can't be assigned to a new tenant.
   active            Boolean  @default(true)
@@ -2629,6 +2631,9 @@ model Subscription {
   // (PlatformAdminService), not stored redundantly - see ShiftReport for
   // the same computed-not-stored pattern elsewhere in this schema.
   manuallySuspended Boolean  @default(false)
+  /// The monthly price agreed with this business, between plan.minPriceKes and plan.priceKes (null = plan.priceKes).
+  /// Set by the sales team member who onboarded it, or by the system admin for self-registered businesses.
+  agreedPriceKes    Decimal? @db.Decimal(12, 2)
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
