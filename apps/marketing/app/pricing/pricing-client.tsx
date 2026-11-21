@@ -9,6 +9,7 @@ interface Plan {
   tier: string;
   name: string;
   priceKes: string;
+  minPriceKes?: string | null;
   billingPeriodDays: number;
   maxDevices: number;
   maxBranches: number;
@@ -63,9 +64,17 @@ export default function PricingClient() {
                 )}
                 <h2 className="text-lg font-bold text-foreground">{plan.name}</h2>
                 <p className="mt-2 text-3xl font-bold text-foreground">
-                  KES {Number(plan.priceKes).toLocaleString()}
+                  {plan.minPriceKes != null && Number(plan.minPriceKes) < Number(plan.priceKes) && (
+                    <span className="block text-sm font-normal text-secondary-500">from</span>
+                  )}
+                  KES {Number(plan.minPriceKes != null && Number(plan.minPriceKes) < Number(plan.priceKes) ? plan.minPriceKes : plan.priceKes).toLocaleString()}
                   <span className="text-sm font-normal text-secondary-500">/{period(plan.billingPeriodDays)}</span>
                 </p>
+                {plan.minPriceKes != null && Number(plan.minPriceKes) < Number(plan.priceKes) && (
+                  <p className="mt-1 text-xs text-secondary-500">
+                    Up to KES {Number(plan.priceKes).toLocaleString()} per till, depending on your business - we agree it with you when you sign up.
+                  </p>
+                )}
                 <p className="mt-2 text-sm text-secondary-500">{TAGLINES[plan.tier] ?? ""}</p>
                 <ul className="mt-4 space-y-2 text-sm text-secondary-600">
                   <li>✓ Up to {plan.maxDevices} device{plan.maxDevices > 1 ? "s" : ""}</li>

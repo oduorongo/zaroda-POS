@@ -56,6 +56,12 @@ export class OnboardTenantByAgentDto {
   @Min(1)
   @Max(10)
   terminalCount?: number;
+
+  /** The monthly price agreed with the shop for the Basic plan (KES 1,000 - 2,500 per device; the plan's range is checked). Needed for every business with tills. */
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  monthlyPriceKes?: number;
 }
 
 export class AddMemberDto {

@@ -20,7 +20,7 @@ import { PlatformAuditLogService } from './platform-audit-log.service';
 import { PlatformAdminLoginDto } from './dto/platform-admin-login.dto';
 import { CreatePlanDto, UpdatePlanDto } from './dto/create-plan.dto';
 import { OnboardTenantDto } from './dto/onboard-tenant.dto';
-import { ChangePlanDto, RecordPaymentDto, SetSuspensionDto } from './dto/record-payment.dto';
+import { ChangePlanDto, SetAgreedPriceDto, RecordPaymentDto, SetSuspensionDto } from './dto/record-payment.dto';
 import { SetOnlineStoreAddonDto, SetOrganizationActiveDto, UpdateOrganizationDto } from './dto/update-organization.dto';
 import { ResetUserPasswordDto } from './dto/reset-user-password.dto';
 import { CommissionService } from '../online-store/commission.service';
@@ -280,6 +280,21 @@ export class PlatformAdminController {
     await this.auditLog.log({
       platformAdminId: req.user!.platformAdminId,
       action: `platform_admin.changed_plan:${result.from}->${result.to}`,
+      entityType: 'Subscription',
+      entityId: result.subscription.id,
+      organizationId: id,
+    });
+    return result.subscription;
+  }
+
+  @Public()
+  @UseGuards(PlatformAdminAuthGuard)
+  @Patch('organizations/:id/price')
+  async setAgreedPrice(@Req() req: PlatformAdminRequest, @Param('id', ParseUUIDPipe) id: string, @Body() dto: SetAgreedPriceDto) {
+    const result = await this.platformAdmin.setAgreedPrice(id, dto.monthlyPriceKes);
+    await this.auditLog.log({
+      platformAdminId: req.user!.platformAdminId,
+      action: `platform_admin.set_agreed_price:${result.before}->${result.after}`,
       entityType: 'Subscription',
       entityId: result.subscription.id,
       organizationId: id,

@@ -9,7 +9,7 @@ import { OnboardTenantDto } from './dto/onboard-tenant.dto';
 import { RecordPaymentDto } from './dto/record-payment.dto';
 import { SetOnlineStoreAddonDto, UpdateOrganizationDto } from './dto/update-organization.dto';
 import { DEFAULT_COMMISSION_RATE } from '../online-store/online-store.constants';
-import { effectiveStatus, FREE_PLAN_UNTIL, isFreePlan, needsDeviceSubscription, ONLINE_ONLY_TIER } from './subscriptions.util';
+import { effectiveStatus, FREE_PLAN_UNTIL, isFreePlan, needsDeviceSubscription, ONLINE_ONLY_TIER, monthlyPrice, priceProblem } from './subscriptions.util';
 
 const SALT_ROUNDS = 10;
 
@@ -99,6 +99,7 @@ export class PlatformAdminService {
           ? {
               planTier: sub.plan.tier,
               planName: sub.plan.name,
+              monthlyPriceKes: monthlyPrice(sub),
               currentPeriodEnd: sub.currentPeriodEnd,
               status: effectiveStatus(sub),
             }
@@ -145,7 +146,7 @@ export class PlatformAdminService {
       orgUsers,
       onlineStore: toPlatformOnlineStoreView(onlineStore),
       subscription: subscription
-        ? { ...subscription, status: effectiveStatus(subscription) }
+        ? { ...subscription, monthlyPriceKes: monthlyPrice(subscription), status: effectiveStatus(subscription) }
         : null,
     };
   }
@@ -186,6 +187,7 @@ export class PlatformAdminService {
 
   async createPlan(dto: CreatePlanDto) {
     if (dto.billingCycle === 'SEASONAL' && !dto.annualPriceKes) throw new BadRequestException('A seasonal plan needs its annual price');
+    if (dto.minPriceKes != null && dto.minPriceKes > dto.priceKes) throw new BadRequestException('The lowest price must not be above the full price');
     try {
       return await this.prisma.plan.create({ data: dto });
     } catch (e) {
@@ -201,6 +203,9 @@ export class PlatformAdminService {
   async updatePlan(id: string, dto: UpdatePlanDto) {
     const plan = await this.prisma.plan.findUnique({ where: { id } });
     if (!plan) throw new NotFoundException('Plan not found');
+    const max = dto.priceKes ?? Number(plan.priceKes);
+    const min = dto.minPriceKes !== undefined ? dto.minPriceKes : plan.minPriceKes == null ? null : Number(plan.minPriceKes);
+    if (min != null && min > max) throw new BadRequestException('The lowest price must not be above the full price');
     return this.prisma.plan.update({ where: { id }, data: dto });
   }
 
@@ -224,6 +229,8 @@ export class PlatformAdminService {
   ) {
     const plan = await this.prisma.plan.findUnique({ where: { tier: dto.planTier } });
     if (!plan) throw new NotFoundException(`No plan with tier ${dto.planTier}`);
+    const problem = dto.monthlyPriceKes == null ? null : priceProblem(plan, dto.monthlyPriceKes);
+    if (problem) throw new BadRequestException(problem);
 
     const organizationId = randomUUID();
     try {
@@ -274,6 +281,7 @@ export class PlatformAdminService {
               data: {
                 organizationId,
                 planId: plan.id,
+                agreedPriceKes: dto.monthlyPriceKes ?? null,
                 currentPeriodEnd: free ? FREE_PLAN_UNTIL : new Date(Date.now() + (options.trial ? 14 : plan.billingPeriodDays) * 24 * 60 * 60 * 1000),
                 isTrial: free ? false : options.trial ?? false,
               },
@@ -420,6 +428,22 @@ export class PlatformAdminService {
    * trial before the first payment. Between paid plans: the paid-up date stays, the next payment is at the new price.
    * Seasonal plans are moved from Seasonal billing. Tills and branches already set up keep working; only adding more is limited.
    */
+  /** Sets the monthly price agreed with a business, inside its plan's range. Returns the price before and after for the audit log. */
+  async setAgreedPrice(organizationId: string, price: number) {
+    const subscription = await this.prisma.subscription.findUnique({ where: { organizationId }, include: { plan: true } });
+    if (!subscription) throw new NotFoundException('This business has no device plan');
+    if (subscription.plan.billingCycle === 'SEASONAL') throw new BadRequestException('Seasonal plans are priced from Seasonal billing');
+    const problem = priceProblem(subscription.plan, price);
+    if (problem) throw new BadRequestException(problem);
+    const before = monthlyPrice(subscription);
+    const updated = await this.prisma.subscription.update({
+      where: { organizationId },
+      data: { agreedPriceKes: price === Number(subscription.plan.priceKes) ? null : price },
+      include: { plan: true },
+    });
+    return { before, after: monthlyPrice(updated), subscription: { ...updated, monthlyPriceKes: monthlyPrice(updated), status: effectiveStatus(updated) } };
+  }
+
   async changePlan(organizationId: string, planTier: string) {
     const [subscription, plan] = await Promise.all([
       this.prisma.subscription.findUnique({ where: { organizationId }, include: { plan: true } }),
@@ -438,7 +462,8 @@ export class PlatformAdminService {
       : fromFree
         ? { planId: plan.id, currentPeriodEnd: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000), isTrial: true }
         : { planId: plan.id };
-    const updated = await this.prisma.subscription.update({ where: { organizationId }, data, include: { plan: true } });
+    // An agreed price belongs to the old plan; the new plan starts at its own price until one is agreed again.
+    const updated = await this.prisma.subscription.update({ where: { organizationId }, data: { ...data, agreedPriceKes: null }, include: { plan: true } });
     return { from: subscription.plan.tier, to: plan.tier, subscription: { ...updated, status: effectiveStatus(updated) } };
   }
 
@@ -490,7 +515,7 @@ export class PlatformAdminService {
       // MRR counts paying (non-trial), non-suspended subscriptions only -
       // a trial or a suspended tenant contributes no recurring revenue.
       if (!sub.isTrial && status !== 'SUSPENDED' && status !== 'READ_ONLY') {
-        const monthlyEquivalent = (Number(sub.plan.priceKes) / sub.plan.billingPeriodDays) * 30;
+        const monthlyEquivalent = (monthlyPrice(sub) / sub.plan.billingPeriodDays) * 30;
         mrrKes += monthlyEquivalent;
       }
     }

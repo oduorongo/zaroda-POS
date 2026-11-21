@@ -12,6 +12,7 @@ interface Plan {
   tier: string;
   name: string;
   priceKes: string;
+  minPriceKes?: string | null;
   billingCycle?: string;
   active?: boolean;
   maxDevices: number;
@@ -42,6 +43,7 @@ export default function NewTenantPage() {
   const [subCounty, setSubCounty] = useState("");
   const [terminalCount, setTerminalCount] = useState("1");
   const [planTier, setPlanTier] = useState("");
+  const [price, setPrice] = useState("");
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -84,6 +86,7 @@ export default function NewTenantPage() {
         subCounty: subCounty.trim() || undefined,
         terminalCount: Number(terminalCount) || 1,
         planTier,
+        ...(ranged && price.trim() ? { monthlyPriceKes: Number(price) } : {}),
       });
       setDone(true);
     } catch (err) {
@@ -93,7 +96,12 @@ export default function NewTenantPage() {
     }
   }
 
+  const chosen = plans.find((p) => p.tier === planTier);
+  const ranged = !!chosen && chosen.billingCycle !== "SEASONAL" && chosen.minPriceKes != null && Number(chosen.minPriceKes) < Number(chosen.priceKes);
+  const priceOk = !ranged || price.trim() === "" || (Number.isInteger(Number(price)) && Number(price) >= Number(chosen!.minPriceKes) && Number(price) <= Number(chosen!.priceKes));
+
   const canSubmit =
+    priceOk &&
     organizationName.trim() &&
     ownerFullName.trim() &&
     ownerEmail.trim() &&
@@ -201,6 +209,23 @@ export default function NewTenantPage() {
                   ))}
                   {plans.length === 0 && <p className="text-sm text-secondary-500">No plans configured yet - run `pnpm --filter api seed:plans`.</p>}
                 </div>
+                {ranged && (
+                  <div className="mt-3">
+                    <label className="mb-1.5 block text-sm text-secondary-500">
+                      Monthly price agreed with the business (KES {Number(chosen!.minPriceKes).toLocaleString()} - {Number(chosen!.priceKes).toLocaleString()} per till)
+                    </label>
+                    <Input
+                      type="number"
+                      step={50}
+                      min={Number(chosen!.minPriceKes)}
+                      max={Number(chosen!.priceKes)}
+                      value={price}
+                      onChange={(e) => setPrice(e.target.value)}
+                      placeholder={`Leave empty for the full ${Number(chosen!.priceKes).toLocaleString()}`}
+                      className="w-56 border-border bg-background"
+                    />
+                  </div>
+                )}
               </CardContent>
             </Card>
 

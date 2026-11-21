@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { Badge, Button, EmptyState, LoadingState, PasswordInput } from "@zaroda/ui";
 import { ApiError } from "../../../lib/api";
 import { TeamShell } from "../../../components/team-shell";
-import { teamGet, teamPost, type TeamMe, type TeamShop } from "../../../lib/team-api";
+import { basicPriceRange, teamGet, teamPost, type TeamMe, type TeamShop } from "../../../lib/team-api";
 
 const STATUS: Record<NonNullable<TeamShop["subscription"]>["status"], { label: string; variant: "success" | "warning" | "error" | "neutral" }> = {
   TRIAL: { label: "On free trial", variant: "warning" },
@@ -22,6 +22,10 @@ const INDUSTRIES = [
   ["HOTEL", "Hotel / lodge"],
 ] as const;
 
+/** Rental landlords have no tills, so no monthly device price. */
+const NO_DEVICE_PLAN = new Set(["RENTAL"]);
+const kes = (n: number) => `KES ${n.toLocaleString("en-KE")}`;
+
 const inputClass = "mt-1 w-full rounded-md border border-border bg-background p-2";
 
 function ShopsBody({ me }: { me: TeamMe }) {
@@ -37,6 +41,8 @@ function ShopsBody({ me }: { me: TeamMe }) {
   const [branchName, setBranchName] = useState("");
   const [county, setCounty] = useState("");
   const [subCounty, setSubCounty] = useState("");
+  const [range, setRange] = useState<{ min: number; max: number } | null>(null);
+  const [price, setPrice] = useState("");
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [created, setCreated] = useState<{ name: string; email: string; password: string | null } | null>(null);
@@ -51,7 +57,12 @@ function ShopsBody({ me }: { me: TeamMe }) {
 
   useEffect(() => {
     void load();
+    basicPriceRange().then(setRange, () => setRange(null));
   }, []);
+
+  const needsPrice = !NO_DEVICE_PLAN.has(industryType);
+  const priceNum = Number(price);
+  const priceOk = !needsPrice || (price !== "" && Number.isInteger(priceNum) && (!range || (priceNum >= range.min && priceNum <= range.max)));
 
   async function onboard(e: React.FormEvent) {
     e.preventDefault();
@@ -67,6 +78,7 @@ function ShopsBody({ me }: { me: TeamMe }) {
         branchName: branchName.trim() || organizationName.trim(),
         ...(county.trim() ? { county: county.trim() } : {}),
         ...(subCounty.trim() ? { subCounty: subCounty.trim() } : {}),
+        ...(needsPrice ? { monthlyPriceKes: priceNum } : {}),
       });
       setCreated({ name: organizationName.trim(), email: result.ownerEmail, password: result.temporaryPassword ?? null });
       setShowForm(false);
@@ -77,6 +89,7 @@ function ShopsBody({ me }: { me: TeamMe }) {
       setBranchName("");
       setCounty("");
       setSubCounty("");
+      setPrice("");
       await load();
     } catch (err) {
       setFormError(err instanceof ApiError ? err.message : "Could not sign the shop up.");
@@ -155,12 +168,33 @@ function ShopsBody({ me }: { me: TeamMe }) {
               Sub-county / town
               <input className={inputClass} value={subCounty} onChange={(e) => setSubCounty(e.target.value)} />
             </label>
+            {needsPrice && (
+              <label className="text-sm">
+                Monthly price agreed with the owner (KES per till)
+                <input
+                  required
+                  type="number"
+                  inputMode="numeric"
+                  step={50}
+                  min={range?.min}
+                  max={range?.max}
+                  placeholder={range ? `${range.min} - ${range.max}` : ""}
+                  className={inputClass}
+                  value={price}
+                  onChange={(e) => setPrice(e.target.value)}
+                />
+                <span className="mt-1 block text-xs text-secondary-500">
+                  {range ? `Anything from ${kes(range.min)} to ${kes(range.max)} a month. ` : ""}Choose what the business can afford: a small kiosk can start low.
+                  ZARODA bills this price after the free trial.
+                </span>
+              </label>
+            )}
           </div>
           <p className="text-xs text-secondary-500">
             The shop is credited to you for good once it is signed up. It starts on a 14-day free trial; your bonus comes after it pays its first monthly subscription.
           </p>
           {formError && <p className="text-sm text-error-600">{formError}</p>}
-          <Button type="submit" disabled={busy || !organizationName.trim() || !ownerFullName.trim() || !ownerEmail.trim()}>
+          <Button type="submit" disabled={busy || !organizationName.trim() || !ownerFullName.trim() || !ownerEmail.trim() || !priceOk}>
             {busy ? "Signing up..." : "Sign up this shop"}
           </Button>
         </form>
@@ -193,6 +227,11 @@ function ShopsBody({ me }: { me: TeamMe }) {
                 {s.subscription && (
                   <p>
                     {s.subscription.isTrial ? "Trial ends" : "Paid until"} {new Date(s.subscription.currentPeriodEnd).toLocaleDateString("en-KE")}
+                  </p>
+                )}
+                {s.subscription && (
+                  <p>
+                    {s.subscription.planName} · {kes(s.subscription.monthlyPriceKes)} a month
                   </p>
                 )}
               </div>

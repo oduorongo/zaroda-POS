@@ -123,6 +123,11 @@ function HomeBody({ me, reload }: { me: TeamMe; reload: () => Promise<void> }) {
         <h2 className="font-semibold">Your team&apos;s earning terms</h2>
         <ul className="space-y-1 text-sm text-secondary-600">
           <li>Members earn {pct(me.team.memberShareRate)} of what Zaroda collects as online-order commission from the shops they sign, and {pct(me.team.subscriptionShareRate)} of each monthly subscription those shops pay.</li>
+          <li>
+            When you sign up a shop you agree its monthly price with the owner, within the Basic plan&apos;s range (shown on the form). Your
+            subscription share is a percentage of what the shop actually pays, so a lower price earns a smaller share - but brings in shops that could
+            not afford the full price.
+          </li>
           <li>You earn on a shop for {me.team.earningMonths} months after it signs up.</li>
           <li>The team leader also earns {pct(me.team.leaderOverrideRate)} of the commission and subscriptions from all the team&apos;s shops, paid by Zaroda on top (never deducted from members).</li>
           <li>A bonus of KES {me.team.onboardingBonusKes.toLocaleString("en-KE")} for each shop, once it pays its second monthly subscription.</li>

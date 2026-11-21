@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { apiGet, apiPatch, ApiError } from "../../../lib/api";
 import { ChangePlan } from "./change-plan";
+import { AgreedPrice } from "./agreed-price";
 import { getSession, type Session } from "../../../lib/auth";
 import { Nav } from "../../../components/nav";
 import { Badge } from "@zaroda/ui";
@@ -38,13 +39,16 @@ interface Subscription {
   isTrial: boolean;
   manuallySuspended: boolean;
   status: "TRIAL" | "ACTIVE" | "GRACE" | "SUSPENDED";
-  plan: { name: string; tier: string; priceKes: string };
+  plan: { name: string; tier: string; priceKes: string; minPriceKes: string | null };
+  /** The price this business pays a month (agreed price, else the plan's). */
+  monthlyPriceKes: number;
   payments: SubscriptionPayment[];
 }
 
 interface OrganizationDetail {
   id: string;
   name: string;
+  salesAgentId: string | null;
   industryType: string;
   country: string;
   baseCurrency: string;
@@ -375,7 +379,7 @@ export default function OrganizationDetailPage() {
                 <div className="p-3 text-sm">
                   <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                     <div><p className="text-xs text-secondary-500">Plan</p><p>{org.subscription.plan.name}</p></div>
-                    <div><p className="text-xs text-secondary-500">Price</p><p>KES {Number(org.subscription.plan.priceKes).toLocaleString()}</p></div>
+                    <div><p className="text-xs text-secondary-500">Price a month</p><p>KES {org.subscription.monthlyPriceKes.toLocaleString()}</p></div>
                     <div><p className="text-xs text-secondary-500">Billed through</p><p>{new Date(org.subscription.currentPeriodEnd).toLocaleDateString()}</p></div>
                     <div><p className="text-xs text-secondary-500">Grace period</p><p>{org.subscription.graceDays} days</p></div>
                   </div>
@@ -388,6 +392,14 @@ export default function OrganizationDetailPage() {
                   >
                     {togglingSuspend ? "..." : org.subscription.manuallySuspended ? "Reactivate tenant" : "Suspend tenant"}
                   </button>
+                  <AgreedPrice
+                    key={org.subscription.monthlyPriceKes}
+                    organizationId={org.id}
+                    plan={org.subscription.plan}
+                    monthlyPriceKes={org.subscription.monthlyPriceKes}
+                    onboardedByTeam={!!org.salesAgentId}
+                    onChanged={load}
+                  />
                   <ChangePlan organizationId={org.id} currentTier={org.subscription.plan.tier} onChanged={load} />
 
                   {org.subscription.payments.length > 0 && (
