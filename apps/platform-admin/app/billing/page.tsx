@@ -13,6 +13,7 @@ interface Plan {
   name: string;
   priceKes: string;
   minPriceKes: string | null;
+  maxExtraTills: number;
   billingPeriodDays: number;
   billingCycle?: string;
   maxDevices: number;
@@ -58,6 +59,7 @@ export default function BillingPage() {
   const [editingPlan, setEditingPlan] = useState<Plan | null>(null);
   const [editPrice, setEditPrice] = useState("");
   const [editMin, setEditMin] = useState("");
+  const [editExtra, setEditExtra] = useState("0");
   const [planError, setPlanError] = useState<string | null>(null);
   const [savingPlan, setSavingPlan] = useState(false);
 
@@ -109,7 +111,7 @@ export default function BillingPage() {
     setPlanError(null);
     try {
       // A seasonal plan's price is its annual price (billed in term instalments).
-      await apiPatch(`/platform-admin/plans/${editingPlan.id}`, editingPlan.billingCycle === "SEASONAL" ? { priceKes: price, annualPriceKes: price } : { priceKes: price, minPriceKes: min });
+      await apiPatch(`/platform-admin/plans/${editingPlan.id}`, editingPlan.billingCycle === "SEASONAL" ? { priceKes: price, annualPriceKes: price } : { priceKes: price, minPriceKes: min, maxExtraTills: Math.max(0, Math.floor(Number(editExtra) || 0)) });
       setEditingPlan(null);
       await load();
     } catch (err) {
@@ -172,9 +174,11 @@ export default function BillingPage() {
                         {Number(plan.priceKes).toLocaleString()}
                         <span className="text-xs font-normal text-secondary-500">{plan.billingCycle === "SEASONAL" ? "/year" : `/${plan.billingPeriodDays}d`}</span>
                       </p>
-                      <p className="mt-1 text-xs text-secondary-500">{plan.maxDevices} devices · {plan.maxBranches} branches</p>
+                      <p className="mt-1 text-xs text-secondary-500">
+                        {plan.maxDevices} devices{plan.maxExtraTills > 0 ? ` (+${plan.maxExtraTills} extra at the same price)` : ""} · {plan.maxBranches} branches
+                      </p>
                       <button
-                        onClick={() => { setEditingPlan(plan); setEditPrice(plan.priceKes); setEditMin(plan.minPriceKes ?? ""); setPlanError(null); }}
+                        onClick={() => { setEditingPlan(plan); setEditPrice(plan.priceKes); setEditMin(plan.minPriceKes ?? ""); setEditExtra(String(plan.maxExtraTills ?? 0)); setPlanError(null); }}
                         className="mt-3 text-sm text-amber-400 hover:underline"
                       >
                         Edit price
@@ -229,6 +233,8 @@ export default function BillingPage() {
                 With a lowest price, the team member onboarding a business chooses its monthly price between the two (for self-registered
                 businesses, you set it on the business&apos;s page). Prices already agreed stay as they are.
               </p>
+              <label className="mb-1.5 mt-3 block text-sm text-secondary-500">Extra tills a business may add (each at its own till price)</label>
+              <Input type="number" min={0} value={editExtra} onChange={(e) => setEditExtra(e.target.value)} />
             </>
           )}
           {planError && <p className="mt-2 text-sm text-error-600">{planError}</p>}

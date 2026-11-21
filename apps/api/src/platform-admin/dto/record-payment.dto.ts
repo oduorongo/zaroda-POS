@@ -1,4 +1,4 @@
-import { IsBoolean, IsIn, IsNumber, IsOptional, IsPositive, IsString, MaxLength } from 'class-validator';
+import { IsBoolean, IsIn, IsNumber, IsOptional, IsPositive, IsString, MaxLength, IsInt, Min } from 'class-validator';
 
 const METHODS = ['MPESA', 'BANK', 'CASH'] as const;
 
@@ -26,6 +26,12 @@ export class SetAgreedPriceDto {
   @IsNumber()
   @IsPositive()
   monthlyPriceKes!: number;
+}
+
+export class SetExtraTillsDto {
+  @IsInt()
+  @Min(0)
+  extraTills!: number;
 }
 
 export class ChangePlanDto {

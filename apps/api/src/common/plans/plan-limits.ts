@@ -1,8 +1,9 @@
+import { tillLimit, tillPrice } from '../../platform-admin/subscriptions.util';
 import { ForbiddenException } from '@nestjs/common';
 import type { TenantTx } from '../prisma/tenant-scoped-prisma.service';
 
 // Terminals the system makes for itself (online orders, hotel desk, school credit, construction certificates): never tills.
-const SYSTEM_TERMINALS = ['Online shop', 'Front desk', 'School credit sales', 'Construction certificates'];
+export const SYSTEM_TERMINALS = ['Online shop', 'Front desk', 'School credit sales', 'Construction certificates'];
 
 /**
  * Refuses a new till or branch beyond the business's plan (Basic 1 till, the free Online Shop only plan none...).
@@ -14,11 +15,16 @@ export async function assertPlanAllows(tx: TenantTx, organizationId: string, wha
   const { plan } = sub;
   if (what === 'TERMINAL') {
     const used = await tx.terminal.count({ where: { branch: { organizationId }, deviceLabel: { notIn: SYSTEM_TERMINALS } } });
-    if (used >= plan.maxDevices) {
+    const limit = tillLimit(sub);
+    if (used >= limit) {
+      const canAddOne = sub.extraTills < plan.maxExtraTills;
       throw new ForbiddenException(
-        plan.maxDevices === 0
+        limit === 0
           ? `The ${plan.name} plan has no tills. Ask ZARODA to move you to a paid plan to sell in-store with ZARODA.`
-          : `Your ${plan.name} plan allows ${plan.maxDevices} till${plan.maxDevices === 1 ? '' : 's'}. Ask ZARODA to move you to a bigger plan to add more.`,
+          : `Your ${plan.name} plan allows ${limit} till${limit === 1 ? '' : 's'}. ` +
+            (canAddOne
+              ? `Ask ZARODA to add an extra till (KES ${tillPrice(sub).toLocaleString('en-KE')} more a month) or move you to a bigger plan.`
+              : 'Ask ZARODA to move you to a bigger plan to add more.'),
       );
     }
     return;

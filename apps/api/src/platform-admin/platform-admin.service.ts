@@ -1,3 +1,4 @@
+import { SYSTEM_TERMINALS } from '../common/plans/plan-limits';
 import { randomUUID } from 'crypto';
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { SeasonalBillingService } from '../seasonal-billing/seasonal-billing.service';
@@ -9,7 +10,7 @@ import { OnboardTenantDto } from './dto/onboard-tenant.dto';
 import { RecordPaymentDto } from './dto/record-payment.dto';
 import { SetOnlineStoreAddonDto, UpdateOrganizationDto } from './dto/update-organization.dto';
 import { DEFAULT_COMMISSION_RATE } from '../online-store/online-store.constants';
-import { effectiveStatus, FREE_PLAN_UNTIL, isFreePlan, needsDeviceSubscription, ONLINE_ONLY_TIER, monthlyPrice, priceProblem } from './subscriptions.util';
+import { effectiveStatus, FREE_PLAN_UNTIL, isFreePlan, needsDeviceSubscription, ONLINE_ONLY_TIER, monthlyPrice, priceProblem, tillPrice } from './subscriptions.util';
 
 const SALT_ROUNDS = 10;
 
@@ -146,7 +147,7 @@ export class PlatformAdminService {
       orgUsers,
       onlineStore: toPlatformOnlineStoreView(onlineStore),
       subscription: subscription
-        ? { ...subscription, monthlyPriceKes: monthlyPrice(subscription), status: effectiveStatus(subscription) }
+        ? { ...subscription, monthlyPriceKes: monthlyPrice(subscription), tillPriceKes: tillPrice(subscription), status: effectiveStatus(subscription) }
         : null,
     };
   }
@@ -231,6 +232,13 @@ export class PlatformAdminService {
     if (!plan) throw new NotFoundException(`No plan with tier ${dto.planTier}`);
     const problem = dto.monthlyPriceKes == null ? null : priceProblem(plan, dto.monthlyPriceKes);
     if (problem) throw new BadRequestException(problem);
+    const extraTills = dto.extraTills ?? 0;
+    if (extraTills > plan.maxExtraTills) {
+      throw new BadRequestException(plan.maxExtraTills === 0 ? `The ${plan.name} plan has no extra tills` : `The ${plan.name} plan allows at most ${plan.maxExtraTills} extra till${plan.maxExtraTills === 1 ? '' : 's'}`);
+    }
+    if (plan.tier !== ONLINE_ONLY_TIER && (dto.terminalCount ?? 1) > plan.maxDevices + extraTills) {
+      throw new BadRequestException(`The ${plan.name} plan with ${extraTills} extra till${extraTills === 1 ? '' : 's'} allows ${plan.maxDevices + extraTills} till${plan.maxDevices + extraTills === 1 ? '' : 's'}`);
+    }
 
     const organizationId = randomUUID();
     try {
@@ -282,6 +290,7 @@ export class PlatformAdminService {
                 organizationId,
                 planId: plan.id,
                 agreedPriceKes: dto.monthlyPriceKes ?? null,
+                extraTills,
                 currentPeriodEnd: free ? FREE_PLAN_UNTIL : new Date(Date.now() + (options.trial ? 14 : plan.billingPeriodDays) * 24 * 60 * 60 * 1000),
                 isTrial: free ? false : options.trial ?? false,
               },
@@ -435,13 +444,33 @@ export class PlatformAdminService {
     if (subscription.plan.billingCycle === 'SEASONAL') throw new BadRequestException('Seasonal plans are priced from Seasonal billing');
     const problem = priceProblem(subscription.plan, price);
     if (problem) throw new BadRequestException(problem);
-    const before = monthlyPrice(subscription);
+    const before = tillPrice(subscription);
     const updated = await this.prisma.subscription.update({
       where: { organizationId },
       data: { agreedPriceKes: price === Number(subscription.plan.priceKes) ? null : price },
       include: { plan: true },
     });
-    return { before, after: monthlyPrice(updated), subscription: { ...updated, monthlyPriceKes: monthlyPrice(updated), status: effectiveStatus(updated) } };
+    return { before, after: tillPrice(updated), subscription: { ...updated, monthlyPriceKes: monthlyPrice(updated), tillPriceKes: tillPrice(updated), status: effectiveStatus(updated) } };
+  }
+
+  /** Adds or removes the extra till (Basic: one, at the agreed price). Removing it needs the business to be down to its plan's tills first. */
+  async setExtraTills(organizationId: string, extraTills: number) {
+    const subscription = await this.prisma.subscription.findUnique({ where: { organizationId }, include: { plan: true } });
+    if (!subscription) throw new NotFoundException('This business has no device plan');
+    if (extraTills > subscription.plan.maxExtraTills) {
+      throw new BadRequestException(subscription.plan.maxExtraTills === 0 ? `The ${subscription.plan.name} plan has no extra tills` : `The ${subscription.plan.name} plan allows at most ${subscription.plan.maxExtraTills} extra till${subscription.plan.maxExtraTills === 1 ? '' : 's'}`);
+    }
+    if (extraTills < subscription.extraTills) {
+      const inUse = await this.prisma.$transaction(async (tx) => {
+        await tx.$executeRaw`SELECT set_config('app.current_tenant', ${organizationId}, true)`;
+        return tx.terminal.count({ where: { branch: { organizationId }, deviceLabel: { notIn: SYSTEM_TERMINALS } } });
+      }, TX_OPTIONS);
+      const limit = subscription.plan.maxDevices + extraTills;
+      if (inUse > limit) throw new BadRequestException(`This business has ${inUse} tills set up; the plan without the extra till allows ${limit}. Ask the owner to remove a till first.`);
+    }
+    const before = subscription.extraTills;
+    const updated = await this.prisma.subscription.update({ where: { organizationId }, data: { extraTills }, include: { plan: true } });
+    return { before, after: updated.extraTills, subscription: { ...updated, monthlyPriceKes: monthlyPrice(updated), tillPriceKes: tillPrice(updated), status: effectiveStatus(updated) } };
   }
 
   async changePlan(organizationId: string, planTier: string) {
@@ -462,8 +491,12 @@ export class PlatformAdminService {
       : fromFree
         ? { planId: plan.id, currentPeriodEnd: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000), isTrial: true }
         : { planId: plan.id };
-    // An agreed price belongs to the old plan; the new plan starts at its own price until one is agreed again.
-    const updated = await this.prisma.subscription.update({ where: { organizationId }, data: { ...data, agreedPriceKes: null }, include: { plan: true } });
+    // An agreed price belongs to the old plan; the new plan starts at its own price until one is agreed again. Extra tills go if the new plan has none.
+    const updated = await this.prisma.subscription.update({
+      where: { organizationId },
+      data: { ...data, agreedPriceKes: null, extraTills: Math.min(subscription.extraTills, plan.maxExtraTills) },
+      include: { plan: true },
+    });
     return { from: subscription.plan.tier, to: plan.tier, subscription: { ...updated, status: effectiveStatus(updated) } };
   }
 

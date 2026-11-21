@@ -26,6 +26,12 @@ export class CreatePlanDto {
   @Min(0)
   maxDevices!: number;
 
+  /** Extra tills a business may add at its agreed price (Basic: 1). */
+  @IsInt()
+  @Min(0)
+  @IsOptional()
+  maxExtraTills?: number;
+
   @IsInt()
   @IsPositive()
   maxBranches!: number;

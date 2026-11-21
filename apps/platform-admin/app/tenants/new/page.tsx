@@ -13,6 +13,7 @@ interface Plan {
   name: string;
   priceKes: string;
   minPriceKes?: string | null;
+  maxExtraTills?: number;
   billingCycle?: string;
   active?: boolean;
   maxDevices: number;
@@ -87,6 +88,7 @@ export default function NewTenantPage() {
         terminalCount: Number(terminalCount) || 1,
         planTier,
         ...(ranged && price.trim() ? { monthlyPriceKes: Number(price) } : {}),
+        ...(chosen && (chosen.maxExtraTills ?? 0) > 0 ? { extraTills: Math.max(0, (Number(terminalCount) || 1) - chosen.maxDevices) } : {}),
       });
       setDone(true);
     } catch (err) {
@@ -209,6 +211,12 @@ export default function NewTenantPage() {
                   ))}
                   {plans.length === 0 && <p className="text-sm text-secondary-500">No plans configured yet - run `pnpm --filter api seed:plans`.</p>}
                 </div>
+                {chosen && (chosen.maxExtraTills ?? 0) > 0 && (
+                  <p className="mt-2 text-xs text-secondary-500">
+                    The {chosen.name} plan includes {chosen.maxDevices} till; up to {chosen.maxExtraTills} more can be added at the same monthly price each -
+                    set Tills above to {chosen.maxDevices + 1} to add one.
+                  </p>
+                )}
                 {ranged && (
                   <div className="mt-3">
                     <label className="mb-1.5 block text-sm text-secondary-500">

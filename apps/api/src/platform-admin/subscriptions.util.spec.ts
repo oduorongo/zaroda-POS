@@ -1,4 +1,4 @@
-import { effectiveStatus, FREE_PLAN_UNTIL, isFreePlan, monthlyPrice, needsDeviceSubscription, priceProblem } from './subscriptions.util';
+import { effectiveStatus, FREE_PLAN_UNTIL, isFreePlan, monthlyPrice, needsDeviceSubscription, priceProblem, tillLimit, tillPrice } from './subscriptions.util';
 
 describe('needsDeviceSubscription', () => {
   it('gives shops, restaurants, pharmacies and salons the device subscription', () => {
@@ -41,5 +41,21 @@ describe('agreed monthly price', () => {
   it('a plan without a range has one price', () => {
     expect(priceProblem({ name: 'Standard', priceKes: 6000, minPriceKes: null }, 5000)).toMatch(/one price/);
     expect(priceProblem({ name: 'Standard', priceKes: 6000, minPriceKes: null }, 6000)).toBeNull();
+  });
+});
+
+describe('extra till', () => {
+  const plan = { name: 'Basic', priceKes: '2500.00', minPriceKes: '1000.00', maxDevices: 1 };
+  it('costs the same as the agreed till price', () => {
+    expect(monthlyPrice({ agreedPriceKes: '1500.00', extraTills: 1, plan })).toBe(3000);
+    expect(monthlyPrice({ agreedPriceKes: null, extraTills: 1, plan })).toBe(5000);
+    expect(monthlyPrice({ agreedPriceKes: '1500.00', extraTills: 0, plan })).toBe(1500);
+  });
+  it('raises the till limit', () => {
+    expect(tillLimit({ extraTills: 1, plan })).toBe(2);
+    expect(tillLimit({ extraTills: 0, plan })).toBe(1);
+  });
+  it('one till still costs the till price', () => {
+    expect(tillPrice({ agreedPriceKes: '1200.00', plan })).toBe(1200);
   });
 });

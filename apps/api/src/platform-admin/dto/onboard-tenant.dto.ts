@@ -1,4 +1,4 @@
-import { IsEmail, IsIn, IsInt, IsOptional, IsPositive, IsString, MaxLength, MinLength } from 'class-validator';
+import { IsEmail, IsIn, IsInt, IsOptional, IsPositive, IsString, MaxLength, MinLength, Min } from 'class-validator';
 
 const INDUSTRY_TYPES = ['RETAIL', 'RESTAURANT', 'SALON', 'RENTAL', 'SCHOOL_SUPPLIER', 'UNIFORM_MAKER', 'HOTEL'] as const;
 
@@ -62,4 +62,10 @@ export class OnboardTenantDto {
   @IsPositive()
   @IsOptional()
   monthlyPriceKes?: number;
+
+  /** Extra tills beyond the plan's (Basic: at most 1), each at the agreed price. */
+  @IsInt()
+  @Min(0)
+  @IsOptional()
+  extraTills?: number;
 }

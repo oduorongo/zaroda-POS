@@ -41,8 +41,9 @@ function ShopsBody({ me }: { me: TeamMe }) {
   const [branchName, setBranchName] = useState("");
   const [county, setCounty] = useState("");
   const [subCounty, setSubCounty] = useState("");
-  const [range, setRange] = useState<{ min: number; max: number } | null>(null);
+  const [range, setRange] = useState<{ min: number; max: number; extraTills: number } | null>(null);
   const [price, setPrice] = useState("");
+  const [secondTill, setSecondTill] = useState(false);
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [created, setCreated] = useState<{ name: string; email: string; password: string | null } | null>(null);
@@ -79,6 +80,7 @@ function ShopsBody({ me }: { me: TeamMe }) {
         ...(county.trim() ? { county: county.trim() } : {}),
         ...(subCounty.trim() ? { subCounty: subCounty.trim() } : {}),
         ...(needsPrice ? { monthlyPriceKes: priceNum } : {}),
+        ...(needsPrice && secondTill ? { extraTills: 1 } : {}),
       });
       setCreated({ name: organizationName.trim(), email: result.ownerEmail, password: result.temporaryPassword ?? null });
       setShowForm(false);
@@ -90,6 +92,7 @@ function ShopsBody({ me }: { me: TeamMe }) {
       setCounty("");
       setSubCounty("");
       setPrice("");
+      setSecondTill(false);
       await load();
     } catch (err) {
       setFormError(err instanceof ApiError ? err.message : "Could not sign the shop up.");
@@ -189,6 +192,15 @@ function ShopsBody({ me }: { me: TeamMe }) {
                 </span>
               </label>
             )}
+            {needsPrice && !!range?.extraTills && (
+              <label className="flex items-start gap-2 text-sm sm:col-span-2">
+                <input type="checkbox" className="mt-1" checked={secondTill} onChange={(e) => setSecondTill(e.target.checked)} />
+                <span>
+                  Add a second till at the same price{priceOk && price ? ` (+${kes(priceNum)}, ${kes(priceNum * 2)} a month in all)` : ""}. A shop can also ask ZARODA
+                  for it later.
+                </span>
+              </label>
+            )}
           </div>
           <p className="text-xs text-secondary-500">
             The shop is credited to you for good once it is signed up. It starts on a 14-day free trial; your bonus comes after it pays its first monthly subscription.
@@ -231,7 +243,8 @@ function ShopsBody({ me }: { me: TeamMe }) {
                 )}
                 {s.subscription && (
                   <p>
-                    {s.subscription.planName} · {kes(s.subscription.monthlyPriceKes)} a month
+                    {s.subscription.planName}
+                    {s.subscription.extraTills > 0 ? ` + ${s.subscription.extraTills} extra till${s.subscription.extraTills === 1 ? "" : "s"}` : ""} · {kes(s.subscription.monthlyPriceKes)} a month
                   </p>
                 )}
               </div>
