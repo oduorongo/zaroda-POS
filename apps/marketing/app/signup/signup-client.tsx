@@ -176,15 +176,15 @@ export default function SignupClient() {
         </div>
         <div>
           <Label>Your full name</Label>
-          <Input value={ownerFullName} onChange={(e) => setOwnerFullName(e.target.value)} />
+          <Input autoComplete="name" value={ownerFullName} onChange={(e) => setOwnerFullName(e.target.value)} />
         </div>
         <div>
           <Label>Email</Label>
-          <Input type="email" value={ownerEmail} onChange={(e) => setOwnerEmail(e.target.value)} />
+          <Input type="email" autoComplete="email" value={ownerEmail} onChange={(e) => setOwnerEmail(e.target.value)} />
         </div>
         <div>
           <Label>Password (min 8 characters)</Label>
-          <Input type="password" value={ownerPassword} onChange={(e) => setOwnerPassword(e.target.value)} />
+          <Input type="password" autoComplete="new-password" value={ownerPassword} onChange={(e) => setOwnerPassword(e.target.value)} />
         </div>
 
         {error && <p className="text-sm text-error-600">{error}</p>}
