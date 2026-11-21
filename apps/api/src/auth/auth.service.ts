@@ -1,5 +1,6 @@
 import { randomUUID } from 'crypto';
 import {
+  BadRequestException,
   ConflictException,
   HttpException,
   HttpStatus,
@@ -15,7 +16,7 @@ import { PinLoginDto } from './dto/pin-login.dto';
 import { RegisterOrganizationDto } from './dto/register-organization.dto';
 import { JwtPayload } from './jwt.strategy';
 import { PinLockoutService } from './pin-lockout.service';
-import { FREE_PLAN_UNTIL, needsDeviceSubscription, ONLINE_ONLY_TIER } from '../platform-admin/subscriptions.util';
+import { FREE_PLAN_UNTIL, needsDeviceSubscription, ONLINE_ONLY_TIER, ONLINE_ONLY_TYPES } from '../platform-admin/subscriptions.util';
 import { SeasonalBillingService } from '../seasonal-billing/seasonal-billing.service';
 
 const SALT_ROUNDS = 10;
@@ -199,6 +200,9 @@ export class AuthService {
    * invite flow instead," not "reuse that account."
    */
   async register(dto: RegisterOrganizationDto) {
+    if (dto.onlineOnly === true && !ONLINE_ONLY_TYPES.includes(dto.industryType)) {
+      throw new BadRequestException('The free online shop is for retail shops. Choose General retail, or untick the online-shop-only option to start a free trial.');
+    }
     const organizationId = randomUUID();
 
     let result: {
