@@ -35,6 +35,8 @@ export function needsDeviceSubscription(industryType: string): boolean {
 
 /** The free "Online Shop only" plan: for a shop that sells in-store on another POS. No tills; ZARODA earns the 3% shopper fee. */
 export const ONLINE_ONLY_TIER = 'ONLINE_ONLY';
+/** Business types the free Online Shop only plan is for (the online shop add-on is a retail shop's). */
+export const ONLINE_ONLY_TYPES: readonly string[] = ['RETAIL'];
 /** A free plan never falls due, so its paid-up date is set far ahead and it is never a trial. */
 export const FREE_PLAN_UNTIL = new Date('2099-12-31T00:00:00Z');
 

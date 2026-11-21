@@ -15,6 +15,9 @@ const INDUSTRY_TYPES = [
   { value: "HOTEL", label: "Hotel / lodge (rooms, front desk)" },
 ];
 
+/** Business types the free Online Shop only plan is for (the server checks the same). */
+const ONLINE_SHOP_TYPES = ["RETAIL"];
+
 const BACKOFFICE_URL = process.env.NEXT_PUBLIC_BACKOFFICE_URL ?? "http://localhost:3003";
 
 interface RegisterResponse {
@@ -46,6 +49,12 @@ export default function SignupClient() {
   // A shop on another POS: the free Online Shop only plan, no trial.
   const [onlineOnlyChosen, setOnlineOnly] = useState(false);
   const onlineOnly = onlineOnlyChosen && !rental;
+  const typeChoices = onlineOnly ? INDUSTRY_TYPES.filter((t) => ONLINE_SHOP_TYPES.includes(t.value)) : INDUSTRY_TYPES;
+
+  // Ticking "only the online shop" keeps the business type to the ones with the online shop add-on.
+  useEffect(() => {
+    if (onlineOnly && !ONLINE_SHOP_TYPES.includes(industryType)) setIndustryType(ONLINE_SHOP_TYPES[0]);
+  }, [onlineOnly, industryType]);
 
   useEffect(() => {
     if (new URLSearchParams(window.location.search).get("plan") === "online") setOnlineOnly(true);
@@ -139,7 +148,7 @@ export default function SignupClient() {
             onChange={(e) => setIndustryType(e.target.value)}
             className="h-10 w-full rounded-md border border-border bg-surface px-3 text-sm text-foreground"
           >
-            {INDUSTRY_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+            {typeChoices.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
           </select>
         </div>
         {!rental && (
@@ -147,7 +156,7 @@ export default function SignupClient() {
             <input type="checkbox" className="mt-1" checked={onlineOnlyChosen} onChange={(e) => setOnlineOnly(e.target.checked)} />
             <span>
               <b>I already have a POS and only want the online shop</b>
-              <span className="block text-secondary-500">Free Online Shop only plan: no tills, no monthly fee.</span>
+              <span className="block text-secondary-500">Free Online Shop only plan for retail shops: no tills, no monthly fee.</span>
             </span>
           </label>
         )}
