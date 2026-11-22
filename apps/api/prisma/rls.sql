@@ -2202,3 +2202,35 @@ DROP POLICY IF EXISTS tenant_isolation ON discount_approvals;
 CREATE POLICY tenant_isolation ON discount_approvals
   USING ("organizationId" = current_setting('app.current_tenant', true))
   WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+-- ── Zaroda Shamba (farm management): every farm_ table except the global farm_plans price list ─────────────────
+ALTER TABLE farm_subscriptions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE farm_subscriptions FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON farm_subscriptions;
+CREATE POLICY tenant_isolation ON farm_subscriptions
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+ALTER TABLE farm_settings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE farm_settings FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON farm_settings;
+CREATE POLICY tenant_isolation ON farm_settings
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+ALTER TABLE farm_units ENABLE ROW LEVEL SECURITY;
+ALTER TABLE farm_units FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON farm_units;
+CREATE POLICY tenant_isolation ON farm_units
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+ALTER TABLE farm_enterprises ENABLE ROW LEVEL SECURITY;
+ALTER TABLE farm_enterprises FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON farm_enterprises;
+CREATE POLICY tenant_isolation ON farm_enterprises
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+ALTER TABLE farm_user_roles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE farm_user_roles FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON farm_user_roles;
+CREATE POLICY tenant_isolation ON farm_user_roles
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));

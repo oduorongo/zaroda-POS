@@ -8281,3 +8281,157 @@ model PlatformPettyCashEntry {
   @@index([occurredOn])
   @@map("platform_petty_cash_entries")
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Zaroda Shamba (farm management, industryType FARM) - docs/farm. F1 foundation.
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum FarmSubscriptionStatus {
+  TRIAL
+  ACTIVE
+  GRACE
+  SUSPENDED
+  CANCELLED
+}
+
+enum FarmUnitKind {
+  BLOCK
+  FIELD
+  PADDOCK
+  PEN
+  POULTRY_HOUSE
+  POND
+  APIARY
+  STORE
+  FEED_MILL
+  OTHER
+}
+
+enum FarmEnterpriseKind {
+  DAIRY
+  BEEF
+  LAYERS
+  BROILERS
+  KIENYEJI
+  PIGS
+  GOATS
+  SHEEP
+  RABBITS
+  FISH
+  BEES
+  CROP
+  FODDER
+  FEED
+  OTHER
+}
+
+enum FarmRoleCode {
+  FARM_OWNER
+  FARM_MANAGER
+  HERDSMAN
+  VET
+  CROPS_OFFICER
+  FEED_MILLER
+  STOREKEEPER
+  SALES
+  AUDITOR
+}
+
+/// Shamba price list (global, edited by ZARODA super-admin). limits: { head, birds, acres, users }, null = unlimited.
+model FarmPlan {
+  id           String   @id @default(uuid())
+  code         String   @unique
+  name         String
+  fits         String?
+  monthlyPrice Decimal  @db.Decimal(14, 2)
+  annualPrice  Decimal? @db.Decimal(14, 2)
+  quoteOnly    Boolean  @default(false)
+  limits       Json
+  features     Json
+  sortOrder    Int      @default(0)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@map("farm_plans")
+}
+
+/// A farm's Shamba plan. New farms start on a 14-day trial of Farmer (FARM_FARMER).
+model FarmSubscription {
+  id               String                 @id @default(uuid())
+  organizationId   String                 @unique
+  planCode         String
+  status           FarmSubscriptionStatus @default(TRIAL)
+  currentPeriodEnd DateTime
+  graceDays        Int                    @default(7)
+  createdAt        DateTime               @default(now())
+  updatedAt        DateTime               @updatedAt
+
+  @@map("farm_subscriptions")
+}
+
+model FarmSettings {
+  id             String   @id @default(uuid())
+  organizationId String   @unique
+  farmName       String
+  county         String?
+  subCounty      String?
+  ward           String?
+  areaUnit       String   @default("ACRE")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@map("farm_settings")
+}
+
+/// A named part of a farm (block, field, paddock, pen, poultry house...). Units nest; fields and paddocks carry acres.
+model FarmUnit {
+  id             String       @id @default(uuid())
+  organizationId String
+  branchId       String?
+  parentId       String?
+  kind           FarmUnitKind
+  name           String
+  code           String?
+  acres          Decimal?     @db.Decimal(14, 3)
+  capacity       Int?
+  notes          String?
+  active         Boolean      @default(true)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  parent   FarmUnit?  @relation("FarmUnitTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children FarmUnit[] @relation("FarmUnitTree")
+
+  @@index([organizationId, kind])
+  @@map("farm_units")
+}
+
+/// A line of business on the farm (dairy herd, layers, maize long rains...). Costs, income and records are tagged to one.
+model FarmEnterprise {
+  id             String             @id @default(uuid())
+  organizationId String
+  kind           FarmEnterpriseKind
+  name           String
+  unitIds        String[]           @default([])
+  active         Boolean            @default(true)
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  @@index([organizationId])
+  @@map("farm_enterprises")
+}
+
+/// Farm roles a staff member holds (one person may hold several). unitIds empty = the whole farm.
+model FarmUserRole {
+  id             String       @id @default(uuid())
+  organizationId String
+  orgUserId      String
+  role           FarmRoleCode
+  unitIds        String[]     @default([])
+  createdAt      DateTime     @default(now())
+
+  @@unique([orgUserId, role])
+  @@index([organizationId])
+  @@map("farm_user_roles")
+}

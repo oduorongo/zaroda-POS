@@ -47,6 +47,7 @@ import { AiModule } from './ai/ai.module';
 import { AccountingModule } from './accounting/accounting.module';
 import { SchoolSupplierModule } from './school-supplier/school-supplier.module';
 import { ConstructionModule } from './construction/construction.module';
+import { FarmModule } from './farm/farm.module';
 import { TenderAdvertsModule } from './tender-adverts/tender-adverts.module';
 import { PharmacyModule } from './pharmacy/pharmacy.module';
 import { SalonModule } from './salon/salon.module';
@@ -162,6 +163,7 @@ import { DeliveryModule } from './delivery/delivery.module';
     AccountingModule,
     SchoolSupplierModule,
     ConstructionModule,
+    FarmModule,
     TenderAdvertsModule,
     PharmacyModule,
     SalonModule,
