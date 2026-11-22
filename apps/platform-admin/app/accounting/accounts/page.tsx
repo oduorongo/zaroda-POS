@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { downloadReportPdf } from "../../../lib/pdf-report";
 import { apiGet, apiPatch, apiPost, ApiError } from "../../../lib/api";
 import { API, Account, AccountingTabs, buttonClass, canWrite, inputClass, kes, monthStart, niceDay, quietButtonClass, todayKey, TYPE_LABELS, useBooksSession, Shell } from "../shared";
 
@@ -155,6 +156,26 @@ export default function AccountsPage() {
               </label>
               <button onClick={() => void openLedger(ledger.account.id)} className={quietButtonClass}>
                 Show
+              </button>
+              <button
+                onClick={() =>
+                  downloadReportPdf(
+                    `ledger-${ledger.account.code}-${ledger.from}-${ledger.to}.pdf`,
+                    `Ledger: ${ledger.account.code} ${ledger.account.name}`,
+                    `${niceDay(ledger.from)} to ${niceDay(ledger.to)}`,
+                    ["Date", "No.", "What", "Debit (KES)", "Credit (KES)", "Balance (KES)"],
+                    [
+                      { cells: ["", "", `Balance on ${niceDay(ledger.from)} (start of day)`, "", "", ledger.opening], bold: true },
+                      ...ledger.lines.map((l) => ({
+                        cells: [niceDay(l.date), String(l.number), l.source ? `${l.memo} (${l.source})` : l.memo, l.debit || "", l.credit || "", l.balance],
+                      })),
+                      { cells: ["", "", `Balance on ${niceDay(ledger.to)}`, "", "", ledger.closing], bold: true },
+                    ],
+                  )
+                }
+                className={quietButtonClass}
+              >
+                Download (PDF)
               </button>
             </div>
             <div className="overflow-x-auto">

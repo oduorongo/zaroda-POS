@@ -1,7 +1,9 @@
 import { PLATFORM_ACCOUNTS } from './ledger-chart';
 import { Draft, isBalanced } from './ledger-posting.util';
 import {
+  APP_INCOME_ACCOUNT,
   platformAdvertDraft,
+  platformAppIncomeDraft,
   platformInvoiceDraft,
   platformInvoiceIncome,
   platformInvoicePaidDraft,
@@ -63,5 +65,24 @@ describe('platformSchoolPaymentDraft', () => {
       { account: 'SCHOOL_SUBSCRIPTION_INCOME', debit: 0, credit: 720000 },
     ]);
     expect(PLATFORM_ACCOUNTS.some((a) => a.key === 'SCHOOL_SUBSCRIPTION_INCOME' && a.type === 'INCOME')).toBe(true);
+  });
+});
+
+describe('platformAppIncomeDraft', () => {
+  it('income from each other app is money in M-Pesa and that app own income account, balanced, on a chart account', () => {
+    for (const [app, account] of Object.entries(APP_INCOME_ACCOUNT)) {
+      const d = platformAppIncomeDraft({ date: '2027-01-20', app, payer: 'Rongo Sub-County KSEF', description: 'Fair fee', amountCents: 116000, reference: 'QAB12CD' });
+      expect(isBalanced(d.lines)).toBe(true);
+      expect(d.lines).toEqual([
+        { account: 'MPESA', debit: 116000, credit: 0 },
+        { account, debit: 0, credit: 116000 },
+      ]);
+      expect(PLATFORM_ACCOUNTS.some((a) => a.key === account && a.type === 'INCOME')).toBe(true);
+    }
+  });
+  it('names who paid and the reference', () => {
+    const d = platformAppIncomeDraft({ date: '2027-01-20', app: 'BOOKS', payer: 'Agape Hardware', description: 'Zaroda Books subscription', amountCents: 50000, reference: null });
+    expect(d.memo).toBe('Zaroda Books subscription from Agape Hardware');
+    expect(amount(d, 'BOOKS_INCOME')).toBe(-50000);
   });
 });

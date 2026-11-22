@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { apiGet, ApiError } from "../../../lib/api";
+import { downloadReportPdf, type PdfRow } from "../../../lib/pdf-report";
 import { API, downloadCsv, loadBranches, AccountingTabs, inputClass, kes, monthStart, niceDay, quietButtonClass, todayKey, useBooksSession, Shell } from "../shared";
 
 interface Row {
@@ -98,6 +99,42 @@ export default function StatementsPage() {
     if (session) void load();
   }, [session, load]);
 
+  /** The statement on screen as a PDF (same figures as the CSV). */
+  function downloadPdf() {
+    const line = (r: Row): PdfRow => ({ cells: [r.code, r.name, r.amount] });
+    const total = (label: string, amount: number): PdfRow => ({ cells: ["", label, amount], bold: true });
+    const title = (label: string): PdfRow => ({ cells: ["", label, ""], bold: true });
+    if (tab === "pl" && pl) {
+      const rows: PdfRow[] = [];
+      const part = (name: string, list: Row[], sum: number) => {
+        rows.push(title(name), ...list.map(line), total(`Total ${name.toLowerCase()}`, sum));
+      };
+      part("Income", pl.income, pl.totalIncome);
+      part("Cost of sales", pl.costOfSales, pl.totalCostOfSales);
+      rows.push(total("Gross profit", pl.grossProfit));
+      part("Expenses", pl.expenses, pl.totalExpenses);
+      rows.push(total("Profit before tax", pl.profitBeforeTax));
+      part("Tax", pl.tax, pl.totalTax);
+      rows.push(total("Profit after tax", pl.profitAfterTax), total(`Tithe (${pl.titheRate}% of profit after tax)`, pl.tithe), total("Net profit", pl.netProfit));
+      downloadReportPdf(`profit-and-loss-${pl.from}-${pl.to}.pdf`, "Profit and loss", `${niceDay(pl.from)} to ${niceDay(pl.to)}`, ["Code", "Account", "Amount (KES)"], rows);
+    } else if (tab === "bs" && bs) {
+      const rows: PdfRow[] = [];
+      for (const [name, list, sum] of [["Assets", bs.assets, bs.totalAssets], ["Liabilities", bs.liabilities, bs.totalLiabilities]] as const) {
+        rows.push(title(name), ...list.map(line), total(`Total ${name.toLowerCase()}`, sum));
+      }
+      rows.push(title("Equity"), ...bs.equity.map(line), { cells: ["", "Profit not yet moved to equity (after tithe)", bs.profitToDate] }, total("Total equity", bs.totalEquity));
+      downloadReportPdf(`balance-sheet-${bs.asOf}.pdf`, "Balance sheet", `As on ${niceDay(bs.asOf)}`, ["Code", "Account", "Amount (KES)"], rows);
+    } else if (tab === "tb" && tb) {
+      downloadReportPdf(
+        `trial-balance-${tb.asOf}.pdf`,
+        "Trial balance",
+        `As on ${niceDay(tb.asOf)}${tb.balanced ? "" : " - NOT BALANCED"}`,
+        ["Code", "Account", "Debit (KES)", "Credit (KES)"],
+        [...tb.rows.map((r) => ({ cells: [r.code, r.name, r.debit, r.credit] })), { cells: ["", "Total", tb.debit, tb.credit], bold: true }],
+      );
+    }
+  }
+
   function download() {
     if (tab === "pl" && pl) {
       const rows: (string | number)[][] = [["Profit and loss", `${pl.from} to ${pl.to}`], [], ["Code", "Account", "Amount"]];
@@ -190,6 +227,9 @@ export default function StatementsPage() {
                 <input type="date" max={todayKey()} value={asOf} onChange={(e) => setAsOf(e.target.value)} className={inputClass} />
               </label>
             )}
+            <button onClick={downloadPdf} className={quietButtonClass}>
+              Download (PDF)
+            </button>
             <button onClick={download} className={quietButtonClass}>
               Download (CSV)
             </button>

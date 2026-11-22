@@ -2138,6 +2138,8 @@ CREATE POLICY sync_key_lookup ON stock_sync_keys FOR SELECT
 -- written only by the key-protected /sales-sync/school call, read scoped by team in SchoolSalesService).
 -- school_subscription_receipts: platform-level (every Zaroda School subscription payment, for ZARODA's own books; written only
 -- by the key-protected /sales-sync/school call, read by PlatformLedgerService).
+-- app_income_receipts: platform-level too (income from ZARODA's other apps, written only by the key-protected
+-- /sales-sync/income call, read by PlatformLedgerService).
 
 -- ── Uniform makers: tailors, their jobs, materials handed out, hand-ins and pay ─────────────────
 ALTER TABLE tailors ENABLE ROW LEVEL SECURITY;

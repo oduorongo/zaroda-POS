@@ -3451,6 +3451,23 @@ model SchoolSubscriptionReceipt {
   @@map("school_subscription_receipts")
 }
 
+// Money ZARODA earned in its other apps (Zaroda School professional records wallet, Zaroda Books, Zaroda Sports,
+// Zaroda Events), reported by each app so it is posted to ZARODA's own books (source P_APP_INCOME).
+// id = "<app>:" + the payment's id in that app, so a report sent twice is stored once.
+model AppIncomeReceipt {
+  id          String   @id
+  app         String
+  payer       String
+  description String
+  amountKes   Decimal  @db.Decimal(12, 2)
+  paidAt      DateTime
+  reference   String?
+  createdAt   DateTime @default(now())
+
+  @@index([paidAt])
+  @@map("app_income_receipts")
+}
+
 // A successful Zaroda School subscription payment from a SalesSchool. id = "school:" + its payment id there.
 model SalesSchoolPayment {
   id        String   @id

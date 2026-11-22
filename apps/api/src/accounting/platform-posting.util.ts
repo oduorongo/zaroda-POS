@@ -45,6 +45,23 @@ export function platformConPaymentDraft(p: { date: string; business: string; lab
   return { date: p.date, memo: `${p.business}: ${p.label}`, lines: tidy([dr(moneyAccount(p.method), p.amountCents), cr(p.income, p.amountCents)]) };
 }
 
+/** Which income account each of ZARODA's other apps posts to. */
+export const APP_INCOME_ACCOUNT: Record<string, string> = {
+  SCHOOL_RECORDS: 'SCHOOL_RECORDS_INCOME',
+  BOOKS: 'BOOKS_INCOME',
+  SPORTS: 'SPORTS_INCOME',
+  EVENTS: 'EVENTS_INCOME',
+};
+
+/** Money ZARODA earned in another of its apps (reported by that app; it reached ZARODA's M-Pesa/Tuma). */
+export function platformAppIncomeDraft(p: { date: string; app: string; payer: string; description: string; amountCents: number; reference: string | null }): Draft {
+  return {
+    date: p.date,
+    memo: `${p.description} from ${p.payer}${p.reference ? ` (${p.reference})` : ''}`,
+    lines: tidy([dr('MPESA', p.amountCents), cr(APP_INCOME_ACCOUNT[p.app] ?? 'OTHER_INCOME', p.amountCents)]),
+  };
+}
+
 /** A school paid its Zaroda School subscription (reported by Zaroda School; the money reached ZARODA's M-Pesa/Tuma). */
 export function platformSchoolPaymentDraft(p: { date: string; school: string; amountCents: number; reference: string | null }): Draft {
   return {
