@@ -13,6 +13,7 @@ import {
   type OutboxDiscount,
 } from "../../lib/db";
 import { apiGet, apiPatch, apiPost, ApiError, OfflineError } from "../../lib/api";
+import { approveDiscount } from "../../lib/discount-approval";
 
 type AppointmentStatus = "SCHEDULED" | "CONFIRMED" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED" | "NO_SHOW";
 
@@ -119,6 +120,9 @@ export default function SalonPage() {
   const [discountType, setDiscountType] = useState<"PERCENT" | "FIXED">("PERCENT");
   const [discountValue, setDiscountValue] = useState("");
   const [discountApproverId, setDiscountApproverId] = useState("");
+  const [discountPin, setDiscountPin] = useState("");
+  const [discountError, setDiscountError] = useState<string | null>(null);
+  const [discountBusy, setDiscountBusy] = useState(false);
   const [tendered, setTendered] = useState("");
   const [checkoutBusy, setCheckoutBusy] = useState(false);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
@@ -265,13 +269,22 @@ export default function SalonPage() {
     setCheckoutError(null);
   }
 
-  function applyDiscount() {
+  async function applyDiscount() {
     const value = Number(discountValue);
-    if (!Number.isFinite(value) || value <= 0 || !discountApproverId) return;
-    setCheckoutDiscount({ type: discountType, value, approvedById: discountApproverId });
-    setDiscountModalOpen(false);
-    setDiscountValue("");
-    setDiscountApproverId("");
+    if (!session || !Number.isFinite(value) || value <= 0 || !discountApproverId) return;
+    setDiscountBusy(true);
+    setDiscountError(null);
+    try {
+      setCheckoutDiscount(await approveDiscount(session, { type: discountType, value, approvedById: discountApproverId }, discountPin));
+      setDiscountModalOpen(false);
+      setDiscountValue("");
+      setDiscountApproverId("");
+      setDiscountPin("");
+    } catch (err) {
+      setDiscountError(err instanceof Error ? err.message : "Could not approve the discount.");
+    } finally {
+      setDiscountBusy(false);
+    }
   }
 
   function openCustomerPicker(target: "new" | "checkout") {
@@ -580,7 +593,11 @@ export default function SalonPage() {
                 {approvers.map((a) => (
                   <button
                     key={a.id}
-                    onClick={() => setDiscountApproverId(a.id)}
+                    onClick={() => {
+                    setDiscountApproverId(a.id);
+                    setDiscountPin("");
+                    setDiscountError(null);
+                  }}
                     className={`w-full rounded-md p-2 text-left ${discountApproverId === a.id ? "bg-primary-600" : "bg-slate-900 hover:bg-slate-700"}`}
                   >
                     {a.fullName} <span className="text-xs text-slate-400">({a.role})</span>
@@ -591,6 +608,19 @@ export default function SalonPage() {
                 <button
                   onClick={() => {
                     setDiscountModalOpen(false);
+            {discountApproverId && discountApproverId !== session?.orgUserId && (
+              <input
+                type="password"
+                inputMode="numeric"
+                autoComplete="off"
+                maxLength={8}
+                placeholder="Supervisor's PIN"
+                className="mt-3 w-full rounded-md border border-slate-600 bg-slate-900 p-3 text-center tracking-widest"
+                value={discountPin}
+                onChange={(e) => setDiscountPin(e.target.value.replace(/\D/g, ""))}
+              />
+            )}
+            {discountError && <p className="mt-2 text-sm text-red-400">{discountError}</p>}
                     setDiscountValue("");
                     setDiscountApproverId("");
                   }}
@@ -600,7 +630,7 @@ export default function SalonPage() {
                 </button>
                 <button
                   onClick={applyDiscount}
-                  disabled={!Number.isFinite(Number(discountValue)) || Number(discountValue) <= 0 || !discountApproverId}
+                  disabled={discountBusy || !Number.isFinite(Number(discountValue)) || Number(discountValue) <= 0 || !discountApproverId || (discountApproverId !== session?.orgUserId && discountPin.length < 4)}
                   className="flex-1 rounded-md bg-primary-600 p-3 font-semibold disabled:opacity-40"
                 >
                   Apply

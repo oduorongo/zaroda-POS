@@ -11,7 +11,7 @@ import {
 import { Role } from '@prisma/client';
 import { Roles } from '../auth/roles.decorator';
 import { SalesService } from './sales.service';
-import { CreateSaleDto } from './dto/create-sale.dto';
+import { ApproveDiscountDto, CreateSaleDto } from './dto/create-sale.dto';
 import { VoidSaleDto } from './dto/void-sale.dto';
 import { CreateRefundDto } from './dto/create-refund.dto';
 
@@ -19,6 +19,12 @@ import { CreateRefundDto } from './dto/create-refund.dto';
 @Controller('sales')
 export class SalesController {
   constructor(private readonly sales: SalesService) {}
+
+  // Any cashier asks; the supervisor's PIN (checked in the service) is what approves it.
+  @Post('discount-approvals')
+  approveDiscount(@Body() dto: ApproveDiscountDto) {
+    return this.sales.approveDiscount(dto);
+  }
 
   // No @Roles() - this is the register itself, every cashier rings up sales.
   @Post()

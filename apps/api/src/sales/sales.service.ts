@@ -1,6 +1,9 @@
+import * as bcrypt from 'bcryptjs';
 import {
   BadRequestException,
   ConflictException,
+  HttpException,
+  HttpStatus,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -22,7 +25,7 @@ import { assertQuantityMatchesMode } from '../common/inventory/quantity-mode.uti
 import { InventoryTransactionsService } from '../inventory/inventory-transactions.service';
 import { CustomersService } from '../customers/customers.service';
 import { RecipesService } from '../recipes/recipes.service';
-import { CreateSaleDto } from './dto/create-sale.dto';
+import { ApproveDiscountDto, CreateSaleDto } from './dto/create-sale.dto';
 import { VoidSaleDto } from './dto/void-sale.dto';
 import { CreateRefundDto } from './dto/create-refund.dto';
 import { withSpan } from '../common/observability/trace-span.util';
@@ -34,6 +37,11 @@ const SALE_INCLUDE = {
   refunds: true,
 } as const;
 const SUPERVISOR_OR_ABOVE: Role[] = [Role.SUPERVISOR, Role.MANAGER, Role.OWNER];
+
+// Wrong approver PINs on refunds: 5 in a row locks that approver's refund approvals for 5 minutes (per API process).
+const APPROVER_MAX_FAILURES = 5;
+const APPROVER_LOCK_MS = 5 * 60_000;
+const approverFailures = new Map<string, { count: number; lockedUntil: number }>();
 
 /**
  * Options only code inside the API can pass (never the HTTP body), used by a vertical that records its own kind of sale.
@@ -245,6 +253,7 @@ export class SalesService {
       // claim of who authorized it would defeat the whole point of requiring
       // approval.
       let discountAmount = 0;
+      let discountApprovalId: string | null = null;
       if (dto.discount) {
         const approver = await tx.orgUser.findUnique({
           where: { id: dto.discount.approvedById },
@@ -253,6 +262,25 @@ export class SalesService {
           throw new BadRequestException(
             'Discount approver must be a supervisor, manager, or owner in this organization',
           );
+        }
+        // The supervisor must really have agreed: either they are the one signed in, or the sale carries the approval
+        // they gave with their PIN - for this exact discount, and never used before.
+        const me = getTenantStore();
+        const selfApproved = me.orgUserId === approver.id && SUPERVISOR_OR_ABOVE.includes(me.role);
+        if (!selfApproved) {
+          const approvalId = dto.discount.approvalId;
+          const approval = approvalId ? await tx.discountApproval.findUnique({ where: { id: approvalId } }) : null;
+          if (
+            !approval ||
+            approval.approvedById !== approver.id ||
+            approval.type !== dto.discount.type ||
+            Number(approval.value) !== round2(dto.discount.value)
+          ) {
+            throw new BadRequestException('This discount has no supervisor approval - the supervisor must approve it with their PIN');
+          }
+          const claimed = await tx.discountApproval.updateMany({ where: { id: approval.id, usedAt: null }, data: { usedAt: new Date() } });
+          if (claimed.count !== 1) throw new BadRequestException('That discount approval was already used on another sale');
+          discountApprovalId = approval.id;
         }
 
         if (dto.discount.type === DiscountType.PERCENT) {
@@ -446,6 +474,7 @@ export class SalesService {
         },
         include: SALE_INCLUDE,
       });
+      if (discountApprovalId) await tx.discountApproval.update({ where: { id: discountApprovalId }, data: { saleId: sale.id } });
 
       // Persisted line ids, grouped by variantId, to pair each lineItemRow
       // back to its real SaleLineItem.id below - `sale.lineItems` doesn't
@@ -658,6 +687,43 @@ export class SalesService {
    * re-verified against the database on every refund, never trusted from
    * the client, same reasoning as a sale's discount approver.
    */
+  /** Verifies a refund approver's PIN, with a short lock after repeated wrong PINs. */
+  private async checkApproverPin(approverId: string, pinHash: string | null, pin: string | undefined): Promise<void> {
+    const state = approverFailures.get(approverId);
+    if (state && state.lockedUntil > Date.now()) {
+      throw new HttpException(
+        `Too many wrong approver PINs - try again in ${Math.ceil((state.lockedUntil - Date.now()) / 1000)}s`,
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+    if (!pin) throw new BadRequestException('The approver must enter their PIN');
+    if (!pinHash || !(await bcrypt.compare(pin, pinHash))) {
+      // A lock that has run out starts the count again.
+      const count = (state && !state.lockedUntil ? state.count : 0) + 1;
+      approverFailures.set(approverId, count >= APPROVER_MAX_FAILURES ? { count: 0, lockedUntil: Date.now() + APPROVER_LOCK_MS } : { count, lockedUntil: 0 });
+      throw new BadRequestException(pinHash ? "The approver's PIN is not right" : 'The approver has no PIN set - they must set one first');
+    }
+    approverFailures.delete(approverId);
+  }
+
+  /** A supervisor approves a discount (their PIN, unless they are signed in); the till sends the returned id with the sale. */
+  async approveDiscount(dto: ApproveDiscountDto) {
+    if (dto.type === DiscountType.PERCENT && dto.value > 100) throw new BadRequestException('A percent discount cannot exceed 100');
+    const me = getTenantStore();
+    return this.tenantPrisma.run(async (tx) => {
+      const approver = await tx.orgUser.findUnique({ where: { id: dto.approvedById }, include: { user: { select: { pinHash: true } } } });
+      if (!approver || !approver.isActive || !SUPERVISOR_OR_ABOVE.includes(approver.role)) {
+        throw new BadRequestException('Discount approver must be a supervisor, manager, or owner in this organization');
+      }
+      const selfApproved = me.orgUserId === approver.id && SUPERVISOR_OR_ABOVE.includes(me.role);
+      if (!selfApproved) await this.checkApproverPin(approver.id, approver.user.pinHash, dto.approverPin);
+      const approval = await tx.discountApproval.create({
+        data: { organizationId: me.organizationId, approvedById: approver.id, requestedById: me.orgUserId, type: dto.type, value: round2(dto.value) },
+      });
+      return { approvalId: approval.id };
+    });
+  }
+
   async refund(saleId: string, dto: CreateRefundDto) {
     const { refund, isNew } = await this.tenantPrisma.run(async (tx) => {
       // Idempotent on clientId (DESIGN.md §6), same reasoning as
@@ -684,12 +750,18 @@ export class SalesService {
 
       const approver = await tx.orgUser.findUnique({
         where: { id: dto.approvedById },
+        include: { user: { select: { pinHash: true } } },
       });
-      if (!approver || !SUPERVISOR_OR_ABOVE.includes(approver.role)) {
+      if (!approver || !approver.isActive || !SUPERVISOR_OR_ABOVE.includes(approver.role)) {
         throw new BadRequestException(
           'Refund approver must be a supervisor, manager, or owner in this organization',
         );
       }
+      // The approver must really agree: a supervisor approving their own refund is already signed in; anyone else's
+      // approval needs their PIN, so a cashier can't refund just by picking a manager's name.
+      const me = getTenantStore();
+      const selfApproved = me.orgUserId === approver.id && SUPERVISOR_OR_ABOVE.includes(me.role);
+      if (!selfApproved) await this.checkApproverPin(approver.id, approver.user.pinHash, dto.approverPin);
 
       const alreadyRefunded = round2(
         sale.refunds.reduce((sum, r) => sum + Number(r.amount), 0),

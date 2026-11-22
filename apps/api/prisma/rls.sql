@@ -2192,3 +2192,11 @@ DROP POLICY IF EXISTS tenant_isolation ON platform_petty_cash_entries;
 CREATE POLICY tenant_isolation ON platform_petty_cash_entries
   USING (NULLIF(current_setting('app.current_tenant', true), '') IS NULL)
   WITH CHECK (NULLIF(current_setting('app.current_tenant', true), '') IS NULL);
+
+-- ── Discount approvals (a supervisor's PIN-checked approval, used once by a sale) ─────────────────
+ALTER TABLE discount_approvals ENABLE ROW LEVEL SECURITY;
+ALTER TABLE discount_approvals FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON discount_approvals;
+CREATE POLICY tenant_isolation ON discount_approvals
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));

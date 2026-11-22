@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { apiGet, apiPost, ApiError } from "../../../lib/api";
-import { getSession, clearSession, isBackofficeRole, type Session } from "../../../lib/auth";
+import { getSession, clearSession, decodeOrgUserId, isBackofficeRole, type Session } from "../../../lib/auth";
 import { Nav } from "../../../components/nav";
 import { PageHeader } from "../../../components/page-header";
 
@@ -78,10 +78,13 @@ export default function SaleDetailPage() {
   const [refundAmount, setRefundAmount] = useState("");
   const [refundReason, setRefundReason] = useState("");
   const [refundApproverId, setRefundApproverId] = useState("");
+  const [refundApproverPin, setRefundApproverPin] = useState("");
   const [refundBusy, setRefundBusy] = useState(false);
   const [refundError, setRefundError] = useState<string | null>(null);
 
   const approvers = useMemo(() => orgUsers.filter((u) => APPROVER_ROLES.includes(u.role)), [orgUsers]);
+  // Approving your own refund needs no PIN (you signed in); naming someone else needs theirs.
+  const needsApproverPin = !!refundApproverId && refundApproverId !== (session ? decodeOrgUserId(session.accessToken) : null);
 
   async function load() {
     try {
@@ -133,7 +136,9 @@ export default function SaleDetailPage() {
         amount,
         reason: refundReason.trim(),
         approvedById: refundApproverId,
+        ...(needsApproverPin ? { approverPin: refundApproverPin } : {}),
       });
+      setRefundApproverPin("");
       setRefundAmount("");
       setRefundReason("");
       setRefundApproverId("");
@@ -253,7 +258,10 @@ export default function SaleDetailPage() {
                   />
                   <select
                     value={refundApproverId}
-                    onChange={(e) => setRefundApproverId(e.target.value)}
+                    onChange={(e) => {
+                      setRefundApproverId(e.target.value);
+                      setRefundApproverPin("");
+                    }}
                     className="w-full rounded-md border border-border bg-background p-2 text-sm"
                   >
                     <option value="">Approved by...</option>
@@ -263,6 +271,18 @@ export default function SaleDetailPage() {
                       </option>
                     ))}
                   </select>
+                  {needsApproverPin && (
+                    <input
+                      type="password"
+                      inputMode="numeric"
+                      autoComplete="off"
+                      maxLength={8}
+                      placeholder="Approver's PIN"
+                      value={refundApproverPin}
+                      onChange={(e) => setRefundApproverPin(e.target.value.replace(/\D/g, ""))}
+                      className="w-full rounded-md border border-border bg-background p-2 text-sm"
+                    />
+                  )}
                   {refundError && <p className="text-sm text-red-400">{refundError}</p>}
                   <button
                     onClick={() => void submitRefund()}
@@ -271,7 +291,8 @@ export default function SaleDetailPage() {
                       !Number.isFinite(Number(refundAmount)) ||
                       Number(refundAmount) <= 0 ||
                       !refundReason.trim() ||
-                      !refundApproverId
+                      !refundApproverId ||
+                      (needsApproverPin && refundApproverPin.length < 4)
                     }
                     className="rounded-md bg-primary-600 px-4 py-2 text-sm font-semibold hover:bg-primary-500 disabled:opacity-40"
                   >

@@ -1,6 +1,8 @@
 import {
   IsNumber,
+  IsOptional,
   IsString,
+  Matches,
   IsUUID,
   MaxLength,
   Min,
@@ -26,4 +28,9 @@ export class CreateRefundDto {
   // (SalesService.create()).
   @IsUUID()
   approvedById!: string;
+
+  /** The approver's own PIN - needed unless the approver is the signed-in supervisor themselves. */
+  @IsOptional()
+  @Matches(/^\d{4,8}$/, { message: 'The approver PIN is 4 to 8 digits' })
+  approverPin?: string;
 }

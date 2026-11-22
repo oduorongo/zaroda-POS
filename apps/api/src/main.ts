@@ -24,6 +24,8 @@ async function bootstrap() {
   app.use((_req: Request, res: Response, next: NextFunction) => {
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Referrer-Policy', 'no-referrer');
+    // Browsers keep to https for this API for two years once they have seen it over https.
+    res.setHeader('Strict-Transport-Security', 'max-age=63072000; includeSubDomains');
     next();
   });
   app.use('/products/import', json({ limit: '5mb' }));

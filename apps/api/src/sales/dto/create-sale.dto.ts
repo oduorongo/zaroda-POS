@@ -11,6 +11,7 @@ import {
   IsUUID,
   Min,
   ValidateNested,
+  Matches,
 } from 'class-validator';
 import { DiscountType, PaymentMethod } from '@prisma/client';
 
@@ -84,6 +85,28 @@ export class DiscountInputDto {
   // their own discount by simply passing their own id.
   @IsUUID()
   approvedById!: string;
+
+  /** The approval the supervisor gave with their PIN (POST /sales/discount-approvals). Not needed when the signed-in cashier is that supervisor. */
+  @IsOptional()
+  @IsUUID()
+  approvalId?: string;
+}
+
+/** A supervisor approving a discount: their PIN, unless they are the one signed in. */
+export class ApproveDiscountDto {
+  @IsIn(['PERCENT', 'FIXED'] satisfies DiscountType[])
+  type!: DiscountType;
+
+  @IsNumber()
+  @Min(0.01)
+  value!: number;
+
+  @IsUUID()
+  approvedById!: string;
+
+  @IsOptional()
+  @Matches(/^\d{4,8}$/, { message: 'The approver PIN is 4 to 8 digits' })
+  approverPin?: string;
 }
 
 export class CreateSaleDto {
