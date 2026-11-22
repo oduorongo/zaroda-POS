@@ -14,6 +14,7 @@ import {
   type OutboxDiscount,
 } from "../../lib/db";
 import { apiGet, apiPost, ApiError, OfflineError } from "../../lib/api";
+import { approveDiscount } from "../../lib/discount-approval";
 import { useSyncEngine } from "../../hooks/use-sync-engine";
 import { BarcodeScanner } from "../../components/barcode-scanner";
 import { Button, Badge, PoweredByFootnote } from "@zaroda/ui";
@@ -125,6 +126,9 @@ export default function PosPage() {
   const [discountType, setDiscountType] = useState<"PERCENT" | "FIXED">("PERCENT");
   const [discountValue, setDiscountValue] = useState("");
   const [discountApproverId, setDiscountApproverId] = useState("");
+  const [discountPin, setDiscountPin] = useState("");
+  const [discountError, setDiscountError] = useState<string | null>(null);
+  const [discountBusy, setDiscountBusy] = useState(false);
 
   // Tender selection (Cash / M-Pesa) - Card and Split are shown but
   // disabled: no card processor is wired (payment-processor.interface.ts
@@ -734,13 +738,22 @@ export default function PosPage() {
     }
   }
 
-  function applyDiscount() {
+  async function applyDiscount() {
     const value = Number(discountValue);
-    if (!Number.isFinite(value) || value <= 0 || !discountApproverId) return;
-    setDiscount({ type: discountType, value, approvedById: discountApproverId });
-    setDiscountModalOpen(false);
-    setDiscountValue("");
-    setDiscountApproverId("");
+    if (!session || !Number.isFinite(value) || value <= 0 || !discountApproverId) return;
+    setDiscountBusy(true);
+    setDiscountError(null);
+    try {
+      setDiscount(await approveDiscount(session, { type: discountType, value, approvedById: discountApproverId }, discountPin));
+      setDiscountModalOpen(false);
+      setDiscountValue("");
+      setDiscountApproverId("");
+      setDiscountPin("");
+    } catch (err) {
+      setDiscountError(err instanceof Error ? err.message : "Could not approve the discount.");
+    } finally {
+      setDiscountBusy(false);
+    }
   }
 
   if (!device || !session) {
@@ -1352,7 +1365,11 @@ export default function PosPage() {
               {approvers.map((a) => (
                 <button
                   key={a.id}
-                  onClick={() => setDiscountApproverId(a.id)}
+                  onClick={() => {
+                    setDiscountApproverId(a.id);
+                    setDiscountPin("");
+                    setDiscountError(null);
+                  }}
                   className={`min-h-touch w-full rounded-md p-2 text-left ${discountApproverId === a.id ? "bg-primary-600" : "bg-secondary-900 hover:bg-secondary-700"}`}
                 >
                   {a.fullName} <span className="text-xs text-secondary-400">({a.role})</span>
@@ -1363,6 +1380,19 @@ export default function PosPage() {
               <Button
                 onClick={() => {
                   setDiscountModalOpen(false);
+            {discountApproverId && discountApproverId !== session?.orgUserId && (
+              <input
+                type="password"
+                inputMode="numeric"
+                autoComplete="off"
+                maxLength={8}
+                placeholder="Supervisor's PIN"
+                className="mt-3 w-full rounded-md border border-secondary-600 bg-secondary-900 p-3 text-center tracking-widest"
+                value={discountPin}
+                onChange={(e) => setDiscountPin(e.target.value.replace(/\D/g, ""))}
+              />
+            )}
+            {discountError && <p className="mt-2 text-sm text-red-400">{discountError}</p>}
                   setDiscountValue("");
                   setDiscountApproverId("");
                 }}
@@ -1374,7 +1404,7 @@ export default function PosPage() {
               </Button>
               <Button
                 onClick={applyDiscount}
-                disabled={!Number.isFinite(Number(discountValue)) || Number(discountValue) <= 0 || !discountApproverId}
+                disabled={discountBusy || !Number.isFinite(Number(discountValue)) || Number(discountValue) <= 0 || !discountApproverId || (discountApproverId !== session?.orgUserId && discountPin.length < 4)}
                 variant="primary"
                 size="touch"
                 className="flex-1"

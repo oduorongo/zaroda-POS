@@ -1278,6 +1278,23 @@ model Discount {
   @@map("discounts")
 }
 
+// A supervisor's approval of one discount, given with their PIN while the till is online. A sale that carries a discount
+// must name an unused approval for the same approver, type and value (a till can still send the sale later, offline).
+model DiscountApproval {
+  id             String       @id @default(uuid())
+  organizationId String
+  approvedById   String
+  requestedById  String
+  type           DiscountType
+  value          Decimal      @db.Decimal(12, 2)
+  usedAt         DateTime?
+  saleId         String?
+  createdAt      DateTime     @default(now())
+
+  @@index([organizationId, createdAt])
+  @@map("discount_approvals")
+}
+
 // Money the business spent that is not stock: rent, power, wages, transport, airtime... Recorded by hand (owner/manager) and
 // subtracted from the gross profit in the profit report. Buying stock is NOT an expense here - it reaches the report as the
 // cost of what was sold - so recording both would count it twice.

@@ -25,7 +25,7 @@ import { assertQuantityMatchesMode } from '../common/inventory/quantity-mode.uti
 import { InventoryTransactionsService } from '../inventory/inventory-transactions.service';
 import { CustomersService } from '../customers/customers.service';
 import { RecipesService } from '../recipes/recipes.service';
-import { CreateSaleDto } from './dto/create-sale.dto';
+import { ApproveDiscountDto, CreateSaleDto } from './dto/create-sale.dto';
 import { VoidSaleDto } from './dto/void-sale.dto';
 import { CreateRefundDto } from './dto/create-refund.dto';
 import { withSpan } from '../common/observability/trace-span.util';
@@ -253,6 +253,7 @@ export class SalesService {
       // claim of who authorized it would defeat the whole point of requiring
       // approval.
       let discountAmount = 0;
+      let discountApprovalId: string | null = null;
       if (dto.discount) {
         const approver = await tx.orgUser.findUnique({
           where: { id: dto.discount.approvedById },
@@ -261,6 +262,25 @@ export class SalesService {
           throw new BadRequestException(
             'Discount approver must be a supervisor, manager, or owner in this organization',
           );
+        }
+        // The supervisor must really have agreed: either they are the one signed in, or the sale carries the approval
+        // they gave with their PIN - for this exact discount, and never used before.
+        const me = getTenantStore();
+        const selfApproved = me.orgUserId === approver.id && SUPERVISOR_OR_ABOVE.includes(me.role);
+        if (!selfApproved) {
+          const approvalId = dto.discount.approvalId;
+          const approval = approvalId ? await tx.discountApproval.findUnique({ where: { id: approvalId } }) : null;
+          if (
+            !approval ||
+            approval.approvedById !== approver.id ||
+            approval.type !== dto.discount.type ||
+            Number(approval.value) !== round2(dto.discount.value)
+          ) {
+            throw new BadRequestException('This discount has no supervisor approval - the supervisor must approve it with their PIN');
+          }
+          const claimed = await tx.discountApproval.updateMany({ where: { id: approval.id, usedAt: null }, data: { usedAt: new Date() } });
+          if (claimed.count !== 1) throw new BadRequestException('That discount approval was already used on another sale');
+          discountApprovalId = approval.id;
         }
 
         if (dto.discount.type === DiscountType.PERCENT) {
@@ -454,6 +474,7 @@ export class SalesService {
         },
         include: SALE_INCLUDE,
       });
+      if (discountApprovalId) await tx.discountApproval.update({ where: { id: discountApprovalId }, data: { saleId: sale.id } });
 
       // Persisted line ids, grouped by variantId, to pair each lineItemRow
       // back to its real SaleLineItem.id below - `sale.lineItems` doesn't
@@ -683,6 +704,24 @@ export class SalesService {
       throw new BadRequestException(pinHash ? "The approver's PIN is not right" : 'The approver has no PIN set - they must set one first');
     }
     approverFailures.delete(approverId);
+  }
+
+  /** A supervisor approves a discount (their PIN, unless they are signed in); the till sends the returned id with the sale. */
+  async approveDiscount(dto: ApproveDiscountDto) {
+    if (dto.type === DiscountType.PERCENT && dto.value > 100) throw new BadRequestException('A percent discount cannot exceed 100');
+    const me = getTenantStore();
+    return this.tenantPrisma.run(async (tx) => {
+      const approver = await tx.orgUser.findUnique({ where: { id: dto.approvedById }, include: { user: { select: { pinHash: true } } } });
+      if (!approver || !approver.isActive || !SUPERVISOR_OR_ABOVE.includes(approver.role)) {
+        throw new BadRequestException('Discount approver must be a supervisor, manager, or owner in this organization');
+      }
+      const selfApproved = me.orgUserId === approver.id && SUPERVISOR_OR_ABOVE.includes(me.role);
+      if (!selfApproved) await this.checkApproverPin(approver.id, approver.user.pinHash, dto.approverPin);
+      const approval = await tx.discountApproval.create({
+        data: { organizationId: me.organizationId, approvedById: approver.id, requestedById: me.orgUserId, type: dto.type, value: round2(dto.value) },
+      });
+      return { approvalId: approval.id };
+    });
   }
 
   async refund(saleId: string, dto: CreateRefundDto) {

@@ -65,6 +65,8 @@ export interface OutboxDiscount {
   type: "PERCENT" | "FIXED";
   value: number;
   approvedById: string;
+  /** The supervisor's PIN-checked approval (none when the supervisor is the one signed in). */
+  approvalId?: string;
 }
 
 export type OutboxStatus = "pending" | "syncing" | "synced" | "failed";
