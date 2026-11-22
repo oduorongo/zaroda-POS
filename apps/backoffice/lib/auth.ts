@@ -68,6 +68,16 @@ export function clearSession(): void {
   forgetActivity(KEY);
 }
 
+/** The signed-in staff member's id from the token (display only - the server re-checks every request). */
+export function decodeOrgUserId(accessToken: string): string | null {
+  try {
+    const payload = JSON.parse(atob(accessToken.split(".")[1]));
+    return typeof payload.orgUserId === "string" ? payload.orgUserId : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Decodes the JWT payload without verifying it - display/gating only, never a trust boundary (the server re-checks every request). */
 export function decodeRole(accessToken: string): string | null {
   try {

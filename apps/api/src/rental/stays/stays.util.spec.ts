@@ -1,4 +1,4 @@
-import { buildIcal, calendarUrlProblem, monthShare, overlaps, ownerLine, parseIcal, stayMessage, stayPrice } from './stays.util';
+import { buildIcal, calendarUrlProblem, isInternalAddress, monthShare, overlaps, ownerLine, parseIcal, stayMessage, stayPrice } from './stays.util';
 
 describe('short stays rules', () => {
   it('prices Friday and Saturday nights at the weekend rate', () => {
@@ -54,7 +54,17 @@ describe('short stays rules', () => {
     expect(calendarUrlProblem('http://www.airbnb.com/x.ics')).toMatch(/https/);
     expect(calendarUrlProblem('https://169.254.169.254/latest')).toMatch(/only/);
     expect(calendarUrlProblem('https://airbnb.com.evil.io/x.ics')).toMatch(/only/);
+    expect(calendarUrlProblem('https://airbnb.evil.io/x.ics')).toMatch(/only/);
+    expect(calendarUrlProblem('https://www.airbnb.co.ke/calendar/ical/1.ics')).toBeNull();
+    expect(calendarUrlProblem('https://www.airbnb.com.au/calendar/ical/1.ics')).toBeNull();
     expect(calendarUrlProblem('not a url')).toMatch(/not a web address/);
+  });
+
+  it('recognises internal network addresses', () => {
+    for (const ip of ['127.0.0.1', '10.1.2.3', '172.16.0.1', '192.168.1.1', '169.254.169.254', '100.64.0.1', '0.0.0.0', '::1', 'fd00::1', 'fe80::1', '::ffff:10.0.0.1']) {
+      expect(isInternalAddress(ip)).toBe(true);
+    }
+    for (const ip of ['54.230.10.5', '172.32.0.1', '8.8.8.8', '2606:4700::1111']) expect(isInternalAddress(ip)).toBe(false);
   });
 
   it('shares a stay across months per night and the months add up', () => {

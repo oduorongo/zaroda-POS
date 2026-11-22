@@ -86,7 +86,23 @@ export function buildIcal(name: string, events: { uid: string; start: string; en
 }
 
 // Calendar addresses we will fetch: the booking sites hosts actually use. Anything else could point the server at itself.
-const CALENDAR_HOSTS = [/(^|\.)airbnb\.[a-z.]{2,8}$/, /(^|\.)booking\.com$/, /(^|\.)vrbo\.com$/, /(^|\.)homeaway\.com$/, /(^|\.)expedia\.com$/, /(^|\.)google\.com$/, /(^|\.)tripadvisor\.com$/, /(^|\.)agoda\.com$/];
+// Airbnb's own country sites only (airbnb.com, airbnb.co.ke, airbnb.com.au, airbnb.de...), not any 'airbnb.<anything>'.
+const CALENDAR_HOSTS = [/(^|\.)airbnb\.(com|[a-z]{2}|co\.[a-z]{2}|com\.[a-z]{2})$/, /(^|\.)booking\.com$/, /(^|\.)vrbo\.com$/, /(^|\.)homeaway\.com$/, /(^|\.)expedia\.com$/, /(^|\.)google\.com$/, /(^|\.)tripadvisor\.com$/, /(^|\.)agoda\.com$/];
+
+/** True for addresses inside a private, loopback, link-local or otherwise internal network (IPv4 or IPv6). */
+export function isInternalAddress(ip: string): boolean {
+  const v4 = ip.startsWith('::ffff:') ? ip.slice(7) : ip;
+  const m = v4.match(/^(\d+)\.(\d+)\.(\d+)\.(\d+)$/);
+  if (m) {
+    const [a, b] = [Number(m[1]), Number(m[2])];
+    return (
+      a === 0 || a === 10 || a === 127 || (a === 100 && b >= 64 && b <= 127) || (a === 169 && b === 254) ||
+      (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 192 && b === 0) || (a === 198 && (b === 18 || b === 19)) || a >= 224
+    );
+  }
+  const x = ip.toLowerCase();
+  return x === '::' || x === '::1' || x.startsWith('fc') || x.startsWith('fd') || x.startsWith('fe8') || x.startsWith('fe9') || x.startsWith('fea') || x.startsWith('feb') || x.startsWith('ff');
+}
 
 /** Why a calendar address cannot be used, or null when it can. */
 export function calendarUrlProblem(raw: string): string | null {

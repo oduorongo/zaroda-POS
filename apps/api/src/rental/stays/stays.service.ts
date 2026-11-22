@@ -1,4 +1,5 @@
 import { randomBytes, timingSafeEqual } from 'crypto';
+import { lookup } from 'dns/promises';
 import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Prisma, RentalStaySource, RentalStayStatus } from '@prisma/client';
@@ -32,7 +33,7 @@ import {
   StayMessageKind,
   addDays,
   buildIcal,
-  calendarUrlProblem,
+  calendarUrlProblem, isInternalAddress,
   daysBetween,
   overlaps,
   ownerLine,
@@ -604,6 +605,9 @@ export class RentalStaysService {
     for (let hop = 0; hop < 4; hop++) {
       const problem = calendarUrlProblem(url);
       if (problem) throw new Error(problem);
+      // A booking-site name that points into a private network is refused, so the server can't be used to reach internal machines.
+      const addresses = await lookup(new URL(url).hostname, { all: true }).catch(() => []);
+      if (addresses.length === 0 || addresses.some((a) => isInternalAddress(a.address))) throw new Error('That calendar link cannot be used');
       const res = await fetch(url, { redirect: 'manual', signal: AbortSignal.timeout(15_000), headers: { 'User-Agent': 'ZARODA-RENTALS-calendar/1.0', Accept: 'text/calendar, */*' } });
       if (res.status >= 300 && res.status < 400 && res.headers.get('location')) {
         url = new URL(res.headers.get('location')!, url).toString();

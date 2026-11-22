@@ -62,6 +62,7 @@ export default function ReturnsPage() {
   const [amount, setAmount] = useState("");
   const [reason, setReason] = useState("");
   const [approverId, setApproverId] = useState("");
+  const [approverPin, setApproverPin] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState<Refund | null>(null);
@@ -119,6 +120,7 @@ export default function ReturnsPage() {
 
   async function submitRefund() {
     if (!session || !sale || !approverId) return;
+    const selfApproved = approverId === session.orgUserId;
     const value = Number(amount);
     if (!Number.isFinite(value) || value <= 0 || !reason.trim()) return;
     setSubmitting(true);
@@ -126,10 +128,11 @@ export default function ReturnsPage() {
     try {
       const refund = await apiPost<Refund>(
         `/sales/${sale.id}/refunds`,
-        { clientId: crypto.randomUUID(), amount: value, reason: reason.trim(), approvedById: approverId },
+        { clientId: crypto.randomUUID(), amount: value, reason: reason.trim(), approvedById: approverId, ...(selfApproved ? {} : { approverPin }) },
         session.accessToken,
       );
       setSubmitted(refund);
+      setApproverPin("");
     } catch (err) {
       setSubmitError(
         err instanceof OfflineError
@@ -243,7 +246,10 @@ export default function ReturnsPage() {
                       {approvers.map((a) => (
                         <button
                           key={a.id}
-                          onClick={() => setApproverId(a.id)}
+                          onClick={() => {
+                            setApproverId(a.id);
+                            setApproverPin("");
+                          }}
                           className={`min-h-touch w-full rounded-md p-2 text-left ${approverId === a.id ? "bg-primary-600" : "bg-secondary-900 hover:bg-secondary-700"}`}
                         >
                           {a.fullName} <span className="text-xs text-secondary-400">({a.role})</span>
@@ -253,6 +259,20 @@ export default function ReturnsPage() {
                         <p className="text-sm text-secondary-500">No supervisor+ cached on this terminal.</p>
                       )}
                     </div>
+                    {approverId && approverId !== session?.orgUserId && (
+                      <>
+                        <p className="mb-1.5 mt-3 text-sm text-secondary-400">Approver enters their PIN</p>
+                        <input
+                          type="password"
+                          inputMode="numeric"
+                          autoComplete="off"
+                          maxLength={8}
+                          className="w-full rounded-md bg-secondary-900 p-3 text-center text-lg tracking-widest"
+                          value={approverPin}
+                          onChange={(e) => setApproverPin(e.target.value.replace(/\D/g, ""))}
+                        />
+                      </>
+                    )}
 
                     {submitError && <p className="mt-2 text-sm text-error-500">{submitError}</p>}
 
@@ -264,7 +284,8 @@ export default function ReturnsPage() {
                         Number(amount) <= 0 ||
                         Number(amount) > remaining ||
                         !reason.trim() ||
-                        !approverId
+                        !approverId ||
+                        (approverId !== session?.orgUserId && approverPin.length < 4)
                       }
                       variant="danger"
                       size="touch"
