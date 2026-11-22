@@ -11,7 +11,7 @@
   },
   "dependencies": {
     "@zaroda/ui": "workspace:*",
-    "jspdf": "3.0.3",
+    "jspdf": "4.2.1",
     "jspdf-autotable": "5.0.2",
     "next": "15.5.29",
     "react": "^19.1.0",
