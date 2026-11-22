@@ -12,7 +12,7 @@ import { boxBalance, topUpNeeded, withBalance } from '../petty-cash/petty-cash.u
 import { AccountInfo, balanceSheetWithTithe, profitWithTithe, Sums, trialBalance, withRunningBalance } from './ledger-reports.util';
 import {
   platformConPaymentDraft,
-  platformSchoolPaymentDraft,
+  platformAppIncomeDraft, platformSchoolPaymentDraft,
   platformAdvertDraft,
   platformInvoiceDraft,
   platformInvoiceIncome,
@@ -38,6 +38,7 @@ export const PLATFORM_SOURCE_LABELS: Record<string, string> = {
   P_ADVERT: 'House advert fee',
   P_PAYOUT: 'Sales agent paid',
   P_SCHOOL_PAYMENT: 'Zaroda School subscription',
+  P_APP_INCOME: 'Income from Zaroda School, Books, Sports or Events',
 };
 
 interface Ctx {
@@ -298,6 +299,20 @@ export class PlatformLedgerService {
       draft: async (tx, id) => {
         const r = await tx.schoolSubscriptionReceipt.findUnique({ where: { id } });
         return r ? platformSchoolPaymentDraft({ date: nairobiDayOf(r.paidAt), school: r.schoolName, amountCents: cents(r.amountKes), reference: r.reference }) : null;
+      },
+    },
+    {
+      type: 'P_APP_INCOME',
+      perBusiness: false,
+      scan: async (tx, c) => ({
+        fresh: (await tx.appIncomeReceipt.findMany({ where: { paidAt: { gte: c.since } }, select: { id: true } })).map((r) => r.id),
+        gone: [],
+      }),
+      draft: async (tx, id) => {
+        const r = await tx.appIncomeReceipt.findUnique({ where: { id } });
+        return r
+          ? platformAppIncomeDraft({ date: nairobiDayOf(r.paidAt), app: r.app, payer: r.payer, description: r.description, amountCents: cents(r.amountKes), reference: r.reference })
+          : null;
       },
     },
   ];

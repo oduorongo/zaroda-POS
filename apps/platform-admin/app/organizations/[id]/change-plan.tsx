@@ -58,7 +58,7 @@ export function ChangePlan({ organizationId, currentTier, onChanged }: { organiz
         </button>
       </div>
       <p className="mt-1 text-xs text-secondary-500">
-        Onto a free plan: nothing falls due. From a free plan to a paid one: a 14-day trial first. Between paid plans: the next payment is at the new plan's full price (set an agreed price again if needed).
+        Onto a free plan: nothing falls due. From a free plan to a paid one: a 14-day trial first. Between paid plans: the next payment is at the new plan&apos;s full price (set an agreed price again if needed).
         Tills and branches already set up keep working; only adding more is limited.
       </p>
       {error && <p className="mt-1 text-xs text-error-600">{error}</p>}
