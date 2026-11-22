@@ -4,7 +4,7 @@ import { NextResponse, type NextRequest } from "next/server";
 // CONSTRUCTION_DOMAIN serves Construction, RENTALS_DOMAIN serves ZARODA RENTALS (each with its own landing, pricing, login and signup);
 // every other host is the POS back office. On localhost (or a phone on the same Wi-Fi), ?product=construction / rentals / pos switches
 // for testing and is remembered in the cookie.
-type Product = "POS" | "CONSTRUCTION" | "RENTALS";
+type Product = "POS" | "CONSTRUCTION" | "RENTALS" | "SHAMBA";
 const COOKIE = "zaroda_product";
 const PUBLIC: Record<Exclude<Product, "POS">, Record<string, string>> = {
   CONSTRUCTION: {
@@ -16,6 +16,14 @@ const PUBLIC: Record<Exclude<Product, "POS">, Record<string, string>> = {
     "/portal": "/construction/portal",
     "/guide": "/construction/guide",
   },
+  SHAMBA: {
+    "/": "/shamba/welcome",
+    "/login": "/shamba/login",
+    "/register": "/shamba/signup",
+    "/signup": "/shamba/signup",
+    "/pricing": "/shamba/pricing",
+    "/guide": "/shamba/guide",
+  },
   RENTALS: {
     "/": "/rentals/welcome",
     "/login": "/rentals/login",
@@ -25,7 +33,7 @@ const PUBLIC: Record<Exclude<Product, "POS">, Record<string, string>> = {
     "/guide": "/rentals/guide",
   },
 };
-const HOME: Record<Exclude<Product, "POS">, string> = { CONSTRUCTION: "/construction", RENTALS: "/rentals" };
+const HOME: Record<Exclude<Product, "POS">, string> = { CONSTRUCTION: "/construction", RENTALS: "/rentals", SHAMBA: "/shamba" };
 const back = (p: Exclude<Product, "POS">) => Object.fromEntries(Object.entries(PUBLIC[p]).map(([k, v]) => [v, k]));
 
 const domainOf = (v: string | undefined) => (v ?? "").trim().toLowerCase().replace(/^https?:\/\//, "").replace(/\/+$/, "");
@@ -35,18 +43,20 @@ export function middleware(req: NextRequest) {
   const domains: Record<Exclude<Product, "POS">, string> = {
     CONSTRUCTION: domainOf(process.env.CONSTRUCTION_DOMAIN ?? process.env.NEXT_PUBLIC_CONSTRUCTION_DOMAIN),
     RENTALS: domainOf(process.env.RENTALS_DOMAIN ?? process.env.NEXT_PUBLIC_RENTALS_DOMAIN),
+    SHAMBA: domainOf(process.env.SHAMBA_DOMAIN ?? process.env.NEXT_PUBLIC_SHAMBA_DOMAIN),
   };
   // This computer, or it reached from a phone on the same Wi-Fi (192.168.x.x, 10.x.x.x, 172.16-31.x.x) while testing.
   const isLocal = host === "localhost" || host === "127.0.0.1" || /^(192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+)$/.test(host);
   const { pathname, searchParams } = req.nextUrl;
 
-  let product: Product = domains.CONSTRUCTION && host === domains.CONSTRUCTION ? "CONSTRUCTION" : domains.RENTALS && host === domains.RENTALS ? "RENTALS" : "POS";
+  let product: Product = domains.CONSTRUCTION && host === domains.CONSTRUCTION ? "CONSTRUCTION" : domains.RENTALS && host === domains.RENTALS ? "RENTALS" : domains.SHAMBA && host === domains.SHAMBA ? "SHAMBA" : "POS";
   if (isLocal) {
     const asked = searchParams.get("product");
     const remembered = req.cookies.get(COOKIE)?.value;
     if (asked === "construction") product = "CONSTRUCTION";
     else if (asked === "rentals") product = "RENTALS";
-    else if (asked !== "pos" && (remembered === "CONSTRUCTION" || remembered === "RENTALS")) product = remembered;
+    else if (asked === "shamba") product = "SHAMBA";
+    else if (asked !== "pos" && (remembered === "CONSTRUCTION" || remembered === "RENTALS" || remembered === "SHAMBA")) product = remembered;
   }
 
   // TEAM_DOMAIN (optional) is the sales team app's own address: its front page and /login open the team portal.
@@ -57,7 +67,7 @@ export function middleware(req: NextRequest) {
 
   let res: NextResponse;
   // A product's own paths on the POS domain move to that product's domain (once it has one).
-  const elsewhere = product === "POS" && !isLocal ? (["CONSTRUCTION", "RENTALS"] as const).find((p) => domains[p] && pathname.startsWith(HOME[p])) : undefined;
+  const elsewhere = product === "POS" && !isLocal ? (["CONSTRUCTION", "RENTALS", "SHAMBA"] as const).find((p) => domains[p] && pathname.startsWith(HOME[p])) : undefined;
   if (product !== "POS" && PUBLIC[product][pathname]) {
     res = NextResponse.rewrite(new URL(PUBLIC[product][pathname], req.url));
   } else if (product !== "POS" && pathname === "/dashboard") {
