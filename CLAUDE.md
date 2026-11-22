@@ -26,3 +26,30 @@ Phase prompts live in `prompts/construction/`.
 - Construction is served at `CONSTRUCTION_DOMAIN` (build.zarodasolutions.app) via host-based middleware — see
   docs/construction/06-domain-routing.md. Never hard-code domains; construction links always use `CONSTRUCTION_DOMAIN`.
 - Finish every phase with: migration, seed data for the demo tenant "Uriri Builders Ltd", and a short CHANGELOG entry.
+
+## Farm Module — Zaroda Shamba (business type: FARM)
+
+Specs live in `docs/farm/`. Read the relevant spec file before every task in this module.
+Phase prompts live in `prompts/farm/` (F1 foundation, F2 livestock, F3 production, F4 crops, F5 feed, F6 labour and
+sales, F7 reports).
+
+### Rules
+- Shamba is a **business type plugin** on the POS core, built like Zaroda Build. Reuse organizations, auth, users,
+  branches (a farm site is a branch), products/inventory (feed, drugs, seed, produce), suppliers, purchasing, POS sales,
+  M-Pesa, eTIMS, receipts, ledger and audit log. Do NOT fork them.
+- All farm tables are prefixed `farm_`, every row carries `organizationId`, and every farm table has FORCE ROW LEVEL
+  SECURITY in rls.sql. Every query is tenant-scoped.
+- Farm menus/routes only appear when `industryType = 'FARM'`. Permissions are checked server-side (`@FarmRoles()`,
+  `@FarmFeature()`), never only hidden in the UI.
+- Money in KES as `Decimal(14,2)`; quantities `Decimal(14,3)`. Never floats.
+- Rates and rules the law can change (withdrawal defaults, VAT, statutory deductions) live in settings with an
+  effective date. Drug withdrawal periods and pesticide pre-harvest intervals block sale/harvest until they end.
+- Husbandry and money records are append-only: corrections are reversing records. Every create/update/approve/delete
+  on stock, sales, treatments and money writes to the audit log.
+- Plans and limits come from `farm_plans` (docs/farm/05-pricing-plans.md); limits are enforced server-side with an
+  upgrade prompt, never a silent failure. Casual workers never count toward user limits.
+- Shamba is served at `SHAMBA_DOMAIN` (shamba.zarodasolutions.app) via host-based middleware — see
+  docs/farm/06-domain-routing.md. Never hard-code the domain.
+- Mobile-first for herdsmen and field screens. Brand colours only (navy, gold, orange) - never green for branding.
+- Finish every phase with: migration, rls.sql rules, seed data for the demo farm "Uriri Dairy & Poultry Farm", tests
+  and a short CHANGELOG entry. Database steps run BEFORE merging.

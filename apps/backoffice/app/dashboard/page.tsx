@@ -234,7 +234,7 @@ export default function DashboardPage() {
       router.replace("/login");
       return;
     }
-    if (s.industryType === "CONSTRUCTION" || s.industryType === "RENTAL") {
+    if (s.industryType === "CONSTRUCTION" || s.industryType === "RENTAL" || s.industryType === "FARM") {
       router.replace(homePath(s.role, s.industryType));
       return;
     }

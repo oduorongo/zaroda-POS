@@ -30,7 +30,7 @@ export function effectiveStatus(sub: SubscriptionLike, now: Date = new Date()): 
  * plan instead (construction/plans), and its project sites are branches the device plan's branch limit must not block.
  */
 export function needsDeviceSubscription(industryType: string): boolean {
-  return industryType !== 'RENTAL' && industryType !== 'CONSTRUCTION';
+  return industryType !== 'RENTAL' && industryType !== 'CONSTRUCTION' && industryType !== 'FARM';
 }
 
 /** The free "Online Shop only" plan: for a shop that sells in-store on another POS. No tills; ZARODA earns the 3% shopper fee. */

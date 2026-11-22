@@ -5,17 +5,18 @@
  * docs/rentals/domain-routing.md). middleware.ts works it out from the host and leaves it in the zaroda_product cookie. Domains come
  * from env only.
  */
-export type Product = "POS" | "CONSTRUCTION" | "RENTALS";
+export type Product = "POS" | "CONSTRUCTION" | "RENTALS" | "SHAMBA";
 
 export const PRODUCT_COOKIE = "zaroda_product";
 const CONSTRUCTION_DOMAIN = process.env.NEXT_PUBLIC_CONSTRUCTION_DOMAIN ?? "";
 const RENTALS_DOMAIN = process.env.NEXT_PUBLIC_RENTALS_DOMAIN ?? "";
+const SHAMBA_DOMAIN = process.env.NEXT_PUBLIC_SHAMBA_DOMAIN ?? "";
 const POS_DOMAIN = process.env.NEXT_PUBLIC_POS_DOMAIN ?? "";
 
 export function currentProduct(): Product {
   if (typeof document === "undefined") return "POS";
   const value = document.cookie.split("; ").find((c) => c.startsWith(`${PRODUCT_COOKIE}=`))?.split("=")[1];
-  return value === "CONSTRUCTION" || value === "RENTALS" ? value : "POS";
+  return value === "CONSTRUCTION" || value === "RENTALS" || value === "SHAMBA" ? value : "POS";
 }
 
 const absolute = (domain: string, path: string) => `https://${domain.replace(/^https?:\/\//, "").replace(/\/+$/, "")}${path}`;
@@ -24,6 +25,9 @@ const absolute = (domain: string, path: string) => `https://${domain.replace(/^h
 export const constructionUrl = (path: string) => (CONSTRUCTION_DOMAIN ? absolute(CONSTRUCTION_DOMAIN, path) : path);
 /** A ZARODA RENTALS page's address on RENTALS_DOMAIN, or the same path here when no domain is set. */
 export const rentalsUrl = (path: string) => (RENTALS_DOMAIN ? absolute(RENTALS_DOMAIN, path) : path);
+/** A Zaroda Shamba page's address on SHAMBA_DOMAIN, or the same path here when no domain is set. */
+export const shambaUrl = (path: string) => (SHAMBA_DOMAIN ? absolute(SHAMBA_DOMAIN, path) : path);
+export const hasShambaDomain = () => !!SHAMBA_DOMAIN;
 export const posUrl = (path: string) => (POS_DOMAIN ? absolute(POS_DOMAIN, path) : path);
 export const hasConstructionDomain = () => !!CONSTRUCTION_DOMAIN;
 export const hasRentalsDomain = () => !!RENTALS_DOMAIN;

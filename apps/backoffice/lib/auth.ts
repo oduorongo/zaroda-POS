@@ -41,7 +41,7 @@ export const isCaretaker = (role: string): boolean => role === "CARETAKER";
 
 /** Where a freshly signed-in person lands. */
 export const homePath = (role: string, industryType?: string): string =>
-  isCaretaker(role) || industryType === "RENTAL" ? "/rentals" : industryType === "CONSTRUCTION" ? "/construction" : "/dashboard";
+  isCaretaker(role) || industryType === "RENTAL" ? "/rentals" : industryType === "CONSTRUCTION" ? "/construction" : industryType === "FARM" ? "/shamba" : "/dashboard";
 
 export function getSession(): Session | null {
   if (typeof window === "undefined") return null;
