@@ -1,5 +1,12 @@
 # Changelog
 
+## Zaroda Shamba F1: farm management foundation (2026-11-22)
+
+- New business type FARM (Zaroda Shamba, docs/farm). Plans in farm_plans seeded from 05-pricing-plans.md (Kienyeji free, Mkulima 1,000, Farmer 2,500, Commercial 6,500, Estate quote); new farms get a 14-day Farmer trial; read-only once lapsed.
+- FarmGuard + @FarmRoles/@FarmFeature; acres (fields and paddocks) and users (people with a farm role) limits refuse with an upgrade message. Farm settings, layout units (blocks, fields, paddocks, pens, poultry houses, ponds, stores, feed mill), enterprises and farm roles (owner, manager, herdsman, vet, crops officer, feed miller, storekeeper, sales, auditor; optionally limited to units). Everything audit-logged.
+- Back office: SHAMBA_DOMAIN routing (shamba.zarodasolutions.app; ?product=shamba locally), Shamba welcome, pricing, guide, sign-up and sign-in, and /shamba, /shamba/layout, /shamba/enterprises, /shamba/staff. FARM businesses signing in on the POS address are sent to Shamba. Team members can sign up farms.
+- Migration 20270111100000_shamba_foundation (6 tables, 4 enums, plans) + rls.sql (5 farm tables): run migrate deploy then apply-rls BEFORE merging. Demo farm: pnpm --filter api seed:farm (owner@shamba.demo / password123). Tests: src/farm/farm-plans.util.spec.ts, scripts/e2e-shamba.js (14 checks).
+
 ## Petty cash, for businesses and for ZARODA (2026-11-19)
 
 - Businesses (every type): /petty-cash. Boxes per branch with a float and a keeper; vouchers (PCV-) that are also Expenses paid with PETTY_CASH (so profit, the VAT return and the books include them), refused above what the box holds; top-ups from the till, M-Pesa or bank (default: back to the float); counts (shortage = cost, surplus = other income); voids with a reason (a voucher's expense is removed; a top-up only while unspent); a printable petty cash book with balances brought and carried forward. Petty-cash expenses cannot be changed or deleted on Expenses. Audit-logged.
