@@ -1,5 +1,14 @@
 # Changelog
 
+## Zaroda Shamba F2: livestock and husbandry (2026-11-22)
+
+- Animals one by one (ear tag unique per farm, breed, sex, birth, mother/father or semen code, bought or born) and groups/flocks with a head count and its history (born, bought, died, sold, slaughtered, culled, moved out, corrections; never below zero). Head and bird limits now count toward the plan, refused with an upgrade message.
+- Drugs with milk/meat/egg withdrawal days (prescription-only ones recorded by the vet or farm manager). Health records (sick, treated, vaccinated, dewormed, dipped, checked) set withdrawal dates: the animal or flock shows "Withheld", and selling or slaughtering it is refused until the meat withdrawal ends. Wrong entries are voided with a reason, never deleted.
+- Vaccination/deworming/dipping programmes (Mkulima and up): every animal and flock of that kind gets its dose on the due list; recording the dose schedules the next. Daily SMS then email reminders 7, 3 and 1 days before, on the day and once when overdue (FARM_REMINDERS=off turns them off).
+- Breeding: heat, service/AI (expected birth by species; drying off 60 days before for cows), pregnancy checks, drying off, births registering each young one with its mother and sire, abortions. Weights and body condition. Moves between units; sold/died/slaughtered/culled/lost with amount, buyer and permit. Unit-limited staff (e.g. the herdsman) see and record only their pens. Everything audit-logged.
+- Back office (mobile-first): /shamba/animals, /shamba/animals/[id], /shamba/groups/[id], /shamba/health; dashboard tiles for overdue, due this week, births in 30 days and withheld produce.
+- Migration 20270112100000_shamba_livestock (9 tables, 7 enums) + rls.sql (9 farm tables): run migrate deploy then apply-rls BEFORE merging. Demo farm seed adds a herd, flocks, drugs, programmes, a cow under withdrawal and a cow in calf. Tests: src/farm/farm-livestock.util.spec.ts (11), scripts/e2e-shamba-livestock.js (26 checks).
+
 ## Zaroda Shamba F1: farm management foundation (2026-11-22)
 
 - New business type FARM (Zaroda Shamba, docs/farm). Plans in farm_plans seeded from 05-pricing-plans.md (Kienyeji free, Mkulima 1,000, Farmer 2,500, Commercial 6,500, Estate quote); new farms get a 14-day Farmer trial; read-only once lapsed.

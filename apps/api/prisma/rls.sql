@@ -2234,3 +2234,59 @@ DROP POLICY IF EXISTS tenant_isolation ON farm_user_roles;
 CREATE POLICY tenant_isolation ON farm_user_roles
   USING ("organizationId" = current_setting('app.current_tenant', true))
   WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+-- ── Zaroda Shamba F2: livestock and husbandry ─────────────────
+ALTER TABLE farm_animals ENABLE ROW LEVEL SECURITY;
+ALTER TABLE farm_animals FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON farm_animals;
+CREATE POLICY tenant_isolation ON farm_animals
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+ALTER TABLE farm_groups ENABLE ROW LEVEL SECURITY;
+ALTER TABLE farm_groups FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON farm_groups;
+CREATE POLICY tenant_isolation ON farm_groups
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+ALTER TABLE farm_group_counts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE farm_group_counts FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON farm_group_counts;
+CREATE POLICY tenant_isolation ON farm_group_counts
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+ALTER TABLE farm_drugs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE farm_drugs FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON farm_drugs;
+CREATE POLICY tenant_isolation ON farm_drugs
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+ALTER TABLE farm_health_events ENABLE ROW LEVEL SECURITY;
+ALTER TABLE farm_health_events FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON farm_health_events;
+CREATE POLICY tenant_isolation ON farm_health_events
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+ALTER TABLE farm_programmes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE farm_programmes FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON farm_programmes;
+CREATE POLICY tenant_isolation ON farm_programmes
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+ALTER TABLE farm_due_tasks ENABLE ROW LEVEL SECURITY;
+ALTER TABLE farm_due_tasks FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON farm_due_tasks;
+CREATE POLICY tenant_isolation ON farm_due_tasks
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+ALTER TABLE farm_breeding_events ENABLE ROW LEVEL SECURITY;
+ALTER TABLE farm_breeding_events FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON farm_breeding_events;
+CREATE POLICY tenant_isolation ON farm_breeding_events
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+ALTER TABLE farm_weights ENABLE ROW LEVEL SECURITY;
+ALTER TABLE farm_weights FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON farm_weights;
+CREATE POLICY tenant_isolation ON farm_weights
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
