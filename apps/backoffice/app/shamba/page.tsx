@@ -92,6 +92,20 @@ function Dashboard() {
         </Card>
       )}
 
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        {[
+          { label: "Overdue", value: data.livestock.overdue, href: "/shamba/health", warn: data.livestock.overdue > 0 },
+          { label: "Due this week", value: data.livestock.dueWeek, href: "/shamba/health", warn: false },
+          { label: "Births in 30 days", value: data.livestock.birthsSoon, href: "/shamba/health", warn: false },
+          { label: "Milk/meat/eggs withheld", value: data.livestock.inWithdrawal, href: "/shamba/health#withdrawals", warn: data.livestock.inWithdrawal > 0 },
+        ].map((t) => (
+          <Link key={t.label} href={t.href} className="rounded-xl border bg-white p-3 shadow-sm" style={{ borderColor: t.warn ? SHAMBA_BRAND.orange : "#e5e7eb" }}>
+            <span className="block text-2xl font-bold" style={{ color: t.warn ? SHAMBA_BRAND.orange : SHAMBA_BRAND.navy }}>{t.value}</span>
+            <span className="text-xs text-secondary-600">{t.label}</span>
+          </Link>
+        ))}
+      </div>
+
       <div className="grid gap-4 md:grid-cols-2">
         <Card title={`${data.plan.name} plan`}>
           <p className="text-sm">
@@ -113,6 +127,12 @@ function Dashboard() {
         <Card title="Your farm">
           <ul className="space-y-2 text-sm">
             <li className="flex justify-between">
+              <Link href="/shamba/animals" className="underline">Animals and flocks</Link>
+              <span>
+                {data.counts.animals} animals · {data.counts.groups} groups
+              </span>
+            </li>
+            <li className="flex justify-between">
               <Link href="/shamba/layout" className="underline">Farm layout</Link>
               <span>{data.counts.units} parts</span>
             </li>
@@ -126,7 +146,7 @@ function Dashboard() {
             </li>
           </ul>
           <p className="mt-4 text-xs text-secondary-500">
-            Animals, milk and eggs, crops, feed mixing and selling come next. Set up your layout and enterprises now so they are ready.
+            Milk and eggs, crops, feed mixing and selling come next.
           </p>
         </Card>
       </div>

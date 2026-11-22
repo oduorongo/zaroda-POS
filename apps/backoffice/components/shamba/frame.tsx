@@ -60,6 +60,8 @@ export function ShambaPublicFrame({ children }: { children: ReactNode }) {
 
 const LINKS: [string, string][] = [
   ["/shamba", "Farm"],
+  ["/shamba/animals", "Animals"],
+  ["/shamba/health", "Health"],
   ["/shamba/layout", "Layout"],
   ["/shamba/enterprises", "Enterprises"],
   ["/shamba/staff", "Staff"],

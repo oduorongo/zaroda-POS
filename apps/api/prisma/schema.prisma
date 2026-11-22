@@ -8435,3 +8435,263 @@ model FarmUserRole {
   @@index([organizationId])
   @@map("farm_user_roles")
 }
+
+// ── Zaroda Shamba F2: livestock and husbandry (docs/farm/01-domain-spec.md) ──────────────────────────────────────
+
+enum FarmSpecies {
+  CATTLE
+  GOAT
+  SHEEP
+  PIG
+  CHICKEN
+  DUCK
+  TURKEY
+  RABBIT
+  FISH
+  BEE
+  OTHER
+}
+
+enum FarmSex {
+  FEMALE
+  MALE
+  UNKNOWN
+}
+
+enum FarmAnimalStatus {
+  ACTIVE
+  SOLD
+  DIED
+  SLAUGHTERED
+  CULLED
+  LOST
+}
+
+enum FarmAnimalSource {
+  BORN
+  BOUGHT
+}
+
+enum FarmCountReason {
+  PLACED
+  BORN
+  BOUGHT
+  DIED
+  SOLD
+  SLAUGHTERED
+  CULLED
+  MOVED_OUT
+  ADJUSTED
+}
+
+enum FarmHealthKind {
+  SICK
+  TREATED
+  VACCINATED
+  DEWORMED
+  DIPPED
+  CHECKED
+}
+
+enum FarmBreedingKind {
+  HEAT
+  SERVED
+  AI
+  PD_POSITIVE
+  PD_NEGATIVE
+  DRIED_OFF
+  BIRTH
+  ABORTION
+}
+
+/// One identified animal (a cow, a goat, a sow...). Tags are unique per farm.
+model FarmAnimal {
+  id             String           @id @default(uuid())
+  organizationId String
+  enterpriseId   String?
+  groupId        String?
+  unitId         String?
+  tag            String
+  name           String?
+  species        FarmSpecies
+  breed          String?
+  sex            FarmSex
+  birthDate      DateTime?        @db.Date
+  birthEstimated Boolean          @default(false)
+  damId          String?
+  sireId         String?
+  /// An AI bull or a sire not kept on the farm.
+  sireCode       String?
+  source         FarmAnimalSource @default(BOUGHT)
+  boughtOn       DateTime?        @db.Date
+  boughtPrice    Decimal?         @db.Decimal(14, 2)
+  status         FarmAnimalStatus @default(ACTIVE)
+  statusDate     DateTime?        @db.Date
+  statusNote     String?
+  /// What it was sold or slaughtered for.
+  exitAmount     Decimal?         @db.Decimal(14, 2)
+  /// Buyer, and for animals leaving the farm the movement permit number.
+  exitParty      String?
+  permitNo       String?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  @@unique([organizationId, tag])
+  @@index([organizationId, status])
+  @@map("farm_animals")
+}
+
+/// Animals kept and counted together (a poultry flock, a goat herd, a litter). The count changes only through farm_group_counts.
+model FarmGroup {
+  id             String      @id @default(uuid())
+  organizationId String
+  enterpriseId   String?
+  unitId         String?
+  species        FarmSpecies
+  breed          String?
+  name           String
+  purpose        String?
+  placedOn       DateTime    @db.Date
+  headCount      Int         @default(0)
+  active         Boolean     @default(true)
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  @@index([organizationId, active])
+  @@map("farm_groups")
+}
+
+model FarmGroupCount {
+  id             String          @id @default(uuid())
+  organizationId String
+  groupId        String
+  date           DateTime        @db.Date
+  change         Int
+  reason         FarmCountReason
+  note           String?
+  amount         Decimal?        @db.Decimal(14, 2)
+  createdBy      String?
+  createdAt      DateTime        @default(now())
+
+  @@index([organizationId, groupId, date])
+  @@map("farm_group_counts")
+}
+
+/// A drug or vaccine the farm uses, with the withdrawal days from its label (milk, meat, eggs must not be sold until they pass).
+model FarmDrug {
+  id                 String   @id @default(uuid())
+  organizationId     String
+  name               String
+  variantId          String?
+  milkWithdrawalDays Int      @default(0)
+  meatWithdrawalDays Int      @default(0)
+  eggWithdrawalDays  Int      @default(0)
+  prescriptionOnly   Boolean  @default(false)
+  notes              String?
+  active             Boolean  @default(true)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@index([organizationId])
+  @@map("farm_drugs")
+}
+
+/// Sickness, treatment, vaccination, deworming, dipping or a check - for one animal or a group. Append-only: wrong entries are voided.
+model FarmHealthEvent {
+  id                  String         @id @default(uuid())
+  organizationId      String
+  animalId            String?
+  groupId             String?
+  date                DateTime       @db.Date
+  kind                FarmHealthKind
+  diagnosis           String?
+  drugId              String?
+  dose                String?
+  byOrgUserId         String?
+  vetName             String?
+  cost                Decimal?       @db.Decimal(14, 2)
+  notes               String?
+  milkWithdrawalUntil DateTime?      @db.Date
+  meatWithdrawalUntil DateTime?      @db.Date
+  eggWithdrawalUntil  DateTime?      @db.Date
+  programmeId         String?
+  voidedAt            DateTime?
+  voidReason          String?
+  createdAt           DateTime       @default(now())
+
+  @@index([organizationId, animalId])
+  @@index([organizationId, groupId])
+  @@map("farm_health_events")
+}
+
+/// A repeating vaccination, deworming or dipping programme for a species.
+model FarmProgramme {
+  id             String         @id @default(uuid())
+  organizationId String
+  species        FarmSpecies
+  name           String
+  kind           FarmHealthKind
+  drugId         String?
+  /// First dose at this age (days); null = straight away.
+  firstAgeDays   Int?
+  intervalDays   Int
+  active         Boolean        @default(true)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  @@index([organizationId])
+  @@map("farm_programmes")
+}
+
+/// Something due for an animal or group: a programme dose, drying off, an expected birth. Done ones keep their date.
+model FarmDueTask {
+  id             String    @id @default(uuid())
+  organizationId String
+  kind           String
+  title          String
+  animalId       String?
+  groupId        String?
+  programmeId    String?
+  dueOn          DateTime  @db.Date
+  doneOn         DateTime? @db.Date
+  cancelledAt    DateTime?
+  remindedOn     DateTime? @db.Date
+  createdAt      DateTime  @default(now())
+
+  @@index([organizationId, dueOn])
+  @@map("farm_due_tasks")
+}
+
+model FarmBreedingEvent {
+  id             String           @id @default(uuid())
+  organizationId String
+  animalId       String
+  date           DateTime         @db.Date
+  kind           FarmBreedingKind
+  sireId         String?
+  sireCode       String?
+  inseminator    String?
+  expectedBirth  DateTime?        @db.Date
+  notes          String?
+  voidedAt       DateTime?
+  voidReason     String?
+  createdAt      DateTime         @default(now())
+
+  @@index([organizationId, animalId])
+  @@map("farm_breeding_events")
+}
+
+model FarmWeight {
+  id             String   @id @default(uuid())
+  organizationId String
+  animalId       String?
+  groupId        String?
+  date           DateTime @db.Date
+  kg             Decimal  @db.Decimal(14, 3)
+  /// Average per head for a group.
+  bodyCondition  Decimal? @db.Decimal(3, 1)
+  createdAt      DateTime @default(now())
+
+  @@index([organizationId, animalId])
+  @@map("farm_weights")
+}

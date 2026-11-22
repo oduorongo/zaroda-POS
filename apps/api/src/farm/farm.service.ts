@@ -6,6 +6,8 @@ import { getTenantStore } from '../common/tenant/tenant-context';
 import type { FarmContext } from './farm-access';
 import { upgradeError } from './farm-access';
 import { FarmSetupService } from './farm-setup.service';
+import { FarmLivestockService } from './farm-livestock.service';
+import { addDays, asDate, todayKey } from './farm-livestock.util';
 import { CreateFarmEnterpriseDto, CreateFarmUnitDto, SetFarmRolesDto, UpdateFarmEnterpriseDto, UpdateFarmSettingsDto, UpdateFarmUnitDto } from './dto/farm.dto';
 import { FarmLimitKey, limitProblem } from './farm-plans.util';
 
@@ -20,13 +22,14 @@ export class FarmService {
     private readonly audit: AuditLogService,
   ) {}
 
-  /** What the farm uses of each plan limit. Livestock head and birds start counting in F2. */
+  /** What the farm uses of each plan limit. */
   async usage(tx: TenantTx): Promise<Record<FarmLimitKey, number>> {
-    const [land, people] = await Promise.all([
+    const [land, people, stock] = await Promise.all([
       tx.farmUnit.aggregate({ where: { active: true, kind: { in: LAND } }, _sum: { acres: true } }),
       tx.farmUserRole.findMany({ select: { orgUserId: true }, distinct: ['orgUserId'] }),
+      FarmLivestockService.counts(tx),
     ]);
-    return { head: 0, birds: 0, acres: Number(land._sum.acres ?? 0), users: people.length };
+    return { ...stock, acres: Number(land._sum.acres ?? 0), users: people.length };
   }
 
   private async checkLimit(tx: TenantTx, farm: FarmContext, key: FarmLimitKey, extra: number) {
@@ -38,12 +41,23 @@ export class FarmService {
 
   overview(farm: FarmContext) {
     return this.tenantPrisma.run(async (tx) => {
-      const [settings, sub, usage, units, enterprises] = await Promise.all([
+      const today = asDate(todayKey());
+      const open = { doneOn: null, cancelledAt: null };
+      const [settings, sub, usage, units, enterprises, animals, groups, overdue, dueWeek, birthsSoon, withdrawal] = await Promise.all([
         tx.farmSettings.findFirst(),
         tx.farmSubscription.findFirst(),
         this.usage(tx),
         tx.farmUnit.count({ where: { active: true } }),
         tx.farmEnterprise.count({ where: { active: true } }),
+        tx.farmAnimal.count({ where: { status: 'ACTIVE' } }),
+        tx.farmGroup.count({ where: { active: true } }),
+        tx.farmDueTask.count({ where: { ...open, dueOn: { lt: today } } }),
+        tx.farmDueTask.count({ where: { ...open, dueOn: { gte: today, lte: asDate(addDays(todayKey(), 7)) } } }),
+        tx.farmDueTask.count({ where: { ...open, kind: 'EXPECTED_BIRTH', dueOn: { lte: asDate(addDays(todayKey(), 30)) } } }),
+        tx.farmHealthEvent.findMany({
+          where: { voidedAt: null, OR: [{ milkWithdrawalUntil: { gt: today } }, { meatWithdrawalUntil: { gt: today } }, { eggWithdrawalUntil: { gt: today } }] },
+          select: { animalId: true, groupId: true },
+        }),
       ]);
       return {
         settings,
@@ -51,7 +65,8 @@ export class FarmService {
         status: farm.status,
         currentPeriodEnd: sub?.currentPeriodEnd ?? null,
         usage,
-        counts: { units, enterprises },
+        counts: { units, enterprises, animals, groups },
+        livestock: { overdue, dueWeek, birthsSoon, inWithdrawal: new Set(withdrawal.map((w) => w.animalId ?? w.groupId)).size },
         me: { isOwner: farm.isOwner, roles: farm.roles, unitIds: farm.unitIds },
       };
     });
