@@ -4,8 +4,8 @@ import { FloatingThemeToggle, PasswordInput } from "@zaroda/ui";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { login, getOrganization, ApiError } from "../../lib/api";
-import { setSession, clearSession, decodeRole, homePath, isBackofficeRole, isCaretaker } from "../../lib/auth";
-import { constructionUrl, currentProduct, hasConstructionDomain, hasRentalsDomain, hasShambaDomain, rentalsUrl, shambaUrl } from "../../lib/product";
+import { setSession, clearSession, decodeRole, homePath, canSignIn } from "../../lib/auth";
+import { constructionUrl, rentalsUrl, shambaUrl } from "../../lib/product";
 
 const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:3001";
 const TERMINAL_URL = process.env.NEXT_PUBLIC_TERMINAL_URL ?? "https://pos.zarodashop.com";
@@ -26,36 +26,15 @@ export default function LoginPage() {
     try {
       const { accessToken } = await login(apiBaseUrl, email.trim(), password);
       const role = decodeRole(accessToken) ?? "UNKNOWN";
-
-      // The back office is for owners/managers/auditors only - a cashier
-      // never gets a session here, they belong at the till (PIN login).
-      if (!isBackofficeRole(role) && !isCaretaker(role)) {
+      // Everyone signs in here - shops, hotels, contractors, landlords and farms - and lands on their own home with their own menu.
+      const org = (await getOrganization(apiBaseUrl, accessToken)) as { industryType: string; name?: string };
+      if (!canSignIn(role, org.industryType)) {
         clearSession();
         setBlockedCashier(true);
         return;
       }
-
-      const { industryType } = await getOrganization(apiBaseUrl, accessToken);
-      // Construction has its own site and sessions are per site, so they sign in again there.
-      if (industryType === "CONSTRUCTION" && hasConstructionDomain() && currentProduct() === "POS") {
-        clearSession();
-        window.location.href = constructionUrl("/construction/login");
-        return;
-      }
-      // So has Zaroda Shamba: farms sign in there.
-      if (industryType === "FARM" && hasShambaDomain() && currentProduct() === "POS") {
-        clearSession();
-        window.location.href = shambaUrl("/shamba/login");
-        return;
-      }
-      // So has ZARODA RENTALS: landlords and caretakers sign in there.
-      if (industryType === "RENTAL" && hasRentalsDomain() && currentProduct() === "POS") {
-        clearSession();
-        window.location.href = rentalsUrl("/rentals/login");
-        return;
-      }
-      setSession({ apiBaseUrl, accessToken, role, email: email.trim(), industryType });
-      router.replace(homePath(role, industryType));
+      setSession({ apiBaseUrl, accessToken, role, email: email.trim(), industryType: org.industryType, orgName: org.name });
+      router.replace(homePath(role, org.industryType));
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Login failed - check the API URL and try again");
     } finally {
@@ -103,7 +82,7 @@ export default function LoginPage() {
         <form onSubmit={handleSubmit} className="w-full max-w-sm space-y-6">
           <div className="text-center lg:text-left">
             <h1 className="text-2xl font-bold text-foreground">Welcome back</h1>
-            <p className="mt-1 text-sm text-secondary-500">Sign in to your Zaroda back office.</p>
+            <p className="mt-1 text-sm text-secondary-500">One sign-in for every Zaroda business: shops, hotels, Build, Rentals and Shamba.</p>
           </div>
 
           <div className="space-y-4">
@@ -139,7 +118,7 @@ export default function LoginPage() {
 
           {blockedCashier && (
             <div className="rounded-lg border border-amber-900/50 bg-amber-950/40 px-3 py-2.5 text-sm text-amber-200">
-              <p>Cashiers sign in at the till, not here. Open pos.zarodashop.com and tap your PIN.</p>
+              <p>Your account cannot sign in here. Ask your owner or manager to change your access. To ring up sales, open the till and tap your PIN.</p>
               <a href={TERMINAL_URL} className="mt-1.5 inline-block font-semibold text-amber-100 hover:underline">
                 Go to the till →
               </a>
@@ -161,9 +140,12 @@ export default function LoginPage() {
           >
             New here? Set up your organization
           </button>
-          <a href={constructionUrl("/construction/signup")} className="block text-center text-sm text-secondary-500 hover:underline">
-            Construction contractor? Use Zaroda Build
-          </a>
+          <p className="text-center text-sm text-secondary-500">
+            Start a new{" "}
+            <a href={constructionUrl("/construction/signup")} className="hover:underline">construction</a>,{" "}
+            <a href={rentalsUrl("/rentals/signup")} className="hover:underline">rentals</a> or{" "}
+            <a href={shambaUrl("/shamba/signup")} className="hover:underline">farm</a> account
+          </p>
         </form>
       </div>
     </div>

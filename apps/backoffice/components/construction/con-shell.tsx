@@ -3,90 +3,39 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
-import { BackButton, ThemeToggle } from "@zaroda/ui";
 import { Bell } from "lucide-react";
 import { apiGet } from "../../lib/api";
 import { clearSession, type Session } from "../../lib/auth";
-import { CON_BRAND, hasConRole, isDirector, useConSession, type ConMe, conBackdropCss } from "../../lib/construction";
+import { CON_BRAND, useConSession, type ConMe, conBackdropCss } from "../../lib/construction";
+import { menuFor } from "../../lib/menu";
+import { SideNav } from "../side-nav";
 import { useIdleLogout } from "../../hooks/use-idle-logout";
 
 const MeContext = createContext<ConMe | null>(null);
 export const useConMe = () => useContext(MeContext);
 
-const LINKS = [
-  { href: "/construction", label: "Home" },
-  { href: "/construction/projects", label: "Projects" },
-  { href: "/construction/site", label: "Site" },
-  { href: "/construction/workers", label: "Workers" },
-  { href: "/construction/plant", label: "Plant" },
-  { href: "/construction/tenders", label: "Tenders" },
-  { href: "/construction/compliance", label: "Compliance" },
-  { href: "/construction/reports", label: "Reports" },
-  { href: "/construction/messages", label: "Messages" },
-  { href: "/construction/plan", label: "Plan" },
-  { href: "/construction/settings", label: "Settings" },
-];
-const CORE_LINKS = [
-  { href: "/accounting", label: "Accounts" },
-  { href: "/petty-cash", label: "Petty cash" },
-  { href: "/suppliers", label: "Suppliers" },
-  { href: "/construction/materials", label: "Materials" },
-];
-
 /**
- * The construction top bar (navy, scrolls sideways on a phone). Also shown on the shared back-office screens a contractor
- * uses (Suppliers, Staff) via components/nav.tsx, so they never look like they left Zaroda Build.
+ * The construction menu: the shared left sidebar (components/side-nav.tsx) with the screens this person may open. Also shown on
+ * the shared back-office screens a contractor uses (Suppliers, Staff) via components/nav.tsx, so they never look like they left Zaroda Build.
  */
 export function ConHeader({ session, me }: { session: Session; me: ConMe | null }) {
-  const pathname = usePathname();
   const router = useRouter();
-  const links = [...LINKS, ...(hasConRole(me, "CON_COMPLIANCE") ? [{ href: "/construction/staff", label: "Staff & roles" }] : []), ...(isDirector(me) ? [{ href: "/construction/enterprise", label: "Offices & API" }] : []), ...(["OWNER", "MANAGER"].includes(session.role) ? CORE_LINKS : []), { href: "/construction/guide", label: "Guide" }];
-
   return (
-    <header className="sticky top-0 z-40 text-white shadow" style={{ background: CON_BRAND.navy, borderBottom: `2px solid ${CON_BRAND.gold}` }}>
+    <>
       <style>{conBackdropCss(0.62)}</style>
-      <div className="flex items-center justify-between gap-3 px-3 py-2 sm:px-5">
-        <div className="flex min-w-0 items-center gap-2">
-        <BackButton homeHref="/construction" />
-        <Link href="/construction" className="flex min-w-0 items-center gap-2 no-underline">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/zaroda-logo-white.png" alt="Zaroda" className="h-8 w-auto" />
-          <span className="truncate text-sm font-bold" style={{ color: CON_BRAND.gold }}>
-            {session.orgName ?? "Zaroda Build"}
-          </span>
-        </Link>
-        </div>
-        <div className="flex shrink-0 items-center gap-2">
-          <MessagesBell />
-          <ThemeToggle className="text-white hover:bg-white/10 hover:text-white" />
-          <button
-            type="button"
-            className="rounded-md border border-white/30 px-3 py-1.5 text-xs hover:bg-white/10"
-            onClick={() => {
-              clearSession();
-              router.replace("/login");
-            }}
-          >
-            Sign out
-          </button>
-        </div>
-      </div>
-      <nav className="flex gap-1 overflow-x-auto px-2 pb-2 text-sm sm:px-4">
-        {links.map((l) => {
-          const active = l.href === "/construction" ? pathname === l.href : !!pathname?.startsWith(l.href);
-          return (
-            <Link
-              key={l.href}
-              href={l.href}
-              className="whitespace-nowrap rounded-md px-3 py-1.5 no-underline"
-              style={active ? { background: CON_BRAND.gold, color: CON_BRAND.navy, fontWeight: 600 } : { color: "rgba(255,255,255,0.85)" }}
-            >
-              {l.label}
-            </Link>
-          );
-        })}
-      </nav>
-    </header>
+      <SideNav
+        title="ZARODA BUILD"
+        subtitle={session.orgName ?? "Zaroda Build"}
+        homeHref="/construction"
+        items={menuFor(session, me)}
+        user={session.email}
+        actions={<MessagesBell />}
+        onSignOut={() => {
+          clearSession();
+          router.replace("/login");
+        }}
+      />
+    </>
   );
 }
 

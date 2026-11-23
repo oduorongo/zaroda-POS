@@ -1,5 +1,12 @@
 # Changelog
 
+## One sign-in and a role-based sidebar (2026-11-23)
+
+- One sign-in for everyone at the main address (zarodashop.com/login opens it): shops, hotels, Build, Rentals and Shamba. Each person lands on their own home. The Build, Rentals and Shamba addresses keep their welcome, pricing, guide and sign-up pages. Their sign-in and working screens move to the main address once POS_DOMAIN is set; sign-up hands the new session over without asking for the password again.
+- A scrollable left sidebar (a slide-out drawer on phones) replaces the top menus. It lists only what the person's role and business type allow (lib/menu.ts), grouped (Main, Your business, Stock, Customers, People, Money, Help). Home tiles follow the same list.
+- Supervisors and cashiers can now sign in on the web. Supervisors see Sales, Shifts, Reports, Inventory, Stock count, Waste, Customers, Lipa polepole, Roster, Online orders and their business screens. Cashiers see Home, Sales (their own sales only, enforced by the API) and Guide. Any other address sends them home. Construction and farms keep their own role lists.
+- No DB step. Set POS_DOMAIN=app.zarodashop.com on the back office (Vercel) to move sign-in onto the main address.
+
 ## Zaroda Shamba F2: livestock and husbandry (2026-11-22)
 
 - Animals one by one (ear tag unique per farm, breed, sex, birth, mother/father or semen code, bought or born) and groups/flocks with a head count and its history (born, bought, died, sold, slaughtered, culled, moved out, corrections; never below zero). Head and bird limits now count toward the plan, refused with an upgrade message.

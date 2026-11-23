@@ -23,14 +23,11 @@ const KEY = "zaroda-backoffice-session";
 export const SESSION_KEY = KEY;
 
 /**
- * The back office is for owners/managers/auditors reviewing sales and
- * managing the catalog - never for cashiers, who belong at the till (PIN
- * login on the terminal PWA). Matches the Role enum in
- * apps/api/prisma/schema.prisma (CASHIER, SUPERVISOR, MANAGER, OWNER,
- * AUDITOR); this is a UI convenience only - the API's @Roles() guards are
- * the real authorization boundary.
+ * Everyone signs in on the one sign-in page and gets the menu for their role (lib/menu.ts). Supervisors and cashiers get a
+ * small menu, and components/route-guard.tsx keeps them on it. A UI convenience only - the API's @Roles() guards are the
+ * real authorization boundary.
  */
-export const BACKOFFICE_ROLES = ["OWNER", "MANAGER", "AUDITOR"] as const;
+export const BACKOFFICE_ROLES = ["OWNER", "MANAGER", "AUDITOR", "SUPERVISOR", "CASHIER"] as const;
 
 export function isBackofficeRole(role: string): boolean {
   return (BACKOFFICE_ROLES as readonly string[]).includes(role);
@@ -38,6 +35,13 @@ export function isBackofficeRole(role: string): boolean {
 
 /** A landlord's on-site helper: signs in here but only ever sees the Rentals screen (see the API's @Roles on /rental). */
 export const isCaretaker = (role: string): boolean => role === "CARETAKER";
+
+/** Who may sign in for each kind of business (construction and farms keep their own role lists). */
+export function canSignIn(role: string, industryType: string): boolean {
+  if (industryType === "CONSTRUCTION" || industryType === "FARM") return ["OWNER", "MANAGER", "AUDITOR", "SUPERVISOR"].includes(role);
+  if (industryType === "RENTAL") return ["OWNER", "MANAGER", "AUDITOR", "CARETAKER"].includes(role);
+  return isBackofficeRole(role);
+}
 
 /** Where a freshly signed-in person lands. */
 export const homePath = (role: string, industryType?: string): string =>

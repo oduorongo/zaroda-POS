@@ -30,4 +30,14 @@ export const shambaUrl = (path: string) => (SHAMBA_DOMAIN ? absolute(SHAMBA_DOMA
 export const hasShambaDomain = () => !!SHAMBA_DOMAIN;
 export const posUrl = (path: string) => (POS_DOMAIN ? absolute(POS_DOMAIN, path) : path);
 export const hasConstructionDomain = () => !!CONSTRUCTION_DOMAIN;
+
+/**
+ * After signing up on a product's own address: everyone works on the main address (POS_DOMAIN), so hand the new session over there
+ * through /auth/callback (token in the URL hash, never sent to a server). Without a main address, carry on here.
+ */
+export function openApp(path: string, token: string, email: string, go: (path: string) => void) {
+  const main = POS_DOMAIN.replace(/^https?:\/\//, "").replace(/\/+$/, "");
+  if (main && window.location.host !== main) window.location.href = posUrl(`/auth/callback#${new URLSearchParams({ token, email })}`);
+  else go(path);
+}
 export const hasRentalsDomain = () => !!RENTALS_DOMAIN;

@@ -1,53 +1,22 @@
 "use client";
 
-import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
-import { LayoutGrid, ExternalLink } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { apiGet } from "../lib/api";
-import { clearSession, homePath, isCaretaker, setSession, type Session } from "../lib/auth";
+import { clearSession, homePath, setSession, type Session } from "../lib/auth";
+import { menuFor } from "../lib/menu";
 import { useIdleLogout } from "../hooks/use-idle-logout";
-import { RibbonButton, RibbonLink, ThemeToggle, TopRibbon } from "@zaroda/ui";
+import { SideNav } from "./side-nav";
 import { ConHeader, useConMeFetch } from "./construction/con-shell";
 
-// A handful of the most-used screens, kept in the top bar for quick access.
-// The full set of screens lives on the /dashboard tile grid.
-const QUICK_LINKS = [
-  { href: "/sales", label: "Sales" },
-  { href: "/products", label: "Products" },
-  { href: "/categories", label: "Categories" },
-  { href: "/reports", label: "Reports" },
-];
+const ROLE_NAMES: Record<string, string> = { OWNER: "Owner", MANAGER: "Manager", AUDITOR: "Auditor", SUPERVISOR: "Supervisor", CASHIER: "Cashier", CARETAKER: "Caretaker" };
 
-const MARKETING_URL = process.env.NEXT_PUBLIC_MARKETING_URL ?? "https://zarodashop.com";
-
-// Vertical-specific screens, gated the same way the terminal PWA gates
-// its own nav on device.industryType - a RETAIL (or any unrecognized)
-// org just sees the plain links above, nothing extra.
-const VERTICAL_LINKS: Record<string, { href: string; label: string }> = {
-  RESTAURANT: { href: "/restaurant", label: "Tables & Kitchen" },
-  PHARMACY: { href: "/pharmacy", label: "Pharmacy" },
-  SALON: { href: "/bookings", label: "Bookings" },
-  MANUFACTURING: { href: "/manufacturing", label: "Production" },
-  SERVICE: { href: "/service-jobs", label: "Job Orders" },
-  RENTAL: { href: "/rentals", label: "Rentals" },
-  SCHOOL_SUPPLIER: { href: "/school-orders", label: "School Orders" },
-  UNIFORM_MAKER: { href: "/school-orders", label: "School Orders" },
-  HOTEL: { href: "/front-desk", label: "Front desk" },
-  CONSTRUCTION: { href: "/construction", label: "Construction" },
-};
-
-// The navy top ribbon shared with Zaroda Events and the other web apps: logo and app name, then the menu,
-// which wraps onto a second row on a phone instead of overflowing. It stays at the top while the page scrolls.
+// The left sidebar for every signed-in back-office screen: only the screens this person's role and business type allow (lib/menu.ts).
 export function Nav({ session }: { session: Session }) {
-  const pathname = usePathname();
   const router = useRouter();
-  const verticalLink = VERTICAL_LINKS[session.industryType];
-  const caretaker = isCaretaker(session.role); // sees Rentals only
-  const rentals = session.industryType === "RENTAL"; // ZARODA RENTALS: landlord links instead of the shop's
   useIdleLogout();
 
-  // The shop's name goes in the ribbon. Sessions made before this existed do not have it yet, so fetch it once and keep it.
+  // The shop's name goes in the sidebar. Sessions made before this existed do not have it yet, so fetch it once and keep it.
   const [orgName, setOrgName] = useState(session.orgName);
   useEffect(() => {
     if (session.orgName) return;
@@ -61,98 +30,20 @@ export function Nav({ session }: { session: Session }) {
   }, [session]);
   const conMe = useConMeFetch(session);
 
-  // A contractor on a shared screen (Suppliers, Materials) keeps the construction bar.
+  // A contractor on a shared screen (Suppliers, Materials) keeps the construction menu.
   if (session.industryType === "CONSTRUCTION") return <ConHeader session={{ ...session, orgName: orgName ?? session.orgName }} me={conMe} />;
 
   return (
-    <TopRibbon appName={session.industryType === "RENTAL" ? "ZARODA RENTALS" : (orgName ?? "Back Office")} homeHref={homePath(session.role, session.industryType)} LinkComponent={Link}>
-      {orgName && <span className="hidden text-xs text-white/60 lg:inline">{session.industryType === "RENTAL" ? orgName : "Back Office"}</span>}
-      {!caretaker && !rentals && (
-      <RibbonLink href="/dashboard" LinkComponent={Link} active={pathname === "/dashboard"}>
-        <LayoutGrid size={14} />
-        Home
-      </RibbonLink>
-      )}
-      {!caretaker && !rentals && QUICK_LINKS.map((link) => (
-        <RibbonLink key={link.href} href={link.href} LinkComponent={Link} active={!!pathname?.startsWith(link.href)}>
-          {link.label}
-        </RibbonLink>
-      ))}
-      {verticalLink && (
-        <RibbonLink href={verticalLink.href} LinkComponent={Link} active={!!pathname?.startsWith(verticalLink.href)} className="text-amber-300">
-          {verticalLink.label}
-        </RibbonLink>
-      )}
-      {rentals && !caretaker && (
-        <>
-          <RibbonLink href="/accounting" LinkComponent={Link} active={!!pathname?.startsWith("/accounting")}>
-            Accounts
-          </RibbonLink>
-          <RibbonLink href="/petty-cash" LinkComponent={Link} active={!!pathname?.startsWith("/petty-cash")}>
-            Petty cash
-          </RibbonLink>
-          <RibbonLink href="/staff" LinkComponent={Link} active={!!pathname?.startsWith("/staff")}>
-            Staff
-          </RibbonLink>
-        </>
-      )}
-      {!rentals && !caretaker && (
-        <RibbonLink href="/guide" LinkComponent={Link} active={pathname === "/guide"}>
-          Guide
-        </RibbonLink>
-      )}
-      {rentals && (
-        <RibbonLink href="/rentals/guide" LinkComponent={Link} active={!!pathname?.startsWith("/rentals/guide")}>
-          Guide
-        </RibbonLink>
-      )}
-      {session.industryType === "HOTEL" && !caretaker && (
-        <>
-          <RibbonLink href="/rooms" LinkComponent={Link} active={!!pathname?.startsWith("/rooms")} className="text-amber-300">
-            Rooms
-          </RibbonLink>
-          <RibbonLink href="/restaurant" LinkComponent={Link} active={!!pathname?.startsWith("/restaurant")} className="text-amber-300">
-            Restaurant
-          </RibbonLink>
-        </>
-      )}
-      {session.industryType === "UNIFORM_MAKER" && !caretaker && (
-        <RibbonLink href="/tailoring" LinkComponent={Link} active={!!pathname?.startsWith("/tailoring")} className="text-amber-300">
-          Tailoring
-        </RibbonLink>
-      )}
-      {(session.industryType === "SCHOOL_SUPPLIER" || session.industryType === "UNIFORM_MAKER") && (session.role === "OWNER" || session.role === "MANAGER") && (
-        <RibbonLink href="/subscription" LinkComponent={Link} active={!!pathname?.startsWith("/subscription")}>
-          My subscription
-        </RibbonLink>
-      )}
-      {session.industryType === "RESTAURANT" && !caretaker && (
-        <RibbonLink href="/rooms" LinkComponent={Link} active={!!pathname?.startsWith("/rooms")} className="text-amber-300">
-          Rooms
-        </RibbonLink>
-      )}
-      <a
-        href={MARKETING_URL}
-        target="_blank"
-        rel="noreferrer"
-        title="Leaves the back office for the public Zaroda site"
-        className="hidden items-center gap-1 text-xs text-white/70 no-underline hover:text-white lg:inline-flex"
-      >
-        zarodashop.com
-        <ExternalLink size={11} />
-      </a>
-      <span className="hidden text-xs text-white/70 md:inline">
-        {session.industryType || "?"} · {session.email} · {session.role}
-      </span>
-      <ThemeToggle />
-      <RibbonButton
-        onClick={() => {
-          clearSession();
-          router.replace("/login");
-        }}
-      >
-        Sign out
-      </RibbonButton>
-    </TopRibbon>
+    <SideNav
+      title={session.industryType === "RENTAL" ? "ZARODA RENTALS" : "ZARODA POS"}
+      subtitle={orgName}
+      homeHref={homePath(session.role, session.industryType)}
+      items={menuFor(session)}
+      user={`${session.email} · ${ROLE_NAMES[session.role] ?? session.role}`}
+      onSignOut={() => {
+        clearSession();
+        router.replace("/login");
+      }}
+    />
   );
 }

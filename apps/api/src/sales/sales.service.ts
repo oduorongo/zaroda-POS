@@ -567,7 +567,7 @@ export class SalesService {
     });
   }
 
-  findAll(filters: { branchId?: string; shiftId?: string; clientId?: string }) {
+  findAll(filters: { branchId?: string; shiftId?: string; clientId?: string; cashierOrgUserId?: string }) {
     return this.tenantPrisma.run((tx) =>
       tx.sale.findMany({
         where: {
@@ -577,6 +577,7 @@ export class SalesService {
           // printed on a customer's receipt (returns/refund flow), not a
           // general search field.
           clientId: filters.clientId,
+          cashierOrgUserId: filters.cashierOrgUserId,
         },
         include: SALE_INCLUDE,
         orderBy: { createdAt: 'desc' },

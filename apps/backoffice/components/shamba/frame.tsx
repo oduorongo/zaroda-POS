@@ -1,10 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 import { clearSession, getSession, type Session } from "../../lib/auth";
 import { SHAMBA_BRAND } from "../../lib/shamba";
+import { menuFor } from "../../lib/menu";
+import { useIdleLogout } from "../../hooks/use-idle-logout";
+import { SideNav } from "../side-nav";
 
 const FOOTNOTE = "Powered by ZARODA SOLUTIONS - Innovative. Reliable. Forward. - WhatsApp 0781230805 - Call 0724282065";
 
@@ -43,9 +46,9 @@ export function ShambaPublicFrame({ children }: { children: ReactNode }) {
             <Link href="/shamba/guide" className="hover:underline">
               Guide
             </Link>
-            <Link href="/shamba/login" className="hover:underline">
+            <a href="/login" className="hover:underline">
               Sign in
-            </Link>
+            </a>
             <Link href="/shamba/signup" className="rounded-lg px-3 py-1.5 font-semibold" style={{ background: SHAMBA_BRAND.orange }}>
               Start free
             </Link>
@@ -58,25 +61,16 @@ export function ShambaPublicFrame({ children }: { children: ReactNode }) {
   );
 }
 
-const LINKS: [string, string][] = [
-  ["/shamba", "Farm"],
-  ["/shamba/animals", "Animals"],
-  ["/shamba/health", "Health"],
-  ["/shamba/layout", "Layout"],
-  ["/shamba/enterprises", "Enterprises"],
-  ["/shamba/staff", "Staff"],
-];
-
 /** Signed-in farm screens: a farm session only; anyone else is sent to sign in. */
 export function ShambaAppFrame({ children }: { children: (session: Session) => ReactNode }) {
   const router = useRouter();
-  const pathname = usePathname();
   const [session, setSession] = useState<Session | null>(null);
+  useIdleLogout();
 
   useEffect(() => {
     const s = getSession();
     if (!s || s.industryType !== "FARM") {
-      router.replace("/shamba/login");
+      router.replace("/login");
       return;
     }
     setSession(s);
@@ -85,35 +79,17 @@ export function ShambaAppFrame({ children }: { children: (session: Session) => R
   if (!session) return null;
   return (
     <div className="flex min-h-screen flex-col bg-secondary-50 text-secondary-900">
-      <header className="border-b-[3px]" style={{ background: SHAMBA_BRAND.navy, borderColor: SHAMBA_BRAND.gold }}>
-        <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-3">
-          <Link href="/shamba">
-            <Brand />
-          </Link>
-          <nav className="flex flex-wrap items-center gap-1 text-sm">
-            {LINKS.map(([href, label]) => (
-              <Link
-                key={href}
-                href={href}
-                className="rounded-md px-3 py-1.5 text-white hover:bg-white/10"
-                style={pathname === href ? { background: "rgba(255,255,255,0.15)", fontWeight: 600 } : undefined}
-              >
-                {label}
-              </Link>
-            ))}
-            <button
-              type="button"
-              className="rounded-md px-3 py-1.5 text-white/80 hover:bg-white/10"
-              onClick={() => {
-                clearSession();
-                router.replace("/shamba/login");
-              }}
-            >
-              Sign out
-            </button>
-          </nav>
-        </div>
-      </header>
+      <SideNav
+        title="ZARODA SHAMBA"
+        subtitle={session.orgName ?? "Zaroda Shamba"}
+        homeHref="/shamba"
+        items={menuFor(session)}
+        user={session.email}
+        onSignOut={() => {
+          clearSession();
+          router.replace("/login");
+        }}
+      />
       <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-6">{children(session)}</main>
       <Footer />
     </div>

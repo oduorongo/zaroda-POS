@@ -116,6 +116,11 @@ body::after {
   pointer-events: none;
   z-index: 2147483000;
 }
+/* Room for the fixed left sidebar (components/side-nav.tsx) on a computer screen. */
+@media (min-width: 1024px) {
+  body.has-sidenav { padding-left: 16rem; }
+}
 @media print {
+  body.has-sidenav { padding-left: 0; }
   body::after { display: none; }
 }

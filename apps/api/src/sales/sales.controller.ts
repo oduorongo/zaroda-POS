@@ -7,8 +7,11 @@ import {
   Patch,
   Post,
   Query,
+  Req,
 } from '@nestjs/common';
 import { Role } from '@prisma/client';
+import type { Request } from 'express';
+import type { AuthenticatedUser } from '../auth/authenticated-user.interface';
 import { Roles } from '../auth/roles.decorator';
 import { SalesService } from './sales.service';
 import { ApproveDiscountDto, CreateSaleDto } from './dto/create-sale.dto';
@@ -32,13 +35,16 @@ export class SalesController {
     return this.sales.create(dto);
   }
 
+  // A cashier lists only their own sales; looking up one receipt by clientId (returns at the till) stays open.
   @Get()
   findAll(
+    @Req() req: Request & { user?: AuthenticatedUser },
     @Query('branchId') branchId?: string,
     @Query('shiftId') shiftId?: string,
     @Query('clientId') clientId?: string,
   ) {
-    return this.sales.findAll({ branchId, shiftId, clientId });
+    const own = req.user?.role === Role.CASHIER && !clientId ? req.user.orgUserId : undefined;
+    return this.sales.findAll({ branchId, shiftId, clientId, cashierOrgUserId: own });
   }
 
   @Get(':id')
