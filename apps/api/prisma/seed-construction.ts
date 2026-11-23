@@ -18,7 +18,7 @@ const inDays = (n: number) => new Date(Date.UTC(new Date().getUTCFullYear(), new
  * Demo construction tenant "Uriri Builders Ltd" (NCA5 Building, NCA6 Roads) on the Contractor plan, with staff in construction
  * roles and a compliance vault showing green, amber and red documents. Dev/demo only. Run after the construction migration:
  *   npx ts-node prisma/seed-construction.ts
- * Sign in with director@uriri.demo / password123 (also compliance@, qs@, accounts@, pm@, site@, procurement@, store@).
+ * Sign in at /login with director@uriri.demo / DEMO_PASSWORD (default password123; set your own on a live database) (also compliance@, qs@, accounts@, pm@, site@, procurement@, store@).
  * Portal (emailed code; shown on screen when email is not set up): client@, cqs@, arch@, sub@uriri.demo.
  * Three projects: PRJ-001 (classrooms, on programme), a smaller market job running late, and an 11 kV REREC power line (C9).
  */
@@ -40,7 +40,7 @@ async function seedAddons(orgId: string) {
   const bands = (await prisma.conPayoutFeeBand.findMany()).map((b) => ({ upTo: b.upTo === null ? null : Number(b.upTo), darajaCost: Number(b.darajaCost), markup: Number(b.markup) }));
   await prisma.$transaction(async (tx) => {
     await tx.$executeRaw`SELECT set_config('app.current_tenant', ${orgId}, true)`;
-    if (await tx.conFeeInvoice.count()) {
+    if (await tx.conFeeInvoice.count({ where: { organizationId: orgId } })) {
       console.log("Add-ons already seeded - nothing to do.");
       return;
     }
@@ -55,7 +55,7 @@ async function seedAddons(orgId: string) {
     lm.setUTCDate(1);
     lm.setUTCMonth(lm.getUTCMonth() - 1);
     const month = lm.toISOString().slice(0, 7);
-    const project = await tx.conProject.findFirst({ where: { name: "Uriri Day Secondary Classrooms" } });
+    const project = await tx.conProject.findFirst({ where: { organizationId: orgId, name: "Uriri Day Secondary Classrooms" } });
     const charges = [2400, 4800, 12600].map((net, i) => ({ ...payoutFee(bands, net), net, i }));
     const invoice = await tx.conFeeInvoice.create({ data: { organizationId: orgId, periodMonth: month, total: charges.reduce((a, c) => a + c.amount, 0) } });
     await tx.conFeeCharge.createMany({
@@ -66,7 +66,7 @@ async function seedAddons(orgId: string) {
   });
 }
 
-const hashed = bcrypt.hash("password123", 10);
+const hashed = bcrypt.hash(process.env.DEMO_PASSWORD || "password123", 10);
 
 /** C1: the business, staff, plan, NCA registrations and compliance vault. */
 async function seedCompany(): Promise<string> {
@@ -124,7 +124,7 @@ async function seedCompany(): Promise<string> {
     { timeout: 60_000, maxWait: 30_000 },
   );
 
-  console.log(`Seeded Uriri Builders Ltd (${orgId}). Sign in with director@uriri.demo / password123.`);
+  console.log(`Seeded Uriri Builders Ltd (${orgId}). Sign in at /login with director@uriri.demo and the DEMO_PASSWORD (default password123).`);
   return orgId;
 }
 
@@ -182,7 +182,7 @@ async function seedProject(orgId: string) {
   await prisma.$transaction(
     async (tx) => {
       await tx.$executeRaw`SELECT set_config('app.current_tenant', ${orgId}, true)`;
-      if (await tx.conProject.findFirst({ where: { name } })) {
+      if (await tx.conProject.findFirst({ where: { organizationId: orgId, name } })) {
         console.log(`${name} already exists - nothing to do.`);
         return;
       }
@@ -289,7 +289,7 @@ async function seedSite(orgId: string) {
   await prisma.$transaction(
     async (tx) => {
       await tx.$executeRaw`SELECT set_config('app.current_tenant', ${orgId}, true)`;
-      const project = await tx.conProject.findFirst({ where: { name: "Uriri Day Secondary Classrooms" } });
+      const project = await tx.conProject.findFirst({ where: { organizationId: orgId, name: "Uriri Day Secondary Classrooms" } });
       if (!project) return;
       if (await tx.conWorker.count({ where: { projectId: project.id } })) {
         console.log("Site workers already seeded - nothing to do.");
@@ -325,7 +325,7 @@ async function seedSite(orgId: string) {
           },
         });
       }
-      const architect = await tx.conParty.findFirst({ where: { kind: "ARCHITECT" } });
+      const architect = await tx.conParty.findFirst({ where: { organizationId: orgId, kind: "ARCHITECT" } });
       await tx.conSiteInstruction.createMany({
         data: [
           { organizationId: orgId, projectId: pid, number: "SI-001", partyId: architect?.id, date: inDays(-12), description: "Raise ring beam by one course to suit revised window heights.", status: "ACTIONED" },
@@ -371,7 +371,7 @@ async function seedMaterials(orgId: string) {
   await prisma.$transaction(
     async (tx) => {
       await tx.$executeRaw`SELECT set_config('app.current_tenant', ${orgId}, true)`;
-      const project = await tx.conProject.findFirst({ where: { name: "Uriri Day Secondary Classrooms" } });
+      const project = await tx.conProject.findFirst({ where: { organizationId: orgId, name: "Uriri Day Secondary Classrooms" } });
       if (!project) return;
       if (await tx.conLpo.count({ where: { projectId: project.id } })) {
         console.log("Materials already seeded - nothing to do.");
@@ -395,7 +395,7 @@ async function seedMaterials(orgId: string) {
 
       const variants: Record<string, { id: string }> = {};
       for (const [name, unit, mode, cost, budget] of MATERIALS) {
-        const product = (await tx.product.findFirst({ where: { name } })) ?? (await tx.product.create({ data: { organizationId: orgId, name, baseUnit: unit } }));
+        const product = (await tx.product.findFirst({ where: { organizationId: orgId, name } })) ?? (await tx.product.create({ data: { organizationId: orgId, name, baseUnit: unit } }));
         const variant = (await tx.productVariant.findFirst({ where: { productId: product.id } })) ?? (await tx.productVariant.create({ data: { productId: product.id, sku: `MAT-${name.replace(/[^A-Z0-9]/gi, "").slice(0, 10).toUpperCase()}`, price: 0, cost, quantityMode: mode } }));
         variants[name] = variant;
         await tx.conMaterialBudget.create({ data: { organizationId: orgId, projectId: pid, variantId: variant.id, qty: budget } });
@@ -425,7 +425,7 @@ async function seedMaterials(orgId: string) {
       await tx.conLpo.create({ data: { organizationId: orgId, projectId: pid, purchaseOrderId: po1.id, requisitionId: req.id, number: "LPO-001", status: "APPROVED", total: total1, deliverBy: inDays(-6), createdBy: proc.id, approvedBy: director!.id, approvedAt: inDays(-10) } });
 
       const year = new Date().getUTCFullYear();
-      let seq = (await tx.goodsReceipt.count({ where: { receiptNumber: { startsWith: `GRN-${year}-` } } })) + 1;
+      let seq = (await tx.goodsReceipt.count({ where: { organizationId: orgId, receiptNumber: { startsWith: `GRN-${year}-` } } })) + 1;
       const deliveries: [number, [number, number][]][] = [[-7, [[0, 200], [1, 150], [3, 20]]], [-3, [[0, 150]]]];
       const received = new Map<number, number>();
       for (const [when, items] of deliveries) {
@@ -473,7 +473,7 @@ async function seedCommercial(orgId: string) {
   await prisma.$transaction(
     async (tx) => {
       await tx.$executeRaw`SELECT set_config('app.current_tenant', ${orgId}, true)`;
-      const project = await tx.conProject.findFirst({ where: { name: "Uriri Day Secondary Classrooms" } });
+      const project = await tx.conProject.findFirst({ where: { organizationId: orgId, name: "Uriri Day Secondary Classrooms" } });
       if (!project) return;
       if (await tx.conValuation.count({ where: { projectId: project.id } })) {
         console.log("Valuations already seeded - nothing to do.");
@@ -555,11 +555,11 @@ async function seedPayrollPortal(orgId: string) {
     async (tx) => {
       await tx.$executeRaw`SELECT set_config('app.current_tenant', ${orgId}, true)`;
       await new ConSetupService(prisma as unknown as PrismaService).ensure(tx, orgId);
-      await tx.conTaxSetting.updateMany({ where: { key: "NSSF", threshold: null }, data: { threshold: 72000 } });
-      await tx.conTaxSetting.updateMany({ where: { key: "SHIF", threshold: null }, data: { threshold: 300 } });
-      const project = await tx.conProject.findFirst({ where: { name: "Uriri Day Secondary Classrooms" } });
+      await tx.conTaxSetting.updateMany({ where: { organizationId: orgId, key: "NSSF", threshold: null }, data: { threshold: 72000 } });
+      await tx.conTaxSetting.updateMany({ where: { organizationId: orgId, key: "SHIF", threshold: null }, data: { threshold: 300 } });
+      const project = await tx.conProject.findFirst({ where: { organizationId: orgId, name: "Uriri Day Secondary Classrooms" } });
       if (!project) return;
-      if (await tx.conPortalUser.count()) {
+      if (await tx.conPortalUser.count({ where: { organizationId: orgId } })) {
         console.log("Payroll and portal already seeded - nothing to do.");
         return;
       }
@@ -567,7 +567,7 @@ async function seedPayrollPortal(orgId: string) {
       const by = (email: string) => tx.orgUser.findFirst({ where: { user: { email } } });
       const [accounts, director, qsUser] = await Promise.all([by("accounts@uriri.demo"), by("director@uriri.demo"), by("qs@uriri.demo")]);
 
-      const settings = await tx.conTaxSetting.findMany({ where: { key: { in: PAYROLL_KEYS }, active: true } });
+      const settings = await tx.conTaxSetting.findMany({ where: { organizationId: orgId, key: { in: PAYROLL_KEYS }, active: true } });
       const rates = payrollRates(new Map(settings.map((r) => [r.key, { rate: Number(r.rate), threshold: r.threshold === null ? null : Number(r.threshold) }])));
       const muster = await tx.conMuster.findMany({ where: { projectId: pid, date: { gte: inDays(-6), lte: inDays(-4) }, status: { not: "ABSENT" } }, include: { worker: true } });
       const byWorker = new Map<string, { days: number; rate: number }>();
@@ -596,7 +596,7 @@ async function seedPayrollPortal(orgId: string) {
       const sc = await tx.conSubcontract.create({ data: { organizationId: orgId, projectId: pid, partyId: sub.id, ref: nextCode("SC", (await tx.conSubcontract.findMany({ where: { projectId: pid }, select: { ref: true } })).map((r) => r.ref)), scope: "Plumbing, drainage and rainwater goods", sum: 1200000, createdBy: qsUser!.id } });
       await tx.conSubValuation.create({ data: { organizationId: orgId, subcontractId: sc.id, number: 1, grossToDate: 320000, retention: 32000, previousPaid: 0, netDue: 288000, status: "PAID", createdBy: qsUser!.id, approvedBy: director!.id, approvedAt: inDays(-10), paidAt: inDays(-8), paymentRef: "EFT/NPW/0013" } });
 
-      const parties = await tx.conParty.findMany({ where: { kind: { in: ["CLIENT", "QS", "ARCHITECT"] } } });
+      const parties = await tx.conParty.findMany({ where: { organizationId: orgId, kind: { in: ["CLIENT", "QS", "ARCHITECT"] } } });
       const party = (kind: string) => parties.find((p) => p.kind === kind && (kind !== "CLIENT" || p.id === project.clientId))?.id ?? null;
       const people: { email: string; name: string; role: ConRoleCode; partyId: string | null }[] = [
         { email: "client@uriri.demo", name: "The Principal, Uriri Day Secondary", role: "CON_CLIENT", partyId: party("CLIENT") },
@@ -626,7 +626,7 @@ async function seedSecondProject(orgId: string) {
   await prisma.$transaction(
     async (tx) => {
       await tx.$executeRaw`SELECT set_config('app.current_tenant', ${orgId}, true)`;
-      if (await tx.conProject.findFirst({ where: { name } })) {
+      if (await tx.conProject.findFirst({ where: { organizationId: orgId, name } })) {
         console.log(`${name} already exists - nothing to do.`);
         return;
       }
@@ -674,7 +674,7 @@ async function seedPowerLine(orgId: string) {
   await prisma.$transaction(
     async (tx) => {
       await tx.$executeRaw`SELECT set_config('app.current_tenant', ${orgId}, true)`;
-      if (await tx.conProject.findFirst({ where: { name } })) {
+      if (await tx.conProject.findFirst({ where: { organizationId: orgId, name } })) {
         console.log(`${name} already exists - nothing to do.`);
         return;
       }
