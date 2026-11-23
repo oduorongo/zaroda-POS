@@ -21,7 +21,7 @@ const startOfDay = (offsetDays: number) => {
 };
 const siteOf = (v: string | undefined) => (v ?? '').trim().replace(/^https?:\/\//, '').replace(/\/+$/, '');
 /** Where a training owner signs in: the one sign-in page in the back office, whatever the business type. */
-export const signInUrl = (_industryType: string) => {
+export const signInUrl = () => {
   const site = siteOf(process.env.BACKOFFICE_BASE_URL);
   return site ? `https://${site}/login` : null;
 };
@@ -76,7 +76,7 @@ export class TrainingAccountsService {
     return TRAINING_TYPES.flatMap((t) => {
       const r = rows.find((x) => x.industryType === t);
       return r
-        ? [{ industryType: t, signInUrl: signInUrl(t), label: kitLabel(t), businessName: r.organization.name, ownerEmail: r.ownerEmail, organizationId: r.organizationId, passwordSetAt: r.passwordSetAt, onlineShop: online.get(r.organizationId) ?? null }]
+        ? [{ industryType: t, signInUrl: signInUrl(), label: kitLabel(t), businessName: r.organization.name, ownerEmail: r.ownerEmail, organizationId: r.organizationId, passwordSetAt: r.passwordSetAt, onlineShop: online.get(r.organizationId) ?? null }]
         : [];
     });
   }

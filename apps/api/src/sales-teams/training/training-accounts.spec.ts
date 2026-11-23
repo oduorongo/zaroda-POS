@@ -47,16 +47,14 @@ describe('training accounts', () => {
       process.env.BACKOFFICE_BASE_URL = 'https://app.example.test/';
       process.env.CONSTRUCTION_DOMAIN = 'build.example.test';
       process.env.RENTALS_DOMAIN = 'rentals.example.test';
-      expect(signInUrl('CONSTRUCTION')).toBe('https://app.example.test/login');
-      expect(signInUrl('RENTAL')).toBe('https://app.example.test/login');
-      expect(signInUrl('RETAIL')).toBe('https://app.example.test/login');
+      expect(signInUrl()).toBe('https://app.example.test/login');
     });
 
     it('is empty when no address is configured', () => {
       delete process.env.BACKOFFICE_BASE_URL;
       delete process.env.CONSTRUCTION_DOMAIN;
       delete process.env.RENTALS_DOMAIN;
-      expect(signInUrl('RETAIL')).toBeNull();
+      expect(signInUrl()).toBeNull();
     });
   });
 
