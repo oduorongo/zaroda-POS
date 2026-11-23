@@ -20,10 +20,9 @@ const startOfDay = (offsetDays: number) => {
   return new Date(d.getTime() + offsetDays * DAY);
 };
 const siteOf = (v: string | undefined) => (v ?? '').trim().replace(/^https?:\/\//, '').replace(/\/+$/, '');
-/** Where a training owner signs in: construction and rentals on their own sites once set, everything else in the back office. */
-export const signInUrl = (industryType: string) => {
-  const own = industryType === 'CONSTRUCTION' ? siteOf(process.env.CONSTRUCTION_DOMAIN) : industryType === 'RENTAL' ? siteOf(process.env.RENTALS_DOMAIN) : '';
-  const site = own || siteOf(process.env.BACKOFFICE_BASE_URL);
+/** Where a training owner signs in: the one sign-in page in the back office, whatever the business type. */
+export const signInUrl = (_industryType: string) => {
+  const site = siteOf(process.env.BACKOFFICE_BASE_URL);
   return site ? `https://${site}/login` : null;
 };
 const pick = <T>(xs: T[]) => xs[randomInt(xs.length)];

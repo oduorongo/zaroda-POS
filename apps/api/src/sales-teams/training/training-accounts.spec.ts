@@ -43,11 +43,11 @@ describe('training accounts', () => {
       process.env = { ...saved };
     });
 
-    it('sends construction to its own site and the rest to the back office', () => {
+    it('sends every business type to the one sign-in in the back office', () => {
       process.env.BACKOFFICE_BASE_URL = 'https://app.example.test/';
       process.env.CONSTRUCTION_DOMAIN = 'build.example.test';
-      delete process.env.RENTALS_DOMAIN;
-      expect(signInUrl('CONSTRUCTION')).toBe('https://build.example.test/login');
+      process.env.RENTALS_DOMAIN = 'rentals.example.test';
+      expect(signInUrl('CONSTRUCTION')).toBe('https://app.example.test/login');
       expect(signInUrl('RENTAL')).toBe('https://app.example.test/login');
       expect(signInUrl('RETAIL')).toBe('https://app.example.test/login');
     });
