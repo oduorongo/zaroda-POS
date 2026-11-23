@@ -3,7 +3,7 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { getOrganization } from "../../../lib/api";
-import { setSession, clearSession, decodeRole, homePath, isBackofficeRole, isCaretaker } from "../../../lib/auth";
+import { setSession, clearSession, decodeRole, homePath, canSignIn } from "../../../lib/auth";
 
 const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:3001";
 
@@ -30,19 +30,15 @@ export default function AuthCallbackPage() {
 
       try {
         const role = decodeRole(token) ?? "OWNER";
-
-        // Same guard as /login - in practice signup always creates an
-        // OWNER, but a cashier arriving via any path must be blocked the
-        // same way, never handed a back-office session.
-        if (!isBackofficeRole(role) && !isCaretaker(role)) {
+        const { industryType, name } = (await getOrganization(apiBaseUrl, token)) as { industryType: string; name?: string };
+        // Same rule as /login.
+        if (!canSignIn(role, industryType)) {
           clearSession();
           history.replaceState(null, "", window.location.pathname);
           router.replace("/login");
           return;
         }
-
-        const { industryType } = await getOrganization(apiBaseUrl, token);
-        setSession({ apiBaseUrl, accessToken: token, role, email, industryType });
+        setSession({ apiBaseUrl, accessToken: token, role, email, industryType, orgName: name });
         history.replaceState(null, "", window.location.pathname);
         router.replace(homePath(role, industryType));
       } catch {

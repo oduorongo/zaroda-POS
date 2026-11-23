@@ -45,6 +45,7 @@ import {
 import { getSession, clearSession, isBackofficeRole, homePath, type Session } from "../../lib/auth";
 import { useIdleLogout } from "../../hooks/use-idle-logout";
 import { Nav } from "../../components/nav";
+import { menuFor } from "../../lib/menu";
 
 
 type Tile = {
@@ -270,6 +271,9 @@ export default function DashboardPage() {
     tiles.push({ href: "/rooms", label: "Rooms & housekeeping", description: "Your rooms, room types, bookings and housekeeping.", icon: BedDouble, tone: "bg-amber-600" });
     if (session.industryType === "HOTEL") tiles.push({ href: "/restaurant", label: "Restaurant", description: "Tables, kitchen and open bills (optional for a hotel).", icon: UtensilsCrossed, tone: "bg-amber-600" });
   }
+  // Only the tiles this person's menu has (supervisors and cashiers get a few).
+  const allowed = new Set(menuFor(session).map((i) => i.href));
+  const shown = tiles.filter((t) => allowed.has(t.href));
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -284,7 +288,7 @@ export default function DashboardPage() {
         </div>
 
         <div className="mt-8 grid grid-cols-2 gap-4 sm:gap-5 md:grid-cols-3 lg:grid-cols-4">
-          {tiles.map((tile) => {
+          {shown.map((tile) => {
             const Icon = tile.icon;
             return (
               <Link

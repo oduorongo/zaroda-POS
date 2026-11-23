@@ -1,10 +1,10 @@
 "use client";
 
-import Link from "next/link";
 import { KENYA_COUNTIES, PasswordInput } from "@zaroda/ui";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { decodeRole, setSession } from "../../../lib/auth";
+import { openApp } from "../../../lib/product";
 import { ShambaPublicFrame } from "../../../components/shamba/frame";
 import { SHAMBA_BRAND, inputClass } from "../../../lib/shamba";
 
@@ -39,7 +39,7 @@ export default function ShambaSignup() {
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(typeof json.message === "string" ? json.message : Array.isArray(json.message) ? json.message.join(", ") : "Sign up failed");
       setSession({ apiBaseUrl, accessToken: json.accessToken, role: decodeRole(json.accessToken) ?? "OWNER", email: f.ownerEmail.trim(), industryType: "FARM", orgName: f.organizationName.trim() });
-      router.replace("/shamba");
+      openApp("/shamba", json.accessToken, f.ownerEmail.trim(), (p) => router.replace(p));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Sign up failed");
     } finally {
@@ -83,9 +83,9 @@ export default function ShambaSignup() {
             {busy ? "Setting up your farm..." : "Create my farm"}
           </button>
         </form>
-        <Link href="/shamba/login" className="mt-4 block text-center text-sm" style={{ color: SHAMBA_BRAND.navy }}>
+        <a href="/login" className="mt-4 block text-center text-sm" style={{ color: SHAMBA_BRAND.navy }}>
           Already have an account? Sign in
-        </Link>
+        </a>
       </main>
     </ShambaPublicFrame>
   );

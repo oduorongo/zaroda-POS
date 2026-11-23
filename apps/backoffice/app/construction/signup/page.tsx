@@ -1,10 +1,10 @@
 "use client";
 
-import Link from "next/link";
 import { KENYA_COUNTIES, PasswordInput } from "@zaroda/ui";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { decodeRole, setSession } from "../../../lib/auth";
+import { openApp } from "../../../lib/product";
 import { CON_BRAND } from "../../../lib/construction";
 import { PhotoSplit, PublicFrame } from "../../../components/construction/public-frame";
 import { Field, inputClass } from "../../../components/construction/ui";
@@ -40,7 +40,7 @@ export default function ConstructionSignup() {
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(typeof json.message === "string" ? json.message : Array.isArray(json.message) ? json.message.join(", ") : "Sign up failed");
       setSession({ apiBaseUrl, accessToken: json.accessToken, role: decodeRole(json.accessToken) ?? "OWNER", email: f.ownerEmail.trim(), industryType: "CONSTRUCTION", orgName: f.organizationName.trim() });
-      router.replace("/construction");
+      openApp("/construction", json.accessToken, f.ownerEmail.trim(), (p) => router.replace(p));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Sign up failed");
     } finally {
@@ -70,7 +70,7 @@ export default function ConstructionSignup() {
             {busy ? "Setting up..." : "Create my account"}
           </button>
         </form>
-        <Link href="/construction/login" className="mt-4 block text-center text-sm" style={{ color: "var(--con-ink)" }}>Already have an account? Sign in</Link>
+        <a href="/login" className="mt-4 block text-center text-sm" style={{ color: "var(--con-ink)" }}>Already have an account? Sign in</a>
       </main>
       </PhotoSplit>
     </PublicFrame>

@@ -22,7 +22,7 @@ export function PublicFrame({ children, backdrop }: { children: ReactNode; backd
           <nav className="flex items-center gap-3 text-sm">
             <Link href="/construction/pricing" className="text-white/85 no-underline hover:text-white">Pricing</Link>
             <Link href="/construction/guide" className="hidden text-white/85 no-underline hover:text-white sm:inline">Guide</Link>
-            <Link href="/construction/login" className="text-white/85 no-underline hover:text-white">Sign in</Link>
+            <a href="/login" className="text-white/85 no-underline hover:text-white">Sign in</a>
             <Link href="/construction/signup" className="rounded-md px-3 py-1.5 font-semibold no-underline" style={{ background: CON_BRAND.orange, color: "white" }}>
               Free trial
             </Link>
