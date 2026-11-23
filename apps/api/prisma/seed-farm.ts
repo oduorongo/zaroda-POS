@@ -8,7 +8,7 @@ import { addDays, asDate, todayKey } from "../src/farm/farm-livestock.util";
 /**
  * Zaroda Shamba demo farm (docs/farm): "Uriri Dairy & Poultry Farm" with its staff, layout and enterprises.
  * Safe to re-run: an existing demo farm is left as it is. Run: pnpm --filter api seed:farm
- * Sign in at /shamba/login as owner@shamba.demo (password123).
+ * Sign in at /login as owner@shamba.demo with DEMO_PASSWORD (default password123; set your own on a live database).
  */
 const prisma = new PrismaClient();
 const DAY = 86_400_000;
@@ -20,7 +20,7 @@ async function main() {
     return;
   }
   const orgId = randomUUID();
-  const hash = await bcrypt.hash("password123", 10);
+  const hash = await bcrypt.hash(process.env.DEMO_PASSWORD || "password123", 10);
   const staff: { email: string; fullName: string; role: Role; farm: FarmRoleCode[] }[] = [
     { email: "owner@shamba.demo", fullName: "Grace Akinyi", role: Role.OWNER, farm: [FarmRoleCode.FARM_OWNER] },
     { email: "manager@shamba.demo", fullName: "Peter Ochieng", role: Role.MANAGER, farm: [FarmRoleCode.FARM_MANAGER] },
@@ -82,7 +82,7 @@ async function main() {
     { timeout: 60_000, maxWait: 15_000 },
   );
   await seedLivestock(orgId);
-  console.log("Seeded the demo farm. Sign in at /shamba/login as owner@shamba.demo / password123.");
+  console.log("Seeded the demo farm. Sign in at /login as owner@shamba.demo and the DEMO_PASSWORD (default password123).");
 }
 
 /** F2: herd, flocks, drugs, programmes, a treatment still in withdrawal and a cow in calf. Skipped once the farm has animals. */
@@ -90,14 +90,14 @@ async function seedLivestock(orgId: string) {
   await prisma.$transaction(
     async (tx) => {
       await tx.$executeRaw`SELECT set_config('app.current_tenant', ${orgId}, true)`;
-      if (await tx.farmAnimal.count()) {
+      if (await tx.farmAnimal.count({ where: { organizationId: orgId } })) {
         console.log("The demo farm already has its animals - nothing to do.");
         return;
       }
       const today = todayKey();
       const ago = (n: number) => addDays(today, -n);
-      const unitId = async (name: string) => (await tx.farmUnit.findFirst({ where: { name } }))?.id ?? null;
-      const entId = async (name: string) => (await tx.farmEnterprise.findFirst({ where: { name } }))?.id ?? null;
+      const unitId = async (name: string) => (await tx.farmUnit.findFirst({ where: { organizationId: orgId, name } }))?.id ?? null;
+      const entId = async (name: string) => (await tx.farmEnterprise.findFirst({ where: { organizationId: orgId, name } }))?.id ?? null;
       const [cowShed, calfPen, goatHouse, layersHouse, kienyejiRun, dairy, goats, layers, kienyeji] = await Promise.all([
         unitId("Zero-grazing cow shed"),
         unitId("Calf pens"),
