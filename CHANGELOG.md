@@ -1,5 +1,12 @@
 # Changelog
 
+## Each product on its own address (2026-11-24)
+
+- Until POS_DOMAIN is set, a page of another product opened on a product address moves to that product's own address: a farm opened on build.zarodasolutions.app goes to shamba.zarodasolutions.app (and Build and Rentals the same way). Once POS_DOMAIN is set, everything still moves to the main address as before.
+- Signing in on the wrong product address hands the session to the right one through /auth/callback, so nobody signs in twice.
+- The farm dashboard links to Milk, Eggs and Yields, and no longer says milk and eggs are coming.
+- No DB step.
+
 ## Rentals only for rental businesses (2026-11-24)
 
 - The Rentals server now refuses any business that is not a rental business (like Build already does): properties, tenants, rent, adverts, short stays, M-Pesa settings and the Rentals plan. A farm, shop or contractor gets "This is only for rental businesses (ZARODA RENTALS)." The business type is remembered for a minute, so this adds no database trip to most requests.

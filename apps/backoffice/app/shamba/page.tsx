@@ -145,9 +145,14 @@ function Dashboard() {
               <span>{data.usage.users}</span>
             </li>
           </ul>
-          <p className="mt-4 text-xs text-secondary-500">
-            Milk and eggs, crops, feed mixing and selling come next.
-          </p>
+          <ul className="mt-3 space-y-2 border-t border-secondary-100 pt-3 text-sm">
+            <li className="flex justify-between">
+              <Link href="/shamba/milk" className="underline">Record milk</Link>
+              <Link href="/shamba/eggs" className="underline">Record eggs</Link>
+              <Link href="/shamba/production" className="underline">Yields</Link>
+            </li>
+          </ul>
+          <p className="mt-4 text-xs text-secondary-500">Crops, feed mixing and selling on credit come next.</p>
         </Card>
       </div>
     </div>

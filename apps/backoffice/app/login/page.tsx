@@ -5,7 +5,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { login, getOrganization, ApiError } from "../../lib/api";
 import { setSession, clearSession, decodeRole, homePath, canSignIn } from "../../lib/auth";
-import { constructionUrl, rentalsUrl, shambaUrl } from "../../lib/product";
+import { constructionUrl, openApp, rentalsUrl, shambaUrl } from "../../lib/product";
 
 const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:3001";
 const TERMINAL_URL = process.env.NEXT_PUBLIC_TERMINAL_URL ?? "https://pos.zarodashop.com";
@@ -34,7 +34,7 @@ export default function LoginPage() {
         return;
       }
       setSession({ apiBaseUrl, accessToken, role, email: email.trim(), industryType: org.industryType, orgName: org.name });
-      router.replace(homePath(role, org.industryType));
+      openApp(homePath(role, org.industryType), accessToken, email.trim(), (p) => router.replace(p));
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Login failed - check the API URL and try again");
     } finally {
