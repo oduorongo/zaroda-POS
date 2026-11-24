@@ -54,7 +54,7 @@ export interface DeviceCredentials {
 /**
  * A business's eTIMS setup: the on/off switch, its KRA PIN, and one device per branch. Connecting a device is the first call to
  * KRA: it checks the PIN, branch and serial, and hands back the key every later call carries. That key is stored encrypted and
- * never shown. Live KRA is refused for now - this build talks to the sandbox only, until the integration is certified.
+ * never shown. Live KRA stays closed to a business until the platform admin approves it (after KRA certifies the integration).
  */
 @Injectable()
 export class EtimsSettingsService {
@@ -106,8 +106,8 @@ export class EtimsSettingsService {
         salesStartAt: setting?.salesStartAt ?? null,
         tin: setting?.tin ?? null,
         taxpayerName: setting?.taxpayerName ?? null,
-        // live KRA needs the integration to be certified first
-        productionAvailable: false,
+        // live KRA opens per business once the platform admin approves it (after KRA certification)
+        productionAvailable: Boolean(setting?.liveApprovedAt),
         branches: branches.map((b) => ({
           branchId: b.id,
           branchName: b.name,
@@ -121,10 +121,6 @@ export class EtimsSettingsService {
 
   async update(dto: UpdateEtimsSettingsDto) {
     const { organizationId } = getTenantStore();
-    if (dto.environment === 'PRODUCTION')
-      throw new BadRequestException(
-        'Live eTIMS is not available yet. It opens after KRA has certified this integration - for now only the test (sandbox) setup can be used.',
-      );
     let tin: string | undefined;
     if (dto.tin !== undefined) {
       tin = normalizePin(dto.tin);
@@ -135,6 +131,16 @@ export class EtimsSettingsService {
     }
     await this.tenantPrisma.run(async (tx) => {
       const before = await tx.etimsSetting.findFirst();
+      const switching = dto.environment !== undefined && dto.environment !== (before?.environment ?? 'SANDBOX');
+      if (switching && dto.environment === 'PRODUCTION' && !before?.liveApprovedAt)
+        throw new BadRequestException(
+          'Live eTIMS is not open for this business yet. ZARODA turns it on once KRA has certified the integration - until then only the test (sandbox) setup can be used.',
+        );
+      // each device's key belongs to one KRA system, so devices are reconnected after a switch
+      if (switching && (await tx.etimsDevice.count({ where: { status: 'ACTIVE' } })) > 0)
+        throw new ConflictException(
+          'Disconnect every branch device before switching between test and live eTIMS, then connect them again with the details KRA gave for that system.',
+        );
       if (tin !== undefined && before?.tin && before.tin !== tin) {
         const connected = await tx.etimsDevice.count({
           where: { status: 'ACTIVE' },
@@ -156,6 +162,7 @@ export class EtimsSettingsService {
         ...(dto.sendSales !== undefined ? { sendSales: dto.sendSales } : {}),
         ...(dto.sendSales === true && !before?.sendSales ? { salesStartAt: new Date(), stockScannedAt: null } : {}),
         ...(tin !== undefined ? { tin } : {}),
+        ...(switching ? { environment: dto.environment } : {}),
       };
       await tx.etimsSetting.upsert({
         where: { organizationId },
@@ -166,7 +173,7 @@ export class EtimsSettingsService {
         action: 'etims.settings_updated',
         entityType: 'EtimsSetting',
         entityId: organizationId,
-        before: { enabled: before?.enabled ?? false, tin: before?.tin ?? null },
+        before: { enabled: before?.enabled ?? false, tin: before?.tin ?? null, environment: before?.environment ?? 'SANDBOX' },
         after: data,
       });
     });

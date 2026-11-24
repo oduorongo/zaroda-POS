@@ -1,5 +1,12 @@
 # Changelog
 
+## KRA eTIMS in the platform admin (2026-11-24)
+
+- New platform admin page "KRA eTIMS": save ZARODA's GavaConnect consumer key and secret for test and live (secret stored encrypted, never shown again), with "Save and test" and "Test connection" asking KRA's gateway for a token. Saved keys replace the ETIMS_*_CONSUMER_* server settings within a minute; those stay as the fallback.
+- Every business with eTIMS listed: on/off, test or live, PIN, each branch device's status and last error, and documents sent / waiting / refused / needing a person.
+- "Allow live" per business (after KRA certification). The business then sees "Switch to live" on its eTIMS page; switching needs every branch disconnected first, because each device key belongs to one KRA system. Live can only be withdrawn while the business is back on test. All admin actions are audit-logged.
+- DB: migration 20270113100000_etims_platform_admin, then apply-rls (adds a read-only platform policy on etims_settings). Run BOTH before merging.
+
 ## One sign-in and a role-based sidebar (2026-11-23)
 
 - One sign-in for everyone at the main address (zarodashop.com/login opens it): shops, hotels, Build, Rentals and Shamba. Each person lands on their own home. The Build, Rentals and Shamba addresses keep their welcome, pricing, guide and sign-up pages. Their sign-in and working screens move to the main address once POS_DOMAIN is set; sign-up hands the new session over without asking for the password again.

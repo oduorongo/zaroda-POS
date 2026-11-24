@@ -122,7 +122,12 @@ export default function EtimsSettingsPage() {
         {error && <p className="rounded-md bg-red-950 p-3 text-sm text-red-300">{error}</p>}
         {notice && <p className="rounded-md bg-green-950 p-3 text-sm text-green-300">{notice}</p>}
         <p className="rounded-md bg-amber-950 p-3 text-sm text-amber-200">
-          This talks to KRA&apos;s <strong>test</strong> system only, so nothing you send here counts as a real tax record yet. Selling never waits for KRA: a sale is always completed at the till, and sent to KRA afterwards in the background.
+          {data?.environment === "PRODUCTION" ? (
+            <>This talks to KRA&apos;s <strong>live</strong> system: what you send here is a real tax record.</>
+          ) : (
+            <>This talks to KRA&apos;s <strong>test</strong> system, so nothing you send here counts as a real tax record yet.</>
+          )}{" "}
+          Selling never waits for KRA: a sale is always completed at the till, and sent to KRA afterwards in the background.
         </p>
 
         {data && (
@@ -137,7 +142,22 @@ export default function EtimsSettingsPage() {
                 <input type="checkbox" disabled={!canWrite} checked={data.enabled} onChange={(e) => void run("switch", () => apiPut("/etims/settings", { enabled: e.target.checked, tin: anyActive || !tin.trim() ? undefined : tin }), e.target.checked ? "eTIMS is on." : "eTIMS is off.")} />
                 Use eTIMS for this business
               </label>
-              <p className="text-sm text-secondary-500">Environment: <strong>Test (sandbox)</strong>. Live KRA opens after KRA has certified this integration.{data.taxpayerName ? ` KRA knows this business as "${data.taxpayerName}".` : ""}</p>
+              <p className="text-sm text-secondary-500">
+                Environment: <strong>{data.environment === "PRODUCTION" ? "Live" : "Test (sandbox)"}</strong>.{" "}
+                {data.productionAvailable ? "ZARODA has opened live KRA to this business." : "Live KRA opens once ZARODA turns it on for you, after KRA has certified the integration."}
+                {data.taxpayerName ? ` KRA knows this business as "${data.taxpayerName}".` : ""}
+              </p>
+              {canWrite && data.productionAvailable && (
+                anyActive ? (
+                  <p className="text-xs text-secondary-500">To switch between test and live, disconnect every branch first, then connect again with the details KRA gave for that system.</p>
+                ) : (
+                  <button className={ghost} disabled={busy !== null} onClick={() => {
+                    const live = data.environment !== "PRODUCTION";
+                    if (live && !window.confirm("Switch to live KRA eTIMS? From now on what you send is a real tax record. Connect each branch again with the live branch ID and device serial KRA gave you.")) return;
+                    void run("env", () => apiPut("/etims/settings", { environment: live ? "PRODUCTION" : "SANDBOX" }), live ? "Switched to live KRA eTIMS. Connect your branches again." : "Switched back to the test system.");
+                  }}>{data.environment === "PRODUCTION" ? "Switch back to test" : "Switch to live"}</button>
+                )
+              )}
               {canWrite && !anyActive && (
                 <button className={ghost} disabled={busy !== null || !tin.trim()} onClick={() => void run("pin", () => apiPut("/etims/settings", { tin }), "PIN saved.")}>Save the PIN</button>
               )}
@@ -185,7 +205,7 @@ export default function EtimsSettingsPage() {
               <label className="flex items-center gap-2 text-sm">
                 <input type="checkbox" disabled={!canWrite || busy !== null || !data.enabled || !anyActive} checked={data.sendSales} onChange={(e) => {
                   if (!e.target.checked && !window.confirm(`${KRA_WARNING}\n\nStop sending sales to KRA?`)) return;
-                  void run("send", () => apiPut("/etims/settings", { sendSales: e.target.checked }), e.target.checked ? "Sales are now sent to KRA (the test system), starting from now." : "Sales are no longer sent to KRA.");
+                  void run("send", () => apiPut("/etims/settings", { sendSales: e.target.checked }), e.target.checked ? `Sales are now sent to KRA (the ${data.environment === "PRODUCTION" ? "live" : "test"} system), starting from now.` : "Sales are no longer sent to KRA.");
                 }} />
                 Send my sales to KRA
               </label>

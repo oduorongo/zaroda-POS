@@ -1249,6 +1249,11 @@ DROP POLICY IF EXISTS tenant_isolation ON etims_settings;
 CREATE POLICY tenant_isolation ON etims_settings
   USING ("organizationId" = current_setting('app.current_tenant', true))
   WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+-- The platform admin's eTIMS screen lists every business's switch with no tenant set: read-only, like the billing tables' read arm.
+DROP POLICY IF EXISTS platform_read ON etims_settings;
+CREATE POLICY platform_read ON etims_settings FOR SELECT
+  USING (NULLIF(current_setting('app.current_tenant', true), '') IS NULL);
+-- etims_gateways: deliberately NO RLS - ZARODA's own GavaConnect keys (secret encrypted), no organizationId, like plans.
 
 ALTER TABLE etims_devices ENABLE ROW LEVEL SECURITY;
 ALTER TABLE etims_devices FORCE ROW LEVEL SECURITY;
