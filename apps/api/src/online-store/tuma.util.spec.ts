@@ -5,6 +5,7 @@ import {
   parseCallback,
   parseStatusResponse,
   parseStkResponse,
+  stkRefusalMessage,
 } from './tuma.util';
 
 describe('isSuccessStatus', () => {
@@ -72,5 +73,17 @@ describe('judgePayment', () => {
   it('is unconfirmed for anything not a clear success', () => {
     expect(judgePayment({ status: 'pending' }, 500).outcome).toBe('unconfirmed');
     expect(judgePayment({}, 500).outcome).toBe('unconfirmed');
+  });
+});
+
+describe('stkRefusalMessage', () => {
+  it('tells the payer to use another number when M-Pesa has blocked theirs', () => {
+    const msg = stkRefusalMessage('This M-Pesa number has been blacklisted for cancelling too many prompts');
+    expect(msg).toMatch(/different M-Pesa number/);
+    expect(msg).not.toMatch(/blacklisted/);
+  });
+
+  it('passes any other refusal through', () => {
+    expect(stkRefusalMessage('insufficient credits')).toBe('Payment could not be started: insufficient credits');
   });
 });

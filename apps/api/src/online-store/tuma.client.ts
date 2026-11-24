@@ -6,6 +6,7 @@ import {
   judgePayment,
   parseStatusResponse,
   parseStkResponse,
+  stkRefusalMessage,
 } from './tuma.util';
 
 export interface TumaCredentials {
@@ -101,7 +102,7 @@ export class TumaClient {
       const { merchantRequestId } = parseStkResponse(body);
       if (!response.ok || !merchantRequestId) {
         const detail = Array.isArray(body.message) ? body.message.join(', ') : typeof body.message === 'string' ? body.message : response.status;
-        throw new BadRequestException(`Payment could not be started: ${detail}`);
+        throw new BadRequestException(stkRefusalMessage(String(detail)));
       }
       return { merchantRequestId };
     }
