@@ -9,7 +9,9 @@ const STEPS: [string, string][] = [
   ["4. Give your team their jobs", "Add staff in the back office, then under Staff give each person their farm role: farm manager, herdsman, vet, crops officer, feed miller, storekeeper, sales or auditor. A herdsman can be limited to his sheds; a crops officer to her fields."],
   ["5. Add your animals", "Animals: add cows, goats and pigs one by one with their ear tag, and poultry as a flock with a head count. Add your drugs with the withdrawal days from the label."],
   ["6. Health and breeding", "On an animal: record sickness, treatments, AI or service, births (the calf gets its own record) and weights. Treated animals show 'Withheld' until their milk or meat can be sold. Health lists what is due; on Mkulima and up, set vaccination programmes and get SMS and email reminders."],
-  ["7. Coming next", "Milk and egg records, crops, feed mixing and selling your produce."],
+  ["7. Milk and eggs", "Under Yields & produce > Settings, make (or choose) the milk and egg products once. Then on Milk, pick the milking (morning, midday, evening) and type each cow's litres; on Eggs, each flock's good, cracked and small eggs, feed and deaths. Milk and eggs for sale go straight into stock for the till. Milk or eggs from treated animals are withheld and never reach stock, so they cannot be sold."],
+  ["8. Yields and other produce", "Yields & produce shows milk, eggs and lay % by day, week and month, and each cow's litres a day. Record honey, manure, fish and other produce there too - into stock if you sell it."],
+  ["9. Coming next", "Crops, feed mixing, casual workers and selling on credit."],
 ];
 
 export default function ShambaGuide() {
