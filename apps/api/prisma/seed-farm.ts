@@ -207,10 +207,10 @@ async function seedLivestock(orgId: string) {
           task({ groupId: kienyejiFlock.id }, "VACCINATED", "Newcastle booster: Kienyeji flock", today, ncdP.id),
         ],
       });
+      console.log("Seeded the demo farm's animals, flocks, drugs and programmes.");
     },
     { timeout: 60_000, maxWait: 15_000 },
   );
-  console.log("Seeded the demo farm's animals, flocks, drugs and programmes.");
 }
 
 main()
