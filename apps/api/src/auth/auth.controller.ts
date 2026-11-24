@@ -1,10 +1,14 @@
-import { Body, Controller, Post } from '@nestjs/common';
+import { Body, Controller, HttpCode, Post, Req } from '@nestjs/common';
+import type { Request } from 'express';
 import { Throttle } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 import { PinLoginDto } from './dto/pin-login.dto';
 import { RegisterOrganizationDto } from './dto/register-organization.dto';
 import { Public } from './public.decorator';
+import { AuthenticatedUser } from './authenticated-user.interface';
+import { ChangePasswordDto, ForgotPasswordDto, ResetPasswordDto } from './dto/password.dto';
+import { PasswordResetService } from './password-reset.service';
 
 // Stricter than the app-wide default (100/min - see app.module.ts): these
 // are the only two public, pre-JWT endpoints, and pin-login's 4-8 digit
@@ -15,7 +19,10 @@ const AUTH_THROTTLE = { default: { limit: 5, ttl: 60_000 } };
 
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly auth: AuthService) {}
+  constructor(
+    private readonly auth: AuthService,
+    private readonly passwords: PasswordResetService,
+  ) {}
 
   @Public()
   @Throttle(AUTH_THROTTLE)
@@ -39,5 +46,29 @@ export class AuthController {
   @Post('register')
   register(@Body() dto: RegisterOrganizationDto) {
     return this.auth.register(dto);
+  }
+
+  @Public()
+  @Throttle(AUTH_THROTTLE)
+  @HttpCode(200)
+  @Post('forgot-password')
+  forgotPassword(@Body() dto: ForgotPasswordDto) {
+    return this.passwords.requestCode(dto.email);
+  }
+
+  @Public()
+  @Throttle(AUTH_THROTTLE)
+  @HttpCode(200)
+  @Post('reset-password')
+  resetPassword(@Body() dto: ResetPasswordDto) {
+    return this.passwords.resetWithCode(dto.email, dto.code, dto.newPassword);
+  }
+
+  // Any signed-in back office user, for their own account only.
+  @Throttle(AUTH_THROTTLE)
+  @HttpCode(200)
+  @Post('change-password')
+  changePassword(@Req() req: Request, @Body() dto: ChangePasswordDto) {
+    return this.passwords.change((req.user as AuthenticatedUser).userId, dto.currentPassword, dto.newPassword);
   }
 }

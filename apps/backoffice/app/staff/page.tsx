@@ -62,6 +62,12 @@ export default function StaffPage() {
   const [pinError, setPinError] = useState<string | null>(null);
   const [pinSuccessId, setPinSuccessId] = useState<string | null>(null);
 
+  const [pwForId, setPwForId] = useState<string | null>(null);
+  const [pwValue, setPwValue] = useState("");
+  const [pwBusy, setPwBusy] = useState(false);
+  const [pwError, setPwError] = useState<string | null>(null);
+  const [pwSuccessId, setPwSuccessId] = useState<string | null>(null);
+
   useEffect(() => {
     const s = getSession();
     if (!s) {
@@ -156,6 +162,23 @@ export default function StaffPage() {
       setEditError(err instanceof ApiError ? err.message : "Could not update this person.");
     } finally {
       setEditBusy(false);
+    }
+  }
+
+  async function savePassword() {
+    if (!pwForId || pwValue.length < 8) return;
+    setPwBusy(true);
+    setPwError(null);
+    try {
+      await apiPatch(`/org-users/${pwForId}/password`, { newPassword: pwValue });
+      setPwSuccessId(pwForId);
+      setTimeout(() => setPwSuccessId(null), 5000);
+      setPwForId(null);
+      setPwValue("");
+    } catch (err) {
+      setPwError(err instanceof ApiError ? err.message : "Could not set the password.");
+    } finally {
+      setPwBusy(false);
     }
   }
 
@@ -267,7 +290,7 @@ export default function StaffPage() {
                       {u.role} · {u.branchId ? `Branch ${u.branchId.slice(0, 8)}...` : "All branches"}
                     </p>
                   </div>
-                  <div className="flex gap-2">
+                  <div className="flex flex-wrap justify-end gap-2">
                     <button onClick={() => startEdit(u)} className="rounded-md bg-surface px-3 py-1.5 text-sm hover:bg-border">
                       Edit role
                     </button>
@@ -281,6 +304,18 @@ export default function StaffPage() {
                     >
                       Set PIN
                     </button>
+                    {u.role !== "OWNER" && (
+                      <button
+                        onClick={() => {
+                          setPwForId(u.id);
+                          setPwValue("");
+                          setPwError(null);
+                        }}
+                        className="rounded-md bg-surface px-3 py-1.5 text-sm hover:bg-border"
+                      >
+                        Set password
+                      </button>
+                    )}
                     <button
                       onClick={() => void toggleActive(u)}
                       disabled={statusBusyId === u.id}
@@ -291,6 +326,29 @@ export default function StaffPage() {
                   </div>
                 </div>
                 {pinSuccessId === u.id && <p className="mt-2 text-sm text-green-400">PIN updated.</p>}
+                {pwSuccessId === u.id && <p className="mt-2 text-sm text-primary-600">Password set. Tell them the new password in person; they can change it under &quot;My password&quot;.</p>}
+                {pwForId === u.id && (
+                  <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-border pt-3">
+                    <PasswordInput
+                      placeholder="New password (8+ characters)"
+                      value={pwValue}
+                      onChange={(e) => setPwValue(e.target.value)}
+                      autoComplete="new-password"
+                      className="rounded-md border border-border bg-background p-2 text-sm"
+                    />
+                    <button
+                      onClick={() => void savePassword()}
+                      disabled={pwBusy || pwValue.length < 8}
+                      className="rounded-md bg-primary-600 px-3 py-2 text-sm font-semibold hover:bg-primary-500 disabled:opacity-40"
+                    >
+                      Set
+                    </button>
+                    <button onClick={() => setPwForId(null)} className="rounded-md bg-border px-3 py-2 text-sm">
+                      Cancel
+                    </button>
+                    {pwError && <p className="w-full text-sm text-red-400">{pwError}</p>}
+                  </div>
+                )}
 
                 {editingId === u.id && (
                   <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-border pt-3">

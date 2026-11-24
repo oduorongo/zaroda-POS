@@ -14,6 +14,7 @@ import { OrgUsersService } from './org-users.service';
 import { CreateOrgUserDto } from './dto/create-org-user.dto';
 import { UpdateOrgUserDto } from './dto/update-org-user.dto';
 import { SetPinDto } from './dto/set-pin.dto';
+import { SetStaffPasswordDto } from '../auth/dto/password.dto';
 
 // JwtAuthGuard is global (see app.module.ts). findAll has no @Roles(),
 // deliberately: a cashier switching PIN needs to see the same list a
@@ -51,6 +52,12 @@ export class OrgUsersController {
   @Patch(':id/pin')
   setPin(@Param('id', ParseUUIDPipe) id: string, @Body() dto: SetPinDto) {
     return this.orgUsers.setPin(id, dto);
+  }
+
+  @Roles(Role.MANAGER, Role.OWNER)
+  @Patch(':id/password')
+  setPassword(@Param('id', ParseUUIDPipe) id: string, @Body() dto: SetStaffPasswordDto) {
+    return this.orgUsers.setPassword(id, dto.newPassword);
   }
 
   // Soft-delete, not a DELETE route - see OrgUsersService.setActive's

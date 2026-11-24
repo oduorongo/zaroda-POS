@@ -311,9 +311,28 @@ model User {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  orgUsers OrgUser[]
+  orgUsers           OrgUser[]
+  passwordResetCodes PasswordResetCode[]
 
   @@map("users")
+}
+
+// A 6-digit "forgot password" code emailed to a back office user. Only its
+// hash is kept; it lasts 15 minutes, allows 5 tries and works once. Like
+// `users`, not tenant-scoped (one account can belong to several businesses).
+model PasswordResetCode {
+  id         String    @id @default(uuid())
+  userId     String
+  codeHash   String
+  expiresAt  DateTime
+  attempts   Int       @default(0)
+  consumedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@map("password_reset_codes")
 }
 
 // A user's membership in an organization, with an optional branch scope

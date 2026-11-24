@@ -80,3 +80,19 @@ export async function getOrganization(apiBaseUrl: string, accessToken: string): 
   }
   return json as { industryType: string };
 }
+
+/** For the signed-out password screens: posts to the API with no session. */
+export async function publicPost<T>(apiBaseUrl: string, path: string, body: unknown): Promise<T> {
+  const response = await fetch(`${apiBaseUrl.replace(/\/+$/, "")}${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const json: unknown = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const raw = typeof json === "object" && json && "message" in json ? (json as { message: unknown }).message : null;
+    const message = Array.isArray(raw) ? raw.join(", ") : typeof raw === "string" ? raw : `Request failed (${response.status})`;
+    throw new ApiError(message, response.status);
+  }
+  return json as T;
+}

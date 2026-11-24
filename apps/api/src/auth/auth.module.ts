@@ -7,6 +7,7 @@ import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { JwtStrategy } from './jwt.strategy';
 import { PinLockoutService } from './pin-lockout.service';
+import { PasswordResetService } from './password-reset.service';
 
 @Module({
   imports: [
@@ -24,7 +25,7 @@ import { PinLockoutService } from './pin-lockout.service';
       }),
     }),
   ],
-  providers: [AuthService, JwtStrategy, PinLockoutService],
+  providers: [AuthService, JwtStrategy, PinLockoutService, PasswordResetService],
   controllers: [AuthController],
   exports: [AuthService],
 })

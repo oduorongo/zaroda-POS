@@ -27,6 +27,10 @@ const INTENTIONALLY_EXCLUDED = new Set([
   // A user account can belong to multiple organizations (org_users is the
   // tenant-scoped join table) - see rls.sql's "users itself" comment.
   'users',
+  // Forgot-password codes belong to a user account, not a business - same reason.
+  'password_reset_codes',
+  // Zaroda's own KRA GavaConnect keys, read only by the server and platform admin - see rls.sql.
+  'etims_gateways',
   // The platform-admin app's own schema - internal, cross-tenant tooling
   // that connects as a separate BYPASSRLS role, never tenant-facing.
   'platform_admins',

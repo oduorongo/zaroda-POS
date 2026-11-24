@@ -644,6 +644,8 @@ CREATE POLICY tenant_isolation ON organizations
 -- The application layer restricts which user rows are readable per request
 -- by only ever looking users up via an org_users row already filtered by
 -- the policies above - never by scanning `users` directly with tenant trust.
+-- password_reset_codes: forgot-password codes for a user account, so not
+-- tenant-scoped either; only ever looked up by the user the code was sent to.
 
 -- ── platform billing tables ───────────────────────────────────────────────
 -- plans: deliberately NO RLS policy - a global price list with no
