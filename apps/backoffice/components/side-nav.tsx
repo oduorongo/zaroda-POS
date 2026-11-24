@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
-import { LogOut, Menu, X } from "lucide-react";
+import { KeyRound, LogOut, Menu, X } from "lucide-react";
 import { ThemeToggle } from "@zaroda/ui";
 import type { MenuItem } from "../lib/menu";
 
@@ -95,7 +95,11 @@ export function SideNav({ title, subtitle, homeHref, items, user, actions, onSig
       </nav>
 
       <div className="border-t border-white/10 px-4 py-3">
-        {user && <div className="mb-2 truncate text-xs text-white/60">{user}</div>}
+        {user && <div className="mb-1 truncate text-xs text-white/60">{user}</div>}
+        <Link href="/account" className="mb-2 inline-flex items-center gap-1.5 text-xs text-white/70 no-underline hover:text-white hover:underline">
+          <KeyRound size={12} />
+          My password
+        </Link>
         <div className="flex items-center gap-2">
           <ThemeToggle className="text-white hover:bg-white/10 hover:text-white" />
           <span className="hidden lg:contents">{actions}</span>

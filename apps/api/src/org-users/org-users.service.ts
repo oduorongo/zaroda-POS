@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -217,6 +218,35 @@ export class OrgUsersService {
       }),
     );
 
+    return { ok: true };
+  }
+
+  /**
+   * An owner or manager gives a staff member a new password (they tell them in person). Never for an owner, nor by a manager
+   * for another manager, nor for your own account (use "Change my password"), and never for someone who also works for another
+   * business - their password opens that business too, so they reset it themselves by email.
+   */
+  async setPassword(id: string, newPassword: string) {
+    const { orgUserId, role } = getTenantStore();
+    const orgUser = await this.tenantPrisma.run((tx) => tx.orgUser.findUnique({ where: { id } }));
+    if (!orgUser) throw new NotFoundException('Org user not found');
+    if (id === orgUserId) throw new BadRequestException('To change your own password, open "My password" at the bottom of the menu');
+    if (orgUser.role === 'OWNER') throw new ForbiddenException("An owner's password can only be changed by the owner, or reset with \"Forgot password?\" on the sign-in page");
+    if (role !== 'OWNER' && orgUser.role === 'MANAGER') throw new ForbiddenException("Only the owner can set a manager's password");
+
+    const elsewhere = await this.prisma.$queryRaw<{ n: bigint }[]>`
+      SELECT count(*) AS n FROM org_users WHERE "userId" = ${orgUser.userId} AND "organizationId" <> ${orgUser.organizationId}`;
+    if (Number(elsewhere[0]?.n ?? 0) > 0) {
+      throw new ConflictException('This person also works for another business on Zaroda, so only they can change their password: ask them to use "Forgot password?" on the sign-in page');
+    }
+
+    await this.prisma.user.update({
+      where: { id: orgUser.userId },
+      data: { passwordHash: await bcrypt.hash(newPassword, SALT_ROUNDS) },
+    });
+    await this.tenantPrisma.run((tx) =>
+      this.auditLog.logInTx(tx, { action: 'org_user.password_set', entityType: 'OrgUser', entityId: id }),
+    );
     return { ok: true };
   }
 

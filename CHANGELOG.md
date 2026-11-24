@@ -1,5 +1,13 @@
 # Changelog
 
+## Password reset options (2026-11-24)
+
+- "Forgot password?" on the sign-in page: a 6-digit code goes to the account's email (15 minutes, 5 tries, works once, 3 codes an hour). The page answers the same whether or not the email has an account.
+- "My password" at the bottom of every sidebar (shops, Build, Rentals, Shamba): change your own password with the current one.
+- Staff > "Set password": an owner can set the password of anyone but an owner; a manager can set it for staff below manager. Refused for someone who also works for another business (they use Forgot password).
+- Every change is written to the audit log of each business the person belongs to.
+- DB: migration 20270114100000_password_reset_codes (new table, no tenant RLS like users). Run migrate deploy BEFORE merging; apply-rls only adds a comment.
+
 ## KRA eTIMS in the platform admin (2026-11-24)
 
 - New platform admin page "KRA eTIMS": save ZARODA's GavaConnect consumer key and secret for test and live (secret stored encrypted, never shown again), with "Save and test" and "Test connection" asking KRA's gateway for a token. Saved keys replace the ETIMS_*_CONSUMER_* server settings within a minute; those stay as the fallback.
