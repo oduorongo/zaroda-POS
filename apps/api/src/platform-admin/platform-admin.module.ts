@@ -18,6 +18,8 @@ import { PlatformConstructionController } from './platform-construction.controll
 import { ConstructionModule } from '../construction/construction.module';
 import { PlatformSeasonalController } from './platform-seasonal.controller';
 import { SeasonalBillingModule } from '../seasonal-billing/seasonal-billing.module';
+import { PlatformEtimsController } from './platform-etims.controller';
+import { EtimsModule } from '../etims/etims.module';
 
 @Module({
   imports: [
@@ -38,6 +40,8 @@ import { SeasonalBillingModule } from '../seasonal-billing/seasonal-billing.modu
     ConstructionModule,
     // Seasonal (school-term) plans: onboarding onto one, and the settings, due-date shifts and payments screens.
     SeasonalBillingModule,
+    // ZARODA's KRA GavaConnect keys and each business's live eTIMS approval.
+    EtimsModule,
     // A second, independent JwtModule registration (separate from
     // AuthModule's) - its own secret (PLATFORM_ADMIN_JWT_SECRET), its
     // own JwtService instance. Deliberately not sharing JWT_SECRET with
@@ -54,7 +58,7 @@ import { SeasonalBillingModule } from '../seasonal-billing/seasonal-billing.modu
       }),
     }),
   ],
-  controllers: [PlatformAdminController, PlatformAccountingController, PlatformConstructionController, PlatformSeasonalController],
+  controllers: [PlatformAdminController, PlatformAccountingController, PlatformConstructionController, PlatformSeasonalController, PlatformEtimsController],
   providers: [
     PlatformAdminAuthService,
     PlatformAdminService,

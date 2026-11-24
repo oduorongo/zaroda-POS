@@ -130,11 +130,22 @@ describe('updating the eTIMS settings', () => {
       inTenant(() => service.update({ tin: '12345' })),
     ).rejects.toThrow(/not a KRA PIN/);
   });
-  it('refuses live KRA for now', async () => {
+  it('refuses live KRA until the platform admin has approved the business', async () => {
     const { service } = setup();
     await expect(
       inTenant(() => service.update({ environment: 'PRODUCTION' })),
-    ).rejects.toThrow(/not available yet/);
+    ).rejects.toThrow(/not open for this business yet/);
+  });
+  it('switches an approved business to live once its devices are disconnected', async () => {
+    const approved = { enabled: true, environment: 'SANDBOX', tin: 'A123456789Z', liveApprovedAt: new Date() };
+    const busy = setup({ setting: approved });
+    busy.tx.etimsDevice.count.mockResolvedValue(1);
+    await expect(
+      inTenant(() => busy.service.update({ environment: 'PRODUCTION' })),
+    ).rejects.toThrow(/Disconnect every branch device/);
+    const free = setup({ setting: approved });
+    await inTenant(() => free.service.update({ environment: 'PRODUCTION' }));
+    expect(free.saved.setting.update.environment).toBe('PRODUCTION');
   });
   it('will not change the PIN while a device is connected under the old one', async () => {
     const { service, tx } = setup();

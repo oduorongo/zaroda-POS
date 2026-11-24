@@ -1,6 +1,8 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { EtimsEnvironment } from '@prisma/client';
+import { decryptSecret, parseEncryptionKey } from '../common/crypto/secret-box';
+import { PrismaService } from '../common/prisma/prisma.service';
 import { maskForLog } from './etims.util';
 
 export interface EtimsResponse<T = unknown> {
@@ -17,6 +19,7 @@ const TIMEOUT_MS = 20_000;
 const SANDBOX_TOKEN_URL = 'https://sbx.kra.go.ke/v1/token/generate';
 const PRODUCTION_TOKEN_URL = 'https://api.kra.go.ke/v1/token/generate';
 const TOKEN_EARLY_MS = 60_000;
+const SAVED_TTL_MS = 60_000;
 
 interface CachedToken {
   token: string;
@@ -34,8 +37,12 @@ interface CachedToken {
 export class EtimsClient {
   private readonly logger = new Logger(EtimsClient.name);
   private readonly tokens = new Map<EtimsEnvironment, CachedToken>();
+  private readonly saved = new Map<EtimsEnvironment, { value: { key: string; secret: string } | null; at: number }>();
 
-  constructor(private readonly config: ConfigService) {}
+  constructor(
+    private readonly config: ConfigService,
+    @Optional() private readonly prisma?: PrismaService,
+  ) {}
 
   baseUrl(environment: EtimsEnvironment): string {
     const url =
@@ -45,23 +52,62 @@ export class EtimsClient {
     return url.endsWith('/') ? url : `${url}/`;
   }
 
-  private credentials(environment: EtimsEnvironment): { key: string; secret: string; url: string } | null {
+  tokenUrl(environment: EtimsEnvironment): string {
+    const prefix = environment === 'PRODUCTION' ? 'ETIMS_PRODUCTION' : 'ETIMS_SANDBOX';
+    return this.config.get<string>(`${prefix}_TOKEN_URL`) ?? (environment === 'PRODUCTION' ? PRODUCTION_TOKEN_URL : SANDBOX_TOKEN_URL);
+  }
+
+  /** The keys saved in the platform admin (cached for a minute), else the host's ETIMS_*_CONSUMER_* settings. */
+  async keySource(environment: EtimsEnvironment): Promise<{ key: string; secret: string; from: 'ADMIN' | 'HOST' } | null> {
+    const saved = await this.savedKeys(environment);
+    if (saved) return { ...saved, from: 'ADMIN' };
     const prefix = environment === 'PRODUCTION' ? 'ETIMS_PRODUCTION' : 'ETIMS_SANDBOX';
     const key = this.config.get<string>(`${prefix}_CONSUMER_KEY`)?.trim();
     const secret = this.config.get<string>(`${prefix}_CONSUMER_SECRET`)?.trim();
-    if (!key || !secret) return null;
-    const url = this.config.get<string>(`${prefix}_TOKEN_URL`) ?? (environment === 'PRODUCTION' ? PRODUCTION_TOKEN_URL : SANDBOX_TOKEN_URL);
-    return { key, secret, url };
+    return key && secret ? { key, secret, from: 'HOST' } : null;
+  }
+
+  private async savedKeys(environment: EtimsEnvironment): Promise<{ key: string; secret: string } | null> {
+    if (!this.prisma) return null;
+    const hit = this.saved.get(environment);
+    if (hit && hit.at > Date.now() - SAVED_TTL_MS) return hit.value;
+    let value: { key: string; secret: string } | null = null;
+    try {
+      const row = await this.prisma.etimsGateway.findUnique({ where: { environment } });
+      if (row?.consumerKey && row.consumerSecretEnc)
+        value = { key: row.consumerKey, secret: decryptSecret(row.consumerSecretEnc, parseEncryptionKey(this.config.get<string>('SECRETS_ENCRYPTION_KEY'))) };
+    } catch (e) {
+      this.logger.warn({ environment, err: e instanceof Error ? e.message : String(e) }, 'Could not read the saved KRA gateway keys');
+    }
+    this.saved.set(environment, { value, at: Date.now() });
+    return value;
+  }
+
+  /** After the platform admin changes the keys: forget the cached keys and token so the next call uses the new ones. */
+  forget(environment: EtimsEnvironment) {
+    this.saved.delete(environment);
+    this.tokens.delete(environment);
+  }
+
+  private async credentials(environment: EtimsEnvironment): Promise<{ key: string; secret: string; url: string } | null> {
+    const k = await this.keySource(environment);
+    return k ? { key: k.key, secret: k.secret, url: this.tokenUrl(environment) } : null;
   }
 
   /** Whether calls to this environment go through the GavaConnect gateway (a consumer key and secret are set). */
-  usesGateway(environment: EtimsEnvironment): boolean {
-    return this.credentials(environment) !== null;
+  async usesGateway(environment: EtimsEnvironment): Promise<boolean> {
+    return (await this.credentials(environment)) !== null;
+  }
+
+  /** Asks KRA's gateway for a fresh token with the current keys: the platform admin's "Test connection". */
+  async testGateway(environment: EtimsEnvironment): Promise<{ ok: boolean; message: string }> {
+    const t = await this.token(environment, true);
+    return 'problem' in t ? { ok: false, message: t.problem } : { ok: true, message: "KRA's gateway accepted ZARODA's keys and issued a token." };
   }
 
   /** A gateway token: the cached one while it is good, else a new one; or why there is none. */
   private async token(environment: EtimsEnvironment, fresh = false): Promise<{ token: string } | { problem: string }> {
-    const creds = this.credentials(environment);
+    const creds = await this.credentials(environment);
     if (!creds) return { problem: 'No KRA gateway credentials are set' };
     const cached = this.tokens.get(environment);
     if (!fresh && cached && cached.expiresAt - TOKEN_EARLY_MS > Date.now()) return { token: cached.token };
@@ -107,7 +153,7 @@ export class EtimsClient {
     body: Record<string, unknown>,
   ): Promise<EtimsResponse<T>> {
     const url = `${this.baseUrl(environment)}${path.replace(/^\/+/, '')}`;
-    const gateway = this.usesGateway(environment);
+    const gateway = await this.usesGateway(environment);
     let token: string | null = null;
     if (gateway) {
       const t = await this.token(environment);

@@ -1,4 +1,5 @@
 import { EtimsClient } from './etims.client';
+import { encryptSecret } from '../common/crypto/secret-box';
 
 const config = (values: Record<string, string> = {}) => ({ get: (k: string) => values[k] }) as never;
 const KEYS = { ETIMS_SANDBOX_CONSUMER_KEY: 'ck', ETIMS_SANDBOX_CONSUMER_SECRET: 'cs' };
@@ -33,7 +34,7 @@ describe('EtimsClient through KRA GavaConnect', () => {
   it('without a consumer key, calls go out as before: no token, no extra headers', async () => {
     const calls = kra();
     const c = new EtimsClient(config());
-    expect(c.usesGateway('SANDBOX')).toBe(false);
+    expect(await c.usesGateway('SANDBOX')).toBe(false);
     await c.call('SANDBOX', 'saveTrnsSalesOsdc', sale);
     expect(calls).toHaveLength(1);
     expect(calls[0].init.headers).toEqual({ 'Content-Type': 'application/json', Accept: 'application/json' });
@@ -97,5 +98,26 @@ describe('EtimsClient through KRA GavaConnect', () => {
     expect(calls[0].url).toBe('https://api.kra.go.ke/v1/token/generate?grant_type=client_credentials');
     expect(calls[0].init.headers.Authorization).toBe(`Basic ${Buffer.from('pk:ps').toString('base64')}`);
     expect(calls[1].url).toBe('https://etims-api.kra.go.ke/etims-api/saveItem');
+  });
+
+  it('keys saved in the platform admin win over the host settings, and forget() picks up a change', async () => {
+    const calls = kra({ tokens: ['t1', 't2'] });
+    const secretKey = Buffer.alloc(32, 3).toString('base64');
+    const row = { consumerKey: 'admin-ck', consumerSecretEnc: encryptSecret('admin-cs', Buffer.from(secretKey, 'base64')) };
+    const prisma = { etimsGateway: { findUnique: jest.fn().mockResolvedValue(row) } };
+    const c = new EtimsClient(config({ ...KEYS, SECRETS_ENCRYPTION_KEY: secretKey }), prisma as never);
+    expect(await c.keySource('SANDBOX')).toMatchObject({ key: 'admin-ck', from: 'ADMIN' });
+    await c.call('SANDBOX', 'saveItem', sale);
+    expect(calls[0].init.headers.Authorization).toBe(`Basic ${Buffer.from('admin-ck:admin-cs').toString('base64')}`);
+    prisma.etimsGateway.findUnique.mockResolvedValue(null);
+    c.forget('SANDBOX');
+    expect(await c.keySource('SANDBOX')).toMatchObject({ key: 'ck', from: 'HOST' });
+  });
+
+  it('testGateway reports a refused key in plain words', async () => {
+    kra({ tokens: [null] });
+    const r = await new EtimsClient(config(KEYS)).testGateway('SANDBOX');
+    expect(r.ok).toBe(false);
+    expect(r.message).toMatch(/consumer key and secret/);
   });
 });

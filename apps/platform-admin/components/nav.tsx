@@ -14,6 +14,7 @@ const LINKS = [
   { href: "/rental-billing", label: "Rental billing" },
   { href: "/construction", label: "Construction" },
   { href: "/seasonal-billing", label: "Seasonal billing" },
+  { href: "/etims", label: "KRA eTIMS" },
   { href: "/adverts", label: "Adverts" },
   { href: "/tender-schools", label: "Tender schools" },
   { href: "/hospitality", label: "Hotels & dining" },

@@ -5404,11 +5404,29 @@ model EtimsSetting {
   custSeq        Int              @default(0)
   /// How far the scan for stock movements (adjustments, waste, transfers...) to report has got.
   stockScannedAt DateTime?
+  /// Set by the platform admin once KRA has certified ZARODA for this business: only then can it switch to live eTIMS.
+  liveApprovedAt DateTime?
+  liveApprovedBy String?
   updatedAt      DateTime         @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@map("etims_settings")
+}
+
+/// ZARODA's KRA GavaConnect keys, one row per environment, set from the platform admin. Overrides the ETIMS_*_CONSUMER_* settings.
+model EtimsGateway {
+  environment       EtimsEnvironment @id
+  consumerKey       String?
+  /// Encrypted. Never sent to a screen.
+  consumerSecretEnc String?
+  lastTestAt        DateTime?
+  lastTestOk        Boolean?
+  lastTestMessage   String?
+  updatedBy         String?
+  updatedAt         DateTime         @updatedAt
+
+  @@map("etims_gateways")
 }
 
 /// One OSCU "device" per branch: the branch's KRA branch ID and the device serial KRA approved, plus the key KRA hands back (kept encrypted).

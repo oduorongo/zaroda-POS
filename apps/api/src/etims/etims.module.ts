@@ -10,6 +10,7 @@ import { EtimsReceiptsService } from './etims-receipts.service';
 import { EtimsReportsService } from './etims-reports.service';
 import { EtimsPurchasesService } from './etims-purchases.service';
 import { EtimsSettingsService } from './etims-settings.service';
+import { EtimsPlatformService } from './etims-platform.service';
 
 /**
  * KRA eTIMS (OSCU) integration. Phase 1 is the foundation: a business's switch and PIN, one connected device per branch, and KRA's
@@ -29,7 +30,8 @@ import { EtimsSettingsService } from './etims-settings.service';
     EtimsReportsService,
     EtimsPurchasesService,
     EtimsSchedulerService,
+    EtimsPlatformService,
   ],
-  exports: [EtimsSettingsService, EtimsClient],
+  exports: [EtimsSettingsService, EtimsClient, EtimsPlatformService],
 })
 export class EtimsModule {}
