@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Query, UseInterceptors } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Query, UseInterceptors, UseGuards } from '@nestjs/common';
 import { Role } from '@prisma/client';
 import { Roles } from '../auth/roles.decorator';
 import {
@@ -13,9 +13,11 @@ import { RentalOpsService } from './rental-ops.service';
 import { RentalReadOnlyInterceptor } from './rental-read-only.interceptor';
 import { RentalRemindersService } from './rental-reminders.service';
 import { RentalReportService } from './rental-report.service';
+import { RentalBusinessGuard } from './rental-business.guard';
 
 /** Running the properties: expenses, maintenance, meters, reminders and the monthly report. Managers and owners only. */
 @Controller('rental')
+@UseGuards(RentalBusinessGuard)
 @Roles(Role.MANAGER, Role.OWNER)
 @UseInterceptors(RentalReadOnlyInterceptor)
 export class RentalOpsController {

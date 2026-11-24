@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { apiGet, apiPatch, apiPost, ApiError } from "../../lib/api";
-import { getSession, clearSession, isBackofficeRole, isCaretaker, type Session } from "../../lib/auth";
+import { getSession, clearSession, homePath, isBackofficeRole, isCaretaker, type Session } from "../../lib/auth";
 import { Nav } from "../../components/nav";
 import { RentSection } from "./rent-section";
 import { PlanSection } from "./plan-section";
@@ -128,7 +128,7 @@ export default function RentalsPage() {
       return;
     }
     if (s.industryType !== "RENTAL") {
-      router.replace("/sales");
+      router.replace(homePath(s.role, s.industryType));
       return;
     }
     setSession(s);

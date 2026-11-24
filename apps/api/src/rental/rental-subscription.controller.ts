@@ -1,10 +1,11 @@
-import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, UseGuards } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { Role } from '@prisma/client';
 import { Roles } from '../auth/roles.decorator';
 import { PayPlatformInvoiceDto } from './dto/rental-platform-invoice.dto';
 import { RentalPlatformBillingService } from './rental-platform-billing.service';
 import { RentalPlatformPaymentsService } from './rental-platform-payments.service';
+import { RentalBusinessGuard } from './rental-business.guard';
 
 // Each call can start an M-Pesa prompt on a real phone.
 const PAY_THROTTLE = { default: { limit: 5, ttl: 60_000 } };
@@ -14,6 +15,7 @@ const PAY_THROTTLE = { default: { limit: 5, ttl: 60_000 } };
  * account that has been made read-only must still be able to see what it owes - and pay it.
  */
 @Controller('rental/subscription')
+@UseGuards(RentalBusinessGuard)
 @Roles(Role.MANAGER, Role.OWNER)
 export class RentalSubscriptionController {
   constructor(

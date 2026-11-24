@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Delete, Get, Header, HttpCode, Param, ParseUUIDPipe, Patch, Post, Put, Query, UseInterceptors } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, Get, Header, HttpCode, Param, ParseUUIDPipe, Patch, Post, Put, Query, UseInterceptors, UseGuards } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { Role } from '@prisma/client';
 import { Public } from '../../auth/public.decorator';
@@ -22,11 +22,13 @@ import {
   StayVoidDto,
 } from './stays.dto';
 import { RentalStaysService } from './stays.service';
+import { RentalBusinessGuard } from '../rental-business.guard';
 
 const DESK = [Role.MANAGER, Role.OWNER, Role.CARETAKER];
 
 /** Short stays. Owners and managers run it all; a caretaker works the calendar, guests, payments and cleaning for their properties. */
 @Controller('rental/stays')
+@UseGuards(RentalBusinessGuard)
 @Roles(Role.MANAGER, Role.OWNER)
 @UseInterceptors(RentalReadOnlyInterceptor)
 export class RentalStaysController {

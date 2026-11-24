@@ -14,6 +14,7 @@ import {
   Req,
   UseInterceptors,
   Patch,
+  UseGuards,
 } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { Role } from '@prisma/client';
@@ -26,6 +27,7 @@ import { RentalListingPaymentsService } from './rental-listing-payments.service'
 import { PublicHousesService } from './public-houses.service';
 import { RentalListingsService } from './rental-listings.service';
 import { RentalReadOnlyInterceptor } from './rental-read-only.interceptor';
+import { RentalBusinessGuard } from './rental-business.guard';
 
 const UPLOAD_THROTTLE = { default: { limit: 30, ttl: 60_000 } };
 const PUBLIC_THROTTLE = { default: { limit: 60, ttl: 60_000 } };
@@ -39,6 +41,7 @@ const optionalNumber = (value?: string): number | undefined => {
 
 /** Landlord side: manage the "Houses to let" adverts for vacant units. Owners and managers only. */
 @Controller('rental')
+@UseGuards(RentalBusinessGuard)
 @UseInterceptors(RentalReadOnlyInterceptor)
 export class RentalListingsController {
   constructor(

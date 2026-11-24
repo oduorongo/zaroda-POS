@@ -9,6 +9,7 @@ import {
   Put,
   Query,
   UseInterceptors,
+  UseGuards,
 } from '@nestjs/common';
 import { Role } from '@prisma/client';
 import { Roles } from '../auth/roles.decorator';
@@ -32,10 +33,12 @@ import {
   UpdateUnitDto,
   VoidPaymentDto,
 } from './dto/rental.dto';
+import { RentalBusinessGuard } from './rental-business.guard';
 
 // JwtAuthGuard/RolesGuard are global. Reading is open to any signed-in role;
 // changing properties, units, tenants and leases is for managers and owners.
 @Controller('rental')
+@UseGuards(RentalBusinessGuard)
 @UseInterceptors(RentalReadOnlyInterceptor)
 export class RentalController {
   constructor(
