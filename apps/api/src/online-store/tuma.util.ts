@@ -169,3 +169,11 @@ export function jwtExpiryMs(token: string): number | null {
     return null;
   }
 }
+
+/** Tuma's refusal to send a prompt, in words the payer can act on. */
+export function stkRefusalMessage(detail: string): string {
+  if (/blacklist|blocked|too many/i.test(detail)) {
+    return 'This M-Pesa number has been blocked by M-Pesa for cancelling too many payment prompts. Use a different M-Pesa number, or contact support to have this one unblocked.';
+  }
+  return `Payment could not be started: ${detail}`;
+}
