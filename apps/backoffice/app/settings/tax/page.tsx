@@ -217,10 +217,10 @@ export default function TaxSettingsPage() {
               <CardHeader><CardTitle>eTIMS invoice sync log</CardTitle></CardHeader>
               <CardContent>
                 <EmptyState
-                  title="Sales are not sent to KRA yet"
-                  description="The connection to KRA's eTIMS (test system) can be set up now: your PIN, each branch's device and KRA's code lists. Sending sales comes next; when it does, every sale's status (pending / sent / failed, with retry) will show here."
+                  title="eTIMS has its own page"
+                  description="Connect to KRA's eTIMS (test system for now): your KRA PIN, each branch's device and KRA's code lists. Once connected, sales, credit notes, purchases and stock moves are sent to KRA, and each one's status (pending / sent / failed, with retry) shows on the eTIMS pages."
                 />
-                <Link href="/settings/etims" className="mt-3 inline-block text-sm text-primary-600 hover:underline">Set up the eTIMS connection</Link>
+                <Link href="/settings/etims" className="mt-3 inline-block text-sm text-primary-600 hover:underline">Open KRA eTIMS</Link>
               </CardContent>
             </Card>
           </>

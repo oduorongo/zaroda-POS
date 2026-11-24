@@ -61,6 +61,7 @@ const POS: Def[] = [
   { group: "Money", href: "/expenses", label: "Expenses", icon: Banknote, roles: MGR },
   { group: "Money", href: "/petty-cash", label: "Petty cash", icon: Coins, roles: MGR },
   { group: "Money", href: "/settings/tax", label: "Tax Settings", icon: Receipt, roles: MGR },
+  { group: "Money", href: "/settings/etims", label: "KRA eTIMS", icon: FileText },
   { group: "Money", href: "/subscription", label: "My subscription", icon: Receipt, roles: MGR, types: ["SCHOOL_SUPPLIER", "UNIFORM_MAKER"] },
 
   { group: "Help", href: "/guide", label: "Guide", icon: LifeBuoy, roles: ALL },
