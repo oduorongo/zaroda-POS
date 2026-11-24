@@ -1,5 +1,12 @@
 # Changelog
 
+## Rentals only for rental businesses (2026-11-24)
+
+- The Rentals server now refuses any business that is not a rental business (like Build already does): properties, tenants, rent, adverts, short stays, M-Pesa settings and the Rentals plan. A farm, shop or contractor gets "This is only for rental businesses (ZARODA RENTALS)." The business type is remembered for a minute, so this adds no database trip to most requests.
+- Public pages (houses to let, short-stay booking), the tenant portal and payment callbacks are unchanged.
+- The Rentals screen sends another kind of business to its own home (a farm to Shamba) instead of the shop Sales page.
+- No DB step.
+
 ## Zaroda Shamba F3: milk, eggs and other produce (2026-11-24)
 
 - Milk: a milking sheet for phones. Pick the day and milking (morning, midday, evening), type each cow's (or group's) litres and what it was for: for sale, calves, home or poured away. Each milking can be recorded once per cow; corrections are voids that keep the record.
