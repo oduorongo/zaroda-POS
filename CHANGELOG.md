@@ -1,5 +1,17 @@
 # Changelog
 
+## Zaroda Shamba F3: milk, eggs and other produce (2026-11-24)
+
+- Milk: a milking sheet for phones. Pick the day and milking (morning, midday, evening), type each cow's (or group's) litres and what it was for: for sale, calves, home or poured away. Each milking can be recorded once per cow; corrections are voids that keep the record.
+- Eggs: each flock's day (good, cracked and small eggs, feed eaten, birds died), with lay %. Deaths come off the flock's count; voiding gives them back.
+- Produce becomes POS stock: milk for sale and good eggs (as trays) go into the stock of the chosen branch as PRODUCTION movements, so the till sells them. "Make milk and egg products" creates Fresh milk (per litre) and Eggs (tray of 30) for a new farm.
+- Withdrawal blocks sale: milk or eggs from an animal or flock under a treatment withdrawal are saved as withheld and never reach stock, even if marked for sale.
+- Other produce (honey, manure, fish...) is recorded and, when a product is chosen, put into stock.
+- Yields & produce: milk, eggs, lay %, feed and deaths by day (30), week (12) and month (12), with bars, and each cow's litres a day over 30 days.
+- All records and voids are audit-logged. Herdsmen and managers record; only managers void or change the settings; people limited to some units see only their animals and flocks.
+- Demo farm: two weeks of milkings and egg records (the treated cow's milk withheld), 12 kg of honey, and the produce in stock.
+- DB: migration 20270115100000_shamba_production (4 tables), then apply-rls. Run BOTH before merging. Checks: scripts/e2e-shamba-production.js (27 pass on a freshly seeded farm).
+
 ## Password reset options (2026-11-24)
 
 - "Forgot password?" on the sign-in page: a 6-digit code goes to the account's email (15 minutes, 5 tries, works once, 3 codes an hour). The page answers the same whether or not the email has an account.

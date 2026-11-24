@@ -8732,3 +8732,105 @@ model FarmWeight {
   @@index([organizationId, animalId])
   @@map("farm_weights")
 }
+
+// ── Zaroda Shamba F3: production - milk, eggs and other produce (docs/farm/01-domain-spec.md) ────────────────────
+
+enum FarmMilkSession {
+  AM
+  NOON
+  PM
+}
+
+enum FarmMilkUse {
+  SOLD
+  CALVES
+  HOME
+  DISCARDED
+}
+
+/// Which POS products milk and eggs go into as stock, and the branch that receives them.
+model FarmProduceSettings {
+  id              String   @id @default(uuid())
+  organizationId  String   @unique
+  milkVariantId   String?
+  eggVariantId    String?
+  /// Eggs in one unit of the egg product (30 = a tray, 1 = single eggs).
+  eggsPerUnit     Int      @default(30)
+  branchId        String?
+  updatedAt       DateTime @updatedAt
+
+  @@map("farm_produce_settings")
+}
+
+/// Litres from one cow (or a group, on small farms) at one milking. Milk under withdrawal is withheld and never goes to stock.
+model FarmMilkRecord {
+  id             String          @id @default(uuid())
+  organizationId String
+  animalId       String?
+  groupId        String?
+  date           DateTime        @db.Date
+  session        FarmMilkSession
+  litres         Decimal         @db.Decimal(14, 3)
+  withheld       Boolean         @default(false)
+  use            FarmMilkUse
+  /// Litres put into POS stock (milk for sale, not withheld).
+  toStock        Decimal         @default(0) @db.Decimal(14, 3)
+  stockVariantId String?
+  stockBranchId  String?
+  createdBy      String?
+  voidedAt       DateTime?
+  voidReason     String?
+  createdAt      DateTime        @default(now())
+
+  @@index([organizationId, date])
+  @@index([organizationId, animalId])
+  @@map("farm_milk_records")
+}
+
+/// One flock's eggs for a day: good, cracked and small, feed eaten and birds that died.
+model FarmEggRecord {
+  id             String    @id @default(uuid())
+  organizationId String
+  groupId        String
+  date           DateTime  @db.Date
+  /// Birds in the flock that day, for the lay %.
+  birds          Int
+  goodEggs       Int
+  cracked        Int       @default(0)
+  small          Int       @default(0)
+  feedKg         Decimal?  @db.Decimal(14, 3)
+  deaths         Int       @default(0)
+  withheld       Boolean   @default(false)
+  toStock        Decimal   @default(0) @db.Decimal(14, 3)
+  stockVariantId String?
+  stockBranchId  String?
+  createdBy      String?
+  voidedAt       DateTime?
+  voidReason     String?
+  createdAt      DateTime  @default(now())
+
+  @@index([organizationId, date])
+  @@index([organizationId, groupId, date])
+  @@map("farm_egg_records")
+}
+
+/// Other produce: honey, manure, fish, wool... Goes into stock when a POS product is chosen.
+model FarmProduceRecord {
+  id             String    @id @default(uuid())
+  organizationId String
+  enterpriseId   String?
+  date           DateTime  @db.Date
+  product        String
+  quantity       Decimal   @db.Decimal(14, 3)
+  unit           String
+  note           String?
+  stockVariantId String?
+  stockBranchId  String?
+  createdBy      String?
+  voidedAt       DateTime?
+  voidReason     String?
+  createdAt      DateTime  @default(now())
+
+  @@index([organizationId, date])
+  @@map("farm_produce_records")
+}

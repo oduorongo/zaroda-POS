@@ -3,7 +3,7 @@ import {
   BarChart3, BedDouble, BookOpen, Boxes, BrainCircuit, Building2, CalendarDays, ClipboardCheck, ClipboardList, Coins, ConciergeBell,
   Factory, FileText, FolderKanban, GraduationCap, HardHat, Home, LayoutGrid, LifeBuoy, Mail, MapPinned, Package, PackageOpen, PiggyBank,
   Pill, Receipt, ScanBarcode, Scissors, Settings, ShieldCheck, Shirt, ShoppingBag, ShoppingCart, Store, Tags, Tractor, Trash2,
-  TrendingUp, Truck, UserRound, Users, UtensilsCrossed, Wallet, Banknote, Clock, Wrench, Beef, HeartPulse, Layers, Gavel,
+  TrendingUp, Truck, UserRound, Users, UtensilsCrossed, Wallet, Banknote, Clock, Wrench, Beef, HeartPulse, Layers, Gavel, Milk, Egg,
 } from "lucide-react";
 import type { Session } from "./auth";
 import { hasConRole, isDirector, type ConMe } from "./construction";
@@ -98,6 +98,9 @@ const FARM: Def[] = [
   { group: "Main", href: "/shamba", label: "Farm", icon: Tractor, roles: SUP },
   { group: "Main", href: "/shamba/animals", label: "Animals", icon: Beef, roles: SUP, match: ["/shamba/groups"] },
   { group: "Main", href: "/shamba/health", label: "Health", icon: HeartPulse, roles: SUP },
+  { group: "Production", href: "/shamba/milk", label: "Milk", icon: Milk, roles: SUP },
+  { group: "Production", href: "/shamba/eggs", label: "Eggs", icon: Egg, roles: SUP },
+  { group: "Production", href: "/shamba/production", label: "Yields & produce", icon: BarChart3, roles: SUP },
   { group: "Farm setup", href: "/shamba/layout", label: "Layout", icon: MapPinned, roles: SUP },
   { group: "Farm setup", href: "/shamba/enterprises", label: "Enterprises", icon: Layers, roles: SUP },
   { group: "Farm setup", href: "/shamba/staff", label: "Staff", icon: Users, roles: SUP },

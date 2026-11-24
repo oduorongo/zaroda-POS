@@ -17,6 +17,7 @@ async function main() {
   const existing = await prisma.organization.findFirst({ where: { name: "Uriri Dairy & Poultry Farm", industryType: "FARM" } });
   if (existing) {
     await seedLivestock(existing.id);
+    await seedProduction(existing.id);
     return;
   }
   const orgId = randomUUID();
@@ -82,6 +83,7 @@ async function main() {
     { timeout: 60_000, maxWait: 15_000 },
   );
   await seedLivestock(orgId);
+  await seedProduction(orgId);
   console.log("Seeded the demo farm. Sign in at /login as owner@shamba.demo and the DEMO_PASSWORD (default password123).");
 }
 
@@ -212,6 +214,79 @@ async function seedLivestock(orgId: string) {
     { timeout: 60_000, maxWait: 15_000 },
   );
 }
+
+/** F3: milk and egg products in stock, two weeks of milkings and egg records (the treated cow's milk withheld), and some honey. */
+async function seedProduction(orgId: string) {
+  await prisma.$transaction(
+    async (tx) => {
+      await tx.$executeRaw`SELECT set_config('app.current_tenant', ${orgId}, true)`;
+      if (await tx.farmMilkRecord.count({ where: { organizationId: orgId } })) {
+        console.log("The demo farm already has milk records - nothing to do.");
+        return;
+      }
+      const branch = await tx.branch.findFirst({ where: { organizationId: orgId }, orderBy: { createdAt: "asc" } });
+      const cows = await tx.farmAnimal.findMany({ where: { organizationId: orgId, tag: { in: ["KC001", "KC002", "KC003"] } }, orderBy: { tag: "asc" } });
+      const flocks = await tx.farmGroup.findMany({ where: { organizationId: orgId, species: "CHICKEN" }, orderBy: { name: "desc" } });
+      const treated = await tx.farmHealthEvent.findFirst({ where: { organizationId: orgId, milkWithdrawalUntil: { not: null } }, orderBy: { date: "desc" } });
+      if (!branch || cows.length < 3) return;
+
+      const product = (name: string, unit: string, sku: string, price: number) =>
+        tx.product.create({ data: { organizationId: orgId, name, baseUnit: unit, variants: { create: { sku, price, quantityMode: "WEIGHT" } } }, include: { variants: true } });
+      const milk = (await product("Fresh milk", "litre", "FARM-MILK", 60)).variants[0].id;
+      const eggs = (await product("Eggs (tray of 30)", "tray", "FARM-EGGS", 450)).variants[0].id;
+      const honey = (await product("Honey", "kg", "FARM-HONEY", 900)).variants[0].id;
+      await tx.farmProduceSettings.create({ data: { organizationId: orgId, milkVariantId: milk, eggVariantId: eggs, eggsPerUnit: 30, branchId: branch.id } });
+
+      const stock: Record<string, number> = {};
+      const toStock = async (variantId: string, qty: number, referenceId: string) => {
+        const q = Math.round(qty * 1000) / 1000;
+        await tx.inventoryTransaction.create({ data: { branchId: branch.id, variantId, type: "PRODUCTION", quantityDelta: q, referenceId } });
+        stock[variantId] = (stock[variantId] ?? 0) + q;
+      };
+
+      const today = todayKey();
+      const yieldOf: Record<string, [number, number]> = { KC001: [11, 9], KC002: [9.5, 8], KC003: [8, 7] };
+      for (let i = 13; i >= 0; i--) {
+        const day = addDays(today, -i);
+        for (const c of cows) {
+          const held = !!treated && treated.animalId === c.id && day >= dayKey(treated.date) && day < dayKey(treated.milkWithdrawalUntil!);
+          for (const [k, session] of (["AM", "PM"] as const).entries()) {
+            const litres = Math.round((yieldOf[c.tag][k] + ((i * 7 + k) % 5) * 0.3 - 0.6) * 10) / 10;
+            const use = held ? "DISCARDED" : c.tag === "KC002" && session === "PM" && i % 3 === 0 ? "CALVES" : "SOLD";
+            const sold = use === "SOLD";
+            const rec = await tx.farmMilkRecord.create({
+              data: { organizationId: orgId, animalId: c.id, date: asDate(day), session, litres, withheld: held, use, toStock: sold ? litres : 0, stockVariantId: sold ? milk : null, stockBranchId: sold ? branch.id : null },
+            });
+            if (sold) await toStock(milk, litres, rec.id);
+          }
+        }
+        for (const f of flocks) {
+          const big = f.headCount > 500;
+          const good = big ? 760 + ((i * 13) % 40) : 52 + ((i * 5) % 12);
+          const rec = await tx.farmEggRecord.create({
+            data: {
+              organizationId: orgId, groupId: f.id, date: asDate(day), birds: f.headCount, goodEggs: good, cracked: big ? 12 + (i % 4) : 2, small: big ? 8 : 3,
+              feedKg: big ? 112 : 14, deaths: 0, toStock: Math.round((good / 30) * 1000) / 1000, stockVariantId: eggs, stockBranchId: branch.id,
+            },
+          });
+          await toStock(eggs, good / 30, rec.id);
+        }
+      }
+      const honeyRec = await tx.farmProduceRecord.create({
+        data: { organizationId: orgId, date: asDate(addDays(today, -5)), product: "Honey", quantity: 12, unit: "kg", note: "Hives behind the maize field", stockVariantId: honey, stockBranchId: branch.id },
+      });
+      await toStock(honey, 12, honeyRec.id);
+      await tx.farmProduceRecord.create({ data: { organizationId: orgId, date: asDate(addDays(today, -3)), product: "Cow manure", quantity: 2, unit: "tonnes", note: "Spread on the napier field" } });
+      for (const [variantId, quantity] of Object.entries(stock)) {
+        await tx.inventoryItem.create({ data: { branchId: branch.id, variantId, quantity: Math.round(quantity * 1000) / 1000 } });
+      }
+      console.log("Seeded the demo farm's milk, eggs and honey, with the produce in stock.");
+    },
+    { timeout: 120_000, maxWait: 15_000 },
+  );
+}
+
+const dayKey = (d: Date) => d.toISOString().slice(0, 10);
 
 main()
   .catch((e) => {
