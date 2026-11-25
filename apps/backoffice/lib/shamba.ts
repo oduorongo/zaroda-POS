@@ -297,3 +297,4 @@ export const CROP_ACTIVITIES: Record<string, string> = {
   OTHER: "Other work",
 };
 export const HARVEST_UNITS = ["kg", "bag (90 kg)", "bag (50 kg)", "tonne", "crate", "bunch", "piece"];
+export const BUYER_KINDS: Record<string, string> = { COOP: "Dairy co-op", PROCESSOR: "Processor", HOTEL: "Hotel", SCHOOL: "School", SHOP: "Shop", PERSON: "Regular customer", OTHER: "Other" };

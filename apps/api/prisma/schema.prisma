@@ -9035,3 +9035,230 @@ model FarmFeeding {
   @@index([organizationId, animalId])
   @@map("farm_feedings")
 }
+
+// ── Zaroda Shamba F6: labour and sales (docs/farm/01-domain-spec.md) ─────────────────────────────────────────────────
+
+enum FarmMusterStatus {
+  PRESENT
+  HALF_DAY
+  ABSENT
+}
+
+enum FarmWageRunStatus {
+  DRAFT
+  APPROVED
+  PAID
+}
+
+enum FarmWageLineStatus {
+  UNPAID
+  SENDING
+  PAID
+  FAILED
+}
+
+enum FarmPayMethod {
+  MPESA
+  MPESA_MANUAL
+  CASH
+}
+
+enum FarmBuyerKind {
+  COOP
+  PROCESSOR
+  HOTEL
+  SCHOOL
+  SHOP
+  PERSON
+  OTHER
+}
+
+enum FarmBuyerPayMethod {
+  CASH
+  MPESA
+  BANK
+  CHEQUE
+}
+
+/// A casual worker paid by the day. Not a user: never counts toward the plan's user limit.
+model FarmWorker {
+  id             String   @id @default(uuid())
+  organizationId String
+  name           String
+  phone          String?
+  idNumber       String?
+  dailyRate      Decimal  @db.Decimal(14, 2)
+  unitIds        String[] @default([])
+  notes          String?
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([organizationId, active])
+  @@map("farm_workers")
+}
+
+/// The muster roll: who worked on a day, and on what. Fixed once the day is in an approved pay run.
+model FarmMuster {
+  id             String           @id @default(uuid())
+  organizationId String
+  workerId       String
+  date           DateTime         @db.Date
+  status         FarmMusterStatus
+  task           String?
+  unitId         String?
+  enterpriseId   String?
+  recordedBy     String?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  @@unique([workerId, date])
+  @@index([organizationId, date])
+  @@map("farm_muster")
+}
+
+/// A pay run over a period, from the muster roll, with statutory deductions in force at its end. Made by one person,
+/// approved by another, then paid.
+model FarmWageRun {
+  id             String            @id @default(uuid())
+  organizationId String
+  number         String
+  periodStart    DateTime          @db.Date
+  periodEnd      DateTime          @db.Date
+  status         FarmWageRunStatus @default(DRAFT)
+  workers        Int               @default(0)
+  gross          Decimal           @default(0) @db.Decimal(14, 2)
+  deductions     Decimal           @default(0) @db.Decimal(14, 2)
+  net            Decimal           @default(0) @db.Decimal(14, 2)
+  notes          String?
+  createdBy      String?
+  approvedBy     String?
+  approvedAt     DateTime?
+  paidAt         DateTime?
+  createdAt      DateTime          @default(now())
+
+  @@unique([organizationId, number])
+  @@index([organizationId, periodStart])
+  @@map("farm_wage_runs")
+}
+
+model FarmWageLine {
+  id             String             @id @default(uuid())
+  organizationId String
+  runId          String
+  workerId       String
+  days           Decimal            @db.Decimal(6, 2)
+  dailyRate      Decimal            @db.Decimal(14, 2)
+  gross          Decimal            @db.Decimal(14, 2)
+  nssf           Decimal            @default(0) @db.Decimal(14, 2)
+  shif           Decimal            @default(0) @db.Decimal(14, 2)
+  housingLevy    Decimal            @default(0) @db.Decimal(14, 2)
+  paye           Decimal            @default(0) @db.Decimal(14, 2)
+  deductions     Decimal            @default(0) @db.Decimal(14, 2)
+  net            Decimal            @db.Decimal(14, 2)
+  status         FarmWageLineStatus @default(UNPAID)
+  method         FarmPayMethod?
+  reference      String?
+  requestId      String?            @unique
+  failureReason  String?
+  paidAt         DateTime?
+  paidBy         String?
+  smsSentAt      DateTime?
+
+  @@index([organizationId, runId])
+  @@map("farm_wage_lines")
+}
+
+/// The farm's own M-Pesa B2C account for wages (keys encrypted).
+model FarmPayoutSettings {
+  id                          String   @id @default(uuid())
+  organizationId              String   @unique
+  environment                 String   @default("production")
+  shortcode                   String?
+  initiator                   String?
+  consumerKeyEncrypted        String?
+  consumerSecretEncrypted     String?
+  securityCredentialEncrypted String?
+  callbackSecret              String
+  updatedBy                   String?
+  updatedAt                   DateTime @updatedAt
+
+  @@map("farm_payout_settings")
+}
+
+/// Someone the farm sells to on credit: a dairy co-op, processor, hotel, school or regular customer.
+model FarmBuyer {
+  id             String        @id @default(uuid())
+  organizationId String
+  name           String
+  kind           FarmBuyerKind @default(OTHER)
+  phone          String?
+  email          String?
+  kraPin         String?
+  /// The farm's member or supplier number with a co-op or processor.
+  memberNo       String?
+  creditLimit    Decimal?      @db.Decimal(14, 2)
+  termsDays      Int?
+  notes          String?
+  active         Boolean       @default(true)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  @@index([organizationId, active])
+  @@map("farm_buyers")
+}
+
+/// Produce delivered on credit (milk to the co-op, eggs to a hotel). Leaves stock; owed until paid.
+model FarmDelivery {
+  id             String           @id @default(uuid())
+  organizationId String
+  buyerId        String
+  date           DateTime         @db.Date
+  session        FarmMilkSession?
+  variantId      String
+  quantity       Decimal          @db.Decimal(14, 3)
+  unitPrice      Decimal          @db.Decimal(14, 2)
+  amount         Decimal          @db.Decimal(14, 2)
+  enterpriseId   String?
+  /// The buyer's slip or receipt number (co-op delivery note).
+  slipNo         String?
+  stockBranchId  String?
+  overLimit      Boolean          @default(false)
+  createdBy      String?
+  voidedAt       DateTime?
+  voidReason     String?
+  createdAt      DateTime         @default(now())
+
+  @@index([organizationId, buyerId, date])
+  @@map("farm_deliveries")
+}
+
+/// Money a buyer paid against what it owes.
+model FarmBuyerPayment {
+  id             String             @id @default(uuid())
+  organizationId String
+  buyerId        String
+  date           DateTime           @db.Date
+  amount         Decimal            @db.Decimal(14, 2)
+  method         FarmBuyerPayMethod
+  reference      String?
+  notes          String?
+  createdBy      String?
+  voidedAt       DateTime?
+  voidReason     String?
+  createdAt      DateTime           @default(now())
+
+  @@index([organizationId, buyerId, date])
+  @@map("farm_buyer_payments")
+}
+
+/// Which enterprise a product's sales count toward (Fresh milk -> Dairy herd), for till sales and deliveries.
+model FarmProductTag {
+  id             String @id @default(uuid())
+  organizationId String
+  variantId      String
+  enterpriseId   String
+
+  @@unique([organizationId, variantId])
+  @@map("farm_product_tags")
+}

@@ -2375,3 +2375,59 @@ DROP POLICY IF EXISTS tenant_isolation ON farm_feedings;
 CREATE POLICY tenant_isolation ON farm_feedings
   USING ("organizationId" = current_setting('app.current_tenant', true))
   WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+-- Zaroda Shamba F6: labour and sales
+ALTER TABLE farm_workers ENABLE ROW LEVEL SECURITY;
+ALTER TABLE farm_workers FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON farm_workers;
+CREATE POLICY tenant_isolation ON farm_workers
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+ALTER TABLE farm_muster ENABLE ROW LEVEL SECURITY;
+ALTER TABLE farm_muster FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON farm_muster;
+CREATE POLICY tenant_isolation ON farm_muster
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+ALTER TABLE farm_wage_runs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE farm_wage_runs FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON farm_wage_runs;
+CREATE POLICY tenant_isolation ON farm_wage_runs
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+ALTER TABLE farm_wage_lines ENABLE ROW LEVEL SECURITY;
+ALTER TABLE farm_wage_lines FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON farm_wage_lines;
+CREATE POLICY tenant_isolation ON farm_wage_lines
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+ALTER TABLE farm_payout_settings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE farm_payout_settings FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON farm_payout_settings;
+CREATE POLICY tenant_isolation ON farm_payout_settings
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+ALTER TABLE farm_buyers ENABLE ROW LEVEL SECURITY;
+ALTER TABLE farm_buyers FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON farm_buyers;
+CREATE POLICY tenant_isolation ON farm_buyers
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+ALTER TABLE farm_deliveries ENABLE ROW LEVEL SECURITY;
+ALTER TABLE farm_deliveries FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON farm_deliveries;
+CREATE POLICY tenant_isolation ON farm_deliveries
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+ALTER TABLE farm_buyer_payments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE farm_buyer_payments FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON farm_buyer_payments;
+CREATE POLICY tenant_isolation ON farm_buyer_payments
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+ALTER TABLE farm_product_tags ENABLE ROW LEVEL SECURITY;
+ALTER TABLE farm_product_tags FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON farm_product_tags;
+CREATE POLICY tenant_isolation ON farm_product_tags
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));

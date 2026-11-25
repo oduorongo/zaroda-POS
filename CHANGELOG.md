@@ -1,5 +1,16 @@
 # Changelog
 
+## Zaroda Shamba F6: labour and sales (2026-11-25)
+
+- Workers & wages (Farmer plan and up): casual workers with their M-Pesa number and pay a day (never users, never counted toward the user limit); the daily muster roll (present, half day, absent, task); pay runs from the muster with NSSF, SHIF, Housing Levy and PAYE from the shared statutory settings in force at the end of the period (Build's defaults are filled in the first time). A run is prepared by one person and approved by another (the owner may approve their own only when nobody else can), then paid by M-Pesa B2C from the farm's own payout account, by hand-made M-Pesa with its code, or in cash; payslips by SMS. Paid days are fixed; only drafts can be deleted.
+- Buyers & credit (Mkulima and up): co-ops, processors, hotels, schools and regular customers with a credit limit, payment days, member number and KRA PIN. Deliveries on credit (milk to the co-op with its session and slip number) leave stock; going past a limit needs a farm manager and is marked. Payments by M-Pesa, bank, cheque (reference required) or cash. What each buyer owes by age (0-30, 31-60, 61-90, over 90; payments clear the oldest first), and a printable statement with balance brought forward.
+- Withdrawal at the till: for farms, milk and eggs cannot be sold at the till, online or on credit beyond the fit-for-sale stock (withheld milk and eggs never enter stock), through the inventory.beforeDecrement hook; other businesses are not affected (their type is remembered, no extra database trip).
+- Enterprise tags: each product counts toward an enterprise (Fresh milk to Dairy herd); sales by enterprise shows till sales and credit deliveries.
+- Voids keep the record and reverse stock and balances. Everything audit-logged. Screens: Workers & wages, Buyers & credit, buyer statement.
+- Demo farm: four workers on the muster roll (last week paid in cash), a dairy co-op taking 20 L every morning, a hotel and a school taking eggs on credit, payments, and enterprise tags.
+- Still to come: ZARODA's per-payout fee for farm wages (Build charges one), and SMS credits for farm payslips (sent free when SMS is set up).
+- DB: migration 20270118100000_shamba_labour_sales (9 tables), then apply-rls. Run BOTH before merging. Checks: scripts/e2e-shamba-labour-sales.js (31 pass on a freshly seeded farm).
+
 ## Zaroda Shamba F5: feed (2026-11-25)
 
 - Rations (Mkulima plan and up): a recipe of stock ingredients per batch, the kg a batch makes, species and stage, and its finished feed product (per kg; made automatically when not chosen). Shows the expected cost per kg.

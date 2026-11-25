@@ -21,6 +21,7 @@ async function main() {
     await seedProduction(existing.id);
     await seedCrops(existing.id);
     await seedFeed(existing.id);
+    await seedLabourSales(existing.id);
     return;
   }
   const orgId = randomUUID();
@@ -90,6 +91,7 @@ async function main() {
   await seedProduction(orgId);
   await seedCrops(orgId);
   await seedFeed(orgId);
+  await seedLabourSales(orgId);
   console.log("Seeded the demo farm. Sign in at /login as owner@shamba.demo and the DEMO_PASSWORD (default password123).");
 }
 
@@ -451,6 +453,99 @@ async function seedFeed(orgId: string) {
         await tx.inventoryItem.create({ data: { branchId: branch.id, variantId, quantity: Math.round(quantity * 1000) / 1000 } });
       }
       console.log("Seeded the demo farm's feed: dairy meal mixed and fed (running low), layers mash fed to the flocks, one batch waiting for approval.");
+    },
+    { timeout: 120_000, maxWait: 15_000 },
+  );
+}
+
+/** F6: four casual workers on the muster roll (last week paid in cash), a dairy co-op, a hotel and a school buying on credit, payments, and enterprise tags. */
+async function seedLabourSales(orgId: string) {
+  await prisma.$transaction(
+    async (tx) => {
+      await tx.$executeRaw`SELECT set_config('app.current_tenant', ${orgId}, true)`;
+      if (await tx.farmWorker.count({ where: { organizationId: orgId } })) {
+        console.log("The demo farm already has workers - nothing to do.");
+        return;
+      }
+      const branch = await tx.branch.findFirst({ where: { organizationId: orgId }, orderBy: { createdAt: "asc" } });
+      const settings = await tx.farmProduceSettings.findFirst({ where: { organizationId: orgId } });
+      const owner = await tx.orgUser.findFirst({ where: { organizationId: orgId, role: "OWNER" } });
+      const manager = await tx.orgUser.findFirst({ where: { organizationId: orgId, role: "MANAGER" } });
+      const ent = async (name: string) => (await tx.farmEnterprise.findFirst({ where: { organizationId: orgId, name } }))?.id ?? null;
+      const unit = async (name: string) => (await tx.farmUnit.findFirst({ where: { organizationId: orgId, name } }))?.id ?? null;
+      if (!branch || !settings?.milkVariantId || !settings.eggVariantId) return;
+      const [dairy, layers, beansEnt] = [await ent("Dairy herd"), await ent("Layers (Isa Brown)"), await ent("Beans")];
+      const today = todayKey();
+      const ago = (k: number) => addDays(today, -k);
+
+      const worker = (name: string, phone: string, idNumber: string, dailyRate: number, notes: string) => tx.farmWorker.create({ data: { organizationId: orgId, name, phone, idNumber, dailyRate, notes } });
+      const ws = [
+        await worker("Otieno Ouma", "254711000101", "28111201", 700, "Milking and cow shed"),
+        await worker("Akinyi Atieno", "254711000102", "30222302", 650, "Poultry house"),
+        await worker("Ochieng Odhiambo", "254711000103", "27333403", 600, "Fields"),
+        await worker("Wanjiru Kamau", "254711000104", "31444504", 600, "Fields and feed mixing"),
+      ];
+      const places = [await unit("Zero-grazing cow shed"), await unit("Layers house 1"), await unit("Maize field"), await unit("Feed mixing room")];
+      const tasks = ["Milking and feeding", "Collecting eggs and cleaning", "Weeding", "Mixing feed"];
+      const enterprises = [dairy, layers, await ent("Maize long rains"), await ent("Feed mixing")];
+      for (let k = 13; k >= 0; k--) {
+        const day = ago(k);
+        if (new Date(`${day}T00:00:00Z`).getUTCDay() === 0) continue;
+        for (const [i, w] of ws.entries()) {
+          const status = i === 3 && k % 4 === 0 ? "HALF_DAY" : i === 2 && k === 5 ? "ABSENT" : "PRESENT";
+          await tx.farmMuster.create({ data: { organizationId: orgId, workerId: w.id, date: asDate(day), status, task: tasks[i], unitId: places[i], enterpriseId: enterprises[i], recordedBy: manager?.id ?? null } });
+        }
+      }
+
+      const start = ago(13);
+      const end = ago(7);
+      const marks = await tx.farmMuster.findMany({ where: { organizationId: orgId, date: { gte: asDate(start), lte: asDate(end) }, status: { not: "ABSENT" } } });
+      const run = await tx.farmWageRun.create({
+        data: { organizationId: orgId, number: "WAGE-001", periodStart: asDate(start), periodEnd: asDate(end), status: "PAID", createdBy: manager?.id ?? null, approvedBy: owner?.id ?? null, approvedAt: new Date(), paidAt: new Date() },
+      });
+      let gross = 0;
+      let net = 0;
+      for (const w of ws) {
+        const days = marks.filter((m) => m.workerId === w.id).reduce((s, m) => s + (m.status === "HALF_DAY" ? 0.5 : 1), 0);
+        const g = days * Number(w.dailyRate);
+        const shif = Math.round(Math.max(g * 0.0275, (300 * 7) / 30) * 100) / 100;
+        const housing = Math.round(g * 0.015 * 100) / 100;
+        const nssf = Math.round(g * 0.06 * 100) / 100;
+        const ded = Math.round((shif + housing + nssf) * 100) / 100;
+        gross += g;
+        net += g - ded;
+        await tx.farmWageLine.create({
+          data: { organizationId: orgId, runId: run.id, workerId: w.id, days, dailyRate: w.dailyRate, gross: g, nssf, shif, housingLevy: housing, paye: 0, deductions: ded, net: g - ded, status: "PAID", method: "CASH", paidAt: new Date(), paidBy: manager?.id ?? null },
+        });
+      }
+      await tx.farmWageRun.update({ where: { id: run.id }, data: { workers: ws.length, gross, deductions: Math.round((gross - net) * 100) / 100, net: Math.round(net * 100) / 100 } });
+
+      const buyer = (name: string, kind: "COOP" | "HOTEL" | "SCHOOL", extra: Record<string, unknown>) => tx.farmBuyer.create({ data: { organizationId: orgId, name, kind, ...extra } });
+      const coop = await buyer("Uriri Dairy Farmers Co-operative", "COOP", { memberNo: "UDF-0417", phone: "0700100200", creditLimit: 60000, termsDays: 30, notes: "Collects at the gate every morning" });
+      const hotel = await buyer("Rongo Highway Hotel", "HOTEL", { phone: "0700300400", creditLimit: 15000, termsDays: 14 });
+      const school = await buyer("St. Mary's Girls, Uriri", "SCHOOL", { phone: "0700500600", creditLimit: 30000, termsDays: 30, kraPin: "P051234567X" });
+
+      const moved: Record<string, number> = {};
+      const deliver = async (b: { id: string }, day: string, variantId: string, quantity: number, unitPrice: number, enterpriseId: string | null, slipNo: string | null, session: "AM" | null = null) => {
+        const d = await tx.farmDelivery.create({ data: { organizationId: orgId, buyerId: b.id, date: asDate(day), session, variantId, quantity, unitPrice, amount: quantity * unitPrice, enterpriseId, slipNo, stockBranchId: branch.id, createdBy: manager?.id ?? null } });
+        await tx.inventoryTransaction.create({ data: { branchId: branch.id, variantId, type: "CREDIT_SALE", quantityDelta: -quantity, referenceId: d.id } });
+        moved[variantId] = (moved[variantId] ?? 0) + quantity;
+      };
+      for (let k = 13; k >= 1; k--) await deliver(coop, ago(k), settings.milkVariantId, 20, 52, dairy, `UDF-${String(5000 + 14 - k)}`, "AM");
+      for (let k = 12; k >= 0; k -= 3) await deliver(hotel, ago(k), settings.eggVariantId, 3, 420, layers, null);
+      await deliver(school, ago(10), settings.eggVariantId, 10, 400, layers, "LPO 2291");
+      for (const [v, q] of Object.entries(moved)) {
+        await tx.inventoryItem.update({ where: { branchId_variantId: { branchId: branch.id, variantId: v } }, data: { quantity: { decrement: q } } });
+      }
+      await tx.farmBuyerPayment.create({ data: { organizationId: orgId, buyerId: coop.id, date: asDate(ago(5)), amount: 7280, method: "BANK", reference: "EQ-UDF-NOV-1", notes: "Co-op payout, first week" } });
+      await tx.farmBuyerPayment.create({ data: { organizationId: orgId, buyerId: hotel.id, date: asDate(ago(4)), amount: 2520, method: "MPESA", reference: "SKL4R2T7QW" } });
+
+      const tag = async (variantId: string | null | undefined, enterpriseId: string | null) =>
+        variantId && enterpriseId ? tx.farmProductTag.create({ data: { organizationId: orgId, variantId, enterpriseId } }) : null;
+      await tag(settings.milkVariantId, dairy);
+      await tag(settings.eggVariantId, layers);
+      await tag((await tx.productVariant.findFirst({ where: { sku: "FARM-BEANS", product: { organizationId: orgId } } }))?.id, beansEnt);
+      console.log("Seeded the demo farm's workers (last week paid), the co-op, hotel and school on credit, and enterprise tags.");
     },
     { timeout: 120_000, maxWait: 15_000 },
   );
