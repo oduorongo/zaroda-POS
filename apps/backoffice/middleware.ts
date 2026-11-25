@@ -38,6 +38,10 @@ const back = (p: Other) => Object.fromEntries(Object.entries(PUBLIC[p]).map(([k,
 // A product's advert pages (and the construction portal's own pages), by their real paths.
 const isAdvert = (p: Other, path: string) => Object.values(PUBLIC[p]).some((v) => v !== "/" && (path === v || path.startsWith(`${v}/`)));
 
+// Which product a path belongs to by its folder (/construction, /rentals, /shamba); shop screens belong to none.
+const ownerOf = (path: string): Other | undefined =>
+  (["CONSTRUCTION", "RENTALS", "SHAMBA"] as const).find((p) => path === HOME[p] || path.startsWith(`${HOME[p]}/`));
+
 const domainOf = (v: string | undefined) => (v ?? "").trim().toLowerCase().replace(/^https?:\/\//, "").replace(/\/+$/, "");
 
 export function middleware(req: NextRequest) {
@@ -72,7 +76,12 @@ export function middleware(req: NextRequest) {
   // A product's advert pages on the main address move to that product's address (once it has one); its working screens stay here.
   const elsewhere = product === "POS" && !isLocal ? (["CONSTRUCTION", "RENTALS", "SHAMBA"] as const).find((p) => domains[p] && isAdvert(p, pathname)) : undefined;
   const toMain = product !== "POS" && !isLocal && !!mainDomain && host !== mainDomain;
-  if (product !== "POS" && PUBLIC[product][pathname]) {
+  // Until POS_DOMAIN is set, another product's pages opened on a product address (a farm on the Build address) move to that product's own address.
+  const owner = ownerOf(pathname);
+  const stray = product !== "POS" && !isLocal && !mainDomain && owner && owner !== product && domains[owner] ? owner : undefined;
+  if (stray) {
+    res = NextResponse.redirect(`https://${domains[stray]}${back(stray)[pathname] ?? pathname}${search}`);
+  } else if (product !== "POS" && PUBLIC[product][pathname]) {
     res = NextResponse.rewrite(new URL(PUBLIC[product][pathname], req.url));
   } else if (product !== "POS" && isAdvert(product, pathname)) {
     res = NextResponse.next();

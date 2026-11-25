@@ -31,13 +31,22 @@ export const hasShambaDomain = () => !!SHAMBA_DOMAIN;
 export const posUrl = (path: string) => (POS_DOMAIN ? absolute(POS_DOMAIN, path) : path);
 export const hasConstructionDomain = () => !!CONSTRUCTION_DOMAIN;
 
+const bare = (domain: string) => domain.replace(/^https?:\/\//, "").replace(/\/+$/, "");
+
+/** The address a product's screens live on when there is no main address: /shamba on SHAMBA_DOMAIN, and so on. */
+const productDomain = (path: string) =>
+  path === "/shamba" || path.startsWith("/shamba/") ? SHAMBA_DOMAIN : path === "/rentals" || path.startsWith("/rentals/") ? RENTALS_DOMAIN : path === "/construction" || path.startsWith("/construction/") ? CONSTRUCTION_DOMAIN : "";
+
 /**
- * After signing up on a product's own address: everyone works on the main address (POS_DOMAIN), so hand the new session over there
- * through /auth/callback (token in the URL hash, never sent to a server). Without a main address, carry on here.
+ * After signing in or up: everyone works on the main address (POS_DOMAIN), so hand the new session over there through /auth/callback
+ * (token in the URL hash, never sent to a server). Without a main address, a person whose home belongs to another product (a farm
+ * signing in on the Build address) is handed to that product's own address the same way. Otherwise carry on here.
  */
 export function openApp(path: string, token: string, email: string, go: (path: string) => void) {
-  const main = POS_DOMAIN.replace(/^https?:\/\//, "").replace(/\/+$/, "");
-  if (main && window.location.host !== main) window.location.href = posUrl(`/auth/callback#${new URLSearchParams({ token, email })}`);
+  const main = bare(POS_DOMAIN);
+  const own = bare(productDomain(path));
+  const target = main || own;
+  if (target && window.location.host !== target) window.location.href = `https://${target}/auth/callback#${new URLSearchParams({ token, email })}`;
   else go(path);
 }
 export const hasRentalsDomain = () => !!RENTALS_DOMAIN;
