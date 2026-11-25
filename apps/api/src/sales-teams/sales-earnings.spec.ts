@@ -86,6 +86,7 @@ function setup(
     invoices?: any[];
     conPayments?: any[];
     rentalInvoices?: any[];
+    farmPayments?: any[];
     existing?: any[];
     schools?: any[];
     schoolPayments?: any[];
@@ -108,6 +109,7 @@ function setup(
     commissionInvoice: { findMany: jest.fn().mockResolvedValue(opts.invoices ?? []) },
     conSubscriptionPayment: { findMany: jest.fn().mockResolvedValue(opts.conPayments ?? []) },
     rentalPlatformInvoice: { findMany: jest.fn().mockResolvedValue(opts.rentalInvoices ?? []) },
+    farmSubscriptionPayment: { findMany: jest.fn().mockResolvedValue(opts.farmPayments ?? []) },
     salesSchoolPayment: { findMany: jest.fn().mockResolvedValue(opts.schoolPayments ?? []) },
     salesEarning: {
       findMany: jest.fn().mockResolvedValue(opts.existing ?? []),
@@ -282,6 +284,19 @@ describe('SalesEarningsService.accrue - every app', () => {
         expect.objectContaining({ sourceId: 'rent-fee', kind: 'COMMISSION_SHARE', sourceApp: 'RENTALS', amountKes: 200 }),
       ]),
     );
+  });
+
+  it('pays the same team rates on Shamba: farm plans at the subscription rate, payout fees at the commission rate, never SMS', async () => {
+    const farmPay = (id: string, amount: number, purpose = 'PLAN') => ({ id, amount, purpose, paidAt: new Date('2026-10-05T08:00:00Z') });
+    const { service, created, tx } = setup({ team: { leaderOverrideRate: 0, onboardingBonusKes: 0 }, farmPayments: [farmPay('farm-plan', 2500), farmPay('farm-fees', 400, 'FEES')] });
+    await service.accrue(true);
+    expect(created).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ sourceId: 'farm-plan', kind: 'SUBSCRIPTION_SHARE', sourceApp: 'SHAMBA', rate: 0.1, amountKes: 250 }),
+        expect.objectContaining({ sourceId: 'farm-fees', kind: 'COMMISSION_SHARE', sourceApp: 'SHAMBA', rate: 0.25, amountKes: 100 }),
+      ]),
+    );
+    expect(tx.farmSubscriptionPayment.findMany.mock.calls[0][0].where).toMatchObject({ organizationId: 'org-1', status: 'PAID', purpose: { in: ['PLAN', 'FEES'] } });
   });
 
   it('tags POS subscriptions and online shop fees with their app', async () => {
