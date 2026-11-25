@@ -21,6 +21,9 @@ const ONLINE_SHOP_TYPES = ["RETAIL"];
 
 type ChosenBilling = "annual" | "monthly";
 
+/** Pricing-page plan ids to API plan tiers (School Supplier goes by business type). */
+const TIER: Record<string, "BASIC" | "STANDARD" | "BUSINESS"> = { basic: "BASIC", standard: "STANDARD", business: "BUSINESS" };
+
 /** The plan and billing picked on the pricing page (?plan=standard&billing=annual); null when none or unknown. */
 function chosenPlan(search: string): { plan: (typeof PRICING_PLANS)[number]; billing: ChosenBilling } | null {
   const q = new URLSearchParams(search);
@@ -109,6 +112,7 @@ export default function SignupClient() {
         county: county.trim() || undefined,
         subCounty: subCounty.trim() || undefined,
         onlineOnly: onlineOnly || undefined,
+        ...(chosen && !onlineOnly && TIER[chosen.plan.id] ? { planTier: TIER[chosen.plan.id], billingChoice: chosen.billing === "annual" ? "ANNUAL" : "MONTHLY" } : {}),
       });
       setAccessToken(response.accessToken);
       setDone(true);

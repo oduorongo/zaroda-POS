@@ -1,5 +1,14 @@
 # Changelog
 
+## New plan pricing (2026-11-25)
+
+- Plans: Basic KES 1,000 a month / 10,000 a year / 3 x 3,500 (1 device, 1 branch); Standard 3,500 / 35,000 / 3 x 12,000 (3 devices); new Business 7,500 / 75,000 / 4 x 19,500 (10 devices, 3 branches); School Supplier 12,000 a year in 2 termly instalments of 6,000 (2 devices). Extra till KES 500 a month or 5,000 a year on any plan.
+- Billing choice per business (monthly, yearly, or yearly in instalments): set on the business's page in platform admin; a payment moves the paid-up date by one month, one year or one instalment. MRR counts each the same way.
+- Paying Basic and Standard businesses keep what they pay now (their price is kept as their agreed price) until they switch plan or billing. Trials get the new prices. Premium businesses with up to 3 branches move to Business; Premium comes off sale (larger Premium businesses stay on it).
+- School Supplier: half in Term 1, half by Term 2; next school year's untouched instalments are re-cut into the two halves, this year's stay as they are.
+- Website: new pricing section (Annual/Monthly toggle); Start free trial opens sign-up with the plan and billing, and the trial starts on that plan.
+- DB step BEFORE merge: prisma migrate deploy (20270120100000_new_plan_pricing). No new tables, so no apply-rls.
+
 ## Zaroda Shamba F7: reports and books (2026-11-25)
 
 - Reports (farm managers and auditors) at /shamba/reports: profit per enterprise (income from till sales of tagged products, credit deliveries and animals sold, less feed, vet and drugs, muster-roll labour, field inputs and work, and animals bought); cost per litre of milk, per egg, per kg and per acre; herd register; breeding calendar; health and withdrawal register; crop report; wages by worker; buyers who owe. The registers come with basic reports; profit, wages, debtors and downloads with full reports.
