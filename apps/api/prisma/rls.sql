@@ -2343,3 +2343,35 @@ DROP POLICY IF EXISTS tenant_isolation ON farm_harvests;
 CREATE POLICY tenant_isolation ON farm_harvests
   USING ("organizationId" = current_setting('app.current_tenant', true))
   WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+-- Zaroda Shamba F5: feed (rations, mixing batches, feeding)
+ALTER TABLE farm_rations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE farm_rations FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON farm_rations;
+CREATE POLICY tenant_isolation ON farm_rations
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+ALTER TABLE farm_ration_items ENABLE ROW LEVEL SECURITY;
+ALTER TABLE farm_ration_items FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON farm_ration_items;
+CREATE POLICY tenant_isolation ON farm_ration_items
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+ALTER TABLE farm_feed_batches ENABLE ROW LEVEL SECURITY;
+ALTER TABLE farm_feed_batches FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON farm_feed_batches;
+CREATE POLICY tenant_isolation ON farm_feed_batches
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+ALTER TABLE farm_feed_batch_items ENABLE ROW LEVEL SECURITY;
+ALTER TABLE farm_feed_batch_items FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON farm_feed_batch_items;
+CREATE POLICY tenant_isolation ON farm_feed_batch_items
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+ALTER TABLE farm_feedings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE farm_feedings FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON farm_feedings;
+CREATE POLICY tenant_isolation ON farm_feedings
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));

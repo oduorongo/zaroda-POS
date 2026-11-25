@@ -8932,3 +8932,106 @@ model FarmHarvest {
   @@index([organizationId, seasonId])
   @@map("farm_harvests")
 }
+
+// ── Zaroda Shamba F5: feed - rations, mixing batches and feeding (docs/farm/01-domain-spec.md) ──────────────────────
+
+enum FarmFeedBatchStatus {
+  PENDING
+  APPROVED
+  REVERSED
+}
+
+/// A feed recipe: stock ingredients and how much of each makes one batch of a finished feed (sold and stocked per kg).
+model FarmRation {
+  id              String   @id @default(uuid())
+  organizationId  String
+  name            String
+  species         String?
+  stage           String?
+  outputVariantId String
+  /// kg of feed one batch of the recipe should make.
+  batchKg         Decimal  @db.Decimal(14, 3)
+  notes           String?
+  active          Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([organizationId])
+  @@map("farm_rations")
+}
+
+/// One ingredient of a ration: a stock item and its quantity per batch, in that item's own unit.
+model FarmRationItem {
+  id             String  @id @default(uuid())
+  organizationId String
+  rationId       String
+  variantId      String
+  quantity       Decimal @db.Decimal(14, 3)
+
+  @@index([organizationId, rationId])
+  @@map("farm_ration_items")
+}
+
+/// A mixing: what went in and how many kg came out. Stock moves only when a farm manager approves it; after that it is
+/// fixed, and a mistake is put right by reversing it.
+model FarmFeedBatch {
+  id              String              @id @default(uuid())
+  organizationId  String
+  batchNo         String
+  rationId        String
+  date            DateTime            @db.Date
+  kgProduced      Decimal             @db.Decimal(14, 3)
+  cost            Decimal             @default(0) @db.Decimal(14, 2)
+  costPerKg       Decimal             @default(0) @db.Decimal(14, 2)
+  outputVariantId String
+  stockBranchId   String?
+  status          FarmFeedBatchStatus @default(PENDING)
+  mixedBy         String?
+  approvedBy      String?
+  approvedAt      DateTime?
+  reversedBy      String?
+  reversedAt      DateTime?
+  reverseReason   String?
+  notes           String?
+  createdAt       DateTime            @default(now())
+
+  @@unique([organizationId, batchNo])
+  @@index([organizationId, date])
+  @@map("farm_feed_batches")
+}
+
+/// What one batch actually used of each ingredient, and its cost at the time.
+model FarmFeedBatchItem {
+  id             String  @id @default(uuid())
+  organizationId String
+  batchId        String
+  variantId      String
+  quantity       Decimal @db.Decimal(14, 3)
+  unitCost       Decimal @default(0) @db.Decimal(14, 2)
+  cost           Decimal @default(0) @db.Decimal(14, 2)
+
+  @@index([organizationId, batchId])
+  @@map("farm_feed_batch_items")
+}
+
+/// Feed given to a group or an animal on a day, taken from stock at its cost.
+model FarmFeeding {
+  id             String    @id @default(uuid())
+  organizationId String
+  animalId       String?
+  groupId        String?
+  date           DateTime  @db.Date
+  variantId      String
+  kg             Decimal   @db.Decimal(14, 3)
+  cost           Decimal   @default(0) @db.Decimal(14, 2)
+  stockBranchId  String?
+  createdBy      String?
+  voidedAt       DateTime?
+  voidReason     String?
+  createdAt      DateTime  @default(now())
+
+  @@index([organizationId, date])
+  @@index([organizationId, groupId])
+  @@index([organizationId, animalId])
+  @@map("farm_feedings")
+}

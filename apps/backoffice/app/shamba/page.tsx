@@ -74,6 +74,20 @@ function ReadyToSell({ canManage }: { canManage: boolean }) {
   );
 }
 
+/** Orange warning when a feed has less than a week left at the rate it is being fed. */
+function FeedAlert() {
+  const [low, setLow] = useState<{ variantId: string; name: string; daysLeft: number | null }[]>([]);
+  useEffect(() => {
+    apiGet<{ lowFeeds: { variantId: string; name: string; daysLeft: number | null }[] }>("/farm/feed/report").then((r) => setLow(r.lowFeeds)).catch(() => setLow([]));
+  }, []);
+  if (!low.length) return null;
+  return (
+    <Link href="/shamba/feed" className="block rounded-xl border-2 px-4 py-3 text-sm font-semibold no-underline" style={{ borderColor: SHAMBA_BRAND.orange, background: "#fff4e8", color: "#7a3d00" }}>
+      Feed running low: {low.map((f) => `${f.name} (${f.daysLeft} ${f.daysLeft === 1 ? "day" : "days"} left)`).join(", ")}. Open Feed →
+    </Link>
+  );
+}
+
 function Dashboard() {
   const [data, setData] = useState<FarmOverview | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -141,6 +155,8 @@ function Dashboard() {
         </Card>
       )}
 
+      <FeedAlert />
+
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         {[
           { label: "Overdue", value: data.livestock.overdue, href: "/shamba/health", warn: data.livestock.overdue > 0 },
@@ -200,9 +216,10 @@ function Dashboard() {
               <Link href="/shamba/eggs" className="underline">Record eggs</Link>
               <Link href="/shamba/production" className="underline">Yields</Link>
               <Link href="/shamba/crops" className="underline">Crops</Link>
+              <Link href="/shamba/feed" className="underline">Feed</Link>
             </li>
           </ul>
-          <p className="mt-4 text-xs text-secondary-500">Feed mixing, casual workers and selling on credit come next.</p>
+          <p className="mt-4 text-xs text-secondary-500">Casual workers and selling on credit come next.</p>
         </Card>
         <ReadyToSell canManage={canManage} />
       </div>
