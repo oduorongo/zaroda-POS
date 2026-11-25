@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import { FarmSetupService } from "../src/farm/farm-setup.service";
 import { PrismaService } from "../src/common/prisma/prisma.service";
 import { addDays, asDate, todayKey } from "../src/farm/farm-livestock.util";
+import { batchCost, batchNo as batchNoFor } from "../src/farm/farm-feed.util";
 
 /**
  * Zaroda Shamba demo farm (docs/farm): "Uriri Dairy & Poultry Farm" with its staff, layout and enterprises.
@@ -19,6 +20,7 @@ async function main() {
     await seedLivestock(existing.id);
     await seedProduction(existing.id);
     await seedCrops(existing.id);
+    await seedFeed(existing.id);
     return;
   }
   const orgId = randomUUID();
@@ -87,6 +89,7 @@ async function main() {
   await seedLivestock(orgId);
   await seedProduction(orgId);
   await seedCrops(orgId);
+  await seedFeed(orgId);
   console.log("Seeded the demo farm. Sign in at /login as owner@shamba.demo and the DEMO_PASSWORD (default password123).");
 }
 
@@ -361,6 +364,93 @@ async function seedCrops(orgId: string) {
         await tx.inventoryItem.create({ data: { branchId: branch.id, variantId, quantity } });
       }
       console.log("Seeded the demo farm's crops: maize (sprayed, harvest blocked for 9 more days) and beans (720 kg harvested into stock).");
+    },
+    { timeout: 120_000, maxWait: 15_000 },
+  );
+}
+
+/** F5: ingredients, a dairy meal ration mixed and approved 12 days ago and fed to the cows (now running low), bought layers mash fed to the flocks, and a layers batch waiting for approval. */
+async function seedFeed(orgId: string) {
+  await prisma.$transaction(
+    async (tx) => {
+      await tx.$executeRaw`SELECT set_config('app.current_tenant', ${orgId}, true)`;
+      if (await tx.farmRation.count({ where: { organizationId: orgId } })) {
+        console.log("The demo farm already has rations - nothing to do.");
+        return;
+      }
+      const branch = await tx.branch.findFirst({ where: { organizationId: orgId }, orderBy: { createdAt: "asc" } });
+      const cows = await tx.farmAnimal.findMany({ where: { organizationId: orgId, tag: { in: ["KC001", "KC002", "KC003"] } }, orderBy: { tag: "asc" } });
+      const flocks = await tx.farmGroup.findMany({ where: { organizationId: orgId, species: "CHICKEN" }, orderBy: { name: "desc" } });
+      const owner = await tx.orgUser.findFirst({ where: { organizationId: orgId, role: "OWNER" } });
+      const manager = await tx.orgUser.findFirst({ where: { organizationId: orgId, role: "MANAGER" } });
+      if (!branch || cows.length < 3) return;
+
+      const stock: Record<string, number> = {};
+      const costs: Record<string, number> = {};
+      const move = async (variantId: string, qty: number, type: "RECEIPT" | "PRODUCTION", referenceId?: string) => {
+        await tx.inventoryTransaction.create({ data: { branchId: branch.id, variantId, type, quantityDelta: Math.round(qty * 1000) / 1000, referenceId } });
+        stock[variantId] = (stock[variantId] ?? 0) + qty;
+      };
+      const perKg = async (name: string, sku: string, cost: number, price = 0) => {
+        const id = (await tx.product.create({ data: { organizationId: orgId, name, baseUnit: "kg", variants: { create: { sku, price, cost, quantityMode: "WEIGHT" } } }, include: { variants: true } })).variants[0].id;
+        costs[id] = cost;
+        return id;
+      };
+      const germ = await perKg("Maize germ", "FEED-GERM", 32);
+      const cake = await perKg("Sunflower cake", "FEED-CAKE", 45);
+      const omena = await perKg("Fish meal (omena)", "FEED-OMENA", 120);
+      const dcp = await perKg("DCP (dicalcium phosphate)", "FEED-DCP", 90);
+      const dPremix = await perKg("Dairy premix", "FEED-DPREMIX", 250);
+      const lPremix = await perKg("Layers premix", "FEED-LPREMIX", 260);
+      const lime = await perKg("Limestone", "FEED-LIME", 15);
+      const boughtMash = await perKg("Layers mash (bought)", "FEED-LMASH", 58, 65);
+      for (const [v, q] of [[germ, 500], [cake, 300], [omena, 60], [dcp, 40], [dPremix, 20], [lPremix, 20], [lime, 100], [boughtMash, 3000]] as const) await move(v, q, "RECEIPT");
+
+      const dairyMeal = (await tx.product.create({ data: { organizationId: orgId, name: "Dairy meal (home-mixed)", baseUnit: "kg", variants: { create: { sku: "FEED-DMEAL", price: 0, quantityMode: "WEIGHT" } } }, include: { variants: true } })).variants[0].id;
+      const layersMash = (await tx.product.create({ data: { organizationId: orgId, name: "Layers mash (home-mixed)", baseUnit: "kg", variants: { create: { sku: "FEED-HMASH", price: 0, quantityMode: "WEIGHT" } } }, include: { variants: true } })).variants[0].id;
+      const ration = async (name: string, species: string, stage: string, outputVariantId: string, batchKg: number, items: [string, number][]) => {
+        const r = await tx.farmRation.create({ data: { organizationId: orgId, name, species, stage, outputVariantId, batchKg } });
+        await tx.farmRationItem.createMany({ data: items.map(([variantId, quantity]) => ({ organizationId: orgId, rationId: r.id, variantId, quantity })) });
+        return { r, items };
+      };
+      const dairy = await ration("Dairy meal (home-mixed)", "Cattle", "Milking cows", dairyMeal, 70, [[germ, 42], [cake, 22], [dcp, 2], [dPremix, 1], [lime, 3]]);
+      const layers = await ration("Layers mash (home-mixed)", "Chicken", "Laying hens", layersMash, 90, [[germ, 55], [cake, 15], [omena, 10], [lime, 7], [lPremix, 2.5], [dcp, 0.5]]);
+
+      const today = todayKey();
+      const ago = (n: number) => addDays(today, -n);
+      const mixed = ago(12);
+      const used = dairy.items.map(([variantId, q]) => ({ variantId, quantity: q * 3, unitCost: costs[variantId] }));
+      const costed = batchCost(used, 207);
+      const batch = await tx.farmFeedBatch.create({
+        data: {
+          organizationId: orgId, batchNo: batchNoFor(mixed, 1), rationId: dairy.r.id, date: asDate(mixed), kgProduced: 207, cost: costed.cost, costPerKg: costed.costPerKg,
+          outputVariantId: dairyMeal, stockBranchId: branch.id, status: "APPROVED", mixedBy: manager?.id ?? null, approvedBy: owner?.id ?? null, approvedAt: new Date(`${mixed}T10:00:00Z`),
+          notes: "3 batches of the recipe",
+        },
+      });
+      await tx.farmFeedBatchItem.createMany({ data: costed.lines.map((l) => ({ organizationId: orgId, batchId: batch.id, variantId: l.variantId, quantity: l.quantity, unitCost: l.unitCost ?? 0, cost: l.cost })) });
+      for (const l of costed.lines) await move(l.variantId, -l.quantity, "PRODUCTION", batch.id);
+      await move(dairyMeal, 207, "PRODUCTION", batch.id);
+      await tx.productVariant.update({ where: { id: dairyMeal }, data: { cost: costed.costPerKg } });
+
+      const pending = layers.items.map(([variantId, q]) => ({ variantId, quantity: q, unitCost: costs[variantId] }));
+      const pCost = batchCost(pending, 88);
+      const pBatch = await tx.farmFeedBatch.create({
+        data: { organizationId: orgId, batchNo: batchNoFor(today, 1), rationId: layers.r.id, date: asDate(today), kgProduced: 88, cost: pCost.cost, costPerKg: pCost.costPerKg, outputVariantId: layersMash, mixedBy: manager?.id ?? null, notes: "Waiting for the manager" },
+      });
+      await tx.farmFeedBatchItem.createMany({ data: pCost.lines.map((l) => ({ organizationId: orgId, batchId: pBatch.id, variantId: l.variantId, quantity: l.quantity, unitCost: l.unitCost ?? 0, cost: l.cost })) });
+
+      const feed = async (target: { animalId?: string; groupId?: string }, day: string, variantId: string, kg: number) => {
+        const row = await tx.farmFeeding.create({ data: { organizationId: orgId, ...target, date: asDate(day), variantId, kg, cost: Math.round(kg * (variantId === dairyMeal ? costed.costPerKg : costs[variantId]) * 100) / 100, stockBranchId: branch.id } });
+        await move(variantId, -kg, "PRODUCTION", row.id);
+      };
+      for (let i = 11; i >= 0; i--) for (const c of cows) await feed({ animalId: c.id }, ago(i), dairyMeal, 4);
+      for (let i = 13; i >= 0; i--) for (const f of flocks) await feed({ groupId: f.id }, ago(i), boughtMash, f.headCount > 500 ? 112 : 14);
+
+      for (const [variantId, quantity] of Object.entries(stock)) {
+        await tx.inventoryItem.create({ data: { branchId: branch.id, variantId, quantity: Math.round(quantity * 1000) / 1000 } });
+      }
+      console.log("Seeded the demo farm's feed: dairy meal mixed and fed (running low), layers mash fed to the flocks, one batch waiting for approval.");
     },
     { timeout: 120_000, maxWait: 15_000 },
   );

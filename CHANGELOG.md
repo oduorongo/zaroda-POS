@@ -1,5 +1,14 @@
 # Changelog
 
+## Zaroda Shamba F5: feed (2026-11-25)
+
+- Rations (Mkulima plan and up): a recipe of stock ingredients per batch, the kg a batch makes, species and stage, and its finished feed product (per kg; made automatically when not chosen). Shows the expected cost per kg.
+- Mixing batches (Mkulima and up): the feed miller records what went in (the recipe times the batches, or the real amounts) and the kg weighed out, numbered FB-YYYYMMDD-n for tracing (KEBS). Nothing moves until a farm manager approves it; then the ingredients leave stock and the feed comes in at its actual cost per kg, averaged into the feed product's cost. Approved batches are fixed: a mistake is reversed (ingredients back, feed out); a pending one is turned down.
+- Feeding (every plan): a day's feeding per flock, group or animal from per-kg feed in stock, costed at the feed's cost; herdsmen record only where they work; managers void (feed goes back).
+- Figures: feed cost over 30 days, per litre of milk, per egg and per tray, per head per day for each group and animal, and each feed's stock, daily use and days left. A feed with under 7 days left is flagged on the Feed page and the farm home.
+- Everything audit-logged. Demo farm: ingredients, dairy meal mixed and approved 12 days ago and fed to the three cows (about 6 days left, flagged), bought layers mash fed to both flocks, and a layers mash batch waiting for approval.
+- DB: migration 20270117100000_shamba_feed (5 tables), then apply-rls. Run BOTH before merging. Checks: scripts/e2e-shamba-feed.js (24 pass on a freshly seeded farm).
+
 ## Zaroda Shamba F4: crops (2026-11-25)
 
 - Crop seasons: a crop in a field for a season, with variety, acres (never more than the field), planting and expected harvest dates, enterprise, and the seed supplier and lot number (KEPHIS). Planned -> growing (on planting) -> harvesting (on the first harvest) -> closed (managers).
