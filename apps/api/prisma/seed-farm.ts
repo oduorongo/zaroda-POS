@@ -18,6 +18,7 @@ async function main() {
   if (existing) {
     await seedLivestock(existing.id);
     await seedProduction(existing.id);
+    await seedCrops(existing.id);
     return;
   }
   const orgId = randomUUID();
@@ -85,6 +86,7 @@ async function main() {
   );
   await seedLivestock(orgId);
   await seedProduction(orgId);
+  await seedCrops(orgId);
   console.log("Seeded the demo farm. Sign in at /login as owner@shamba.demo and the DEMO_PASSWORD (default password123).");
 }
 
@@ -282,6 +284,83 @@ async function seedProduction(orgId: string) {
         await tx.inventoryItem.create({ data: { branchId: branch.id, variantId, quantity: Math.round(quantity * 1000) / 1000 } });
       }
       console.log("Seeded the demo farm's milk, eggs and honey, with the produce in stock.");
+    },
+    { timeout: 120_000, maxWait: 15_000 },
+  );
+}
+
+/** F4: inputs in stock, a maize season sprayed 5 days ago (harvest still blocked) and a bean season harvested into stock. */
+async function seedCrops(orgId: string) {
+  await prisma.$transaction(
+    async (tx) => {
+      await tx.$executeRaw`SELECT set_config('app.current_tenant', ${orgId}, true)`;
+      if (await tx.farmCropSeason.count({ where: { organizationId: orgId } })) {
+        console.log("The demo farm already has crop seasons - nothing to do.");
+        return;
+      }
+      const branch = await tx.branch.findFirst({ where: { organizationId: orgId }, orderBy: { createdAt: "asc" } });
+      const unit = async (name: string) => tx.farmUnit.findFirst({ where: { organizationId: orgId, name } });
+      const [maizeField, beansField] = [await unit("Maize field"), await unit("Beans field")];
+      const ent = async (name: string) => (await tx.farmEnterprise.findFirst({ where: { organizationId: orgId, name } }))?.id ?? null;
+      if (!branch || !maizeField || !beansField) return;
+
+      const stock: Record<string, number> = {};
+      const move = async (variantId: string, qty: number, type: "RECEIPT" | "PRODUCTION", referenceId?: string) => {
+        await tx.inventoryTransaction.create({ data: { branchId: branch.id, variantId, type, quantityDelta: qty, referenceId } });
+        stock[variantId] = (stock[variantId] ?? 0) + qty;
+      };
+      const product = async (name: string, unitName: string, sku: string, price: number, cost: number, mode: "COUNT" | "WEIGHT") =>
+        (await tx.product.create({ data: { organizationId: orgId, name, baseUnit: unitName, variants: { create: { sku, price, cost, quantityMode: mode } } }, include: { variants: true } })).variants[0].id;
+      const dap = await product("DAP fertiliser (50 kg bag)", "bag", "FARM-DAP", 4200, 3500, "COUNT");
+      const can = await product("CAN fertiliser (50 kg bag)", "bag", "FARM-CAN", 3800, 3200, "COUNT");
+      const duduthrin = await product("Duduthrin 1.75 EC", "litre", "FARM-DUDU", 1500, 1200, "WEIGHT");
+      const beans = await product("Dry beans", "kg", "FARM-BEANS", 140, 0, "WEIGHT");
+      await move(dap, 20, "RECEIPT");
+      await move(can, 15, "RECEIPT");
+      await move(duduthrin, 5, "RECEIPT");
+
+      const today = todayKey();
+      const ago = (n: number) => addDays(today, -n);
+      const maize = await tx.farmCropSeason.create({
+        data: {
+          organizationId: orgId, unitId: maizeField.id, enterpriseId: await ent("Maize long rains"), crop: "Maize", variety: "H614D", acres: 6,
+          plantedOn: asDate(ago(110)), expectedHarvest: asDate(addDays(today, 30)), status: "GROWING", seedSupplier: "Kenya Seed Company", seedCertNo: "KSC-H614-2026-0412",
+        },
+      });
+      const act = async (seasonId: string, n: number, kind: string, extra: Record<string, unknown> = {}) =>
+        tx.farmCropActivity.create({ data: { organizationId: orgId, seasonId, date: asDate(ago(n)), kind: kind as never, ...extra } });
+      await act(maize.id, 120, "LAND_PREP", { workers: 4, labourCost: 6000, notes: "Ploughed and harrowed with hired tractor" });
+      const planted = await act(maize.id, 110, "PLANTING", { product: "DAP at planting", inputVariantId: dap, quantity: 6, stockBranchId: branch.id, inputCost: 21000, workers: 6, labourCost: 4800 });
+      await move(dap, -6, "PRODUCTION", planted.id);
+      await act(maize.id, 80, "WEEDING", { workers: 8, labourCost: 6400 });
+      const topped = await act(maize.id, 70, "TOP_DRESSING", { product: "CAN", inputVariantId: can, quantity: 6, stockBranchId: branch.id, inputCost: 19200, workers: 4, labourCost: 2000 });
+      await move(can, -6, "PRODUCTION", topped.id);
+      const sprayDay = ago(5);
+      const sprayed = await act(maize.id, 5, "SPRAYING", {
+        product: "Duduthrin 1.75 EC", rate: "40 ml per 20 L knapsack", inputVariantId: duduthrin, quantity: 1, stockBranchId: branch.id, inputCost: 1200,
+        workers: 2, labourCost: 1000, preHarvestDays: 14, safeHarvestFrom: asDate(addDays(sprayDay, 14)), doneBy: "Joseph Omondi", notes: "Fall armyworm",
+      });
+      await move(duduthrin, -1, "PRODUCTION", sprayed.id);
+
+      const beanSeason = await tx.farmCropSeason.create({
+        data: {
+          organizationId: orgId, unitId: beansField.id, enterpriseId: await ent("Beans"), crop: "Beans", variety: "Rosecoco (GLP 2)", acres: 2,
+          plantedOn: asDate(ago(100)), expectedHarvest: asDate(ago(10)), status: "HARVESTING", seedSupplier: "Simlaw Seeds", seedCertNo: "SIM-GLP2-2026-118",
+        },
+      });
+      await act(beanSeason.id, 102, "LAND_PREP", { workers: 3, labourCost: 3000 });
+      const bp = await act(beanSeason.id, 100, "PLANTING", { product: "DAP at planting", inputVariantId: dap, quantity: 2, stockBranchId: branch.id, inputCost: 7000, workers: 4, labourCost: 2400 });
+      await move(dap, -2, "PRODUCTION", bp.id);
+      await act(beanSeason.id, 70, "WEEDING", { workers: 4, labourCost: 2400 });
+      const harvest = await tx.farmHarvest.create({
+        data: { organizationId: orgId, seasonId: beanSeason.id, date: asDate(ago(8)), quantity: 8, unit: "bag (90 kg)", kgPerUnit: 90, kg: 720, grade: "Grade 1", stockVariantId: beans, stockBranchId: branch.id },
+      });
+      await move(beans, 720, "PRODUCTION", harvest.id);
+
+      for (const [variantId, quantity] of Object.entries(stock)) {
+        await tx.inventoryItem.create({ data: { branchId: branch.id, variantId, quantity } });
+      }
+      console.log("Seeded the demo farm's crops: maize (sprayed, harvest blocked for 9 more days) and beans (720 kg harvested into stock).");
     },
     { timeout: 120_000, maxWait: 15_000 },
   );

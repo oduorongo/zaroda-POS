@@ -3,7 +3,7 @@ import {
   BarChart3, BedDouble, BookOpen, Boxes, BrainCircuit, Building2, CalendarDays, ClipboardCheck, ClipboardList, Coins, ConciergeBell,
   Factory, FileText, FolderKanban, GraduationCap, HardHat, Home, LayoutGrid, LifeBuoy, Mail, MapPinned, Package, PackageOpen, PiggyBank,
   Pill, Receipt, ScanBarcode, Scissors, Settings, ShieldCheck, Shirt, ShoppingBag, ShoppingCart, Store, Tags, Tractor, Trash2,
-  TrendingUp, Truck, UserRound, Users, UtensilsCrossed, Wallet, Banknote, Clock, Wrench, Beef, HeartPulse, Layers, Gavel, Milk, Egg,
+  TrendingUp, Truck, UserRound, Users, UtensilsCrossed, Wallet, Banknote, Clock, Wrench, Beef, HeartPulse, Layers, Gavel, Milk, Egg, Sprout,
 } from "lucide-react";
 import type { Session } from "./auth";
 
@@ -103,6 +103,7 @@ const FARM: Def[] = [
   { group: "Production", href: "/shamba/milk", label: "Milk", icon: Milk, roles: SUP },
   { group: "Production", href: "/shamba/eggs", label: "Eggs", icon: Egg, roles: SUP },
   { group: "Production", href: "/shamba/production", label: "Yields & produce", icon: BarChart3, roles: SUP },
+  { group: "Production", href: "/shamba/crops", label: "Crops", icon: Sprout, roles: SUP },
   { group: "Selling", href: "/sales", label: "Sales", icon: ShoppingCart, roles: SUP },
   { group: "Selling", href: "/products", label: "Products & prices", icon: Package, roles: MGR },
   { group: "Selling", href: "/inventory", label: "Stock", icon: Boxes, roles: SUP },
