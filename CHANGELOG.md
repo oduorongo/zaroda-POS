@@ -1,5 +1,14 @@
 # Changelog
 
+## Zaroda Shamba F7: reports and books (2026-11-25)
+
+- Reports (farm managers and auditors) at /shamba/reports: profit per enterprise (income from till sales of tagged products, credit deliveries and animals sold, less feed, vet and drugs, muster-roll labour, field inputs and work, and animals bought); cost per litre of milk, per egg, per kg and per acre; herd register; breeding calendar; health and withdrawal register; crop report; wages by worker; buyers who owe. The registers come with basic reports; profit, wages, debtors and downloads with full reports.
+- Excel download of any report (same branded sheet as Build) and Print / save as PDF.
+- Books: paid wage runs (farm labour against PAYE, NSSF, SHIF, Housing Levy and the money paid), credit deliveries (debtors and sales, with the stock's cost), buyer payments, feed fed and field inputs used now post to the farm's general ledger by themselves; voids are reversed. Farms get three accounts: Feed used (5400), Seed, fertiliser and chemicals used (5410), Farm labour (5420). Accounts (books) and Reports are in the farm menu.
+- Hardening: the row-level security coverage check now knows farm_plans and app_income_receipts are platform tables by design (both documented in rls.sql), so it passes in full.
+- Full user guide: docs/farm/USER-GUIDE.md.
+- No DB step (no new tables; the farm accounts are created by the books on their next pass). Checks: scripts/e2e-shamba-reports.js (19 pass).
+
 ## Zaroda Shamba F6: labour and sales (2026-11-25)
 
 - Workers & wages (Farmer plan and up): casual workers with their M-Pesa number and pay a day (never users, never counted toward the user limit); the daily muster roll (present, half day, absent, task); pay runs from the muster with NSSF, SHIF, Housing Levy and PAYE from the shared statutory settings in force at the end of the period (Build's defaults are filled in the first time). A run is prepared by one person and approved by another (the owner may approve their own only when nobody else can), then paid by M-Pesa B2C from the farm's own payout account, by hand-made M-Pesa with its code, or in cash; payslips by SMS. Paid days are fixed; only drafts can be deleted.

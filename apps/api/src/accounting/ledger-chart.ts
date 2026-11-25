@@ -66,6 +66,13 @@ export const CONSTRUCTION_ACCOUNTS = [
   { key: 'SITE_LABOUR', code: '5300', name: 'Site labour (casual wages)', type: 'EXPENSE' },
 ] as const satisfies readonly { key: string; code: string; name: string; type: LedgerAccountType }[];
 
+/** Extra accounts only farms get (docs/farm): what feed, field inputs and casual labour cost the farm. */
+export const FARM_ACCOUNTS = [
+  { key: 'FEED_USED', code: '5400', name: 'Feed used', type: 'EXPENSE' },
+  { key: 'FARM_INPUTS', code: '5410', name: 'Seed, fertiliser and chemicals used', type: 'EXPENSE' },
+  { key: 'FARM_LABOUR', code: '5420', name: 'Farm labour (casual wages)', type: 'EXPENSE' },
+] as const satisfies readonly { key: string; code: string; name: string; type: LedgerAccountType }[];
+
 /** What a contractor calls some of the shared accounts: their "sales" are certified work (IPCs). */
 export const CONSTRUCTION_NAMES: Record<string, string> = {
   SALES: 'Contract revenue (certified work)',
@@ -76,9 +83,11 @@ export const CONSTRUCTION_NAMES: Record<string, string> = {
 export const systemAccountsFor = (industryType: string | null | undefined) =>
   industryType === 'CONSTRUCTION'
     ? [...SYSTEM_ACCOUNTS.map((a) => ({ ...a, name: CONSTRUCTION_NAMES[a.key] ?? a.name })), ...CONSTRUCTION_ACCOUNTS]
-    : [...SYSTEM_ACCOUNTS];
+    : industryType === 'FARM'
+      ? [...SYSTEM_ACCOUNTS, ...FARM_ACCOUNTS]
+      : [...SYSTEM_ACCOUNTS];
 
-export type AccountKey = (typeof SYSTEM_ACCOUNTS)[number]['key'] | (typeof CONSTRUCTION_ACCOUNTS)[number]['key'];
+export type AccountKey = (typeof SYSTEM_ACCOUNTS)[number]['key'] | (typeof CONSTRUCTION_ACCOUNTS)[number]['key'] | (typeof FARM_ACCOUNTS)[number]['key'];
 
 /** Where an expense of each category is posted (Salaries recorded as an expense go with payroll). */
 export function expenseAccount(category: string): AccountKey {

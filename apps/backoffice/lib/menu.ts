@@ -111,6 +111,8 @@ const FARM: Def[] = [
   { group: "Selling", href: "/inventory", label: "Stock", icon: Boxes, roles: SUP },
   { group: "Selling", href: "/customers", label: "Buyers", icon: UserRound, roles: SUP },
   { group: "Selling", href: TERMINAL_URL, label: "Open the till", icon: Store, roles: SUP },
+  { group: "Money", href: "/shamba/reports", label: "Reports", icon: FileText, roles: SUP },
+  { group: "Money", href: "/accounting", label: "Accounts (books)", icon: BookOpen, roles: MGR },
   { group: "Farm setup", href: "/shamba/workers", label: "Workers & wages", icon: Shovel, roles: SUP },
   { group: "Farm setup", href: "/shamba/layout", label: "Layout", icon: MapPinned, roles: SUP },
   { group: "Farm setup", href: "/shamba/enterprises", label: "Enterprises", icon: Layers, roles: SUP },

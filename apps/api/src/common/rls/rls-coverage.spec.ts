@@ -31,6 +31,10 @@ const INTENTIONALLY_EXCLUDED = new Set([
   'password_reset_codes',
   // Zaroda's own KRA GavaConnect keys, read only by the server and platform admin - see rls.sql.
   'etims_gateways',
+  // Zaroda Shamba's plan price list (no organizationId), like plans - see rls.sql's Zaroda Shamba block.
+  'farm_plans',
+  // Income from ZARODA's other apps, written only by the key-protected /sales-sync/income - see rls.sql.
+  'app_income_receipts',
   // The platform-admin app's own schema - internal, cross-tenant tooling
   // that connects as a separate BYPASSRLS role, never tenant-facing.
   'platform_admins',
