@@ -1,5 +1,14 @@
 # Changelog
 
+## Shamba: selling produce from the farm menu (2026-11-25)
+
+- The Shamba menu has a Selling section: Sales, Products & prices (owners and managers), Stock, Buyers and Open the till. The shared screens are titled ZARODA SHAMBA for farms.
+- The farm home has a "Ready to sell" card: milk and eggs in stock with their prices, Open the till, Sales, Change prices and Stock.
+- The produce settings now return what is in stock (inStock) for milk and eggs.
+- Demo farm seed gives the farm a till ("Farm gate till"), like a real sign-up. Checked: a farm manager signs in on the till by PIN and sells 2.5 L of milk for KES 150; milk stock drops by 2.5 L.
+- Still to come in F6: blocking the till from selling produce under withdrawal, credit buyers and statements.
+- No DB step.
+
 ## Each product on its own address (2026-11-24)
 
 - Until POS_DOMAIN is set, a page of another product opened on a product address moves to that product's own address: a farm opened on build.zarodasolutions.app goes to shamba.zarodasolutions.app (and Build and Rentals the same way). Once POS_DOMAIN is set, everything still moves to the main address as before.

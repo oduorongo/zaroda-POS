@@ -36,6 +36,7 @@ async function main() {
         data: { id: orgId, name: "Uriri Dairy & Poultry Farm", industryType: "FARM", country: "KE", baseCurrency: "KES", phone: "0700000001", email: "info@shamba.demo" },
       });
       const branch = await tx.branch.create({ data: { organizationId: orgId, name: "Main farm", county: "Migori", subCounty: "Uriri" } });
+      await tx.terminal.create({ data: { branchId: branch.id, deviceLabel: "Farm gate till" } });
 
       const orgUsers: Record<string, string> = {};
       for (const s of staff) {

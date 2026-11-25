@@ -50,11 +50,14 @@ export class FarmProductionService {
       const s = await this.settingsIn(tx);
       const ids = [s.milkVariantId, s.eggVariantId].filter((x): x is string => !!x);
       const variants = ids.length ? await tx.productVariant.findMany({ where: { id: { in: ids } }, include: { product: { select: { name: true, baseUnit: true } } } }) : [];
+      const branches = await tx.branch.findMany({ orderBy: { createdAt: 'asc' }, select: { id: true, name: true } });
+      const stockBranch = s.branchId ?? branches[0]?.id ?? null;
+      const items = ids.length && stockBranch ? await tx.inventoryItem.findMany({ where: { branchId: stockBranch, variantId: { in: ids } } }) : [];
       const label = (id: string | null) => {
         const v = variants.find((x) => x.id === id);
-        return v ? { id: v.id, name: v.name ? `${v.product.name} - ${v.name}` : v.product.name, unit: v.product.baseUnit, price: Number(v.price), quantityMode: v.quantityMode } : null;
+        const inStock = Number(items.find((i) => i.variantId === id)?.quantity ?? 0);
+        return v ? { id: v.id, name: v.name ? `${v.product.name} - ${v.name}` : v.product.name, unit: v.product.baseUnit, price: Number(v.price), quantityMode: v.quantityMode, inStock } : null;
       };
-      const branches = await tx.branch.findMany({ orderBy: { createdAt: 'asc' }, select: { id: true, name: true } });
       return { milk: label(s.milkVariantId), eggs: label(s.eggVariantId), eggsPerUnit: s.eggsPerUnit, branchId: s.branchId ?? branches[0]?.id ?? null, branches };
     });
   }

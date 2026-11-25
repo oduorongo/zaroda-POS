@@ -25,6 +25,55 @@ function Usage({ label, used, cap }: { label: string; used: number; cap: number 
   );
 }
 
+interface Linked { id: string; name: string; unit: string; price: number; inStock: number }
+const TERMINAL_URL = process.env.NEXT_PUBLIC_TERMINAL_URL ?? "https://pos.zarodashop.com";
+const qty = (n: number) => n.toLocaleString("en-KE", { maximumFractionDigits: 1 });
+
+/** What is in stock to sell: milk and eggs (from the produce settings), with a way to the till and the prices. */
+function ReadyToSell({ canManage }: { canManage: boolean }) {
+  const [s, setS] = useState<{ milk: Linked | null; eggs: Linked | null } | null>(null);
+  useEffect(() => {
+    apiGet<{ milk: Linked | null; eggs: Linked | null }>("/farm/production/settings").then(setS).catch(() => setS({ milk: null, eggs: null }));
+  }, []);
+  if (!s) return null;
+  const rows = [s.milk, s.eggs].filter((x): x is Linked => !!x);
+  return (
+    <Card title="Ready to sell">
+      {rows.length === 0 ? (
+        <p className="text-sm text-secondary-600">
+          Milk and eggs are not linked to products yet. Open <Link href="/shamba/production" className="underline">Yields &amp; produce</Link> &gt; Settings and make them, so they go into stock for the till.
+        </p>
+      ) : (
+        <ul className="space-y-2 text-sm">
+          {rows.map((r) => (
+            <li key={r.id} className="flex justify-between gap-2">
+              <span>{r.name}</span>
+              <span>
+                <b>
+                  {qty(r.inStock)} {r.unit}
+                  {r.inStock === 1 ? "" : "s"}
+                </b>{" "}
+                <span className="text-secondary-500">at KES {r.price.toLocaleString("en-KE")}</span>
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="mt-4 flex flex-wrap gap-3 text-sm">
+        <a href={TERMINAL_URL} className="rounded-lg px-4 py-2 font-semibold text-white no-underline" style={{ background: SHAMBA_BRAND.orange }}>
+          Open the till
+        </a>
+        <Link href="/sales" className="self-center underline">Sales</Link>
+        {canManage && <Link href="/products" className="self-center underline">Change prices</Link>}
+        <Link href="/inventory" className="self-center underline">Stock</Link>
+      </div>
+      <p className="mt-3 text-xs text-secondary-500">
+        Sell at the till: tap your PIN, pick Fresh milk or Eggs, type the litres or trays, take cash or M-Pesa. Milk and eggs from treated animals never go into stock.
+      </p>
+    </Card>
+  );
+}
+
 function Dashboard() {
   const [data, setData] = useState<FarmOverview | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -154,6 +203,7 @@ function Dashboard() {
           </ul>
           <p className="mt-4 text-xs text-secondary-500">Crops, feed mixing and selling on credit come next.</p>
         </Card>
+        <ReadyToSell canManage={canManage} />
       </div>
     </div>
   );

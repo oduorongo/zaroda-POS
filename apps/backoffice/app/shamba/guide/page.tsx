@@ -11,7 +11,8 @@ const STEPS: [string, string][] = [
   ["6. Health and breeding", "On an animal: record sickness, treatments, AI or service, births (the calf gets its own record) and weights. Treated animals show 'Withheld' until their milk or meat can be sold. Health lists what is due; on Mkulima and up, set vaccination programmes and get SMS and email reminders."],
   ["7. Milk and eggs", "Under Yields & produce > Settings, make (or choose) the milk and egg products once. Then on Milk, pick the milking (morning, midday, evening) and type each cow's litres; on Eggs, each flock's good, cracked and small eggs, feed and deaths. Milk and eggs for sale go straight into stock for the till. Milk or eggs from treated animals are withheld and never reach stock, so they cannot be sold."],
   ["8. Yields and other produce", "Yields & produce shows milk, eggs and lay % by day, week and month, and each cow's litres a day. Record honey, manure, fish and other produce there too - into stock if you sell it."],
-  ["9. Coming next", "Crops, feed mixing, casual workers and selling on credit."],
+  ["9. Selling your produce", "Milk, eggs and other produce are sold at the till like any shop item. Open the till (Selling > Open the till, or pos.zarodashop.com), tap your PIN, pick Fresh milk or Eggs, type the litres or trays and take cash or M-Pesa; the receipt prints and the stock goes down. Change prices under Selling > Products & prices; see what sold under Sales and what is left under Stock. The farm home shows the milk and eggs ready to sell."],
+  ["10. Coming next", "Crops, feed mixing, casual workers and selling on credit (co-ops, hotels, statements)."],
 ];
 
 export default function ShambaGuide() {
