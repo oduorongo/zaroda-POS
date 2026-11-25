@@ -1,5 +1,11 @@
 # Changelog
 
+## Address routing runs on every page (2026-11-25)
+
+- The back office routing (middleware.ts) only ran on "/": its page pattern had a single backslash, so every address ending in letters (/shamba, /login, /construction/...) skipped it. POS_DOMAIN, product addresses and the other-product redirects therefore had no effect on live. The backslash is doubled; the routing now runs on every page except Next's files, the favicon and files with an extension.
+- With POS_DOMAIN set on Vercel, sign-in and working screens on build., rentals. and shamba. now move to the main address; their welcome, pricing, guide and sign-up pages (and the construction client portal) stay.
+- No DB step.
+
 ## Shamba: selling produce from the farm menu (2026-11-25)
 
 - The Shamba menu has a Selling section: Sales, Products & prices (owners and managers), Stock, Buyers and Open the till. The shared screens are titled ZARODA SHAMBA for farms.

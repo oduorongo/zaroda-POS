@@ -98,4 +98,6 @@ export function middleware(req: NextRequest) {
   return res;
 }
 
-export const config = { matcher: ["/((?!_next/|favicon|.*\.[a-z0-9]+$).*)"] };
+// Every page except Next's own files, the favicon and files with an extension (images, fonts). The backslash is doubled so the
+// pattern gets a literal dot; with a single one it skipped every path ending in letters, so the routing above only ran on "/".
+export const config = { matcher: ["/((?!_next/|favicon|.*\\.[a-z0-9]+$).*)"] };
