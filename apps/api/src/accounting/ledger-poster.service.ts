@@ -42,6 +42,7 @@ import {
   pettyTopUpDraft,
   pettyCountDraft,
 } from './ledger-posting.util';
+import { farmBuyerPaymentDraft, farmDeliveryDraft, farmStockUseDraft, farmWagesDraft } from './farm-posting.util';
 import { CON_PAYMENT_LABEL, conPayrollDraft, conZarodaDraft, ipcReceiptDraft, materialIssueDraft, retentionDraft, subPaymentDraft, subValuationDraft } from './construction-posting.util';
 
 const BATCH = 200;
@@ -668,6 +669,80 @@ export class LedgerPosterService {
         const p = await tx.conSubscriptionPayment.findUnique({ where: { id } });
         if (!p || p.status !== 'PAID' || !p.paidAt) return null;
         return conZarodaDraft({ date: nairobiDayOf(p.paidAt), label: `${CON_PAYMENT_LABEL[p.purpose]}${p.receipt ? ` (${p.receipt})` : ''}`, amountCents: toCents(p.amount), method: p.method });
+      },
+    },
+    // ── Farms (Zaroda Shamba): wages, credit deliveries and their payments, feed fed and field inputs used ──
+    {
+      type: 'FARM_WAGES',
+      candidates: (tx, c) => ids(tx, Prisma.sql`SELECT t.id FROM farm_wage_runs t WHERE t.status::text = 'PAID' AND t."paidAt" >= ${c.since} AND ${unposted('FARM_WAGES')} ORDER BY t."paidAt" LIMIT ${BATCH}`),
+      draft: async (tx, id, c) => {
+        const run = await tx.farmWageRun.findUnique({ where: { id } });
+        if (!run || run.status !== 'PAID' || !run.paidAt || run.paidAt < c.startAt) return null;
+        const lines = await tx.farmWageLine.findMany({ where: { runId: id } });
+        const sum = (f: (l: (typeof lines)[number]) => unknown) => lines.reduce((a, l) => a + toCents(f(l)), 0);
+        return farmWagesDraft({
+          date: nairobiDayOf(run.paidAt), reference: `${run.number} (${dateKey(run.periodStart)} to ${dateKey(run.periodEnd)})`,
+          grossCents: sum((l) => l.gross), payeCents: sum((l) => l.paye), nssfCents: sum((l) => l.nssf), shifCents: sum((l) => l.shif), housingCents: sum((l) => l.housingLevy),
+          paid: lines.map((l) => ({ method: l.method ?? 'CASH', netCents: toCents(l.net) })),
+        });
+      },
+    },
+    {
+      type: 'FARM_DELIVERY',
+      candidates: async (tx, c) => [
+        ...(await ids(tx, Prisma.sql`SELECT t.id FROM farm_deliveries t WHERE t."voidedAt" IS NULL AND t.date >= ${c.sinceDay} AND ${unposted('FARM_DELIVERY')} ORDER BY t."createdAt" LIMIT ${BATCH}`)),
+        ...(await ids(tx, postedWhere('FARM_DELIVERY', 'farm_deliveries', Prisma.sql`t."voidedAt" IS NOT NULL`))),
+      ],
+      draft: async (tx, id, c) => {
+        const d = await tx.farmDelivery.findUnique({ where: { id } });
+        if (!d || d.voidedAt || d.date < c.start) return null;
+        const [buyer, variant] = await Promise.all([
+          tx.farmBuyer.findUnique({ where: { id: d.buyerId }, select: { name: true } }),
+          tx.productVariant.findUnique({ where: { id: d.variantId }, select: { cost: true, product: { select: { name: true } } } }),
+        ]);
+        return farmDeliveryDraft({
+          date: dateKey(d.date), branchId: d.stockBranchId, reference: `${buyer?.name ?? 'buyer'}, ${Number(d.quantity)} ${variant?.product.name ?? ''}${d.slipNo ? ` (slip ${d.slipNo})` : ''}`,
+          amountCents: toCents(d.amount), costCents: Math.round(Number(d.quantity) * Number(variant?.cost ?? 0) * 100),
+        });
+      },
+    },
+    {
+      type: 'FARM_BUYER_PAYMENT',
+      candidates: async (tx, c) => [
+        ...(await ids(tx, Prisma.sql`SELECT t.id FROM farm_buyer_payments t WHERE t."voidedAt" IS NULL AND t.date >= ${c.sinceDay} AND ${unposted('FARM_BUYER_PAYMENT')} ORDER BY t."createdAt" LIMIT ${BATCH}`)),
+        ...(await ids(tx, postedWhere('FARM_BUYER_PAYMENT', 'farm_buyer_payments', Prisma.sql`t."voidedAt" IS NOT NULL`))),
+      ],
+      draft: async (tx, id, c) => {
+        const p = await tx.farmBuyerPayment.findUnique({ where: { id } });
+        if (!p || p.voidedAt || p.date < c.start) return null;
+        const buyer = await tx.farmBuyer.findUnique({ where: { id: p.buyerId }, select: { name: true } });
+        return farmBuyerPaymentDraft({ date: dateKey(p.date), reference: `${buyer?.name ?? 'buyer'}${p.reference ? ` (${p.reference})` : ''}`, amountCents: toCents(p.amount), method: p.method });
+      },
+    },
+    {
+      type: 'FARM_FEEDING',
+      candidates: async (tx, c) => [
+        ...(await ids(tx, Prisma.sql`SELECT t.id FROM farm_feedings t WHERE t."voidedAt" IS NULL AND t.cost > 0 AND t.date >= ${c.sinceDay} AND ${unposted('FARM_FEEDING')} ORDER BY t."createdAt" LIMIT ${BATCH}`)),
+        ...(await ids(tx, postedWhere('FARM_FEEDING', 'farm_feedings', Prisma.sql`t."voidedAt" IS NOT NULL`))),
+      ],
+      draft: async (tx, id, c) => {
+        const f = await tx.farmFeeding.findUnique({ where: { id } });
+        if (!f || f.voidedAt || f.date < c.start || Number(f.cost) <= 0) return null;
+        const v = await tx.productVariant.findUnique({ where: { id: f.variantId }, select: { product: { select: { name: true } } } });
+        return farmStockUseDraft({ date: dateKey(f.date), branchId: f.stockBranchId, kind: 'FEED', reference: `${Number(f.kg)} kg ${v?.product.name ?? 'feed'}`, costCents: toCents(f.cost) });
+      },
+    },
+    {
+      type: 'FARM_CROP_INPUT',
+      candidates: async (tx, c) => [
+        ...(await ids(tx, Prisma.sql`SELECT t.id FROM farm_crop_activities t WHERE t."voidedAt" IS NULL AND t."inputVariantId" IS NOT NULL AND t."inputCost" > 0 AND t.date >= ${c.sinceDay} AND ${unposted('FARM_CROP_INPUT')} ORDER BY t."createdAt" LIMIT ${BATCH}`)),
+        ...(await ids(tx, postedWhere('FARM_CROP_INPUT', 'farm_crop_activities', Prisma.sql`t."voidedAt" IS NOT NULL`))),
+      ],
+      draft: async (tx, id, c) => {
+        const a = await tx.farmCropActivity.findUnique({ where: { id } });
+        if (!a || a.voidedAt || !a.inputVariantId || a.date < c.start || Number(a.inputCost) <= 0) return null;
+        const s = await tx.farmCropSeason.findUnique({ where: { id: a.seasonId }, select: { crop: true } });
+        return farmStockUseDraft({ date: dateKey(a.date), branchId: a.stockBranchId, kind: 'INPUTS', reference: `${s?.crop ?? 'crop'}: ${a.product ?? a.kind.toLowerCase()}`, costCents: toCents(a.inputCost) });
       },
     },
   ];

@@ -221,7 +221,7 @@ function Dashboard() {
               <Link href="/shamba/buyers" className="underline">Buyers</Link>
             </li>
           </ul>
-          <p className="mt-4 text-xs text-secondary-500">Reports and downloads come next.</p>
+          <p className="mt-4 text-xs text-secondary-500"><Link href="/shamba/reports" className="underline">Reports</Link>: profit per enterprise, cost per litre and egg, registers, Excel and PDF.</p>
         </Card>
         <ReadyToSell canManage={canManage} />
       </div>
