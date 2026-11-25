@@ -35,7 +35,7 @@ export function Nav({ session }: { session: Session }) {
 
   return (
     <SideNav
-      title={session.industryType === "RENTAL" ? "ZARODA RENTALS" : "ZARODA POS"}
+      title={session.industryType === "RENTAL" ? "ZARODA RENTALS" : session.industryType === "FARM" ? "ZARODA SHAMBA" : "ZARODA POS"}
       subtitle={orgName}
       homeHref={homePath(session.role, session.industryType)}
       items={menuFor(session)}

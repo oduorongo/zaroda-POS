@@ -6,6 +6,8 @@ import {
   TrendingUp, Truck, UserRound, Users, UtensilsCrossed, Wallet, Banknote, Clock, Wrench, Beef, HeartPulse, Layers, Gavel, Milk, Egg,
 } from "lucide-react";
 import type { Session } from "./auth";
+
+const TERMINAL_URL = process.env.NEXT_PUBLIC_TERMINAL_URL ?? "https://pos.zarodashop.com";
 import { hasConRole, isDirector, type ConMe } from "./construction";
 
 export type MenuItem = { href: string; label: string; icon: LucideIcon; group: string; match?: string[] };
@@ -101,6 +103,11 @@ const FARM: Def[] = [
   { group: "Production", href: "/shamba/milk", label: "Milk", icon: Milk, roles: SUP },
   { group: "Production", href: "/shamba/eggs", label: "Eggs", icon: Egg, roles: SUP },
   { group: "Production", href: "/shamba/production", label: "Yields & produce", icon: BarChart3, roles: SUP },
+  { group: "Selling", href: "/sales", label: "Sales", icon: ShoppingCart, roles: SUP },
+  { group: "Selling", href: "/products", label: "Products & prices", icon: Package, roles: MGR },
+  { group: "Selling", href: "/inventory", label: "Stock", icon: Boxes, roles: SUP },
+  { group: "Selling", href: "/customers", label: "Buyers", icon: UserRound, roles: SUP },
+  { group: "Selling", href: TERMINAL_URL, label: "Open the till", icon: Store, roles: SUP },
   { group: "Farm setup", href: "/shamba/layout", label: "Layout", icon: MapPinned, roles: SUP },
   { group: "Farm setup", href: "/shamba/enterprises", label: "Enterprises", icon: Layers, roles: SUP },
   { group: "Farm setup", href: "/shamba/staff", label: "Staff", icon: Users, roles: SUP },
