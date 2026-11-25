@@ -8834,3 +8834,101 @@ model FarmProduceRecord {
   @@index([organizationId, date])
   @@map("farm_produce_records")
 }
+
+// ── Zaroda Shamba F4: crops - seasons, field work, spraying and harvests (docs/farm/01-domain-spec.md) ──────────────
+
+enum FarmCropStatus {
+  PLANNED
+  GROWING
+  HARVESTING
+  CLOSED
+}
+
+enum FarmCropActivityKind {
+  LAND_PREP
+  PLANTING
+  WEEDING
+  TOP_DRESSING
+  SPRAYING
+  IRRIGATION
+  SCOUTING
+  OTHER
+}
+
+/// One crop in one field for one season: what was planted, on how many acres, and when.
+model FarmCropSeason {
+  id              String         @id @default(uuid())
+  organizationId  String
+  unitId          String
+  enterpriseId    String?
+  crop            String
+  variety         String?
+  acres           Decimal        @db.Decimal(14, 3)
+  plantedOn       DateTime?      @db.Date
+  expectedHarvest DateTime?      @db.Date
+  status          FarmCropStatus @default(PLANNED)
+  /// KEPHIS: who supplied the seed and its certification (lot) number.
+  seedSupplier    String?
+  seedCertNo      String?
+  notes           String?
+  closedOn        DateTime?      @db.Date
+  createdBy       String?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  @@index([organizationId, status])
+  @@index([organizationId, unitId])
+  @@map("farm_crop_seasons")
+}
+
+/// Field work on a season. Inputs come off stock; a spray sets the day harvest is allowed again (pre-harvest interval).
+model FarmCropActivity {
+  id              String               @id @default(uuid())
+  organizationId  String
+  seasonId        String
+  date            DateTime             @db.Date
+  kind            FarmCropActivityKind
+  /// The chemical, fertiliser or seed used, as named on the label.
+  product         String?
+  rate            String?
+  inputVariantId  String?
+  quantity        Decimal?             @db.Decimal(14, 3)
+  stockBranchId   String?
+  inputCost       Decimal              @default(0) @db.Decimal(14, 2)
+  workers         Int?
+  labourCost      Decimal              @default(0) @db.Decimal(14, 2)
+  preHarvestDays  Int?
+  safeHarvestFrom DateTime?            @db.Date
+  doneBy          String?
+  notes           String?
+  createdBy       String?
+  voidedAt        DateTime?
+  voidReason      String?
+  createdAt       DateTime             @default(now())
+
+  @@index([organizationId, seasonId])
+  @@map("farm_crop_activities")
+}
+
+/// What a season yielded on a day. kg is worked out from the unit (a 90 kg bag, a tonne) for yield and cost per kg.
+model FarmHarvest {
+  id             String    @id @default(uuid())
+  organizationId String
+  seasonId       String
+  date           DateTime  @db.Date
+  quantity       Decimal   @db.Decimal(14, 3)
+  unit           String
+  kgPerUnit      Decimal   @db.Decimal(14, 3)
+  kg             Decimal   @db.Decimal(14, 3)
+  grade          String?
+  stockVariantId String?
+  stockBranchId  String?
+  notes          String?
+  createdBy      String?
+  voidedAt       DateTime?
+  voidReason     String?
+  createdAt      DateTime  @default(now())
+
+  @@index([organizationId, seasonId])
+  @@map("farm_harvests")
+}

@@ -2323,3 +2323,23 @@ DROP POLICY IF EXISTS tenant_isolation ON farm_produce_records;
 CREATE POLICY tenant_isolation ON farm_produce_records
   USING ("organizationId" = current_setting('app.current_tenant', true))
   WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+-- Zaroda Shamba F4: crops (seasons, field work, harvests)
+ALTER TABLE farm_crop_seasons ENABLE ROW LEVEL SECURITY;
+ALTER TABLE farm_crop_seasons FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON farm_crop_seasons;
+CREATE POLICY tenant_isolation ON farm_crop_seasons
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+ALTER TABLE farm_crop_activities ENABLE ROW LEVEL SECURITY;
+ALTER TABLE farm_crop_activities FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON farm_crop_activities;
+CREATE POLICY tenant_isolation ON farm_crop_activities
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+ALTER TABLE farm_harvests ENABLE ROW LEVEL SECURITY;
+ALTER TABLE farm_harvests FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON farm_harvests;
+CREATE POLICY tenant_isolation ON farm_harvests
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));

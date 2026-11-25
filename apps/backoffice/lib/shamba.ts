@@ -284,3 +284,16 @@ export function withdrawalLines(w: Withdrawal): string[] {
     w.eggUntil && `Eggs not for sale until after ${f(w.eggUntil)}`,
   ].filter((x): x is string => !!x);
 }
+
+export const CROP_STATUS: Record<string, string> = { PLANNED: "Planned", GROWING: "Growing", HARVESTING: "Harvesting", CLOSED: "Closed" };
+export const CROP_ACTIVITIES: Record<string, string> = {
+  LAND_PREP: "Land preparation",
+  PLANTING: "Planting",
+  WEEDING: "Weeding",
+  TOP_DRESSING: "Top dressing",
+  SPRAYING: "Spraying",
+  IRRIGATION: "Irrigation",
+  SCOUTING: "Scouting",
+  OTHER: "Other work",
+};
+export const HARVEST_UNITS = ["kg", "bag (90 kg)", "bag (50 kg)", "tonne", "crate", "bunch", "piece"];

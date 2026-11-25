@@ -11,12 +11,14 @@ import { FarmHealthService } from './farm-health.service';
 import { FarmRemindersService } from './farm-reminders.service';
 import { FarmProductionController } from './farm-production.controller';
 import { FarmProductionService } from './farm-production.service';
+import { FarmCropsController } from './farm-crops.controller';
+import { FarmCropsService } from './farm-crops.service';
 
 /** Zaroda Shamba - farm management (industryType FARM). docs/farm, prompts/farm. */
 @Module({
   imports: [NotificationsModule, InventoryModule],
-  controllers: [FarmController, FarmLivestockController, FarmProductionController, PublicFarmPlansController],
-  providers: [FarmService, FarmSetupService, FarmGuard, FarmLivestockService, FarmHealthService, FarmRemindersService, FarmProductionService],
+  controllers: [FarmController, FarmLivestockController, FarmProductionController, FarmCropsController, PublicFarmPlansController],
+  providers: [FarmService, FarmSetupService, FarmGuard, FarmLivestockService, FarmHealthService, FarmRemindersService, FarmProductionService, FarmCropsService],
   exports: [FarmSetupService],
 })
 export class FarmModule {}

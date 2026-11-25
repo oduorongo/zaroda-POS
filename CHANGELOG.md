@@ -1,5 +1,16 @@
 # Changelog
 
+## Zaroda Shamba F4: crops (2026-11-25)
+
+- Crop seasons: a crop in a field for a season, with variety, acres (never more than the field), planting and expected harvest dates, enterprise, and the seed supplier and lot number (KEPHIS). Planned -> growing (on planting) -> harvesting (on the first harvest) -> closed (managers).
+- Field work: land preparation, planting, weeding, top dressing, spraying, irrigation, scouting. Fertiliser, seed or chemical used comes straight off stock and is costed at the stock item's cost (or a cost typed in); workers and labour cost are kept.
+- Spraying (Pest Control Products Board): the chemical, rate, who sprayed and the pre-harvest interval from the label are required. Harvest before the interval ends is refused with the chemical, spray date and first allowed day; the season shows "no harvest until ...".
+- Harvests in kg, 90 or 50 kg bags, tonnes, or crates/bunches with kg per unit; into stock when a product is chosen (as kg for products sold per kg). Yield and cost per acre and per kg on every season.
+- Voids keep the record and reverse its stock (inputs back in, harvest out). Crops officers and managers record; only managers void and close; a crops officer limited to some fields sees only those. Everything audit-logged.
+- Screens: Crops (season cards with harvest, cost and per-kg cost) and each season (figures, field work or spray, harvest, lists). Farm home and guide updated.
+- Demo farm: DAP, CAN and Duduthrin in stock; maize on 6 acres sprayed 5 days ago (harvest blocked 9 more days); beans on 2 acres with 720 kg harvested into stock.
+- DB: migration 20270116100000_shamba_crops (3 tables), then apply-rls. Run BOTH before merging. Checks: scripts/e2e-shamba-crops.js (27 pass on a freshly seeded farm).
+
 ## Address routing runs on every page (2026-11-25)
 
 - The back office routing (middleware.ts) only ran on "/": its page pattern had a single backslash, so every address ending in letters (/shamba, /login, /construction/...) skipped it. POS_DOMAIN, product addresses and the other-product redirects therefore had no effect on live. The backslash is doubled; the routing now runs on every page except Next's files, the favicon and files with an extension.
