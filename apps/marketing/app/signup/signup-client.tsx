@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { apiPost, ApiError } from "../../lib/api";
 import { RENTALS_URL } from "../../components/rentals-section";
+import { PRICING_PLANS } from "../../components/pricing-section";
 import { Button, Input, Label } from "@zaroda/ui";
 
 const INDUSTRY_TYPES = [
@@ -17,6 +18,17 @@ const INDUSTRY_TYPES = [
 
 /** Business types the free Online Shop only plan is for (the server checks the same). */
 const ONLINE_SHOP_TYPES = ["RETAIL"];
+
+type ChosenBilling = "annual" | "monthly";
+
+/** The plan and billing picked on the pricing page (?plan=standard&billing=annual); null when none or unknown. */
+function chosenPlan(search: string): { plan: (typeof PRICING_PLANS)[number]; billing: ChosenBilling } | null {
+  const q = new URLSearchParams(search);
+  const plan = PRICING_PLANS.find((p) => p.id === q.get("plan"));
+  if (!plan) return null;
+  const billing: ChosenBilling = plan.monthly === null || q.get("billing") !== "monthly" ? "annual" : "monthly";
+  return { plan, billing };
+}
 
 const BACKOFFICE_URL = process.env.NEXT_PUBLIC_BACKOFFICE_URL ?? "http://localhost:3003";
 
@@ -56,8 +68,13 @@ export default function SignupClient() {
     if (onlineOnly && !ONLINE_SHOP_TYPES.includes(industryType)) setIndustryType(ONLINE_SHOP_TYPES[0]);
   }, [onlineOnly, industryType]);
 
+  const [chosen, setChosen] = useState<ReturnType<typeof chosenPlan>>(null);
   useEffect(() => {
     if (new URLSearchParams(window.location.search).get("plan") === "online") setOnlineOnly(true);
+    const c = chosenPlan(window.location.search);
+    setChosen(c);
+    // The School Supplier plan is for suppliers to schools.
+    if (c?.plan.id === "school-supplier") setIndustryType("SCHOOL_SUPPLIER");
   }, []);
 
   const [submitting, setSubmitting] = useState(false);
@@ -135,6 +152,17 @@ export default function SignupClient() {
             ? "Free, with no monthly fee: keep your current POS for in-store sales. Shoppers pay a 3% convenience fee on their orders."
             : "14 days, no card required. Set up your first branch and register now."}
       </p>
+
+      {chosen && !rental && !onlineOnly && (
+        <div className="mt-4 rounded-lg border border-primary-600/40 bg-primary-600/5 p-3 text-sm text-foreground">
+          <p>
+            <b>{chosen.plan.name}</b>, billed {chosen.billing === "annual" ? "yearly" : "monthly"}:{" "}
+            KES {(chosen.billing === "annual" ? chosen.plan.annual : chosen.plan.monthly!).toLocaleString("en-KE")}
+            {chosen.billing === "annual" ? "/year" : "/mo"}
+          </p>
+          <p className="mt-0.5 text-xs text-secondary-500">Free for the first 14 days. You pay only when the trial ends.</p>
+        </div>
+      )}
 
       <div className="mt-6 space-y-4">
         <div>

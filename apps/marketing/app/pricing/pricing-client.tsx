@@ -1,103 +1,20 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import Link from "next/link";
-import { apiGet, ApiError } from "../../lib/api";
-import { Card, CardContent, ErrorState, LoadingState } from "@zaroda/ui";
+import PricingSection from "../../components/pricing-section";
 
-interface Plan {
-  tier: string;
-  name: string;
-  priceKes: string;
-  minPriceKes?: string | null;
-  maxExtraTills?: number;
-  billingPeriodDays: number;
-  maxDevices: number;
-  maxBranches: number;
-}
-
-const TAGLINES: Record<string, string> = {
-  BASIC: "One till, one shop. Perfect for a single minimart or agrovet counter.",
-  STANDARD: "A few registers, one branch — supermarkets and busier shops.",
-  PREMIUM: "Multiple branches, full staff roster, and priority support.",
-  SEASONAL: "For suppliers to schools: one yearly fee, paid in termly instalments (half in Term 1) or all at once.",
-};
-
-const period = (days: number) => (days === 30 ? "mo" : days === 365 ? "year" : `${days}d`);
-
-/** Pricing is fetched live from GET /public/plans - the same Plan rows platform-admin's Billing screen manages, never hardcoded twice. */
+/** The plans (Annual / Monthly) and the Online Shop add-on. */
 export default function PricingClient() {
-  const [plans, setPlans] = useState<Plan[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    void (async () => {
-      try {
-        setPlans((await apiGet<Plan[]>("/public/plans")).filter((p) => p.tier !== "ONLINE_ONLY"));
-      } catch (err) {
-        setError(err instanceof ApiError ? err.message : "Could not load pricing right now.");
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, []);
-
   return (
-    <main className="mx-auto max-w-5xl px-6 py-16">
+    <main className="mx-auto max-w-6xl px-6 py-16">
       <div className="text-center">
         <h1 className="text-3xl font-bold text-foreground">Simple, per-device pricing</h1>
-        <p className="mt-2 text-secondary-500">Pay monthly in KES (school suppliers pay yearly). Cancel anytime. No setup fee. Add the online shop whenever you are ready.</p>
+        <p className="mt-2 text-secondary-500">Pay in KES, yearly or monthly (school suppliers pay yearly). Cancel anytime. Add the online shop whenever you are ready.</p>
       </div>
 
-      {loading && <div className="mt-12"><LoadingState label="Loading pricing..." /></div>}
-      {!loading && error && <div className="mt-12"><ErrorState description={error} /></div>}
-
-      {!loading && !error && (
-        <div className="mt-12 grid gap-6 sm:grid-cols-3">
-          {plans.map((plan, i) => (
-            <Card key={plan.tier} className={i === 1 ? "border-primary-500 shadow-lg" : undefined}>
-              <CardContent>
-                {i === 1 && (
-                  <p className="mb-2 inline-block rounded-full bg-primary-50 px-2.5 py-0.5 text-xs font-semibold text-primary-700">
-                    Most popular
-                  </p>
-                )}
-                <h2 className="text-lg font-bold text-foreground">{plan.name}</h2>
-                <p className="mt-2 text-3xl font-bold text-foreground">
-                  {plan.minPriceKes != null && Number(plan.minPriceKes) < Number(plan.priceKes) && (
-                    <span className="block text-sm font-normal text-secondary-500">from</span>
-                  )}
-                  KES {Number(plan.minPriceKes != null && Number(plan.minPriceKes) < Number(plan.priceKes) ? plan.minPriceKes : plan.priceKes).toLocaleString()}
-                  <span className="text-sm font-normal text-secondary-500">/{period(plan.billingPeriodDays)}</span>
-                </p>
-                {plan.minPriceKes != null && Number(plan.minPriceKes) < Number(plan.priceKes) && (
-                  <p className="mt-1 text-xs text-secondary-500">
-                    Up to KES {Number(plan.priceKes).toLocaleString()} per till, depending on your business - we agree it with you when you sign up.
-                  </p>
-                )}
-                <p className="mt-2 text-sm text-secondary-500">{TAGLINES[plan.tier] ?? ""}</p>
-                <ul className="mt-4 space-y-2 text-sm text-secondary-600">
-                  <li>
-                    ✓ Up to {plan.maxDevices} device{plan.maxDevices > 1 ? "s" : ""}
-                    {(plan.maxExtraTills ?? 0) > 0 ? ` - add ${plan.maxExtraTills === 1 ? "a second till" : `${plan.maxExtraTills} more tills`} at the same price` : ""}
-                  </li>
-                  <li>✓ Up to {plan.maxBranches} branch{plan.maxBranches > 1 ? "es" : ""}</li>
-                  <li>✓ M-Pesa STK push</li>
-                  <li>✓ Offline-capable terminal</li>
-                  <li>✓ Free 14-day trial</li>
-                </ul>
-                <Link
-                  href="/signup"
-                  className="mt-6 block rounded-md bg-primary-600 py-2.5 text-center text-sm font-semibold text-white hover:bg-primary-700"
-                >
-                  Start free trial
-                </Link>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      )}
+      <div className="mt-12">
+        <PricingSection />
+      </div>
       <section id="online-shop" className="mt-16 rounded-xl border border-[#c99a2e]/60 bg-surface p-6 sm:p-8">
         <span className="text-xs font-semibold uppercase tracking-wider text-[#c99a2e]">Add-on</span>
         <h2 className="mt-1 text-2xl font-bold text-foreground">Online Shop</h2>
