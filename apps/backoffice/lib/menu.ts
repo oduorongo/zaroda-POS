@@ -3,7 +3,7 @@ import {
   BarChart3, BedDouble, BookOpen, Boxes, BrainCircuit, Building2, CalendarDays, ClipboardCheck, ClipboardList, Coins, ConciergeBell,
   Factory, FileText, FolderKanban, GraduationCap, HardHat, Home, LayoutGrid, LifeBuoy, Mail, MapPinned, Package, PackageOpen, PiggyBank,
   Pill, Receipt, ScanBarcode, Scissors, Settings, ShieldCheck, Shirt, ShoppingBag, ShoppingCart, Store, Tags, Tractor, Trash2,
-  TrendingUp, Truck, UserRound, Users, UtensilsCrossed, Wallet, Banknote, Clock, Wrench, Beef, HeartPulse, Layers, Gavel, Milk, Egg, Sprout, Wheat,
+  TrendingUp, Truck, UserRound, Users, UtensilsCrossed, Wallet, Banknote, Clock, Wrench, Beef, HeartPulse, Layers, Gavel, Milk, Egg, Sprout, Wheat, Handshake, Shovel,
 } from "lucide-react";
 import type { Session } from "./auth";
 
@@ -105,11 +105,13 @@ const FARM: Def[] = [
   { group: "Production", href: "/shamba/production", label: "Yields & produce", icon: BarChart3, roles: SUP },
   { group: "Production", href: "/shamba/crops", label: "Crops", icon: Sprout, roles: SUP },
   { group: "Production", href: "/shamba/feed", label: "Feed", icon: Wheat, roles: SUP },
+  { group: "Selling", href: "/shamba/buyers", label: "Buyers & credit", icon: Handshake, roles: SUP },
   { group: "Selling", href: "/sales", label: "Sales", icon: ShoppingCart, roles: SUP },
   { group: "Selling", href: "/products", label: "Products & prices", icon: Package, roles: MGR },
   { group: "Selling", href: "/inventory", label: "Stock", icon: Boxes, roles: SUP },
   { group: "Selling", href: "/customers", label: "Buyers", icon: UserRound, roles: SUP },
   { group: "Selling", href: TERMINAL_URL, label: "Open the till", icon: Store, roles: SUP },
+  { group: "Farm setup", href: "/shamba/workers", label: "Workers & wages", icon: Shovel, roles: SUP },
   { group: "Farm setup", href: "/shamba/layout", label: "Layout", icon: MapPinned, roles: SUP },
   { group: "Farm setup", href: "/shamba/enterprises", label: "Enterprises", icon: Layers, roles: SUP },
   { group: "Farm setup", href: "/shamba/staff", label: "Staff", icon: Users, roles: SUP },

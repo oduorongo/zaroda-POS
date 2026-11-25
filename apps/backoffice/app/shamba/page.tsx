@@ -217,9 +217,11 @@ function Dashboard() {
               <Link href="/shamba/production" className="underline">Yields</Link>
               <Link href="/shamba/crops" className="underline">Crops</Link>
               <Link href="/shamba/feed" className="underline">Feed</Link>
+              <Link href="/shamba/workers" className="underline">Workers</Link>
+              <Link href="/shamba/buyers" className="underline">Buyers</Link>
             </li>
           </ul>
-          <p className="mt-4 text-xs text-secondary-500">Casual workers and selling on credit come next.</p>
+          <p className="mt-4 text-xs text-secondary-500">Reports and downloads come next.</p>
         </Card>
         <ReadyToSell canManage={canManage} />
       </div>
