@@ -3,7 +3,7 @@ import PricingClient from "./pricing-client";
 
 export const metadata: Metadata = {
   title: "Pricing — Zaroda POS",
-  description: "Simple, per-device KES pricing — Basic, Standard, and Premium plans with a free 14-day trial, plus an optional online shop at 3% on completed online orders.",
+  description: "Simple, per-device KES pricing, yearly or monthly — Basic, Standard, Business and School Supplier plans with a free 14-day trial, plus an optional online shop.",
   alternates: { canonical: "https://zarodashop.com/pricing" },
 };
 
