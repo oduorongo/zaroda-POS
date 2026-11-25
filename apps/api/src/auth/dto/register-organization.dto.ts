@@ -69,4 +69,14 @@ export class RegisterOrganizationDto {
   @IsBoolean()
   @IsOptional()
   onlineOnly?: boolean;
+
+  /** The plan picked on the pricing page; the trial starts on it (default Basic). School suppliers always start on the seasonal plan. */
+  @IsIn(['BASIC', 'STANDARD', 'BUSINESS'])
+  @IsOptional()
+  planTier?: 'BASIC' | 'STANDARD' | 'BUSINESS';
+
+  /** How they mean to pay once the trial ends. */
+  @IsIn(['MONTHLY', 'ANNUAL', 'INSTALMENTS'])
+  @IsOptional()
+  billingChoice?: 'MONTHLY' | 'ANNUAL' | 'INSTALMENTS';
 }

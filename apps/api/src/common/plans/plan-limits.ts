@@ -1,4 +1,4 @@
-import { tillLimit, tillPrice } from '../../platform-admin/subscriptions.util';
+import { extraTillPrice, tillLimit } from '../../platform-admin/subscriptions.util';
 import { ForbiddenException } from '@nestjs/common';
 import type { TenantTx } from '../prisma/tenant-scoped-prisma.service';
 
@@ -23,7 +23,7 @@ export async function assertPlanAllows(tx: TenantTx, organizationId: string, wha
           ? `The ${plan.name} plan has no tills. Ask ZARODA to move you to a paid plan to sell in-store with ZARODA.`
           : `Your ${plan.name} plan allows ${limit} till${limit === 1 ? '' : 's'}. ` +
             (canAddOne
-              ? `Ask ZARODA to add an extra till (KES ${tillPrice(sub).toLocaleString('en-KE')} more a month) or move you to a bigger plan.`
+              ? `Ask ZARODA to add an extra till (KES ${extraTillPrice(sub).toLocaleString('en-KE')} more a month) or move you to a bigger plan.`
               : 'Ask ZARODA to move you to a bigger plan to add more.'),
       );
     }

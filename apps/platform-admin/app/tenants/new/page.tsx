@@ -59,7 +59,7 @@ export default function NewTenantPage() {
     setSessionState(s);
     void (async () => {
       try {
-        const result = await apiGet<Plan[]>("/platform-admin/plans");
+        const result = (await apiGet<Plan[]>("/platform-admin/plans")).filter((p) => p.active !== false);
         setPlans(result);
         const first = result.find((p) => p.billingCycle !== "SEASONAL") ?? result[0];
         if (first) setPlanTier(first.tier);

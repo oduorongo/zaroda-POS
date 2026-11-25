@@ -16,7 +16,7 @@ import { PinLoginDto } from './dto/pin-login.dto';
 import { RegisterOrganizationDto } from './dto/register-organization.dto';
 import { JwtPayload } from './jwt.strategy';
 import { PinLockoutService } from './pin-lockout.service';
-import { FREE_PLAN_UNTIL, needsDeviceSubscription, ONLINE_ONLY_TIER, ONLINE_ONLY_TYPES } from '../platform-admin/subscriptions.util';
+import { FREE_PLAN_UNTIL, needsDeviceSubscription, ONLINE_ONLY_TIER, ONLINE_ONLY_TYPES, choiceProblem } from '../platform-admin/subscriptions.util';
 import { SeasonalBillingService } from '../seasonal-billing/seasonal-billing.service';
 
 const SALT_ROUNDS = 10;
@@ -273,14 +273,16 @@ export class AuthService {
           } else if (seasonalPlan) {
             await this.seasonal.startSubscription(tx, organizationId, seasonalPlan);
           } else if (needsDeviceSubscription(dto.industryType)) {
-            const basicPlan = await tx.plan.findUniqueOrThrow({
-              where: { tier: 'BASIC' },
-            });
+            // The plan picked on the pricing page, if it is on sale; else Basic.
+            const picked = dto.planTier ? await tx.plan.findFirst({ where: { tier: dto.planTier, active: true } }) : null;
+            const basicPlan = picked ?? (await tx.plan.findUniqueOrThrow({ where: { tier: 'BASIC' } }));
+            const choice = dto.billingChoice && !choiceProblem(basicPlan, dto.billingChoice) ? dto.billingChoice : 'MONTHLY';
             const trialDays = 14;
             await tx.subscription.create({
               data: {
                 organizationId,
                 planId: basicPlan.id,
+                billingChoice: choice,
                 currentPeriodEnd: new Date(
                   Date.now() + trialDays * 24 * 60 * 60 * 1000,
                 ),

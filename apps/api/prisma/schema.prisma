@@ -2637,6 +2637,12 @@ model Plan {
   minPriceKes       Decimal? @db.Decimal(12, 2)
   /// Extra tills a business on this plan may add, each billed at its agreed price (Basic: 1).
   maxExtraTills     Int      @default(0)
+  /// Paying the year in instalments: how many, and each one (Basic: 3 x 3,500). null = no instalment option.
+  instalmentCount   Int?
+  instalmentKes     Decimal? @db.Decimal(12, 2)
+  /// What an extra till costs on this plan, a month and a year.
+  extraTillKes       Decimal  @default(500) @db.Decimal(12, 2)
+  extraTillAnnualKes Decimal  @default(5000) @db.Decimal(12, 2)
   // Retiring a plan without deleting it - existing subscriptions on a
   // retired plan keep working, it just can't be assigned to a new tenant.
   active            Boolean  @default(true)
@@ -2674,6 +2680,8 @@ model Subscription {
   agreedPriceKes    Decimal? @db.Decimal(12, 2)
   /// Tills beyond plan.maxDevices (at most plan.maxExtraTills), each billed at the agreed price.
   extraTills        Int      @default(0)
+  /// How the business pays: MONTHLY, ANNUAL, or INSTALMENTS (the year in plan.instalmentCount parts). Seasonal plans ignore it.
+  billingChoice     String   @default("MONTHLY")
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
