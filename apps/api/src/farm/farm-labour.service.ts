@@ -16,6 +16,8 @@ import { FarmContext, asOrg, hasFarmRole, isFarmOwner } from './farm-access';
 import { FarmLivestockService } from './farm-livestock.service';
 import { asDate, dayOf, todayKey } from './farm-livestock.util';
 import { MusterDto, WageRunDto, WorkerDto } from './dto/labour.dto';
+import { smsParts } from '../construction/plans/con-addons.util';
+import { FarmBillingService } from './farm-billing.service';
 
 const n = (v: Prisma.Decimal | number | null | undefined) => (v === null || v === undefined ? 0 : Number(v));
 const r2 = (v: number) => Math.round(v * 100) / 100;
@@ -44,6 +46,7 @@ export class FarmLabourService {
     private readonly b2c: MpesaB2cClient,
     private readonly sms: AfricasTalkingSmsProvider,
     private readonly config: ConfigService,
+    private readonly billing: FarmBillingService,
   ) {}
 
   private key() {
@@ -331,9 +334,14 @@ export class FarmLabourService {
           data: ok ? { status: 'PAID', reference: parsed.receipt ?? null, paidAt: new Date() } : { status: 'FAILED', failureReason: timeout ? 'M-Pesa timed out' : (parsed.resultDesc ?? 'M-Pesa refused the payment').slice(0, 200) },
         });
         await this.audit.logInTx(tx, { action: ok ? 'farm.wages_mpesa_paid' : 'farm.wages_mpesa_failed', entityType: 'FarmWageLine', entityId: line.id, after: { receipt: parsed.receipt ?? null, resultCode: parsed.resultCode ?? null } });
-        if (ok) await this.settleRun(tx, line.runId);
+        if (ok) {
+          await this.billing.chargePayout(tx, organizationId, line);
+          await this.settleRun(tx, line.runId);
+        }
         return ok ? line.runId : null;
       });
+      // Results for one run can arrive together; each transaction then sees the others still sending. Check again once committed.
+      if (done) await asOrg(this.prisma, organizationId, (tx) => this.settleRun(tx, done));
       if (done) await this.sendPayslips(organizationId, done);
       return { ResultCode: 0, ResultDesc: 'Accepted' };
     });
@@ -355,9 +363,14 @@ export class FarmLabourService {
         company: farmName, worker: w.name, from: dayOf(run.periodStart), to: dayOf(run.periodEnd), days: n(l.days), rate: n(l.dailyRate), gross: n(l.gross),
         d: { nssf: n(l.nssf), shif: n(l.shif), housingLevy: n(l.housingLevy), paye: n(l.paye), deductions: n(l.deductions), net: n(l.net) }, method: METHOD_LABEL[l.method ?? 'CASH'], reference: l.reference,
       });
+      const parts = smsParts(message);
+      if (!(await this.billing.takeSms(organizationId, parts))) break;
       const sent = await this.sms.sendSms({ to: `+${phone}`, message }).catch(() => ({ sent: false }));
       if (sent.sent) await asOrg(this.prisma, organizationId, (tx) => tx.farmWageLine.update({ where: { id: l.id }, data: { smsSentAt: new Date() } }));
-      else this.logger.warn(`Payslip text not sent for farm wage line ${l.id}`);
+      else {
+        await this.billing.returnSms(organizationId, parts);
+        this.logger.warn(`Payslip text not sent for farm wage line ${l.id}`);
+      }
     }
   }
 

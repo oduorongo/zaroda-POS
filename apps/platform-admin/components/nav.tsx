@@ -13,6 +13,7 @@ const LINKS = [
   { href: "/commission", label: "Commission" },
   { href: "/rental-billing", label: "Rental billing" },
   { href: "/construction", label: "Construction" },
+  { href: "/farm", label: "Shamba" },
   { href: "/seasonal-billing", label: "Seasonal billing" },
   { href: "/etims", label: "KRA eTIMS" },
   { href: "/adverts", label: "Adverts" },

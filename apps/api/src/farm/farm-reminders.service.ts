@@ -1,3 +1,5 @@
+import { smsParts } from '../construction/plans/con-addons.util';
+import { FarmBillingService } from './farm-billing.service';
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../common/prisma/prisma.service';
@@ -48,6 +50,7 @@ export class FarmRemindersService implements OnModuleInit, OnModuleDestroy {
     private readonly setup: FarmSetupService,
     private readonly sms: AfricasTalkingSmsProvider,
     private readonly email: ResendEmailProvider,
+    private readonly billing: FarmBillingService,
   ) {}
 
   onModuleInit() {
@@ -90,7 +93,11 @@ export class FarmRemindersService implements OnModuleInit, OnModuleDestroy {
     });
     if (!tasks.length) return;
     const text = reminderText(org.name, tasks, today, shambaUrl('/shamba/health'));
-    if (org.phone) await this.sms.sendSms({ to: org.phone, message: text }).catch(() => undefined);
+    const parts = smsParts(text);
+    if (org.phone && (await this.billing.takeSms(org.id, parts))) {
+      const sent = await this.sms.sendSms({ to: org.phone, message: text }).catch(() => ({ sent: false }));
+      if (!sent.sent) await this.billing.returnSms(org.id, parts);
+    }
     if (org.email) {
       const html = `<p>${text.split('\n').map(escape).join('<br>')}</p>`;
       await this.email.sendEmail({ to: org.email, subject: `Zaroda Shamba: ${tasks.length} farm task${tasks.length === 1 ? '' : 's'} coming up`, html, text }).catch(() => undefined);

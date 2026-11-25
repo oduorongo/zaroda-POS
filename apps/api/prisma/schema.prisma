@@ -8401,6 +8401,11 @@ model FarmSubscription {
   status           FarmSubscriptionStatus @default(TRIAL)
   currentPeriodEnd DateTime
   graceDays        Int                    @default(7)
+  /// MONTHLY or ANNUAL: how the plan was last paid.
+  cycle            String                 @default("MONTHLY")
+  /// Texts left for payslips and reminders; bundles are bought from ZARODA.
+  smsCredits       Int                    @default(50)
+  paidPaymentsCount Int                   @default(0)
   createdAt        DateTime               @default(now())
   updatedAt        DateTime               @updatedAt
 
@@ -9261,4 +9266,78 @@ model FarmProductTag {
 
   @@unique([organizationId, variantId])
   @@map("farm_product_tags")
+}
+
+// ── Zaroda Shamba billing: plan payments, SMS bundles and ZARODA fees ─────────────────────────────────────────────
+
+enum FarmPaymentPurpose {
+  PLAN
+  SMS
+  FEES
+}
+
+enum FarmPaymentStatus {
+  PENDING
+  PAID
+  FAILED
+}
+
+/// A payment to ZARODA by a farm: its plan, an SMS bundle or a month of fees. M-Pesa through ZARODA's Tuma account, or
+/// recorded by a platform admin.
+model FarmSubscriptionPayment {
+  id                        String             @id @default(uuid())
+  organizationId            String
+  purpose                   FarmPaymentPurpose @default(PLAN)
+  planCode                  String
+  cycle                     String             @default("MONTHLY")
+  months                    Int                @default(1)
+  amount                    Decimal            @db.Decimal(14, 2)
+  details                   Json?
+  phone                     String?
+  status                    FarmPaymentStatus  @default(PENDING)
+  tumaMerchantRequestId     String?
+  error                     String?
+  method                    String?
+  receipt                   String?
+  paidAt                    DateTime?
+  periodEndAfter            DateTime?
+  createdBy                 String?
+  recordedByPlatformAdminId String?
+  createdAt                 DateTime           @default(now())
+
+  @@index([organizationId, status])
+  @@map("farm_subscription_payments")
+}
+
+/// ZARODA's fee on one M-Pesa wage payout (same bands as Build), rolled into that month's fee invoice.
+model FarmFeeCharge {
+  id             String   @id @default(uuid())
+  organizationId String
+  kind           String   @default("PAYOUT")
+  sourceId       String   @unique
+  amount         Decimal  @db.Decimal(14, 2)
+  darajaCost     Decimal  @default(0) @db.Decimal(14, 2)
+  markup         Decimal  @default(0) @db.Decimal(14, 2)
+  description    String
+  periodMonth    String
+  invoiceId      String?
+  createdAt      DateTime @default(now())
+
+  @@index([organizationId, periodMonth])
+  @@map("farm_fee_charges")
+}
+
+/// A month of ZARODA fees, billed at the start of the next month and paid by M-Pesa.
+model FarmFeeInvoice {
+  id             String    @id @default(uuid())
+  organizationId String
+  periodMonth    String
+  total          Decimal   @default(0) @db.Decimal(14, 2)
+  status         String    @default("UNPAID")
+  paidAt         DateTime?
+  paymentId      String?
+  createdAt      DateTime  @default(now())
+
+  @@unique([organizationId, periodMonth])
+  @@map("farm_fee_invoices")
 }

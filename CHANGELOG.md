@@ -1,5 +1,16 @@
 # Changelog
 
+## Zaroda Shamba billing: plan payments, SMS credits, payout fees, commission (2026-11-25)
+
+- Plan & billing (/shamba/plan, owners and farm managers, works while a plan has lapsed): choose a plan monthly or yearly and pay by M-Pesa through ZARODA's Tuma account (Build's flow: callback first, "I have paid - check" as backup). A plan the farm does not fit is refused with what does not fit; Estate is by quote; the free plan is switched to at once. Paying early adds the period on to the current end.
+- SMS credits: farms start with 50; payslips and farm reminders now use one credit per text (two for long ones) and stop when credits run out; a text that fails gives its credits back. Bundles are bought by M-Pesa from Build's SMS bundle price list.
+- ZARODA's payout fee: each farm wage paid by M-Pesa B2C is charged once from Build's payout fee bands; each finished month becomes a fee invoice paid by M-Pesa. A charge that arrives after its month was paid goes on the current month.
+- Platform admin > Shamba: edit plan prices (monthly and yearly), limits and on-sale; farms with plan, status, paid-to date, SMS credits, fees owed and MRR; extend a trial; record a bank, cheque, cash or M-Pesa payment.
+- Sales team commission: farm plan payments earn the subscription rate and farm fee invoices the commission rate, same as Build and Rentals ("Shamba" on earnings screens). SMS bundles never count.
+- Books: farm payments to ZARODA post to the farm's books as ZARODA fees and to ZARODA's books as income (new account 4065 Zaroda Shamba plans; SMS and payout fees to their existing accounts).
+- Fix (farms and Build): when M-Pesa results for several workers in one pay run arrived together, the run could stay "Approved" with everyone paid; the run is now checked again after each result is saved.
+- DB: migration 20270119100000_shamba_billing (3 tables, 3 columns on farm_subscriptions), then apply-rls. Run BOTH before merging. Checks: scripts/e2e-shamba-billing.js (19 pass with mock Tuma and mock Daraja B2C).
+
 ## Zaroda Shamba F7: reports and books (2026-11-25)
 
 - Reports (farm managers and auditors) at /shamba/reports: profit per enterprise (income from till sales of tagged products, credit deliveries and animals sold, less feed, vet and drugs, muster-roll labour, field inputs and work, and animals bought); cost per litre of milk, per egg, per kg and per acre; herd register; breeding calendar; health and withdrawal register; crop report; wages by worker; buyers who owe. The registers come with basic reports; profit, wages, debtors and downloads with full reports.

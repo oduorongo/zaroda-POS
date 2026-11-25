@@ -117,6 +117,7 @@ const FARM: Def[] = [
   { group: "Farm setup", href: "/shamba/layout", label: "Layout", icon: MapPinned, roles: SUP },
   { group: "Farm setup", href: "/shamba/enterprises", label: "Enterprises", icon: Layers, roles: SUP },
   { group: "Farm setup", href: "/shamba/staff", label: "Staff", icon: Users, roles: SUP },
+  { group: "Farm setup", href: "/shamba/plan", label: "Plan & billing", icon: Receipt, roles: MGR },
   { group: "Help", href: "/shamba/guide", label: "Guide", icon: LifeBuoy, roles: SUP },
 ];
 
