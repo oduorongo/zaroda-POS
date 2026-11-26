@@ -267,7 +267,7 @@ function ShopsBody({ me }: { me: TeamMe }) {
             )}
           </div>
           <p className="text-xs text-secondary-500">
-            The shop is credited to you for good once it is signed up. It starts on a 14-day free trial. You earn a share of each plan payment it makes in your earning period, and the sign-up bonus on its second plan payment.
+            The shop is credited to you for good once it is signed up. It starts on a 14-day free trial. You earn a share of each plan payment it makes in your earning period, and the sign-up bonus on its second payment (or its first, if it pays yearly or by instalments).
           </p>
           {formError && <p className="text-sm text-error-600">{formError}</p>}
           <Button type="submit" disabled={busy || !organizationName.trim() || !ownerFullName.trim() || !ownerEmail.trim() || !priceOk}>
