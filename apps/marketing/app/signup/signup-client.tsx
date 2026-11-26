@@ -10,7 +10,6 @@ const INDUSTRY_TYPES = [
   { value: "RETAIL", label: "General retail / supermarket / minimart" },
   { value: "RESTAURANT", label: "Restaurant / eatery" },
   { value: "SALON", label: "Salon / spa" },
-  { value: "RENTAL", label: "Rental properties / landlord" },
   { value: "SCHOOL_SUPPLIER", label: "School supplier (sells to schools on credit)" },
   { value: "UNIFORM_MAKER", label: "School uniforms (makes uniforms with tailors, sells to schools)" },
   { value: "HOTEL", label: "Hotel / lodge (rooms, front desk)" },
@@ -18,6 +17,9 @@ const INDUSTRY_TYPES = [
 
 /** Business types the free Online Shop only plan is for (the server checks the same). */
 const ONLINE_SHOP_TYPES = ["RETAIL"];
+
+/** Business types the School Supplier plan is for; the shop plans (Basic, Standard, Business) are for the rest. Landlords sign up on ZARODA RENTALS. */
+const SCHOOL_TYPES = ["SCHOOL_SUPPLIER", "UNIFORM_MAKER"];
 
 type ChosenBilling = "annual" | "monthly";
 
@@ -59,19 +61,27 @@ export default function SignupClient() {
   const [branchName, setBranchName] = useState("");
   const [county, setCounty] = useState("");
   const [subCounty, setSubCounty] = useState("");
+  const [chosen, setChosen] = useState<ReturnType<typeof chosenPlan>>(null);
   // Landlords start on the free Bure plan (up to 5 occupied units), not a 14-day trial, so the wording differs.
   const rental = industryType === "RENTAL";
   // A shop on another POS: the free Online Shop only plan, no trial.
   const [onlineOnlyChosen, setOnlineOnly] = useState(false);
   const onlineOnly = onlineOnlyChosen && !rental;
-  const typeChoices = onlineOnly ? INDUSTRY_TYPES.filter((t) => ONLINE_SHOP_TYPES.includes(t.value)) : INDUSTRY_TYPES;
+  const typeChoices = INDUSTRY_TYPES.filter((t) =>
+    onlineOnly
+      ? ONLINE_SHOP_TYPES.includes(t.value)
+      : !chosen
+        ? true
+        : chosen.plan.id === "school-supplier"
+          ? SCHOOL_TYPES.includes(t.value)
+          : !SCHOOL_TYPES.includes(t.value),
+  );
 
   // Ticking "only the online shop" keeps the business type to the ones with the online shop add-on.
   useEffect(() => {
     if (onlineOnly && !ONLINE_SHOP_TYPES.includes(industryType)) setIndustryType(ONLINE_SHOP_TYPES[0]);
   }, [onlineOnly, industryType]);
 
-  const [chosen, setChosen] = useState<ReturnType<typeof chosenPlan>>(null);
   useEffect(() => {
     if (new URLSearchParams(window.location.search).get("plan") === "online") setOnlineOnly(true);
     const c = chosenPlan(window.location.search);
