@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { apiGet, apiPatch, apiPost } from "../../../../lib/api";
 import { Card, ShambaAppFrame } from "../../../../components/shamba/frame";
+import { SuggestedPriceCard } from "../../../../components/shamba/valuation";
 import { ActionTabs, Btn, ErrorBox, HealthForm, HealthList, WeightForm, WithdrawalBanner, errText } from "../../../../components/shamba/livestock";
 import {
   BREEDING_KINDS,
@@ -293,6 +294,8 @@ function AnimalPage() {
           </ul>
         </Card>
       )}
+
+      <SuggestedPriceCard id={a.id} />
 
       <div className="grid gap-4 md:grid-cols-2">
         <Card title="Health">

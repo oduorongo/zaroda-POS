@@ -8428,10 +8428,28 @@ model FarmSettings {
   subCounty      String?
   ward           String?
   areaUnit       String   @default("ACRE")
+  /// Valuation: the margin on cost to date (0.20 = 20%) and how many days of recent milk or eggs a buyer pays for.
+  valuationMarginRate     Decimal @default(0.20) @db.Decimal(5, 4)
+  valuationProductionDays Int     @default(90)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
   @@map("farm_settings")
+}
+
+/// Valuation rates per animal type: birth value, market price per kg live weight, prime age and the yearly drop past it.
+model FarmValuationRate {
+  id             String      @id @default(uuid())
+  organizationId String
+  species        FarmSpecies
+  birthValueKes  Decimal     @db.Decimal(14, 2)
+  pricePerKgKes  Decimal     @db.Decimal(14, 2)
+  primeAgeMonths Int?
+  ageDropRate    Decimal     @default(0.15) @db.Decimal(5, 4)
+  updatedAt      DateTime    @updatedAt
+
+  @@unique([organizationId, species])
+  @@map("farm_valuation_rates")
 }
 
 /// A named part of a farm (block, field, paddock, pen, poultry house...). Units nest; fields and paddocks carry acres.

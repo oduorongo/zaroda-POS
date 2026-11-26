@@ -6,6 +6,19 @@ import { apiGet, apiPost, apiPut, ApiError } from "../../../lib/api";
 import { Card, ShambaAppFrame } from "../../../components/shamba/frame";
 import { Btn, ErrorBox, errText } from "../../../components/shamba/livestock";
 import { BUYER_KINDS, SHAMBA_BRAND, day, inputClass, todayKey, type FarmEnterprise } from "../../../lib/shamba";
+import { downloadPdf, printPdf, type PdfDocument } from "../../../lib/pdf";
+
+const salesPdf = (r: Report): PdfDocument => ({
+  title: "Sales by enterprise",
+  subtitle: `${day(r.from)} to ${day(r.to)}`,
+  tables: [
+    {
+      columns: [{ label: "Enterprise" }, { label: "At the till", money: true }, { label: "On credit", money: true }, { label: "Total", money: true }],
+      rows: r.rows.map((x) => [x.name, x.till, x.credit, x.total]),
+      totals: ["All", r.rows.reduce((a, x) => a + x.till, 0), r.rows.reduce((a, x) => a + x.credit, 0), r.total],
+    },
+  ],
+});
 
 type Tab = "buyers" | "deliver" | "pay" | "report";
 interface Buyer { id: string; name: string; kind: string; phone: string | null; memberNo: string | null; creditLimit: number | null; termsDays: number | null; active: boolean; owed: number; credit: number; current: number; d31: number; d61: number; d90: number; overLimit: boolean }
@@ -415,7 +428,17 @@ function SalesReport({ manager }: { manager: boolean }) {
   return (
     <div className="space-y-4">
       <ErrorBox error={error} />
-      <Card title="Sales by enterprise, last 30 days">
+      <Card
+        title="Sales by enterprise, last 30 days"
+        action={
+          r ? (
+            <span className="flex gap-3 text-sm">
+              <button type="button" className="underline" onClick={() => void downloadPdf(salesPdf(r), `sales-by-enterprise-${r.to}`)}>Download PDF</button>
+              <button type="button" className="underline" onClick={() => void printPdf(salesPdf(r))}>Print</button>
+            </span>
+          ) : undefined
+        }
+      >
         {!r ? (
           <p className="text-sm text-secondary-500">Loading...</p>
         ) : (

@@ -7,6 +7,7 @@ import { getSession } from "../../../lib/auth";
 import { Card, ShambaAppFrame } from "../../../components/shamba/frame";
 import { Btn, ErrorBox, errText } from "../../../components/shamba/livestock";
 import { SHAMBA_BRAND, inputClass, todayKey } from "../../../lib/shamba";
+import { downloadPdf, fromReport, printPdf } from "../../../lib/pdf";
 
 interface Entry { key: string; title: string; period: boolean; allowed: boolean }
 type Cell = string | number | null;
@@ -110,8 +111,11 @@ export default function ReportsPage() {
                 <Btn type="button" busy={busy} disabled={!report} onClick={() => void excel()}>
                   Download Excel
                 </Btn>
-                <Btn type="button" tone="navy" disabled={!report} onClick={() => window.print()}>
-                  Print / save as PDF
+                <Btn type="button" tone="navy" disabled={!report} onClick={() => report && void downloadPdf(fromReport(report), `${report.title} ${report.subtitle}`)}>
+                  Download PDF
+                </Btn>
+                <Btn type="button" disabled={!report} onClick={() => report && void printPdf(fromReport(report))}>
+                  Print
                 </Btn>
               </div>
             </div>

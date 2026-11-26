@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { apiGet, apiPatch, apiPost, ApiError } from "../../../lib/api";
+import { downloadPdf, printPdf, type PdfDocument } from "../../../lib/pdf";
 import { API, Account, AccountingTabs, buttonClass, canWrite, inputClass, kes, monthStart, niceDay, quietButtonClass, todayKey, TYPE_LABELS, useBooksSession, Shell } from "../shared";
 
 interface Ledger {
@@ -15,6 +16,23 @@ interface Ledger {
 }
 
 const TYPES = Object.keys(TYPE_LABELS) as Account["type"][];
+
+/** One account's statement: every entry on it in the period with the running balance. */
+const ledgerPdf = (l: Ledger): PdfDocument => ({
+  title: `Account statement: ${l.account.code} ${l.account.name}`,
+  subtitle: `${niceDay(l.from)} to ${niceDay(l.to)}`,
+  tables: [
+    {
+      columns: [{ label: "Date" }, { label: "No." }, { label: "What" }, { label: "Debit", money: true }, { label: "Credit", money: true }, { label: "Balance", money: true }],
+      rows: [
+        ["", "", `Balance on ${niceDay(l.from)} (start of day)`, null, null, l.opening],
+        ...l.lines.map((x) => [niceDay(x.date), x.number, x.source ? `${x.memo} (${x.source})` : x.memo, x.debit || null, x.credit || null, x.balance]),
+      ],
+      totals: ["", "", `Balance on ${niceDay(l.to)}`, null, null, l.closing],
+    },
+  ],
+  notes: l.truncated ? ["Only the first 2,000 lines are included. Choose a shorter period for the rest."] : undefined,
+});
 
 /** The chart of accounts with each account's balance; open one to see every entry on it. */
 export default function AccountsPage() {
@@ -140,9 +158,17 @@ export default function AccountsPage() {
               <h2 className="font-semibold">
                 {ledger.account.code} {ledger.account.name}
               </h2>
-              <button onClick={() => setLedger(null)} className={quietButtonClass}>
-                Close
-              </button>
+              <div className="flex flex-wrap gap-2">
+                <button onClick={() => void downloadPdf(ledgerPdf(ledger), `statement-${ledger.account.code}-${ledger.from}-${ledger.to}`)} className={quietButtonClass}>
+                  Download PDF
+                </button>
+                <button onClick={() => void printPdf(ledgerPdf(ledger))} className={quietButtonClass}>
+                  Print
+                </button>
+                <button onClick={() => setLedger(null)} className={quietButtonClass}>
+                  Close
+                </button>
+              </div>
             </div>
             <div className="flex flex-wrap items-end gap-3">
               <label>

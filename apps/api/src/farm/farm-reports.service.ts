@@ -5,6 +5,7 @@ import { FarmContext } from './farm-access';
 import { addDays, asDate, dayOf, todayKey, withdrawalState } from './farm-livestock.util';
 import { seasonFigures } from './farm-crops.util';
 import { aging } from './farm-sales.util';
+import { FarmValuationService } from './farm-valuation.service';
 import { EnterpriseMoney, FARM_REPORTS, FarmReport, FarmReportKey, Row, costOf, emptyMoney, perUnit, profitOf, r2, totalsOf } from './farm-reports.util';
 
 const n = (v: Prisma.Decimal | number | null | undefined) => (v === null || v === undefined ? 0 : Number(v));
@@ -15,9 +16,13 @@ const EGG_KINDS = ['LAYERS', 'KIENYEJI'];
 /** Zaroda Shamba F7: the farm's reports, each as rows that the screen shows and the Excel download writes. */
 @Injectable()
 export class FarmReportsService {
-  constructor(private readonly tenantPrisma: TenantScopedPrismaService) {}
+  constructor(
+    private readonly tenantPrisma: TenantScopedPrismaService,
+    private readonly valuation: FarmValuationService,
+  ) {}
 
-  run(farm: FarmContext, key: FarmReportKey, from: string, to: string): Promise<FarmReport> {
+  async run(farm: FarmContext, key: FarmReportKey, from: string, to: string): Promise<FarmReport> {
+    if (key === 'valuation') return { key, title: FARM_REPORTS[key].title, subtitle: `As at ${todayKey()}`, ...(await this.valuationRows(farm)) };
     return this.tenantPrisma.run(async (tx) => {
       const subtitle = FARM_REPORTS[key].period ? `${from} to ${to}` : `As at ${todayKey()}`;
       const base = { key, title: FARM_REPORTS[key].title, subtitle };
@@ -38,8 +43,51 @@ export class FarmReportsService {
           return { ...base, ...(await this.wages(tx, from, to)) };
         case 'debtors':
           return { ...base, ...(await this.debtors(tx)) };
+        default:
+          throw new Error(`Unknown report ${key}`);
       }
     });
+  }
+
+  /** Every animal and flock with what it cost, its weight and production value, and the suggested selling price. */
+  private async valuationRows(farm: FarmContext) {
+    const { settings, items } = await this.valuation.list(farm);
+    const pct = Math.round(settings.margin * 100);
+    const rows: Row[] = items.map((v) => ({
+      animal: v.kind === 'GROUP' ? `${v.name} (${v.heads} head)` : [v.tag, v.name].filter(Boolean).join(' '),
+      species: v.species,
+      age: v.ageMonths,
+      weight: v.weightKg,
+      produce: v.produce ? `${v.dailyProduce} ${v.produce === 'MILK' ? 'L' : 'eggs'}/day` : null,
+      entry: v.entry,
+      feed: v.feed,
+      vet: v.vet,
+      cost: v.cost,
+      costPrice: v.costPrice,
+      weightValue: v.weightValue,
+      production: v.productionValue,
+      ageAdj: v.ageAdjustment,
+      suggested: v.suggested,
+      total: v.total,
+      check: v.warnings.join('; ') || null,
+    }));
+    const columns = [
+      { key: 'animal', label: 'Animal' }, { key: 'species', label: 'Species' }, { key: 'age', label: 'Age (months)', type: 'number' as const },
+      { key: 'weight', label: 'Weight (kg)', type: 'number' as const }, { key: 'produce', label: 'Produces' }, { key: 'entry', label: 'Bought / born value', type: 'money' as const },
+      { key: 'feed', label: 'Feed', type: 'money' as const }, { key: 'vet', label: 'Vet', type: 'money' as const }, { key: 'cost', label: 'Cost to date', type: 'money' as const },
+      { key: 'costPrice', label: `Cost + ${pct}%`, type: 'money' as const }, { key: 'weightValue', label: 'Weight value', type: 'money' as const },
+      { key: 'production', label: 'Production value', type: 'money' as const }, { key: 'ageAdj', label: 'Age', type: 'money' as const },
+      { key: 'suggested', label: 'Suggested price (each)', type: 'money' as const }, { key: 'total', label: 'Total value', type: 'money' as const }, { key: 'check', label: 'Check' },
+    ];
+    return {
+      columns,
+      rows,
+      totals: { animal: 'Total', total: r2(items.reduce((s, v) => s + v.total, 0)) },
+      notes: [
+        `Suggested price = the higher of cost to date + ${pct}% and last weight x the market price per kg, plus ${settings.productionDays} days of the last 30 days average milk or eggs at your selling price. Past prime age it drops by the yearly rate, but never below the weight value. Flocks are priced per head.`,
+        'Rates per animal type are set under Valuation; change them to your local market.',
+      ],
+    };
   }
 
   // ── Money per enterprise ────────────────────────────────────────────────

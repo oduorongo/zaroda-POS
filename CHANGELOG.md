@@ -1,5 +1,11 @@
 # Changelog
 
+## Shamba: PDF reports and statements, animal valuation (2026-11-26)
+
+- Download PDF and Print on every farm report, buyer statement, pay run and sales by enterprise, and on every Accounts statement (profit and loss, balance sheet, trial balance, cash flow, aged debtors and creditors, VAT return, account statement) for every business type. Each PDF has the farm's (or business's) name as its title, the report and period, who prepared it and when, and page numbers. /organizations/me now returns the signed-in user's name for this.
+- Valuation: a suggested selling price for every animal and flock: the higher of cost to date (bought price or born value, feed, vet) plus the farm's margin and last weight x the market price per kg, plus the last 30 days' milk or eggs x price x production days, less a yearly drop past prime age (never below the weight value). Missing weights and feed are flagged. Money > Valuation screen with the rates editor (farm managers), a price card on each animal and flock page, and a new "Animal valuation and suggested prices" report (basic reports).
+- DB step BEFORE merge: prisma migrate deploy (20270121100000_farm_valuation), then apply-rls (new table farm_valuation_rates). Checks: farm-valuation.util.spec (7), scripts/e2e-shamba-valuation.js (12 pass), scripts/e2e-shamba-reports.js (19 pass).
+
 ## New plan pricing (2026-11-25)
 
 - Plans: Basic KES 1,000 a month / 10,000 a year / 3 x 3,500 (1 device, 1 branch); Standard 3,500 / 35,000 / 3 x 12,000 (3 devices); new Business 7,500 / 75,000 / 4 x 19,500 (10 devices, 3 branches); School Supplier 12,000 a year in 2 termly instalments of 6,000 (2 devices). Extra till KES 500 a month or 5,000 a year on any plan.

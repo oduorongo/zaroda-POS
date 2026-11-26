@@ -92,8 +92,11 @@ Reports are for farm managers and auditors. The registers come on every plan; pr
 | Crop report | Each season's yield and cost per acre and per kg, safe-harvest date and seed lot |
 | Wages by worker | Days, gross, NSSF, SHIF, Housing Levy, PAYE and net, and what is still unpaid |
 | Buyers who owe the farm | Each buyer's balance by age |
+| Animal valuation and suggested prices | Every animal and flock: what it cost, its weight and production value, the suggested price and the farm's total stock value |
 
-**Download Excel** writes the report to a spreadsheet; **Print / save as PDF** prints it.
+**Download Excel** writes the report to a spreadsheet. **Download PDF** saves it as a PDF and **Print** opens it to print. Every PDF carries the farm's name at the top, the report and period, and who prepared it and when, with page numbers. The same PDF and Print buttons are on buyer statements, pay runs, sales by enterprise, and every Accounts statement (profit and loss, balance sheet, trial balance, cash flow, aged debtors and creditors, VAT return, and an account's statement).
+
+**Valuation (suggested selling prices):** under Money > Valuation, and on each animal's and flock's page. For each animal the system adds up its cost to date (the bought price, or the born value you set for its type; the feed recorded against it or its share of its group's feed; and vet costs), then takes the **higher** of cost + your margin and its last weight x the market price per kg. A cow in milk or a laying flock gets more: its average daily milk or eggs over the last 30 days x your selling price x the days you set (90 to start). Past the prime age you set for its type the price drops by the yearly rate (15% to start), but never below its weight value. Flocks are priced per head and in total. Prices are rounded to the nearest 50. An animal never weighed, or with no feed recorded, is flagged: weigh it for a fairer price. Farm managers set the margin, the production days and each type's born value, price per kg, prime age and yearly drop.
 
 **Accounts (books):** paid wages, credit deliveries, buyer payments, feed fed and field inputs used post to the farm's own general ledger by themselves, next to the till sales. Farms get three extra accounts: Feed used, Seed, fertiliser and chemicals used, and Farm labour. A voided record is reversed in the books.
 

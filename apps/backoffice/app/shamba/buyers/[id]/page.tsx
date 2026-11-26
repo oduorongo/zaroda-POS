@@ -7,6 +7,7 @@ import { apiGet, apiPost } from "../../../../lib/api";
 import { Card, ShambaAppFrame } from "../../../../components/shamba/frame";
 import { ErrorBox, errText } from "../../../../components/shamba/livestock";
 import { BUYER_KINDS, SHAMBA_BRAND, day, inputClass } from "../../../../lib/shamba";
+import { downloadPdf, printPdf, type PdfDocument } from "../../../../lib/pdf";
 
 interface Statement {
   buyer: { id: string; name: string; kind: string; phone: string | null; memberNo: string | null; kraPin: string | null; creditLimit: number | null; termsDays: number | null };
@@ -51,6 +52,38 @@ export default function BuyerStatementPage() {
     : [];
   let running = s?.opening ?? 0;
 
+  /** The statement as a PDF: the farm's name at the top, who prepared it, the buyer, the lines and the aging. */
+  function statementPdf(st: Statement): PdfDocument {
+    let bal = st.opening;
+    const lines = rows.filter((r) => !r.voided).map((r) => {
+      bal += r.debit - r.credit;
+      return [r.date, r.text, r.debit || null, r.credit || null, bal];
+    });
+    const money = { money: true };
+    return {
+      title: `Statement: ${st.buyer.name}`,
+      subtitle: `${day(st.from)} to ${day(st.to)}`,
+      summary: [
+        ["Buyer", [BUYER_KINDS[st.buyer.kind] ?? st.buyer.kind, st.buyer.memberNo ? `member no. ${st.buyer.memberNo}` : "", st.buyer.kraPin ? `PIN ${st.buyer.kraPin}` : "", st.buyer.phone ?? ""].filter(Boolean).join(" · ")],
+        ["Owed now", kes(st.closing)],
+        ...(st.buyer.termsDays ? ([["Terms", `pays within ${st.buyer.termsDays} days`]] as [string, string][]) : []),
+      ],
+      tables: [
+        {
+          columns: [{ label: "Date" }, { label: "Details" }, { label: "Delivered", ...money }, { label: "Paid", ...money }, { label: "Balance", ...money }],
+          rows: [["", "Brought forward", null, null, st.opening], ...lines],
+          totals: ["", "Owed now", null, null, st.closing],
+        },
+        {
+          heading: "How long it has been owed",
+          columns: [{ label: "0-30 days", ...money }, { label: "31-60 days", ...money }, { label: "61-90 days", ...money }, { label: "Over 90 days", ...money }, { label: "Total owed", ...money }],
+          rows: [[st.aging.current, st.aging.d31, st.aging.d61, st.aging.d90, st.aging.owed]],
+        },
+      ],
+      notes: st.aging.credit > 0 ? [`Paid in advance: ${kes(st.aging.credit)}`] : undefined,
+    };
+  }
+
   return (
     <ShambaAppFrame>
       {(session) => {
@@ -67,8 +100,11 @@ export default function BuyerStatementPage() {
                   From
                   <input type="date" className={inputClass} value={from || s.from} onChange={(e) => setFrom(e.target.value)} />
                 </label>
-                <button type="button" onClick={() => window.print()} className="rounded-lg px-4 py-2.5 font-semibold text-white" style={{ background: SHAMBA_BRAND.navy }}>
-                  Print statement
+                <button type="button" onClick={() => void downloadPdf(statementPdf(s), `statement-${s.buyer.name}-${s.to}`)} className="rounded-lg px-4 py-2.5 font-semibold text-white" style={{ background: SHAMBA_BRAND.navy }}>
+                  Download PDF
+                </button>
+                <button type="button" onClick={() => void printPdf(statementPdf(s))} className="rounded-lg border border-secondary-300 px-4 py-2.5 font-semibold">
+                  Print
                 </button>
               </div>
             </div>
