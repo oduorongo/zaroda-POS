@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { apiGet, apiPut } from "../../../lib/api";
+import { apiGet, apiPost, apiPut } from "../../../lib/api";
 import { Card, ShambaAppFrame } from "../../../components/shamba/frame";
 import { Btn, ErrorBox, errText } from "../../../components/shamba/livestock";
 import { PriceBreakdown, kes, type ValuationList, type ValuationRate, type ValuationSettings } from "../../../components/shamba/valuation";
@@ -32,6 +32,8 @@ function Rates({ settings, onSaved }: { settings: ValuationSettings; onSaved: ()
         sellingCost: Number(selling) / 100,
         rates: RATE_SPECIES.map((species) => ({ species, ...rates[species] })),
       });
+      // the livestock value in the books follows at once (owners and managers; otherwise the next pass, within 5 minutes)
+      await apiPost("/accounting/post-now", {}).catch(() => {});
       setSaved(true);
       onSaved();
     } catch (err) {
@@ -80,7 +82,7 @@ function Rates({ settings, onSaved }: { settings: ValuationSettings; onSaved: ()
         </div>
         <p className="text-xs text-secondary-500">These start as rough Kenyan figures. Set the market price per kg to what similar animals sell for in your area. The margin only sets the asking price; it is not part of the value in the books.</p>
         <ErrorBox error={error} />
-        {saved && <p className="text-sm font-semibold" style={{ color: SHAMBA_BRAND.navy }}>Saved. Values are updated.</p>}
+        {saved && <p className="text-sm font-semibold" style={{ color: SHAMBA_BRAND.navy }}>Saved. Values and the books (Livestock) are updated.</p>}
         <Btn busy={busy}>Save rates</Btn>
       </form>
     </Card>
