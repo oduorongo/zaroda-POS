@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { apiDelete, apiGet, apiPost, apiPut, ApiError } from "../../../lib/api";
 import { Card, ShambaAppFrame } from "../../../components/shamba/frame";
 import { Btn, ErrorBox, errText } from "../../../components/shamba/livestock";
-import { SHAMBA_BRAND, day, inputClass, todayKey } from "../../../lib/shamba";
+import { SHAMBA_BRAND, SHAMBA_INK, day, inputClass, todayKey } from "../../../lib/shamba";
 import { downloadPdf, printPdf, type PdfDocument } from "../../../lib/pdf";
 
 /** A pay run as a payroll sheet: each worker's days, gross, statutory deductions and net. */
@@ -35,7 +35,7 @@ interface Run extends RunRow { lines: RunLine[] }
 
 const STATUS: Record<Status, string> = { PRESENT: "Present", HALF_DAY: "Half day", ABSENT: "Absent" };
 const kes = (n: number) => `KES ${n.toLocaleString("en-KE", { maximumFractionDigits: 2 })}`;
-const pill = (on: boolean) => (on ? { background: SHAMBA_BRAND.navy, color: "white", borderColor: SHAMBA_BRAND.navy } : { borderColor: "#cbd5e1", color: SHAMBA_BRAND.navy });
+const pill = (on: boolean) => (on ? { background: SHAMBA_BRAND.navy, color: "white", borderColor: SHAMBA_BRAND.navy } : { borderColor: "#cbd5e1", color: SHAMBA_INK });
 
 function Muster() {
   const [date, setDate] = useState(todayKey());
@@ -82,7 +82,7 @@ function Muster() {
         <input type="date" className={inputClass} value={date} max={todayKey()} onChange={(e) => setDate(e.target.value)} />
       </div>
       <ErrorBox error={error} />
-      {done && <p className="mb-2 rounded-lg border px-3 py-2 text-sm" style={{ borderColor: SHAMBA_BRAND.gold, background: "#fbf6e3", color: SHAMBA_BRAND.navy }}>{done}</p>}
+      {done && <p className="mb-2 rounded-lg border px-3 py-2 text-sm" style={{ borderColor: SHAMBA_BRAND.gold, background: "#fbf6e3", color: SHAMBA_INK }}>{done}</p>}
       {!rows ? (
         <p className="text-sm text-secondary-500">Loading...</p>
       ) : rows.length === 0 ? (
@@ -90,9 +90,9 @@ function Muster() {
       ) : (
         <div className="space-y-2">
           {rows.map((w) => (
-            <div key={w.id} className="rounded-lg border border-secondary-200 p-2.5">
+            <div key={w.id} className="rounded-lg border border-border p-2.5">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <span className="font-semibold" style={{ color: SHAMBA_BRAND.navy }}>
+                <span className="font-semibold" style={{ color: SHAMBA_INK }}>
                   {w.name} <span className="text-xs font-normal text-secondary-500">{kes(w.dailyRate)} a day</span>
                 </span>
                 {w.locked && <span className="text-xs text-secondary-500">Paid - fixed</span>}
@@ -104,10 +104,10 @@ function Muster() {
                   </button>
                 ))}
               </div>
-              <input className="mt-2 w-full rounded-lg border border-secondary-300 bg-white p-2 text-sm" placeholder="Task (optional)" disabled={w.locked} value={marks[w.id]?.task ?? ""} onChange={(e) => setMarks({ ...marks, [w.id]: { ...marks[w.id], task: e.target.value } })} />
+              <input className="mt-2 w-full rounded-lg border border-border bg-surface p-2 text-sm" placeholder="Task (optional)" disabled={w.locked} value={marks[w.id]?.task ?? ""} onChange={(e) => setMarks({ ...marks, [w.id]: { ...marks[w.id], task: e.target.value } })} />
             </div>
           ))}
-          <div className="sticky bottom-2 rounded-lg bg-white/95 p-2 shadow">
+          <div className="sticky bottom-2 rounded-lg bg-surface/95 p-2 shadow">
             <Btn type="button" busy={busy} onClick={() => void save()}>Save muster roll</Btn>
           </div>
         </div>
@@ -169,7 +169,7 @@ function Workers({ manager }: { manager: boolean }) {
             </thead>
             <tbody>
               {rows.map((w) => (
-                <tr key={w.id} className={`border-t border-secondary-100 ${w.active ? "" : "text-secondary-400"}`}>
+                <tr key={w.id} className={`border-t border-border ${w.active ? "" : "text-secondary-400"}`}>
                   <td className="py-1.5">
                     {w.name}
                     {w.notes ? <span className="block text-xs text-secondary-500">{w.notes}</span> : null}
@@ -323,7 +323,7 @@ function Runs() {
               </thead>
               <tbody>
                 {open.lines.map((l) => (
-                  <tr key={l.id} className="border-t border-secondary-100">
+                  <tr key={l.id} className="border-t border-border">
                     <td className="py-1.5">{l.worker}</td>
                     <td>{l.days}</td>
                     <td>{l.gross.toLocaleString("en-KE")}</td>
@@ -361,7 +361,7 @@ function Runs() {
         ) : rows.length === 0 ? (
           <p className="text-sm text-secondary-500">No pay runs yet.</p>
         ) : (
-          <ul className="divide-y divide-secondary-100 text-sm">
+          <ul className="divide-y divide-border text-sm">
             {rows.map((r) => (
               <li key={r.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
                 <button type="button" className="text-left underline" onClick={() => void show(r.id)}>
@@ -410,7 +410,7 @@ function Payout() {
         Wages go from the farm&apos;s own M-Pesa B2C account (from Safaricom Daraja). {s?.ready ? <b>Ready to pay.</b> : "Not set up yet: until then, mark wages paid in cash or by hand."}
       </p>
       <ErrorBox error={error} />
-      {saved && <p className="text-sm" style={{ color: SHAMBA_BRAND.navy }}>Saved.</p>}
+      {saved && <p className="text-sm" style={{ color: SHAMBA_INK }}>Saved.</p>}
       <form onSubmit={save} className="grid grid-cols-2 gap-2 text-sm">
         <label>
           Environment
@@ -451,7 +451,7 @@ export default function WorkersPage() {
         return (
           <div className="space-y-4">
             <div>
-              <h1 className="text-2xl font-bold" style={{ color: SHAMBA_BRAND.navy }}>Workers</h1>
+              <h1 className="text-2xl font-bold" style={{ color: SHAMBA_INK }}>Workers</h1>
               <p className="text-sm text-secondary-600">Casual workers, the daily muster roll, and wages paid by M-Pesa with payslips by SMS.</p>
             </div>
             <div className="flex flex-wrap gap-1">

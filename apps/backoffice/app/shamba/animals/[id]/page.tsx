@@ -10,7 +10,7 @@ import { ActionTabs, Btn, ErrorBox, HealthForm, HealthList, WeightForm, Withdraw
 import {
   BREEDING_KINDS,
   EXIT_KINDS,
-  SHAMBA_BRAND,
+  SHAMBA_BRAND, SHAMBA_INK,
   SPECIES,
   TASK_KINDS,
   ageText,
@@ -250,7 +250,7 @@ function AnimalPage() {
         ← Animals
       </Link>
       <div>
-        <h1 className="text-2xl font-bold" style={{ color: SHAMBA_BRAND.navy }}>
+        <h1 className="text-2xl font-bold" style={{ color: SHAMBA_INK }}>
           {a.tag}
           {a.name && <span className="font-normal"> · {a.name}</span>}
         </h1>
@@ -307,7 +307,7 @@ function AnimalPage() {
               {a.breeding.length === 0 ? (
                 <p className="text-sm text-secondary-500">Nothing recorded yet.</p>
               ) : (
-                <ul className="divide-y divide-secondary-100 text-sm">
+                <ul className="divide-y divide-border text-sm">
                   {a.breeding.map((b) => (
                     <li key={b.id} className={`py-2 ${b.voidedAt ? "text-secondary-400 line-through" : ""}`}>
                       <strong>{BREEDING_KINDS[b.kind] ?? b.kind}</strong> · {day(b.date)}

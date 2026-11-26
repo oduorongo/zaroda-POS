@@ -1,6 +1,8 @@
 /** Zaroda Shamba (farm management, industryType FARM) - shared labels and types for the /shamba screens. docs/farm. */
 
 export const SHAMBA_BRAND = { navy: "#0f1f45", gold: "#d4af37", orange: "#f5820a" };
+/** Headings and figures in the brand navy, gold in dark mode (globals.css --shamba-ink). */
+export const SHAMBA_INK = "var(--shamba-ink)";
 
 export interface FarmPlan {
   code: string;
@@ -110,7 +112,7 @@ export const limitText = (n: number | null) => (n === null ? "Unlimited" : n.toL
 /** Land counted toward the plan: fields and paddocks (blocks only group them). */
 export const LAND_KINDS = ["FIELD", "PADDOCK"];
 
-export const inputClass = "mt-1 w-full rounded-lg border border-secondary-300 bg-white p-2.5 text-sm text-secondary-900";
+export const inputClass = "mt-1 w-full rounded-lg border border-border bg-surface p-2.5 text-sm text-foreground";
 
 // ── F2 livestock ──────────────────────────────────────────────────────────
 

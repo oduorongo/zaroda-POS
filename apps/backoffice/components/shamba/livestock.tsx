@@ -2,7 +2,7 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import { apiGet, apiPost, ApiError } from "../../lib/api";
-import { HEALTH_KINDS, SHAMBA_BRAND, day, inputClass, todayKey, withdrawalLines, type FarmDrug, type FarmProgramme, type HealthEvent, type Withdrawal } from "../../lib/shamba";
+import { HEALTH_KINDS, SHAMBA_BRAND, SHAMBA_INK, day, inputClass, todayKey, withdrawalLines, type FarmDrug, type FarmProgramme, type HealthEvent, type Withdrawal } from "../../lib/shamba";
 
 export const errText = (e: unknown, fallback: string) => (e instanceof ApiError ? e.message : fallback);
 
@@ -230,7 +230,7 @@ export function HealthList({ events, onChanged }: { events: HealthEvent[]; onCha
   return (
     <>
       <ErrorBox error={error} />
-      <ul className="divide-y divide-secondary-100 text-sm">
+      <ul className="divide-y divide-border text-sm">
         {events.map((e) => (
           <li key={e.id} className={`py-2 ${e.voidedAt ? "text-secondary-400 line-through" : ""}`}>
             <div className="flex flex-wrap items-baseline justify-between gap-2">
@@ -267,13 +267,13 @@ export function ActionTabs({ tabs }: { tabs: [string, ReactNode][] }) {
             type="button"
             onClick={() => setOpen(open === label ? null : label)}
             className="rounded-full border px-3 py-1.5 text-sm font-semibold"
-            style={open === label ? { background: SHAMBA_BRAND.navy, color: "white", borderColor: SHAMBA_BRAND.navy } : { borderColor: "#cbd5e1", color: SHAMBA_BRAND.navy }}
+            style={open === label ? { background: SHAMBA_BRAND.navy, color: "white", borderColor: SHAMBA_BRAND.navy } : { borderColor: "#cbd5e1", color: SHAMBA_INK }}
           >
             {label}
           </button>
         ))}
       </div>
-      {open && <div className="mt-3 rounded-xl border border-secondary-200 bg-secondary-50 p-3">{tabs.find(([l]) => l === open)?.[1]}</div>}
+      {open && <div className="mt-3 rounded-xl border border-border bg-background p-3">{tabs.find(([l]) => l === open)?.[1]}</div>}
     </div>
   );
 }

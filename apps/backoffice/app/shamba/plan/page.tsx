@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { apiGet, apiPost } from "../../../lib/api";
 import { Card, ShambaAppFrame } from "../../../components/shamba/frame";
 import { Btn, ErrorBox, errText } from "../../../components/shamba/livestock";
-import { SHAMBA_BRAND, STATUS_LABEL, inputClass, limitText } from "../../../lib/shamba";
+import { SHAMBA_BRAND, SHAMBA_INK, STATUS_LABEL, inputClass, limitText } from "../../../lib/shamba";
 
 type Cycle = "MONTHLY" | "ANNUAL";
 interface PlanOffer { code: string; name: string; monthlyPrice: number; annualPrice: number | null; quoteOnly: boolean; limits: { head: number | null; birds: number | null; acres: number | null; users: number | null } }
@@ -87,14 +87,14 @@ export default function PlanPage() {
         ) : (
           <div className="space-y-4">
             <div>
-              <h1 className="text-2xl font-bold" style={{ color: SHAMBA_BRAND.navy }}>Plan &amp; billing</h1>
+              <h1 className="text-2xl font-bold" style={{ color: SHAMBA_INK }}>Plan &amp; billing</h1>
               <p className="text-sm text-secondary-600">
                 {b.plans.find((p) => p.code === b.planCode)?.name ?? b.planCode} · <b>{STATUS_LABEL[b.status]}</b>
                 {b.status !== "SUSPENDED" ? ` until ${b.currentPeriodEnd.slice(0, 10)}` : ""} · {b.cycle === "ANNUAL" ? "paid yearly" : "paid monthly"}
               </p>
             </div>
             <ErrorBox error={error} />
-            {notice && <p className="rounded-lg border px-3 py-2 text-sm" style={{ borderColor: SHAMBA_BRAND.gold, background: "#fbf6e3", color: SHAMBA_BRAND.navy }}>{notice}</p>}
+            {notice && <p className="rounded-lg border px-3 py-2 text-sm" style={{ borderColor: SHAMBA_BRAND.gold, background: "#fbf6e3", color: SHAMBA_INK }}>{notice}</p>}
             {pending && (
               <Btn type="button" tone="navy" onClick={() => void check()}>
                 I have paid - check
@@ -111,7 +111,7 @@ export default function PlanPage() {
             <Card title="Choose a plan">
               <div className="mb-3 flex gap-1">
                 {(["MONTHLY", "ANNUAL"] as Cycle[]).map((c) => (
-                  <button key={c} type="button" onClick={() => setCycle(c)} className="rounded-lg border px-3 py-1.5 text-sm font-semibold" style={cycle === c ? { background: SHAMBA_BRAND.navy, color: "white", borderColor: SHAMBA_BRAND.navy } : { borderColor: "#cbd5e1", color: SHAMBA_BRAND.navy }}>
+                  <button key={c} type="button" onClick={() => setCycle(c)} className="rounded-lg border px-3 py-1.5 text-sm font-semibold" style={cycle === c ? { background: SHAMBA_BRAND.navy, color: "white", borderColor: SHAMBA_BRAND.navy } : { borderColor: "#cbd5e1", color: SHAMBA_INK }}>
                     {c === "MONTHLY" ? "Monthly" : "Yearly"}
                   </button>
                 ))}
@@ -122,7 +122,7 @@ export default function PlanPage() {
                   const price = priceOf(p, cycle);
                   return (
                     <div key={p.code} className="rounded-xl border p-3" style={{ borderColor: current ? SHAMBA_BRAND.gold : "#e2e8f0" }}>
-                      <p className="font-semibold" style={{ color: SHAMBA_BRAND.navy }}>
+                      <p className="font-semibold" style={{ color: SHAMBA_INK }}>
                         {p.name} {current && <span className="text-xs font-normal">(your plan)</span>}
                       </p>
                       <p className="text-lg font-bold">{p.quoteOnly ? "By quote" : price ? `${kes(price)} ${cycle === "ANNUAL" ? "a year" : "a month"}` : "Free"}</p>
@@ -171,14 +171,14 @@ export default function PlanPage() {
                 Billed at the start of next month. Per payout: {b.payoutBands.map((x) => `${x.upTo === null ? "above" : `up to ${x.upTo.toLocaleString("en-KE")}`} KES ${x.fee}`).join(", ")}.
               </p>
               {b.invoices.length > 0 && (
-                <ul className="mt-2 divide-y divide-secondary-100 text-sm">
+                <ul className="mt-2 divide-y divide-border text-sm">
                   {b.invoices.map((i) => (
                     <li key={i.id} className="flex items-center justify-between gap-2 py-2">
                       <span>
                         {i.periodMonth} · {kes(i.total)}
                       </span>
                       {i.status === "PAID" ? (
-                        <span className="text-xs font-semibold" style={{ color: SHAMBA_BRAND.navy }}>Paid</span>
+                        <span className="text-xs font-semibold" style={{ color: SHAMBA_INK }}>Paid</span>
                       ) : (
                         <Btn type="button" busy={busy} disabled={!!pending || !phone.trim()} onClick={() => void start(`/farm/plan/fees/${i.id}/pay`, {})}>
                           Pay with M-Pesa
@@ -192,7 +192,7 @@ export default function PlanPage() {
 
             {b.payments.length > 0 && (
               <Card title="Payments">
-                <ul className="divide-y divide-secondary-100 text-sm">
+                <ul className="divide-y divide-border text-sm">
                   {b.payments.map((p) => (
                     <li key={p.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
                       <span>

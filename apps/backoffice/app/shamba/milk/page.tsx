@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { apiGet, apiPost } from "../../../lib/api";
 import { Card, ShambaAppFrame } from "../../../components/shamba/frame";
 import { Btn, ErrorBox, errText } from "../../../components/shamba/livestock";
-import { SHAMBA_BRAND, inputClass, todayKey } from "../../../lib/shamba";
+import { SHAMBA_BRAND, SHAMBA_INK, inputClass, todayKey } from "../../../lib/shamba";
 
 type Session = "AM" | "NOON" | "PM";
 type Use = "SOLD" | "CALVES" | "HOME" | "DISCARDED";
@@ -116,7 +116,7 @@ function MilkSheet({ canVoid }: { canVoid: boolean }) {
                   type="button"
                   onClick={() => setSession(s)}
                   className="flex-1 rounded-lg border px-2 py-2.5 font-semibold"
-                  style={session === s ? { background: SHAMBA_BRAND.navy, color: "white", borderColor: SHAMBA_BRAND.navy } : { borderColor: "#cbd5e1", color: SHAMBA_BRAND.navy }}
+                  style={session === s ? { background: SHAMBA_BRAND.navy, color: "white", borderColor: SHAMBA_BRAND.navy } : { borderColor: "#cbd5e1", color: SHAMBA_INK }}
                 >
                   {SESSIONS[s]}
                 </button>
@@ -130,7 +130,7 @@ function MilkSheet({ canVoid }: { canVoid: boolean }) {
       </Card>
 
       <ErrorBox error={error} />
-      {done && <p className="rounded-lg border px-3 py-2 text-sm" style={{ borderColor: SHAMBA_BRAND.gold, background: "#fbf6e3", color: SHAMBA_BRAND.navy }}>{done}</p>}
+      {done && <p className="rounded-lg border px-3 py-2 text-sm" style={{ borderColor: SHAMBA_BRAND.gold, background: "#fbf6e3", color: SHAMBA_INK }}>{done}</p>}
 
       <Card title={`${SESSIONS[session]} milking`}>
         {!sheet ? (
@@ -143,9 +143,9 @@ function MilkSheet({ canVoid }: { canVoid: boolean }) {
               const rec = recorded(r.id);
               const l = line(r.id, !!r.withheldUntil);
               return (
-                <div key={r.id} className="rounded-lg border border-secondary-200 p-2.5">
+                <div key={r.id} className="rounded-lg border border-border p-2.5">
                   <div className="flex flex-wrap items-center justify-between gap-2">
-                    <span className="font-semibold" style={{ color: SHAMBA_BRAND.navy }}>
+                    <span className="font-semibold" style={{ color: SHAMBA_INK }}>
                       {r.label} {r.note && <span className="text-xs font-normal text-secondary-500">· {r.note}</span>}
                     </span>
                     {r.withheldUntil && (
@@ -169,11 +169,11 @@ function MilkSheet({ canVoid }: { canVoid: boolean }) {
                         max="200"
                         placeholder="Litres"
                         aria-label={`Litres from ${r.label}`}
-                        className="w-full rounded-lg border border-secondary-300 bg-white p-3 text-lg text-secondary-900"
+                        className="w-full rounded-lg border border-border bg-surface p-3 text-lg text-foreground"
                         value={l.litres}
                         onChange={(e) => setLine(r.id, !!r.withheldUntil, { litres: e.target.value })}
                       />
-                      <select className="w-full rounded-lg border border-secondary-300 bg-white p-3 text-sm text-secondary-900" value={l.use} onChange={(e) => setLine(r.id, !!r.withheldUntil, { use: e.target.value as Use })}>
+                      <select className="w-full rounded-lg border border-border bg-surface p-3 text-sm text-foreground" value={l.use} onChange={(e) => setLine(r.id, !!r.withheldUntil, { use: e.target.value as Use })}>
                         {(Object.keys(USES) as Use[])
                           .filter((u) => !(r.withheldUntil && u === "SOLD"))
                           .map((u) => (
@@ -193,7 +193,7 @@ function MilkSheet({ canVoid }: { canVoid: boolean }) {
                 Show dry cows
               </label>
             )}
-            <div className="sticky bottom-2 flex flex-wrap items-center justify-between gap-2 rounded-lg bg-white/95 p-2 shadow">
+            <div className="sticky bottom-2 flex flex-wrap items-center justify-between gap-2 rounded-lg bg-surface/95 p-2 shadow">
               <span className="text-sm text-secondary-700">
                 {entries.length} {entries.length === 1 ? "cow" : "cows"} · <b>{Math.round(total * 10) / 10} L</b>
               </span>
@@ -220,7 +220,7 @@ function MilkSheet({ canVoid }: { canVoid: boolean }) {
               </thead>
               <tbody>
                 {sessionRecords.map((r) => (
-                  <tr key={r.id} className="border-t border-secondary-100">
+                  <tr key={r.id} className="border-t border-border">
                     <td className="py-1.5">{nameOf(r)}</td>
                     <td>{r.litres}</td>
                     <td>
@@ -252,7 +252,7 @@ export default function MilkPage() {
       {(session) => (
         <div className="space-y-4">
           <div>
-            <h1 className="text-2xl font-bold" style={{ color: SHAMBA_BRAND.navy }}>Milk</h1>
+            <h1 className="text-2xl font-bold" style={{ color: SHAMBA_INK }}>Milk</h1>
             <p className="text-sm text-secondary-600">Litres from each cow at each milking. Milk for sale goes into stock for the till; milk from treated cows is withheld and cannot be sold.</p>
           </div>
           <MilkSheet canVoid={session.role === "OWNER" || session.role === "MANAGER"} />

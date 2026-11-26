@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { apiGet, apiPost, ApiError } from "../../../lib/api";
 import { Card, ShambaAppFrame } from "../../../components/shamba/frame";
 import { Btn, ErrorBox, errText } from "../../../components/shamba/livestock";
-import { SHAMBA_BRAND, day, inputClass, todayKey } from "../../../lib/shamba";
+import { SHAMBA_BRAND, SHAMBA_INK, day, inputClass, todayKey } from "../../../lib/shamba";
 
 type Tab = "overview" | "feeding" | "mixing" | "rations";
 interface Report {
@@ -28,7 +28,7 @@ interface Batch { id: string; batchNo: string; rationName: string; date: string;
 interface ProductRow { id: string; name: string; baseUnit: string; variants: { id: string; name: string | null }[] }
 
 const kes = (n: number) => `KES ${n.toLocaleString("en-KE", { maximumFractionDigits: 2 })}`;
-const tabStyle = (on: boolean) => (on ? { background: SHAMBA_BRAND.navy, color: "white", borderColor: SHAMBA_BRAND.navy } : { borderColor: "#cbd5e1", color: SHAMBA_BRAND.navy });
+const tabStyle = (on: boolean) => (on ? { background: SHAMBA_BRAND.navy, color: "white", borderColor: SHAMBA_BRAND.navy } : { borderColor: "#cbd5e1", color: SHAMBA_INK });
 
 function Overview() {
   const [r, setR] = useState<Report | null>(null);
@@ -53,9 +53,9 @@ function Overview() {
           ["Feed cost an egg", r.eggs.perEgg !== null ? kes(r.eggs.perEgg) : "-", r.eggs.perTray !== null ? `${kes(r.eggs.perTray)} a tray` : ""],
           ["Feed cost on eggs", kes(r.eggs.feedCost), `${r.eggs.eggs.toLocaleString("en-KE")} eggs`],
         ].map(([t, v, s]) => (
-          <div key={t} className="rounded-xl border border-secondary-200 bg-white p-3">
+          <div key={t} className="rounded-xl border border-border bg-surface p-3">
             <p className="text-xs text-secondary-500">{t}</p>
-            <p className="text-xl font-bold" style={{ color: SHAMBA_BRAND.navy }}>{v}</p>
+            <p className="text-xl font-bold" style={{ color: SHAMBA_INK }}>{v}</p>
             {s && <p className="text-xs text-secondary-500">{s}</p>}
           </div>
         ))}
@@ -75,7 +75,7 @@ function Overview() {
             </thead>
             <tbody>
               {r.feeds.map((f) => (
-                <tr key={f.variantId} className="border-t border-secondary-100">
+                <tr key={f.variantId} className="border-t border-border">
                   <td className="py-1.5">{f.name}</td>
                   <td>{f.onHand.toLocaleString("en-KE")} kg</td>
                   <td>{f.kgPerDay ? `${f.kgPerDay} kg` : "-"}</td>
@@ -100,7 +100,7 @@ function Overview() {
             </thead>
             <tbody>
               {r.fed.map((t) => (
-                <tr key={t.id} className="border-t border-secondary-100">
+                <tr key={t.id} className="border-t border-border">
                   <td className="py-1.5">
                     <Link href={t.kind === "animal" ? `/shamba/animals/${t.id}` : `/shamba/groups/${t.id}`} className="underline">
                       {t.label}
@@ -168,7 +168,7 @@ function Feeding({ canVoid }: { canVoid: boolean }) {
   return (
     <div className="space-y-4">
       <ErrorBox error={error} />
-      {done && <p className="rounded-lg border px-3 py-2 text-sm" style={{ borderColor: SHAMBA_BRAND.gold, background: "#fbf6e3", color: SHAMBA_BRAND.navy }}>{done}</p>}
+      {done && <p className="rounded-lg border px-3 py-2 text-sm" style={{ borderColor: SHAMBA_BRAND.gold, background: "#fbf6e3", color: SHAMBA_INK }}>{done}</p>}
       <Card title="Record feeding">
         {data.feeds.length === 0 ? (
           <p className="text-sm text-secondary-500">No feed in stock items yet. Feed products are kept per kg: add them under Products, or mix a ration.</p>
@@ -179,7 +179,7 @@ function Feeding({ canVoid }: { canVoid: boolean }) {
               <input type="date" className={inputClass} value={date} max={todayKey()} onChange={(e) => setDate(e.target.value)} />
             </label>
             {lines.map((l, i) => (
-              <div key={i} className="grid grid-cols-2 gap-2 rounded-lg border border-secondary-200 p-2 sm:grid-cols-[2fr_2fr_1fr]">
+              <div key={i} className="grid grid-cols-2 gap-2 rounded-lg border border-border p-2 sm:grid-cols-[2fr_2fr_1fr]">
                 <select className={inputClass} value={l.target} onChange={(e) => setLine(i, { target: e.target.value })} aria-label="Fed to">
                   <option value="">Fed to...</option>
                   <optgroup label="Groups and flocks">
@@ -206,7 +206,7 @@ function Feeding({ canVoid }: { canVoid: boolean }) {
                     </option>
                   ))}
                 </select>
-                <input type="number" inputMode="decimal" step="0.1" min="0" placeholder="kg" aria-label="kg" className="mt-1 w-full rounded-lg border border-secondary-300 bg-white p-2.5 text-base text-secondary-900" value={l.kg} onChange={(e) => setLine(i, { kg: e.target.value })} />
+                <input type="number" inputMode="decimal" step="0.1" min="0" placeholder="kg" aria-label="kg" className="mt-1 w-full rounded-lg border border-border bg-surface p-2.5 text-base text-foreground" value={l.kg} onChange={(e) => setLine(i, { kg: e.target.value })} />
               </div>
             ))}
             <button type="button" className="text-sm underline" onClick={() => setLines([...lines, { target: "", variantId: lines[lines.length - 1]?.variantId ?? "", kg: "" }])}>
@@ -233,7 +233,7 @@ function Feeding({ canVoid }: { canVoid: boolean }) {
             </thead>
             <tbody>
               {data.records.map((r) => (
-                <tr key={r.id} className={`border-t border-secondary-100 ${r.voidedAt ? "text-secondary-400 line-through" : ""}`} title={r.voidReason ?? undefined}>
+                <tr key={r.id} className={`border-t border-border ${r.voidedAt ? "text-secondary-400 line-through" : ""}`} title={r.voidReason ?? undefined}>
                   <td className="py-1.5 whitespace-nowrap">{day(r.date)}</td>
                   <td>{r.target}</td>
                   <td>{r.feedName}</td>
@@ -342,7 +342,7 @@ function Mixing({ manager }: { manager: boolean }) {
             </label>
             <label>
               kg weighed out
-              <input type="number" inputMode="decimal" step="0.1" min="0.1" className="mt-1 w-full rounded-lg border border-secondary-300 bg-white p-3 text-lg text-secondary-900" value={f.kgProduced} onChange={(e) => setF({ ...f, kgProduced: e.target.value })} placeholder={ration ? String(ration.batchKg * Number(f.batches || 1)) : ""} required />
+              <input type="number" inputMode="decimal" step="0.1" min="0.1" className="mt-1 w-full rounded-lg border border-border bg-surface p-3 text-lg text-foreground" value={f.kgProduced} onChange={(e) => setF({ ...f, kgProduced: e.target.value })} placeholder={ration ? String(ration.batchKg * Number(f.batches || 1)) : ""} required />
             </label>
             <label className="col-span-2 sm:col-span-3">
               Notes
@@ -363,7 +363,7 @@ function Mixing({ manager }: { manager: boolean }) {
         {batches.length === 0 ? (
           <p className="text-sm text-secondary-500">No batches yet.</p>
         ) : (
-          <ul className="divide-y divide-secondary-100 text-sm">
+          <ul className="divide-y divide-border text-sm">
             {batches.map((b) => (
               <li key={b.id} className={`py-2 ${b.status === "REVERSED" ? "text-secondary-400" : ""}`}>
                 <div className="flex flex-wrap items-center justify-between gap-2">
@@ -371,7 +371,7 @@ function Mixing({ manager }: { manager: boolean }) {
                     <b>{b.batchNo}</b> · {b.rationName} · {day(b.date)} · {b.kgProduced} kg
                   </span>
                   <span className="flex items-center gap-2">
-                    <span className="rounded-full px-2 py-0.5 text-xs font-semibold" style={b.status === "PENDING" ? { background: "#fff4e8", color: "#7a3d00" } : b.status === "APPROVED" ? { background: "#e8ecf6", color: SHAMBA_BRAND.navy } : { background: "#eee", color: "#666" }}>
+                    <span className="rounded-full px-2 py-0.5 text-xs font-semibold" style={b.status === "PENDING" ? { background: "#fff4e8", color: "#7a3d00" } : b.status === "APPROVED" ? { background: "#e8ecf6", color: SHAMBA_INK } : { background: "#eee", color: "#666" }}>
                       {b.status === "PENDING" ? "Waiting for approval" : b.status === "APPROVED" ? "Approved" : "Reversed"}
                     </span>
                     {manager && b.status === "PENDING" && (
@@ -456,7 +456,7 @@ function Rations({ manager }: { manager: boolean }) {
                   </li>
                 ))}
               </ul>
-              <p className="mt-2 text-sm font-semibold" style={{ color: SHAMBA_BRAND.navy }}>
+              <p className="mt-2 text-sm font-semibold" style={{ color: SHAMBA_INK }}>
                 About {kes(r.expectedCostPerKg)} a kg{r.missingCost ? " (some ingredients have no cost yet)" : ""}
               </p>
             </Card>
@@ -529,7 +529,7 @@ export default function FeedPage() {
         return (
           <div className="space-y-4">
             <div>
-              <h1 className="text-2xl font-bold" style={{ color: SHAMBA_BRAND.navy }}>Feed</h1>
+              <h1 className="text-2xl font-bold" style={{ color: SHAMBA_INK }}>Feed</h1>
               <p className="text-sm text-secondary-600">Daily feeding from stock, home-mixed rations at their real cost per kg, and what feed costs per litre and per egg.</p>
             </div>
             <div className="flex flex-wrap gap-1">

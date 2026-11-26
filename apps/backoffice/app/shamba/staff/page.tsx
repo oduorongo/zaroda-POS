@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { apiGet, apiPut, ApiError } from "../../../lib/api";
 import { Card, ShambaAppFrame } from "../../../components/shamba/frame";
-import { FARM_ROLES, SHAMBA_BRAND, type FarmStaff, type FarmUnit } from "../../../lib/shamba";
+import { FARM_ROLES, SHAMBA_BRAND, SHAMBA_INK, type FarmStaff, type FarmUnit } from "../../../lib/shamba";
 
 function Staff() {
   const [people, setPeople] = useState<FarmStaff[] | null>(null);
@@ -46,7 +46,7 @@ function Staff() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-bold" style={{ color: SHAMBA_BRAND.navy }}>Staff and farm roles</h1>
+      <h1 className="text-2xl font-bold" style={{ color: SHAMBA_INK }}>Staff and farm roles</h1>
       <p className="text-sm text-secondary-600">
         Add people under{" "}
         <Link href="/staff" className="underline">
@@ -61,7 +61,7 @@ function Staff() {
         {!people ? (
           <p className="text-sm text-secondary-500">Loading...</p>
         ) : (
-          <ul className="divide-y divide-secondary-100 text-sm">
+          <ul className="divide-y divide-border text-sm">
             {people.map((p) => (
               <li key={p.orgUserId} className="py-3">
                 <div className="flex flex-wrap items-start justify-between gap-2">
@@ -77,10 +77,10 @@ function Staff() {
                   </button>
                 </div>
                 {editing?.orgUserId === p.orgUserId && (
-                  <div className="mt-3 space-y-3 rounded-lg bg-secondary-50 p-3">
+                  <div className="mt-3 space-y-3 rounded-lg bg-background p-3">
                     <div className="flex flex-wrap gap-2">
                       {Object.entries(FARM_ROLES).map(([code, label]) => (
-                        <label key={code} className="flex items-center gap-1 rounded-full border border-secondary-200 bg-white px-2 py-1">
+                        <label key={code} className="flex items-center gap-1 rounded-full border border-border bg-surface px-2 py-1">
                           <input type="checkbox" checked={editing.roles.includes(code)} onChange={(e) => setEditing({ ...editing, roles: flip(editing.roles, code, e.target.checked) })} />
                           {label}
                         </label>
@@ -91,7 +91,7 @@ function Staff() {
                         <p className="text-xs text-secondary-600">Only these parts of the farm (leave all unticked for the whole farm):</p>
                         <div className="mt-1 flex flex-wrap gap-2">
                           {units.map((u) => (
-                            <label key={u.id} className="flex items-center gap-1 rounded-full border border-secondary-200 bg-white px-2 py-1">
+                            <label key={u.id} className="flex items-center gap-1 rounded-full border border-border bg-surface px-2 py-1">
                               <input type="checkbox" checked={editing.unitIds.includes(u.id)} onChange={(e) => setEditing({ ...editing, unitIds: flip(editing.unitIds, u.id, e.target.checked) })} />
                               {u.name}
                             </label>
@@ -103,7 +103,7 @@ function Staff() {
                       <button type="button" disabled={busy} onClick={() => void save()} className="rounded-lg px-3 py-1.5 font-semibold text-white disabled:opacity-50" style={{ background: SHAMBA_BRAND.navy }}>
                         {busy ? "Saving..." : "Save"}
                       </button>
-                      <button type="button" onClick={() => setEditing(null)} className="rounded-lg border border-secondary-300 px-3 py-1.5">
+                      <button type="button" onClick={() => setEditing(null)} className="rounded-lg border border-border px-3 py-1.5">
                         Cancel
                       </button>
                     </div>

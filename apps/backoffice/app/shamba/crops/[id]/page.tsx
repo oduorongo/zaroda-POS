@@ -6,7 +6,7 @@ import { useEffect, useState } from "react";
 import { apiGet, apiPost } from "../../../../lib/api";
 import { Card, ShambaAppFrame } from "../../../../components/shamba/frame";
 import { ActionTabs, Btn, ErrorBox, errText } from "../../../../components/shamba/livestock";
-import { CROP_ACTIVITIES, CROP_STATUS, HARVEST_UNITS, SHAMBA_BRAND, day, inputClass, todayKey } from "../../../../lib/shamba";
+import { CROP_ACTIVITIES, CROP_STATUS, HARVEST_UNITS, SHAMBA_BRAND, SHAMBA_INK, day, inputClass, todayKey } from "../../../../lib/shamba";
 
 interface Activity {
   id: string; date: string; kind: string; product: string | null; rate: string | null; inputName: string | null; quantity: number | null; inputCost: number;
@@ -186,7 +186,7 @@ function HarvestForm({ seasonId, products, blocked, onDone }: { seasonId: string
       </label>
       <label>
         Quantity
-        <input type="number" inputMode="decimal" step="0.001" min="0.001" className="mt-1 w-full rounded-lg border border-secondary-300 bg-white p-3 text-lg text-secondary-900" value={f.quantity} onChange={(e) => setF({ ...f, quantity: e.target.value })} required />
+        <input type="number" inputMode="decimal" step="0.001" min="0.001" className="mt-1 w-full rounded-lg border border-border bg-surface p-3 text-lg text-foreground" value={f.quantity} onChange={(e) => setF({ ...f, quantity: e.target.value })} required />
       </label>
       <label>
         Unit
@@ -269,7 +269,7 @@ export default function SeasonPage() {
             </Link>
             <div className="flex flex-wrap items-start justify-between gap-2">
               <div>
-                <h1 className="text-2xl font-bold" style={{ color: SHAMBA_BRAND.navy }}>
+                <h1 className="text-2xl font-bold" style={{ color: SHAMBA_INK }}>
                   {s.crop}
                   {s.variety ? ` · ${s.variety}` : ""}
                 </h1>
@@ -293,7 +293,7 @@ export default function SeasonPage() {
               )}
             </div>
             <ErrorBox error={error} />
-            {done && <p className="rounded-lg border px-3 py-2 text-sm" style={{ borderColor: SHAMBA_BRAND.gold, background: "#fbf6e3", color: SHAMBA_BRAND.navy }}>{done}</p>}
+            {done && <p className="rounded-lg border px-3 py-2 text-sm" style={{ borderColor: SHAMBA_BRAND.gold, background: "#fbf6e3", color: SHAMBA_INK }}>{done}</p>}
             {s.safeHarvestFrom && (
               <div className="rounded-xl border-2 px-4 py-3 text-sm font-semibold" style={{ borderColor: SHAMBA_BRAND.orange, background: "#fff4e8", color: "#7a3d00" }}>
                 Sprayed recently: harvest is not allowed until {s.safeHarvestFrom}.
@@ -307,9 +307,9 @@ export default function SeasonPage() {
                 ["Cost an acre", s.costPerAcre !== null ? kes(s.costPerAcre) : "-", ""],
                 ["Cost a kg", s.costPerKg !== null ? kes(s.costPerKg) : "-", s.costPerKg === null ? "after the first harvest" : ""],
               ].map(([t, v, sub]) => (
-                <div key={t} className="rounded-xl border border-secondary-200 bg-white p-3">
+                <div key={t} className="rounded-xl border border-border bg-surface p-3">
                   <p className="text-xs text-secondary-500">{t}</p>
-                  <p className="text-xl font-bold" style={{ color: SHAMBA_BRAND.navy }}>{v}</p>
+                  <p className="text-xl font-bold" style={{ color: SHAMBA_INK }}>{v}</p>
                   {sub && <p className="text-xs text-secondary-500">{sub}</p>}
                 </div>
               ))}
@@ -343,7 +343,7 @@ export default function SeasonPage() {
                   </thead>
                   <tbody>
                     {s.harvests.map((h) => (
-                      <tr key={h.id} className={`border-t border-secondary-100 ${h.voidedAt ? "text-secondary-400 line-through" : ""}`} title={h.voidReason ?? undefined}>
+                      <tr key={h.id} className={`border-t border-border ${h.voidedAt ? "text-secondary-400 line-through" : ""}`} title={h.voidReason ?? undefined}>
                         <td className="py-1.5 whitespace-nowrap">{day(h.date)}</td>
                         <td>
                           {h.quantity} {h.unit}
@@ -369,7 +369,7 @@ export default function SeasonPage() {
               {s.activities.length === 0 ? (
                 <p className="text-sm text-secondary-500">No field work recorded yet.</p>
               ) : (
-                <ul className="divide-y divide-secondary-100 text-sm">
+                <ul className="divide-y divide-border text-sm">
                   {s.activities.map((a) => (
                     <li key={a.id} className={`py-2 ${a.voidedAt ? "text-secondary-400 line-through" : ""}`} title={a.voidReason ?? undefined}>
                       <div className="flex flex-wrap items-center justify-between gap-2">

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { ShambaPublicFrame } from "../../../components/shamba/frame";
-import { SHAMBA_BRAND } from "../../../lib/shamba";
+import { SHAMBA_BRAND, SHAMBA_INK } from "../../../lib/shamba";
 
 const FEATURES: [string, string][] = [
   ["Livestock", "Every cow, goat, pig and flock: tags, breeding, calving, vaccinations, treatments and weights."],
@@ -33,8 +33,8 @@ export default function ShambaWelcome() {
       </section>
       <section className="mx-auto grid max-w-6xl gap-4 px-4 py-10 sm:grid-cols-2 lg:grid-cols-3">
         {FEATURES.map(([title, text]) => (
-          <div key={title} className="rounded-xl border border-secondary-200 bg-white p-5 shadow-sm">
-            <h2 className="font-semibold" style={{ color: SHAMBA_BRAND.navy }}>{title}</h2>
+          <div key={title} className="rounded-xl border border-border bg-surface p-5 shadow-sm">
+            <h2 className="font-semibold" style={{ color: SHAMBA_INK }}>{title}</h2>
             <p className="mt-1 text-sm text-secondary-600">{text}</p>
           </div>
         ))}

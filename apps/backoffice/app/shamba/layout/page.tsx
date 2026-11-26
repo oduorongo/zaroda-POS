@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { apiGet, apiPatch, apiPost, ApiError } from "../../../lib/api";
 import { Card, ShambaAppFrame } from "../../../components/shamba/frame";
-import { LAND_KINDS, SHAMBA_BRAND, UNIT_KINDS, inputClass, type FarmUnit } from "../../../lib/shamba";
+import { LAND_KINDS, SHAMBA_BRAND, SHAMBA_INK, UNIT_KINDS, inputClass, type FarmUnit } from "../../../lib/shamba";
 
 const EMPTY = { kind: "FIELD", name: "", code: "", parentId: "", acres: "", capacity: "", notes: "" };
 
@@ -58,7 +58,7 @@ function Layout() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-bold" style={{ color: SHAMBA_BRAND.navy }}>Farm layout</h1>
+      <h1 className="text-2xl font-bold" style={{ color: SHAMBA_INK }}>Farm layout</h1>
       <p className="text-sm text-secondary-600">The parts of your farm. Fields and paddocks count toward your plan&apos;s acres ({land.toLocaleString("en-KE")} acres now).</p>
       {error && <p className="rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800">{error}</p>}
 
@@ -135,7 +135,7 @@ function Layout() {
               </thead>
               <tbody>
                 {units.map((u) => (
-                  <tr key={u.id} className={`border-t border-secondary-100 ${u.active ? "" : "text-secondary-400"}`}>
+                  <tr key={u.id} className={`border-t border-border ${u.active ? "" : "text-secondary-400"}`}>
                     <td className="p-2 font-medium">
                       {u.name}
                       {u.code && <span className="text-xs text-secondary-500"> ({u.code})</span>}

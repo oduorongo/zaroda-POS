@@ -4,20 +4,20 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 import { clearSession, getSession, type Session } from "../../lib/auth";
-import { SHAMBA_BRAND } from "../../lib/shamba";
+import { SHAMBA_BRAND, SHAMBA_INK } from "../../lib/shamba";
 import { menuFor } from "../../lib/menu";
 import { useIdleLogout } from "../../hooks/use-idle-logout";
 import { SideNav } from "../side-nav";
+import { ThemeToggle } from "@zaroda/ui";
 
 const FOOTNOTE = "Powered by ZARODA SOLUTIONS - Innovative. Reliable. Forward. - WhatsApp 0781230805 - Call 0724282065";
 
 function Brand() {
   return (
-    <span className="flex items-center gap-2 font-bold text-white">
-      <span className="flex h-8 w-8 items-center justify-center rounded-lg text-sm" style={{ background: SHAMBA_BRAND.gold, color: SHAMBA_BRAND.navy }}>
-        ZS
-      </span>
-      Zaroda Shamba
+    <span className="flex items-center gap-2">
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src="/zaroda-logo-white.png" alt="Zaroda" className="h-9 w-auto" />
+      <span className="text-sm font-extrabold uppercase tracking-widest" style={{ color: SHAMBA_BRAND.gold }}>Shamba</span>
     </span>
   );
 }
@@ -33,7 +33,7 @@ function Footer() {
 /** The welcome, pricing, sign-in and sign-up pages. */
 export function ShambaPublicFrame({ children }: { children: ReactNode }) {
   return (
-    <div className="flex stay-light min-h-screen flex-col bg-secondary-50 text-secondary-900">
+    <div className="flex min-h-screen flex-col bg-background text-foreground">
       <header className="border-b-[3px]" style={{ background: SHAMBA_BRAND.navy, borderColor: SHAMBA_BRAND.gold }}>
         <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-3">
           <Link href="/shamba/welcome">
@@ -52,6 +52,7 @@ export function ShambaPublicFrame({ children }: { children: ReactNode }) {
             <Link href="/shamba/signup" className="rounded-lg px-3 py-1.5 font-semibold" style={{ background: SHAMBA_BRAND.orange }}>
               Start free
             </Link>
+            <ThemeToggle className="text-white hover:bg-white/10 hover:text-white" />
           </nav>
         </div>
       </header>
@@ -78,7 +79,7 @@ export function ShambaAppFrame({ children }: { children: (session: Session) => R
 
   if (!session) return null;
   return (
-    <div className="flex stay-light min-h-screen flex-col bg-secondary-50 text-secondary-900">
+    <div className="flex min-h-screen flex-col bg-background text-foreground">
       <SideNav
         title="ZARODA SHAMBA"
         subtitle={session.orgName ?? "Zaroda Shamba"}
@@ -98,10 +99,10 @@ export function ShambaAppFrame({ children }: { children: (session: Session) => R
 
 export function Card({ title, children, action }: { title?: string; children: ReactNode; action?: ReactNode }) {
   return (
-    <section className="rounded-xl border border-secondary-200 bg-white p-4 shadow-sm">
+    <section className="rounded-xl border border-border bg-surface p-4 shadow-sm">
       {(title || action) && (
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-          {title && <h2 className="font-semibold" style={{ color: SHAMBA_BRAND.navy }}>{title}</h2>}
+          {title && <h2 className="font-semibold" style={{ color: SHAMBA_INK }}>{title}</h2>}
           {action}
         </div>
       )}

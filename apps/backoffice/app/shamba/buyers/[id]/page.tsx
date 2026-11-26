@@ -6,7 +6,7 @@ import { useEffect, useState } from "react";
 import { apiGet, apiPost } from "../../../../lib/api";
 import { Card, ShambaAppFrame } from "../../../../components/shamba/frame";
 import { ErrorBox, errText } from "../../../../components/shamba/livestock";
-import { BUYER_KINDS, SHAMBA_BRAND, day, inputClass } from "../../../../lib/shamba";
+import { BUYER_KINDS, SHAMBA_BRAND, SHAMBA_INK, day, inputClass } from "../../../../lib/shamba";
 import { downloadPdf, printPdf, type PdfDocument } from "../../../../lib/pdf";
 
 interface Statement {
@@ -103,7 +103,7 @@ export default function BuyerStatementPage() {
                 <button type="button" onClick={() => void downloadPdf(statementPdf(s), `statement-${s.buyer.name}-${s.to}`)} className="rounded-lg px-4 py-2.5 font-semibold text-white" style={{ background: SHAMBA_BRAND.navy }}>
                   Download PDF
                 </button>
-                <button type="button" onClick={() => void printPdf(statementPdf(s))} className="rounded-lg border border-secondary-300 px-4 py-2.5 font-semibold">
+                <button type="button" onClick={() => void printPdf(statementPdf(s))} className="rounded-lg border border-border px-4 py-2.5 font-semibold">
                   Print
                 </button>
               </div>
@@ -112,7 +112,7 @@ export default function BuyerStatementPage() {
             <Card>
               <div className="flex flex-wrap justify-between gap-2">
                 <div>
-                  <h1 className="text-xl font-bold" style={{ color: SHAMBA_BRAND.navy }}>Statement: {s.buyer.name}</h1>
+                  <h1 className="text-xl font-bold" style={{ color: SHAMBA_INK }}>Statement: {s.buyer.name}</h1>
                   <p className="text-sm text-secondary-600">
                     {BUYER_KINDS[s.buyer.kind] ?? s.buyer.kind}
                     {s.buyer.memberNo ? ` · our member no. ${s.buyer.memberNo}` : ""}
@@ -127,7 +127,7 @@ export default function BuyerStatementPage() {
                 </div>
                 <div className="text-right">
                   <p className="text-xs text-secondary-500">Owed now</p>
-                  <p className="text-2xl font-bold" style={{ color: SHAMBA_BRAND.navy }}>{kes(s.closing)}</p>
+                  <p className="text-2xl font-bold" style={{ color: SHAMBA_INK }}>{kes(s.closing)}</p>
                 </div>
               </div>
               <div className="mt-3 overflow-x-auto">
@@ -143,7 +143,7 @@ export default function BuyerStatementPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    <tr className="border-t border-secondary-100">
+                    <tr className="border-t border-border">
                       <td className="py-1.5" colSpan={4}>
                         Brought forward
                       </td>
@@ -153,7 +153,7 @@ export default function BuyerStatementPage() {
                     {rows.map((r) => {
                       if (!r.voided) running += r.debit - r.credit;
                       return (
-                        <tr key={r.id} className={`border-t border-secondary-100 ${r.voided ? "text-secondary-400 line-through print:hidden" : ""}`} title={r.why ?? undefined}>
+                        <tr key={r.id} className={`border-t border-border ${r.voided ? "text-secondary-400 line-through print:hidden" : ""}`} title={r.why ?? undefined}>
                           <td className="py-1.5 whitespace-nowrap">{r.date}</td>
                           <td>{r.text}</td>
                           <td className="text-right">{r.debit ? kes(r.debit) : ""}</td>
@@ -180,7 +180,7 @@ export default function BuyerStatementPage() {
                   ["Over 90 days", s.aging.d90],
                   ["Total owed", s.aging.owed],
                 ].map(([t, v]) => (
-                  <div key={t as string} className="rounded-lg border border-secondary-200 p-2">
+                  <div key={t as string} className="rounded-lg border border-border p-2">
                     <p className="text-xs text-secondary-500">{t}</p>
                     <p className="font-semibold">{kes(v as number)}</p>
                   </div>

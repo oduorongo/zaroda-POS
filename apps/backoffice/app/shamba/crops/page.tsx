@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { apiGet, apiPost } from "../../../lib/api";
 import { Card, ShambaAppFrame } from "../../../components/shamba/frame";
 import { Btn, ErrorBox, errText } from "../../../components/shamba/livestock";
-import { CROP_STATUS, SHAMBA_BRAND, day, inputClass, todayKey, type FarmEnterprise, type FarmUnit } from "../../../lib/shamba";
+import { CROP_STATUS, SHAMBA_BRAND, SHAMBA_INK, day, inputClass, todayKey, type FarmEnterprise, type FarmUnit } from "../../../lib/shamba";
 
 interface SeasonRow {
   id: string;
@@ -143,7 +143,7 @@ export default function CropsPage() {
         <div className="space-y-4">
           <div className="flex flex-wrap items-end justify-between gap-2">
             <div>
-              <h1 className="text-2xl font-bold" style={{ color: SHAMBA_BRAND.navy }}>Crops</h1>
+              <h1 className="text-2xl font-bold" style={{ color: SHAMBA_INK }}>Crops</h1>
               <p className="text-sm text-secondary-600">Each crop in each field for a season: field work, sprays, harvests, and what it cost per acre and per kg.</p>
             </div>
             <Btn type="button" onClick={() => setAdding(!adding)}>{adding ? "Close" : "New season"}</Btn>
@@ -163,10 +163,10 @@ export default function CropsPage() {
           ) : (
             <div className="grid gap-3 sm:grid-cols-2">
               {rows.map((s) => (
-                <Link key={s.id} href={`/shamba/crops/${s.id}`} className="block rounded-xl border border-secondary-200 bg-white p-4 no-underline shadow-sm hover:border-secondary-400">
+                <Link key={s.id} href={`/shamba/crops/${s.id}`} className="block rounded-xl border border-border bg-surface p-4 no-underline shadow-sm hover:border-border">
                   <div className="flex items-start justify-between gap-2">
                     <div>
-                      <p className="font-semibold" style={{ color: SHAMBA_BRAND.navy }}>
+                      <p className="font-semibold" style={{ color: SHAMBA_INK }}>
                         {s.crop}
                         {s.variety ? ` · ${s.variety}` : ""}
                       </p>
@@ -174,7 +174,7 @@ export default function CropsPage() {
                         {s.unitName} · {s.acres} acres{s.plantedOn ? ` · planted ${day(s.plantedOn)}` : ""}
                       </p>
                     </div>
-                    <span className="rounded-full bg-secondary-100 px-2 py-0.5 text-xs font-semibold text-secondary-700">{CROP_STATUS[s.status]}</span>
+                    <span className="rounded-full bg-background px-2 py-0.5 text-xs font-semibold text-secondary-700">{CROP_STATUS[s.status]}</span>
                   </div>
                   {s.safeHarvestFrom && (
                     <p className="mt-2 rounded-lg px-2 py-1 text-xs font-semibold" style={{ background: "#fff4e8", color: "#7a3d00" }}>
@@ -184,15 +184,15 @@ export default function CropsPage() {
                   <div className="mt-3 grid grid-cols-3 gap-2 text-xs text-secondary-500">
                     <span>
                       Harvested
-                      <b className="block text-sm text-secondary-900">{s.harvestedKg.toLocaleString("en-KE")} kg</b>
+                      <b className="block text-sm text-foreground">{s.harvestedKg.toLocaleString("en-KE")} kg</b>
                     </span>
                     <span>
                       Cost
-                      <b className="block text-sm text-secondary-900">{kes(s.totalCost)}</b>
+                      <b className="block text-sm text-foreground">{kes(s.totalCost)}</b>
                     </span>
                     <span>
                       {s.costPerKg !== null ? "Per kg" : "Expected"}
-                      <b className="block text-sm text-secondary-900">{s.costPerKg !== null ? kes(s.costPerKg) : s.expectedHarvest ? day(s.expectedHarvest) : "-"}</b>
+                      <b className="block text-sm text-foreground">{s.costPerKg !== null ? kes(s.costPerKg) : s.expectedHarvest ? day(s.expectedHarvest) : "-"}</b>
                     </span>
                   </div>
                 </Link>
