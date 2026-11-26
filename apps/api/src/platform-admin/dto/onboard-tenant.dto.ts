@@ -63,6 +63,11 @@ export class OnboardTenantDto {
   @IsOptional()
   monthlyPriceKes?: number;
 
+  /** How the business pays: monthly, the year at once, or the year in the plan's instalments. */
+  @IsIn(['MONTHLY', 'ANNUAL', 'INSTALMENTS'])
+  @IsOptional()
+  billingChoice?: 'MONTHLY' | 'ANNUAL' | 'INSTALMENTS';
+
   /** Extra tills beyond the plan's (Basic: at most 1), each at the agreed price. */
   @IsInt()
   @Min(0)

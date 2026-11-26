@@ -15,6 +15,11 @@ interface Plan {
   minPriceKes?: string | null;
   maxExtraTills?: number;
   billingCycle?: string;
+  annualPriceKes?: string | null;
+  instalmentCount?: number | null;
+  instalmentKes?: string | null;
+  extraTillKes?: string;
+  extraTillAnnualKes?: string;
   active?: boolean;
   maxDevices: number;
   maxBranches: number;
@@ -45,6 +50,7 @@ export default function NewTenantPage() {
   const [terminalCount, setTerminalCount] = useState("1");
   const [planTier, setPlanTier] = useState("");
   const [price, setPrice] = useState("");
+  const [billing, setBilling] = useState<"MONTHLY" | "ANNUAL" | "INSTALMENTS">("MONTHLY");
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -87,7 +93,8 @@ export default function NewTenantPage() {
         subCounty: subCounty.trim() || undefined,
         terminalCount: Number(terminalCount) || 1,
         planTier,
-        ...(ranged && price.trim() ? { monthlyPriceKes: Number(price) } : {}),
+        ...(ranged && billing === "MONTHLY" && price.trim() ? { monthlyPriceKes: Number(price) } : {}),
+        ...(choosesBilling ? { billingChoice: billing } : {}),
         ...(chosen && (chosen.maxExtraTills ?? 0) > 0 ? { extraTills: Math.max(0, (Number(terminalCount) || 1) - chosen.maxDevices) } : {}),
       });
       setDone(true);
@@ -101,6 +108,18 @@ export default function NewTenantPage() {
   const chosen = plans.find((p) => p.tier === planTier);
   const ranged = !!chosen && chosen.billingCycle !== "SEASONAL" && chosen.minPriceKes != null && Number(chosen.minPriceKes) < Number(chosen.priceKes);
   const priceOk = !ranged || price.trim() === "" || (Number.isInteger(Number(price)) && Number(price) >= Number(chosen!.minPriceKes) && Number(price) <= Number(chosen!.priceKes));
+
+  // Monthly, yearly or yearly in instalments, for paid shop plans (school suppliers pay by term).
+  const choosesBilling = !!chosen && chosen.billingCycle !== "SEASONAL" && Number(chosen.priceKes) > 0;
+  const extras = chosen ? Math.max(0, (Number(terminalCount) || 1) - chosen.maxDevices) : 0;
+  const annualOf = (p: Plan) => Number(p.annualPriceKes ?? Number(p.priceKes) * 12);
+  const firstBill = !choosesBilling
+    ? null
+    : billing === "ANNUAL"
+      ? { amount: annualOf(chosen!) + extras * Number(chosen!.extraTillAnnualKes ?? 5000), label: "for the year" }
+      : billing === "INSTALMENTS" && chosen!.instalmentCount
+        ? { amount: Math.round(Number(chosen!.instalmentKes) + (extras * Number(chosen!.extraTillAnnualKes ?? 5000)) / chosen!.instalmentCount), label: `each of ${chosen!.instalmentCount} instalments` }
+        : { amount: (price.trim() && ranged ? Number(price) : Number(chosen!.priceKes)) + extras * Number(chosen!.extraTillKes ?? 500), label: "a month" };
 
   const canSubmit =
     priceOk &&
@@ -201,11 +220,18 @@ export default function NewTenantPage() {
                   {plans.map((plan) => (
                     <button
                       key={plan.id}
-                      onClick={() => setPlanTier(plan.tier)}
+                      onClick={() => { setPlanTier(plan.tier); if (billing === "INSTALMENTS" && !plan.instalmentCount) setBilling("MONTHLY"); }}
                       className={`rounded-lg border p-3 text-left ${planTier === plan.tier ? "border-amber-500 bg-amber-500/10" : "border-border hover:border-primary-500"}`}
                     >
                       <p className="font-semibold text-foreground">{plan.name}</p>
                       <p className="text-lg font-bold text-amber-400">KES {Number(plan.priceKes).toLocaleString()}<span className="text-xs font-normal text-secondary-500">{plan.billingCycle === "SEASONAL" ? "/year" : "/mo"}</span></p>
+                      {plan.billingCycle === "SEASONAL" ? (
+                        plan.instalmentCount ? <p className="text-xs text-secondary-500">or {plan.instalmentCount} termly × KES {Number(plan.instalmentKes).toLocaleString()}</p> : null
+                      ) : Number(plan.priceKes) > 0 ? (
+                        <p className="text-xs text-secondary-500">
+                          KES {annualOf(plan).toLocaleString()}/year{plan.instalmentCount ? ` or ${plan.instalmentCount} × ${Number(plan.instalmentKes).toLocaleString()}` : ""}
+                        </p>
+                      ) : null}
                       <p className="text-xs text-secondary-500">{plan.maxDevices} devices · {plan.maxBranches} branches</p>
                     </button>
                   ))}
@@ -213,11 +239,29 @@ export default function NewTenantPage() {
                 </div>
                 {chosen && (chosen.maxExtraTills ?? 0) > 0 && (
                   <p className="mt-2 text-xs text-secondary-500">
-                    The {chosen.name} plan includes {chosen.maxDevices} till; up to {chosen.maxExtraTills} more can be added at the same monthly price each -
-                    set Tills above to {chosen.maxDevices + 1} to add one.
+                    The {chosen.name} plan includes {chosen.maxDevices} till{chosen.maxDevices === 1 ? "" : "s"}; up to {chosen.maxExtraTills} more can be added at KES{" "}
+                    {Number(chosen.extraTillKes ?? 500).toLocaleString()} a month or {Number(chosen.extraTillAnnualKes ?? 5000).toLocaleString()} a year each - raise the
+                    number of devices above to add them.
                   </p>
                 )}
-                {ranged && (
+                {choosesBilling && (
+                  <div className="mt-3">
+                    <label className="mb-1.5 block text-sm text-secondary-500">How the business pays</label>
+                    <select value={billing} onChange={(e) => setBilling(e.target.value as typeof billing)} className="rounded-md border border-border bg-background p-2 text-sm">
+                      <option value="MONTHLY">Monthly - KES {Number(chosen!.priceKes).toLocaleString()} a month</option>
+                      <option value="ANNUAL">Yearly - KES {annualOf(chosen!).toLocaleString()} (2 months free)</option>
+                      {chosen!.instalmentCount ? (
+                        <option value="INSTALMENTS">Yearly in {chosen!.instalmentCount} instalments - {chosen!.instalmentCount} × KES {Number(chosen!.instalmentKes).toLocaleString()}</option>
+                      ) : null}
+                    </select>
+                    {firstBill && (
+                      <p className="mt-1 text-xs text-secondary-500">
+                        Bill: KES {firstBill.amount.toLocaleString()} {firstBill.label}{extras > 0 ? ` (with ${extras} extra till${extras === 1 ? "" : "s"})` : ""}. The business starts paid up for one bill.
+                      </p>
+                    )}
+                  </div>
+                )}
+                {ranged && billing === "MONTHLY" && (
                   <div className="mt-3">
                     <label className="mb-1.5 block text-sm text-secondary-500">
                       Monthly price agreed with the business (KES {Number(chosen!.minPriceKes).toLocaleString()} - {Number(chosen!.priceKes).toLocaleString()} per till)
