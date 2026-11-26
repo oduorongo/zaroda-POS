@@ -124,3 +124,15 @@ body::after {
   body.has-sidenav { padding-left: 0; }
   body::after { display: none; }
 }
+
+/* Screens designed light only (Zaroda Shamba: white cards, navy headings; printable receipts) stay light in dark mode: the dark-mode
+   text lightening and status tints above are undone inside .stay-light, so grey text on white cards stays readable. */
+.stay-light { color-scheme: light; }
+:root .stay-light .text-secondary-500 { color: rgb(100 116 139 / var(--tw-text-opacity, 1)); }
+:root .stay-light .text-secondary-600 { color: rgb(71 85 105 / var(--tw-text-opacity, 1)); }
+:root .stay-light .text-secondary-700 { color: rgb(51 65 85 / var(--tw-text-opacity, 1)); }
+:root .stay-light .text-secondary-900 { color: rgb(15 23 42 / var(--tw-text-opacity, 1)); }
+:root .stay-light .hover\:text-secondary-600:hover { color: rgb(71 85 105 / var(--tw-text-opacity, 1)); }
+:root .stay-light .bg-success-50 { background-color: rgb(240 253 244); }
+:root .stay-light .bg-warning-50 { background-color: rgb(255 251 235); }
+:root .stay-light .bg-error-50 { background-color: rgb(254 242 242); }

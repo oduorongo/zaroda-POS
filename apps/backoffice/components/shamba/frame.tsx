@@ -33,7 +33,7 @@ function Footer() {
 /** The welcome, pricing, sign-in and sign-up pages. */
 export function ShambaPublicFrame({ children }: { children: ReactNode }) {
   return (
-    <div className="flex min-h-screen flex-col bg-secondary-50 text-secondary-900">
+    <div className="flex stay-light min-h-screen flex-col bg-secondary-50 text-secondary-900">
       <header className="border-b-[3px]" style={{ background: SHAMBA_BRAND.navy, borderColor: SHAMBA_BRAND.gold }}>
         <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-3">
           <Link href="/shamba/welcome">
@@ -78,7 +78,7 @@ export function ShambaAppFrame({ children }: { children: (session: Session) => R
 
   if (!session) return null;
   return (
-    <div className="flex min-h-screen flex-col bg-secondary-50 text-secondary-900">
+    <div className="flex stay-light min-h-screen flex-col bg-secondary-50 text-secondary-900">
       <SideNav
         title="ZARODA SHAMBA"
         subtitle={session.orgName ?? "Zaroda Shamba"}
