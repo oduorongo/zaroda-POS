@@ -3,10 +3,15 @@
 ## Stock on the balance sheet (2026-11-26)
 
 - The Stock account now matches what is on the shelves (quantity x cost) for every business. Before, only supplier bills put stock into the books while every sale took it out, so balance sheets showed too little stock (the demo farm showed minus KES 109,374 against KES 193,370 on its shelves).
-- Once per business, the stock already on the shelves is booked as owner's capital (Owner's decision).
+- Once per business, the stock already on the shelves is booked as owner's capital.
 - Goods received on a delivery note are booked as stock owed to the supplier ("Goods received, not yet billed", 2005). The bill for that delivery clears it instead of adding the stock again; a price difference goes to stock.
 - Each day the stock is brought up to the shelves for everything else (farm produce, goods returned to the shelf, manual stock-ins, corrections, new costs) through "Stock adjustments and own produce" (5120, in cost of sales).
 - DB step BEFORE merge: prisma migrate deploy (20270122100000_stock_in_books). No new table, so no apply-rls. Checks: ledger-posting.util.spec (4 new), local passes on the demo farm and builder (books = shelves, balance sheets balance).
+## Shamba: PDF reports and statements, animal valuation (2026-11-26)
+
+- Download PDF and Print on every farm report, buyer statement, pay run and sales by enterprise, and on every Accounts statement (profit and loss, balance sheet, trial balance, cash flow, aged debtors and creditors, VAT return, account statement) for every business type. Each PDF has the farm's (or business's) name as its title, the report and period, who prepared it and when, and page numbers. /organizations/me now returns the signed-in user's name for this.
+- Valuation: a suggested selling price for every animal and flock: the higher of cost to date (bought price or born value, feed, vet) plus the farm's margin and last weight x the market price per kg, plus the last 30 days' milk or eggs x price x production days, less a yearly drop past prime age (never below the weight value). Missing weights and feed are flagged. Money > Valuation screen with the rates editor (farm managers), a price card on each animal and flock page, and a new "Animal valuation and suggested prices" report (basic reports).
+- DB step BEFORE merge: prisma migrate deploy (20270121100000_farm_valuation), then apply-rls (new table farm_valuation_rates). Checks: farm-valuation.util.spec (7), scripts/e2e-shamba-valuation.js (12 pass), scripts/e2e-shamba-reports.js (19 pass).
 
 ## New plan pricing (2026-11-25)
 

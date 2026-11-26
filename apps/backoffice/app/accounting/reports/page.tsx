@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { apiGet, ApiError } from "../../../lib/api";
 import { AgedReport, CashFlowReport, VatReport } from "./more";
-import { API, downloadCsv, loadBranches, AccountingTabs, inputClass, kes, monthStart, niceDay, quietButtonClass, todayKey, useBooksSession, Shell } from "../shared";
+import { API, exportRows, loadBranches, AccountingTabs, inputClass, kes, monthStart, niceDay, quietButtonClass, todayKey, useBooksSession, Shell } from "../shared";
 
 interface Row {
   accountId: string;
@@ -98,7 +98,7 @@ export default function StatementsPage() {
     if (session) void load();
   }, [session, load]);
 
-  function download() {
+  function download(pdf?: boolean) {
     if (tab === "pl" && pl) {
       const project = projects.find((p) => p.id === projectId);
       const rows: (string | number)[][] = [["Profit and loss", `${pl.from} to ${pl.to}`, project ? `${project.code} ${project.name}` : ""], [], ["Code", "Account", "Amount"]];
@@ -112,7 +112,7 @@ export default function StatementsPage() {
       rows.push(["", "Gross profit", pl.grossProfit]);
       part("Expenses", pl.expenses, pl.totalExpenses);
       rows.push(["", "Net profit", pl.netProfit]);
-      downloadCsv(`profit-and-loss-${project ? `${project.code}-` : ""}${pl.from}-${pl.to}.csv`, csv(rows));
+      exportRows(`profit-and-loss-${project ? `${project.code}-` : ""}${pl.from}-${pl.to}.csv`, rows, csv, pdf);
     } else if (tab === "bs" && bs) {
       const rows: (string | number)[][] = [["Balance sheet", bs.asOf], [], ["Code", "Account", "Amount"]];
       for (const [title, list, total] of [["Assets", bs.assets, bs.totalAssets], ["Liabilities", bs.liabilities, bs.totalLiabilities]] as const) {
@@ -123,12 +123,9 @@ export default function StatementsPage() {
       rows.push(["Equity"]);
       for (const r of bs.equity) rows.push([r.code, r.name, r.amount]);
       rows.push(["", "Profit not yet moved to equity", bs.profitToDate], ["", "Total equity", bs.totalEquity]);
-      downloadCsv(`balance-sheet-${bs.asOf}.csv`, csv(rows));
+      exportRows(`balance-sheet-${bs.asOf}.csv`, rows, csv, pdf);
     } else if (tab === "tb" && tb) {
-      downloadCsv(
-        `trial-balance-${tb.asOf}.csv`,
-        csv([["Trial balance", tb.asOf], [], ["Code", "Account", "Debit", "Credit"], ...tb.rows.map((r) => [r.code, r.name, r.debit, r.credit]), ["", "Total", tb.debit, tb.credit]]),
-      );
+      exportRows(`trial-balance-${tb.asOf}.csv`, [["Trial balance", tb.asOf], [], ["Code", "Account", "Debit", "Credit"], ...tb.rows.map((r) => [r.code, r.name, r.debit, r.credit]), ["", "Total", tb.debit, tb.credit]], csv, pdf);
     }
   }
 
@@ -207,9 +204,14 @@ export default function StatementsPage() {
               </label>
             )}
             {!OWN_LOAD.includes(tab) && (
-              <button onClick={download} className={quietButtonClass}>
-                Download (CSV)
-              </button>
+              <>
+                <button onClick={() => download()} className={quietButtonClass}>
+                  Download (CSV)
+                </button>
+                <button onClick={() => download(true)} className={quietButtonClass}>
+                  Download PDF
+                </button>
+              </>
             )}
           </div>
         </div>

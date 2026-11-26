@@ -2223,6 +2223,12 @@ DROP POLICY IF EXISTS tenant_isolation ON farm_settings;
 CREATE POLICY tenant_isolation ON farm_settings
   USING ("organizationId" = current_setting('app.current_tenant', true))
   WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+ALTER TABLE farm_valuation_rates ENABLE ROW LEVEL SECURITY;
+ALTER TABLE farm_valuation_rates FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON farm_valuation_rates;
+CREATE POLICY tenant_isolation ON farm_valuation_rates
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
 ALTER TABLE farm_units ENABLE ROW LEVEL SECURITY;
 ALTER TABLE farm_units FORCE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS tenant_isolation ON farm_units;

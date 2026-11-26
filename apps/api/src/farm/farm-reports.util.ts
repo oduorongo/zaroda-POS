@@ -15,6 +15,7 @@ export const FARM_REPORTS = {
   crops: { title: 'Crop report', feature: 'reports_basic', period: true },
   wages: { title: 'Wages by worker', feature: 'reports_full', period: true },
   debtors: { title: 'Buyers who owe the farm', feature: 'reports_full', period: false },
+  valuation: { title: 'Animal valuation and suggested prices', feature: 'reports_basic', period: false },
 } as const satisfies Record<string, { title: string; feature: FarmFeatureKey; period: boolean }>;
 export type FarmReportKey = keyof typeof FARM_REPORTS;
 export const FARM_REPORT_KEYS = Object.keys(FARM_REPORTS) as FarmReportKey[];

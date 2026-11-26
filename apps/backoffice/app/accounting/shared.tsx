@@ -10,6 +10,14 @@ import { getSession, clearSession, isBackofficeRole, type Session } from "../../
 import { Nav } from "../../components/nav";
 import { PageHeader } from "../../components/page-header";
 export { downloadCsv } from "../../lib/csv-download";
+import { downloadCsv as saveCsv } from "../../lib/csv-download";
+import { downloadPdf, fromRows } from "../../lib/pdf";
+
+/** A books report as CSV, or the same rows as a PDF with the business name and who prepared it. */
+export function exportRows(name: string, rows: (string | number)[][], toCsv: (r: (string | number)[][]) => string, pdf?: boolean) {
+  if (pdf) void downloadPdf(fromRows(rows), name.replace(/\.csv$/, ".pdf"));
+  else saveCsv(name, toCsv(rows));
+}
 
 /** Where this app's books are on the API. */
 export const API = "/accounting";

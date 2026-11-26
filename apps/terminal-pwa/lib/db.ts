@@ -139,3 +139,14 @@ export async function getActiveSession(): Promise<CashierSession | undefined> {
 export async function clearSession(): Promise<void> {
   await db.session.delete("session");
 }
+
+/** Sales on this till not yet sent to its business; a till must not move to another business while it holds any. */
+export async function unsentSales(): Promise<number> {
+  return db.outbox.where("status").anyOf(["pending", "syncing", "failed"]).count();
+}
+
+/** Before setting the till up for another business: drop the old sign-in and the sales already sent. */
+export async function forgetOldBusiness(): Promise<void> {
+  await db.session.clear();
+  await db.outbox.where("status").equals("synced").delete();
+}

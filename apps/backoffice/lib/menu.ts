@@ -3,8 +3,7 @@ import {
   BarChart3, BedDouble, BookOpen, Boxes, BrainCircuit, Building2, CalendarDays, ClipboardCheck, ClipboardList, Coins, ConciergeBell,
   Factory, FileText, FolderKanban, GraduationCap, HardHat, Home, LayoutGrid, LifeBuoy, Mail, MapPinned, Package, PackageOpen, PiggyBank,
   Pill, Receipt, ScanBarcode, Scissors, Settings, ShieldCheck, Shirt, ShoppingBag, ShoppingCart, Store, Tags, Tractor, Trash2,
-  TrendingUp, Truck, UserRound, Users, UtensilsCrossed, Wallet, Banknote, Clock, Wrench, Beef, HeartPulse, Layers, Gavel, Milk, Egg, Sprout, Wheat, Handshake, Shovel,
-} from "lucide-react";
+  TrendingUp, Truck, UserRound, Users, UtensilsCrossed, Wallet, Banknote, Clock, Wrench, Beef, HeartPulse, Layers, Gavel, Milk, Egg, Sprout, Wheat, Handshake, Shovel, Scale } from "lucide-react";
 import type { Session } from "./auth";
 
 const TERMINAL_URL = process.env.NEXT_PUBLIC_TERMINAL_URL ?? "https://pos.zarodashop.com";
@@ -112,6 +111,7 @@ const FARM: Def[] = [
   { group: "Selling", href: "/customers", label: "Buyers", icon: UserRound, roles: SUP },
   { group: "Selling", href: TERMINAL_URL, label: "Open the till", icon: Store, roles: SUP },
   { group: "Money", href: "/shamba/reports", label: "Reports", icon: FileText, roles: SUP },
+  { group: "Money", href: "/shamba/valuation", label: "Valuation", icon: Scale, roles: SUP },
   { group: "Money", href: "/accounting", label: "Accounts (books)", icon: BookOpen, roles: MGR },
   { group: "Farm setup", href: "/shamba/workers", label: "Workers & wages", icon: Shovel, roles: SUP },
   { group: "Farm setup", href: "/shamba/layout", label: "Layout", icon: MapPinned, roles: SUP },

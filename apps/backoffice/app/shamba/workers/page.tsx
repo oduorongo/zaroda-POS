@@ -6,6 +6,24 @@ import { apiDelete, apiGet, apiPost, apiPut, ApiError } from "../../../lib/api";
 import { Card, ShambaAppFrame } from "../../../components/shamba/frame";
 import { Btn, ErrorBox, errText } from "../../../components/shamba/livestock";
 import { SHAMBA_BRAND, day, inputClass, todayKey } from "../../../lib/shamba";
+import { downloadPdf, printPdf, type PdfDocument } from "../../../lib/pdf";
+
+/** A pay run as a payroll sheet: each worker's days, gross, statutory deductions and net. */
+const runPdf = (r: Run): PdfDocument => {
+  const m = { money: true };
+  return {
+    title: `Pay run ${r.number}`,
+    subtitle: `${day(r.periodStart)} to ${day(r.periodEnd)} · ${r.status === "DRAFT" ? "Draft" : r.status === "APPROVED" ? "Approved" : "Paid"}`,
+    tables: [
+      {
+        columns: [{ label: "Worker" }, { label: "Days", number: true }, { label: "Rate", ...m }, { label: "Gross", ...m }, { label: "NSSF", ...m }, { label: "SHIF", ...m }, { label: "Housing", ...m }, { label: "PAYE", ...m }, { label: "Net", ...m }, { label: "Paid" }],
+        rows: r.lines.map((l) => [l.worker, l.days, l.dailyRate, l.gross, l.nssf, l.shif, l.housingLevy, l.paye, l.net, [l.method, l.reference].filter(Boolean).join(" ") || l.status]),
+        totals: ["Total", r.lines.reduce((a, l) => a + l.days, 0), null, r.gross, r.lines.reduce((a, l) => a + l.nssf, 0), r.lines.reduce((a, l) => a + l.shif, 0), r.lines.reduce((a, l) => a + l.housingLevy, 0), r.lines.reduce((a, l) => a + l.paye, 0), r.net, ""],
+      },
+    ],
+    notes: ["NSSF, SHIF, Housing Levy and PAYE are what the farm must remit."],
+  };
+};
 
 type Tab = "muster" | "workers" | "runs" | "payout";
 type Status = "PRESENT" | "HALF_DAY" | "ABSENT";
@@ -278,7 +296,13 @@ function Runs() {
         </form>
       </Card>
       {open && (
-        <Card title={`${open.number}: ${day(open.periodStart)} to ${day(open.periodEnd)}`} action={<button type="button" className="text-sm underline" onClick={() => setOpen(null)}>Close</button>}>
+        <Card title={`${open.number}: ${day(open.periodStart)} to ${day(open.periodEnd)}`} action={
+            <span className="flex gap-3 text-sm">
+              <button type="button" className="underline" onClick={() => void downloadPdf(runPdf(open), `pay-run-${open.number}`)}>Download PDF</button>
+              <button type="button" className="underline" onClick={() => void printPdf(runPdf(open))}>Print</button>
+              <button type="button" className="underline" onClick={() => setOpen(null)}>Close</button>
+            </span>
+          }>
           <p className="text-sm">
             {open.status === "DRAFT" ? "Draft - waiting for approval" : open.status === "APPROVED" ? "Approved - ready to pay" : "Paid"} · gross {kes(open.gross)} · deductions {kes(open.deductions)} · <b>net {kes(open.net)}</b>
           </p>
