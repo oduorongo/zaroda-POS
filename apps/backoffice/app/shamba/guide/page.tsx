@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { ShambaPublicFrame } from "../../../components/shamba/frame";
-import { SHAMBA_BRAND } from "../../../lib/shamba";
+import { SHAMBA_BRAND, SHAMBA_INK } from "../../../lib/shamba";
 
 const STEPS: [string, string][] = [
   ["1. Create your farm", "Sign up with your farm's name. You get 14 days of the Farmer plan free, no M-Pesa needed."],
@@ -23,11 +23,11 @@ export default function ShambaGuide() {
   return (
     <ShambaPublicFrame>
       <main className="mx-auto w-full max-w-3xl px-4 py-10">
-        <h1 className="text-3xl font-bold" style={{ color: SHAMBA_BRAND.navy }}>Getting started with Zaroda Shamba</h1>
+        <h1 className="text-3xl font-bold" style={{ color: SHAMBA_INK }}>Getting started with Zaroda Shamba</h1>
         <div className="mt-6 space-y-4">
           {STEPS.map(([title, text]) => (
-            <section key={title} className="rounded-xl border border-secondary-200 bg-white p-5 shadow-sm">
-              <h2 className="font-semibold" style={{ color: SHAMBA_BRAND.navy }}>{title}</h2>
+            <section key={title} className="rounded-xl border border-border bg-surface p-5 shadow-sm">
+              <h2 className="font-semibold" style={{ color: SHAMBA_INK }}>{title}</h2>
               <p className="mt-1 text-sm text-secondary-700">{text}</p>
             </section>
           ))}

@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { apiGet, apiPost, ApiError } from "../../../lib/api";
 import { Card, ShambaAppFrame } from "../../../components/shamba/frame";
 import { Btn, ErrorBox, errText } from "../../../components/shamba/livestock";
-import { SHAMBA_BRAND, SPECIES, TASK_KINDS, day, inputClass, todayKey, type DueTask, type FarmDrug, type FarmProgramme } from "../../../lib/shamba";
+import { SHAMBA_BRAND, SHAMBA_INK, SPECIES, TASK_KINDS, day, inputClass, todayKey, type DueTask, type FarmDrug, type FarmProgramme } from "../../../lib/shamba";
 
 interface WithdrawalRow {
   eventId: string;
@@ -188,7 +188,7 @@ function Health() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-bold" style={{ color: SHAMBA_BRAND.navy }}>Health</h1>
+      <h1 className="text-2xl font-bold" style={{ color: SHAMBA_INK }}>Health</h1>
       <ErrorBox error={error} />
 
       <Card title="Due in the next 30 days">
@@ -197,21 +197,21 @@ function Health() {
         ) : due.length === 0 ? (
           <p className="text-sm text-secondary-500">Nothing due.</p>
         ) : (
-          <ul className="divide-y divide-secondary-100 text-sm">
+          <ul className="divide-y divide-border text-sm">
             {due.map((t) => (
               <li key={t.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
                 <Link href={linkFor(t)} className="min-w-0 flex-1">
-                  <span className="block font-semibold" style={{ color: SHAMBA_BRAND.navy }}>{t.title}</span>
+                  <span className="block font-semibold" style={{ color: SHAMBA_INK }}>{t.title}</span>
                   <span className={`text-xs ${day(t.dueOn) < today ? "font-semibold text-red-700" : "text-secondary-500"}`}>
                     {TASK_KINDS[t.kind] ?? t.kind} · {day(t.dueOn) < today ? `overdue since ${f(day(t.dueOn))}` : day(t.dueOn) === today ? "today" : f(day(t.dueOn))}
                   </span>
                 </Link>
                 {t.programmeId ? (
-                  <Link href={linkFor(t)} className="rounded-lg border px-3 py-1.5 text-xs font-semibold" style={{ borderColor: SHAMBA_BRAND.navy, color: SHAMBA_BRAND.navy }}>
+                  <Link href={linkFor(t)} className="rounded-lg border px-3 py-1.5 text-xs font-semibold" style={{ borderColor: SHAMBA_BRAND.navy, color: SHAMBA_INK }}>
                     Record dose
                   </Link>
                 ) : (
-                  <button type="button" className="rounded-lg border px-3 py-1.5 text-xs font-semibold" style={{ borderColor: SHAMBA_BRAND.navy, color: SHAMBA_BRAND.navy }} onClick={() => void done(t)}>
+                  <button type="button" className="rounded-lg border px-3 py-1.5 text-xs font-semibold" style={{ borderColor: SHAMBA_BRAND.navy, color: SHAMBA_INK }} onClick={() => void done(t)}>
                     Done
                   </button>
                 )}
@@ -226,10 +226,10 @@ function Health() {
           {withdrawals.length === 0 ? (
             <p className="text-sm text-secondary-500">Nothing withheld - all milk, meat and eggs can be sold.</p>
           ) : (
-            <ul className="divide-y divide-secondary-100 text-sm">
+            <ul className="divide-y divide-border text-sm">
               {withdrawals.map((w) => (
                 <li key={w.eventId} className="py-2">
-                  <Link href={linkFor(w)} className="font-semibold underline" style={{ color: SHAMBA_BRAND.navy }}>
+                  <Link href={linkFor(w)} className="font-semibold underline" style={{ color: SHAMBA_INK }}>
                     {w.label}
                   </Link>
                   <span className="block text-xs" style={{ color: "#7a3d00" }}>
@@ -255,14 +255,14 @@ function Health() {
           }
         >
           {show === "programme" && (
-            <div className="mb-3 rounded-xl bg-secondary-50 p-3">
+            <div className="mb-3 rounded-xl bg-background p-3">
               <AddProgramme drugs={drugs} onDone={() => void load()} />
             </div>
           )}
           {programmes.length === 0 ? (
             <p className="text-sm text-secondary-500">No programmes yet.</p>
           ) : (
-            <ul className="divide-y divide-secondary-100 text-sm">
+            <ul className="divide-y divide-border text-sm">
               {programmes.map((p) => (
                 <li key={p.id} className="flex items-center justify-between gap-2 py-2">
                   <span>
@@ -289,14 +289,14 @@ function Health() {
           }
         >
           {show === "drug" && (
-            <div className="mb-3 rounded-xl bg-secondary-50 p-3">
+            <div className="mb-3 rounded-xl bg-background p-3">
               <AddDrug onDone={() => void load()} />
             </div>
           )}
           {drugs.length === 0 ? (
             <p className="text-sm text-secondary-500">No drugs yet.</p>
           ) : (
-            <ul className="divide-y divide-secondary-100 text-sm">
+            <ul className="divide-y divide-border text-sm">
               {drugs.map((d) => (
                 <li key={d.id} className="flex items-center justify-between gap-2 py-2">
                   <span>

@@ -7,7 +7,7 @@ import { apiGet, apiPost } from "../../../../lib/api";
 import { Card, ShambaAppFrame } from "../../../../components/shamba/frame";
 import { SuggestedPriceCard } from "../../../../components/shamba/valuation";
 import { ActionTabs, Btn, ErrorBox, HealthForm, HealthList, WeightForm, WithdrawalBanner, errText } from "../../../../components/shamba/livestock";
-import { COUNT_REASONS, SHAMBA_BRAND, SPECIES, TASK_KINDS, ageText, day, inputClass, todayKey, type DueTask, type FarmGroup, type HealthEvent } from "../../../../lib/shamba";
+import { COUNT_REASONS, SHAMBA_BRAND, SHAMBA_INK, SPECIES, TASK_KINDS, ageText, day, inputClass, todayKey, type DueTask, type FarmGroup, type HealthEvent } from "../../../../lib/shamba";
 
 interface GroupDetail extends FarmGroup {
   unitName: string | null;
@@ -110,10 +110,10 @@ function GroupPage() {
       </Link>
       <div className="flex flex-wrap items-end justify-between gap-2">
         <div>
-          <h1 className="text-2xl font-bold" style={{ color: SHAMBA_BRAND.navy }}>{g.name}</h1>
+          <h1 className="text-2xl font-bold" style={{ color: SHAMBA_INK }}>{g.name}</h1>
           <p className="text-sm text-secondary-600">{[SPECIES[g.species], g.breed, g.purpose, `placed ${day(g.placedOn)} (${ageText(g.placedOn)})`, g.unitName, !g.active && "Closed"].filter(Boolean).join(" · ")}</p>
         </div>
-        <span className="text-4xl font-bold" style={{ color: SHAMBA_BRAND.navy }}>{g.headCount.toLocaleString("en-KE")}</span>
+        <span className="text-4xl font-bold" style={{ color: SHAMBA_INK }}>{g.headCount.toLocaleString("en-KE")}</span>
       </div>
 
       <WithdrawalBanner w={g.withdrawal} />
@@ -146,7 +146,7 @@ function GroupPage() {
 
       <div className="grid gap-4 md:grid-cols-2">
         <Card title="Head count history">
-          <ul className="divide-y divide-secondary-100 text-sm">
+          <ul className="divide-y divide-border text-sm">
             {g.counts.map((c) => (
               <li key={c.id} className="flex justify-between gap-2 py-1.5">
                 <span>

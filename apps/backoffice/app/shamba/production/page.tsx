@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { apiGet, apiPost, apiPut } from "../../../lib/api";
 import { Card, ShambaAppFrame } from "../../../components/shamba/frame";
 import { ActionTabs, Btn, ErrorBox, errText } from "../../../components/shamba/livestock";
-import { SHAMBA_BRAND, day, inputClass, todayKey, type FarmEnterprise } from "../../../lib/shamba";
+import { SHAMBA_BRAND, SHAMBA_INK, day, inputClass, todayKey, type FarmEnterprise } from "../../../lib/shamba";
 
 type By = "day" | "week" | "month";
 interface Bucket {
@@ -62,7 +62,7 @@ function Trends() {
             type="button"
             onClick={() => setBy(b)}
             className="flex-1 rounded-lg border px-3 py-2 text-sm font-semibold sm:flex-none"
-            style={by === b ? { background: SHAMBA_BRAND.navy, color: "white", borderColor: SHAMBA_BRAND.navy } : { borderColor: "#cbd5e1", color: SHAMBA_BRAND.navy }}
+            style={by === b ? { background: SHAMBA_BRAND.navy, color: "white", borderColor: SHAMBA_BRAND.navy } : { borderColor: "#cbd5e1", color: SHAMBA_INK }}
           >
             {{ day: "Daily (30 days)", week: "Weekly (12)", month: "Monthly (12)" }[b]}
           </button>
@@ -80,9 +80,9 @@ function Trends() {
               [`${word}: eggs`, `${(last?.eggs.total ?? 0).toLocaleString("en-KE")}`, change(last?.eggs.total, prev?.eggs.total)],
               ["Lay %", last?.eggs.layPct === null || last?.eggs.layPct === undefined ? "-" : `${last.eggs.layPct}%`, last?.eggs.deaths ? `${last.eggs.deaths} birds died` : ""],
             ].map(([t, v, s]) => (
-              <div key={t} className="rounded-xl border border-secondary-200 bg-white p-3">
+              <div key={t} className="rounded-xl border border-border bg-surface p-3">
                 <p className="text-xs text-secondary-500">{t}</p>
-                <p className="text-xl font-bold" style={{ color: SHAMBA_BRAND.navy }}>{v}</p>
+                <p className="text-xl font-bold" style={{ color: SHAMBA_INK }}>{v}</p>
                 {s && <p className="text-xs text-secondary-500">{s}</p>}
               </div>
             ))}
@@ -119,7 +119,7 @@ function Trends() {
                 </thead>
                 <tbody>
                   {[...y.series].reverse().map((b) => (
-                    <tr key={b.start} className="border-t border-secondary-100">
+                    <tr key={b.start} className="border-t border-border">
                       <td className="py-1.5 whitespace-nowrap">{label(b.start, by)}</td>
                       <td>{b.milk.total || "-"}</td>
                       <td>{b.milk.forSale || "-"}</td>
@@ -148,9 +148,9 @@ function Trends() {
                 </thead>
                 <tbody>
                   {y.cows.map((c) => (
-                    <tr key={c.id} className="border-t border-secondary-100">
+                    <tr key={c.id} className="border-t border-border">
                       <td className="py-1.5">
-                        <Link href={`/shamba/animals/${c.id}`} className="font-semibold hover:underline" style={{ color: SHAMBA_BRAND.navy }}>
+                        <Link href={`/shamba/animals/${c.id}`} className="font-semibold hover:underline" style={{ color: SHAMBA_INK }}>
                           {c.tag} {c.name}
                         </Link>
                       </td>
@@ -276,7 +276,7 @@ function OtherProduce() {
           </thead>
           <tbody>
             {rows.map((r) => (
-              <tr key={r.id} className={`border-t border-secondary-100 ${r.voidedAt ? "text-secondary-400 line-through" : ""}`}>
+              <tr key={r.id} className={`border-t border-border ${r.voidedAt ? "text-secondary-400 line-through" : ""}`}>
                 <td className="py-1.5 whitespace-nowrap">{day(r.date)}</td>
                 <td>
                   {r.product}
@@ -328,7 +328,7 @@ function ProduceSettings() {
   return (
     <div className="space-y-3 text-sm">
       <ErrorBox error={error} />
-      {saved && <p style={{ color: SHAMBA_BRAND.navy }}>{saved}</p>}
+      {saved && <p style={{ color: SHAMBA_INK }}>{saved}</p>}
       {(!s.milk || !s.eggs) && (
         <div className="rounded-lg p-3" style={{ background: "#fbf6e3" }}>
           <p>Milk and eggs go into stock as POS products so they can be sold at the till. No products yet? Make them now (you can change the prices under Products).</p>
@@ -393,7 +393,7 @@ export default function ProductionPage() {
       {() => (
         <div className="space-y-4">
           <div>
-            <h1 className="text-2xl font-bold" style={{ color: SHAMBA_BRAND.navy }}>Production</h1>
+            <h1 className="text-2xl font-bold" style={{ color: SHAMBA_INK }}>Production</h1>
             <p className="text-sm text-secondary-600">
               Milk and egg yields by day, week and month. Record them on the <Link href="/shamba/milk" className="underline">Milk</Link> and{" "}
               <Link href="/shamba/eggs" className="underline">Eggs</Link> pages.

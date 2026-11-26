@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { apiGet, apiPost } from "../../../lib/api";
 import { Card, ShambaAppFrame } from "../../../components/shamba/frame";
 import { Btn, ErrorBox, WithdrawalBadge, errText } from "../../../components/shamba/livestock";
-import { BREEDS, SHAMBA_BRAND, SPECIES, ageText, inputClass, todayKey, type FarmAnimal, type FarmGroup, type FarmUnit } from "../../../lib/shamba";
+import { BREEDS, SHAMBA_BRAND, SHAMBA_INK, SPECIES, ageText, inputClass, todayKey, type FarmAnimal, type FarmGroup, type FarmUnit } from "../../../lib/shamba";
 
 const GROUP_FIRST = ["CHICKEN", "DUCK", "TURKEY", "FISH", "BEE"];
 
@@ -233,7 +233,7 @@ function Animals() {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-end justify-between gap-2">
-        <h1 className="text-2xl font-bold" style={{ color: SHAMBA_BRAND.navy }}>Animals</h1>
+        <h1 className="text-2xl font-bold" style={{ color: SHAMBA_INK }}>Animals</h1>
         <button type="button" className="rounded-lg px-4 py-2 text-sm font-semibold text-white" style={{ background: SHAMBA_BRAND.orange }} onClick={() => setAdding((v) => !v)}>
           {adding ? "Close" : tab === "animals" ? "+ Add animal" : "+ Add group"}
         </button>
@@ -250,7 +250,7 @@ function Animals() {
               setAdding(false);
             }}
             className="flex-1 rounded-lg border px-3 py-2 text-sm font-semibold sm:flex-none"
-            style={tab === t ? { background: SHAMBA_BRAND.navy, color: "white", borderColor: SHAMBA_BRAND.navy } : { color: SHAMBA_BRAND.navy, borderColor: "#cbd5e1", background: "white" }}
+            style={tab === t ? { background: SHAMBA_BRAND.navy, color: "white", borderColor: SHAMBA_BRAND.navy } : { color: SHAMBA_INK, borderColor: "#cbd5e1", background: "white" }}
           >
             {t === "animals" ? `One by one (${animals?.length ?? 0})` : `Groups and flocks (${groups?.length ?? 0})`}
           </button>
@@ -286,9 +286,9 @@ function Animals() {
             <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
               {animals.map((a) => (
                 <li key={a.id}>
-                  <Link href={`/shamba/animals/${a.id}`} className="block rounded-xl border border-secondary-200 bg-white p-3 shadow-sm hover:border-secondary-400">
+                  <Link href={`/shamba/animals/${a.id}`} className="block rounded-xl border border-border bg-surface p-3 shadow-sm hover:border-border">
                     <div className="flex items-center justify-between gap-2">
-                      <strong style={{ color: SHAMBA_BRAND.navy }}>
+                      <strong style={{ color: SHAMBA_INK }}>
                         {a.tag}
                         {a.name && <span className="font-normal text-secondary-600"> · {a.name}</span>}
                       </strong>
@@ -312,12 +312,12 @@ function Animals() {
         <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
           {groups.map((g) => (
             <li key={g.id}>
-              <Link href={`/shamba/groups/${g.id}`} className={`block rounded-xl border border-secondary-200 bg-white p-3 shadow-sm hover:border-secondary-400 ${g.active ? "" : "opacity-60"}`}>
+              <Link href={`/shamba/groups/${g.id}`} className={`block rounded-xl border border-border bg-surface p-3 shadow-sm hover:border-border ${g.active ? "" : "opacity-60"}`}>
                 <div className="flex items-center justify-between gap-2">
-                  <strong style={{ color: SHAMBA_BRAND.navy }}>{g.name}</strong>
+                  <strong style={{ color: SHAMBA_INK }}>{g.name}</strong>
                   <WithdrawalBadge w={g.withdrawal} />
                 </div>
-                <span className="text-2xl font-bold" style={{ color: SHAMBA_BRAND.navy }}>{g.headCount.toLocaleString("en-KE")}</span>
+                <span className="text-2xl font-bold" style={{ color: SHAMBA_INK }}>{g.headCount.toLocaleString("en-KE")}</span>
                 <span className="block text-xs text-secondary-500">{[SPECIES[g.species], g.breed, `${ageText(g.placedOn)} since placed`, g.unitId && unitName.get(g.unitId), !g.active && "Closed"].filter(Boolean).join(" · ")}</span>
               </Link>
             </li>

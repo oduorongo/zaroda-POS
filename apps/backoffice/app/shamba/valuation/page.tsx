@@ -6,7 +6,7 @@ import { apiGet, apiPost, apiPut } from "../../../lib/api";
 import { Card, ShambaAppFrame } from "../../../components/shamba/frame";
 import { Btn, ErrorBox, errText } from "../../../components/shamba/livestock";
 import { PriceBreakdown, kes, type ValuationList, type ValuationRate, type ValuationSettings } from "../../../components/shamba/valuation";
-import { SHAMBA_BRAND, SPECIES, inputClass } from "../../../lib/shamba";
+import { SHAMBA_BRAND, SHAMBA_INK, SPECIES, inputClass } from "../../../lib/shamba";
 import { downloadPdf, fromReport, printPdf, type ReportLike } from "../../../lib/pdf";
 
 const RATE_SPECIES = ["CATTLE", "GOAT", "SHEEP", "PIG", "CHICKEN", "DUCK", "TURKEY", "RABBIT", "FISH"];
@@ -69,7 +69,7 @@ function Rates({ settings, onSaved }: { settings: ValuationSettings; onSaved: ()
             </thead>
             <tbody>
               {RATE_SPECIES.map((sp) => (
-                <tr key={sp} className="border-t border-secondary-100">
+                <tr key={sp} className="border-t border-border">
                   <td className="py-1 pr-2 font-medium">{SPECIES[sp] ?? sp}</td>
                   <td className="pr-2"><input type="number" min={0} className={inputClass} value={rates[sp].birthValue} onChange={(e) => set(sp, "birthValue", e.target.value)} /></td>
                   <td className="pr-2"><input type="number" min={0} className={inputClass} value={rates[sp].pricePerKg} onChange={(e) => set(sp, "pricePerKg", e.target.value)} /></td>
@@ -82,7 +82,7 @@ function Rates({ settings, onSaved }: { settings: ValuationSettings; onSaved: ()
         </div>
         <p className="text-xs text-secondary-500">These start as rough Kenyan figures. Set the market price per kg to what similar animals sell for in your area. The margin only sets the asking price; it is not part of the value in the books.</p>
         <ErrorBox error={error} />
-        {saved && <p className="text-sm font-semibold" style={{ color: SHAMBA_BRAND.navy }}>Saved. Values and the books (Livestock) are updated.</p>}
+        {saved && <p className="text-sm font-semibold" style={{ color: SHAMBA_INK }}>Saved. Values and the books (Livestock) are updated.</p>}
         <Btn busy={busy}>Save rates</Btn>
       </form>
     </Card>
@@ -112,7 +112,7 @@ function ValuationPage({ manager }: { manager: boolean }) {
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="text-2xl font-bold" style={{ color: SHAMBA_BRAND.navy }}>Valuation</h1>
+        <h1 className="text-2xl font-bold" style={{ color: SHAMBA_INK }}>Valuation</h1>
         <p className="text-sm text-secondary-600">
           What each animal and flock is worth as an asset (IAS 41): a weighed animal at its weight x the market price less costs to sell; one not yet weighed at what it cost
           (bought or born value, feed, vet). Past its prime the value drops. Milk, eggs and young are income, shown apart under &quot;Is it paying its way?&quot;. The total is carried in
@@ -133,7 +133,7 @@ function ValuationPage({ manager }: { manager: boolean }) {
           {data.items.length === 0 ? (
             <p className="text-sm text-secondary-500">No animals or flocks yet. <Link href="/shamba/animals" className="underline">Add them</Link>.</p>
           ) : (
-            <ul className="divide-y divide-secondary-100">
+            <ul className="divide-y divide-border">
               {data.items.map((v) => (
                 <li key={v.id} className="py-2">
                   <button type="button" className="flex w-full items-center justify-between gap-2 text-left" onClick={() => setOpen(open === v.id ? null : v.id)}>
@@ -144,13 +144,13 @@ function ValuationPage({ manager }: { manager: boolean }) {
                       </span>
                     </span>
                     <span className="text-right">
-                      <span className="font-bold" style={{ color: SHAMBA_BRAND.navy }}>{kes(v.value)}</span>
+                      <span className="font-bold" style={{ color: SHAMBA_INK }}>{kes(v.value)}</span>
                       {v.warnings.length > 0 && <span className="block text-xs" style={{ color: SHAMBA_BRAND.orange }}>{v.warnings[0].split(":")[0]}</span>}
                       {v.kind === "GROUP" && <span className="block text-xs text-secondary-500">each · {kes(v.total)} all</span>}
                     </span>
                   </button>
                   {open === v.id && (
-                    <div className="mt-2 rounded-lg bg-secondary-50 p-3">
+                    <div className="mt-2 rounded-lg bg-background p-3">
                       <PriceBreakdown v={v} margin={data.settings.margin} sellingCost={data.settings.sellingCost} />
                       <Link href={v.kind === "GROUP" ? `/shamba/groups/${v.id}` : `/shamba/animals/${v.id}`} className="mt-2 inline-block text-sm underline">
                         Open {v.kind === "GROUP" ? "flock" : "animal"}

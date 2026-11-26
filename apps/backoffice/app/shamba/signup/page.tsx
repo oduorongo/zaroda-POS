@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { decodeRole, setSession } from "../../../lib/auth";
 import { openApp } from "../../../lib/product";
 import { ShambaPublicFrame } from "../../../components/shamba/frame";
-import { SHAMBA_BRAND, inputClass } from "../../../lib/shamba";
+import { SHAMBA_BRAND, SHAMBA_INK, inputClass } from "../../../lib/shamba";
 
 const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:3001";
 
@@ -50,7 +50,7 @@ export default function ShambaSignup() {
   return (
     <ShambaPublicFrame>
       <main className="mx-auto w-full max-w-md px-4 py-10">
-        <h1 className="text-2xl font-bold" style={{ color: SHAMBA_BRAND.navy }}>Start your free trial</h1>
+        <h1 className="text-2xl font-bold" style={{ color: SHAMBA_INK }}>Start your free trial</h1>
         <p className="mt-1 text-sm text-secondary-600">14 days of the Farmer plan. No M-Pesa needed.</p>
         <form onSubmit={submit} className="mt-6 space-y-3 text-sm">
           <label className="block">
@@ -83,7 +83,7 @@ export default function ShambaSignup() {
             {busy ? "Setting up your farm..." : "Create my farm"}
           </button>
         </form>
-        <a href="/login" className="mt-4 block text-center text-sm" style={{ color: SHAMBA_BRAND.navy }}>
+        <a href="/login" className="mt-4 block text-center text-sm" style={{ color: SHAMBA_INK }}>
           Already have an account? Sign in
         </a>
       </main>

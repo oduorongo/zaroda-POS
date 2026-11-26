@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { apiGet, apiPatch, ApiError } from "../../lib/api";
 import { Card, ShambaAppFrame } from "../../components/shamba/frame";
-import { SHAMBA_BRAND, STATUS_LABEL, inputClass, limitText, type FarmOverview } from "../../lib/shamba";
+import { SHAMBA_BRAND, SHAMBA_INK, STATUS_LABEL, inputClass, limitText, type FarmOverview } from "../../lib/shamba";
 
 function Usage({ label, used, cap }: { label: string; used: number; cap: number | null }) {
   const pct = cap ? Math.min(100, Math.round((used / cap) * 100)) : 0;
@@ -17,7 +17,7 @@ function Usage({ label, used, cap }: { label: string; used: number; cap: number 
         </span>
       </div>
       {cap !== null && (
-        <div className="mt-1 h-2 rounded-full bg-secondary-100">
+        <div className="mt-1 h-2 rounded-full bg-background">
           <div className="h-2 rounded-full" style={{ width: `${pct}%`, background: pct >= 90 ? SHAMBA_BRAND.orange : SHAMBA_BRAND.navy }} />
         </div>
       )}
@@ -126,11 +126,11 @@ function Dashboard() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-end justify-between gap-2">
         <div>
-          <h1 className="text-2xl font-bold" style={{ color: SHAMBA_BRAND.navy }}>{data.settings?.farmName ?? "My farm"}</h1>
+          <h1 className="text-2xl font-bold" style={{ color: SHAMBA_INK }}>{data.settings?.farmName ?? "My farm"}</h1>
           <p className="text-sm text-secondary-600">{[data.settings?.ward, data.settings?.subCounty, data.settings?.county].filter(Boolean).join(", ") || "Location not set"}</p>
         </div>
         {canManage && (
-          <button type="button" className="rounded-lg border border-secondary-300 bg-white px-3 py-1.5 text-sm" onClick={() => setEditing((v) => !v)}>
+          <button type="button" className="rounded-lg border border-border bg-surface px-3 py-1.5 text-sm" onClick={() => setEditing((v) => !v)}>
             {editing ? "Cancel" : "Edit farm details"}
           </button>
         )}
@@ -164,7 +164,7 @@ function Dashboard() {
           { label: "Births in 30 days", value: data.livestock.birthsSoon, href: "/shamba/health", warn: false },
           { label: "Milk/meat/eggs withheld", value: data.livestock.inWithdrawal, href: "/shamba/health#withdrawals", warn: data.livestock.inWithdrawal > 0 },
         ].map((t) => (
-          <Link key={t.label} href={t.href} className="rounded-xl border bg-white p-3 shadow-sm" style={{ borderColor: t.warn ? SHAMBA_BRAND.orange : "#e5e7eb" }}>
+          <Link key={t.label} href={t.href} className="rounded-xl border bg-surface p-3 shadow-sm" style={{ borderColor: t.warn ? SHAMBA_BRAND.orange : "#e5e7eb" }}>
             <span className="block text-2xl font-bold" style={{ color: t.warn ? SHAMBA_BRAND.orange : SHAMBA_BRAND.navy }}>{t.value}</span>
             <span className="text-xs text-secondary-600">{t.label}</span>
           </Link>
@@ -210,7 +210,7 @@ function Dashboard() {
               <span>{data.usage.users}</span>
             </li>
           </ul>
-          <ul className="mt-3 space-y-2 border-t border-secondary-100 pt-3 text-sm">
+          <ul className="mt-3 space-y-2 border-t border-border pt-3 text-sm">
             <li className="flex justify-between">
               <Link href="/shamba/milk" className="underline">Record milk</Link>
               <Link href="/shamba/eggs" className="underline">Record eggs</Link>

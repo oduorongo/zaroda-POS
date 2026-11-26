@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { apiGet, apiPost, apiPut, ApiError } from "../../../lib/api";
 import { Card, ShambaAppFrame } from "../../../components/shamba/frame";
 import { Btn, ErrorBox, errText } from "../../../components/shamba/livestock";
-import { BUYER_KINDS, SHAMBA_BRAND, day, inputClass, todayKey, type FarmEnterprise } from "../../../lib/shamba";
+import { BUYER_KINDS, SHAMBA_BRAND, SHAMBA_INK, day, inputClass, todayKey, type FarmEnterprise } from "../../../lib/shamba";
 import { downloadPdf, printPdf, type PdfDocument } from "../../../lib/pdf";
 
 const salesPdf = (r: Report): PdfDocument => ({
@@ -27,7 +27,7 @@ interface ProductRow { id: string; name: string; baseUnit: string; variants: { i
 interface Report { from: string; to: string; total: number; rows: { enterpriseId: string | null; name: string; till: number; credit: number; total: number }[] }
 
 const kes = (n: number) => `KES ${n.toLocaleString("en-KE", { maximumFractionDigits: 2 })}`;
-const pill = (on: boolean) => (on ? { background: SHAMBA_BRAND.navy, color: "white", borderColor: SHAMBA_BRAND.navy } : { borderColor: "#cbd5e1", color: SHAMBA_BRAND.navy });
+const pill = (on: boolean) => (on ? { background: SHAMBA_BRAND.navy, color: "white", borderColor: SHAMBA_BRAND.navy } : { borderColor: "#cbd5e1", color: SHAMBA_INK });
 const products = () => apiGet<ProductRow[]>("/products").then((p) => (Array.isArray(p) ? p : [])).catch(() => [] as ProductRow[]);
 const options = (rows: ProductRow[]) => rows.flatMap((p) => p.variants.map((v) => ({ id: v.id, label: `${p.name}${v.name ? ` - ${v.name}` : ""}`, unit: p.baseUnit, price: Number(v.price) })));
 
@@ -102,9 +102,9 @@ function Buyers({ manager }: { manager: boolean }) {
               </thead>
               <tbody>
                 {rows.map((b) => (
-                  <tr key={b.id} className="border-t border-secondary-100">
+                  <tr key={b.id} className="border-t border-border">
                     <td className="py-1.5">
-                      <Link href={`/shamba/buyers/${b.id}`} className="font-semibold underline" style={{ color: SHAMBA_BRAND.navy }}>
+                      <Link href={`/shamba/buyers/${b.id}`} className="font-semibold underline" style={{ color: SHAMBA_INK }}>
                         {b.name}
                       </Link>
                       <span className="block text-xs text-secondary-500">
@@ -226,7 +226,7 @@ function Deliver({ manager }: { manager: boolean }) {
   return (
     <div className="space-y-4">
       <ErrorBox error={error} />
-      {done && <p className="rounded-lg border px-3 py-2 text-sm" style={{ borderColor: SHAMBA_BRAND.gold, background: "#fbf6e3", color: SHAMBA_BRAND.navy }}>{done}</p>}
+      {done && <p className="rounded-lg border px-3 py-2 text-sm" style={{ borderColor: SHAMBA_BRAND.gold, background: "#fbf6e3", color: SHAMBA_INK }}>{done}</p>}
       <Card title="Deliver on credit">
         <form onSubmit={save} className="grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">
           <label className="col-span-2">
@@ -266,7 +266,7 @@ function Deliver({ manager }: { manager: boolean }) {
           </label>
           <label>
             Quantity{item ? ` (${item.unit})` : ""}
-            <input type="number" inputMode="decimal" step="0.001" min="0.001" className="mt-1 w-full rounded-lg border border-secondary-300 bg-white p-3 text-lg text-secondary-900" value={f.quantity} onChange={(e) => setF({ ...f, quantity: e.target.value })} required />
+            <input type="number" inputMode="decimal" step="0.001" min="0.001" className="mt-1 w-full rounded-lg border border-border bg-surface p-3 text-lg text-foreground" value={f.quantity} onChange={(e) => setF({ ...f, quantity: e.target.value })} required />
           </label>
           <label>
             Price (KES)
@@ -299,7 +299,7 @@ function Deliver({ manager }: { manager: boolean }) {
               </thead>
               <tbody>
                 {list.map((d) => (
-                  <tr key={d.id} className={`border-t border-secondary-100 ${d.voidedAt ? "text-secondary-400 line-through" : ""}`} title={d.voidReason ?? undefined}>
+                  <tr key={d.id} className={`border-t border-border ${d.voidedAt ? "text-secondary-400 line-through" : ""}`} title={d.voidReason ?? undefined}>
                     <td className="py-1.5 whitespace-nowrap">
                       {day(d.date)}
                       {d.session ? ` ${d.session}` : ""}
@@ -358,7 +358,7 @@ function Pay() {
   return (
     <Card title="Money received from a buyer">
       <ErrorBox error={error} />
-      {done && <p className="mb-2 rounded-lg border px-3 py-2 text-sm" style={{ borderColor: SHAMBA_BRAND.gold, background: "#fbf6e3", color: SHAMBA_BRAND.navy }}>{done}</p>}
+      {done && <p className="mb-2 rounded-lg border px-3 py-2 text-sm" style={{ borderColor: SHAMBA_BRAND.gold, background: "#fbf6e3", color: SHAMBA_INK }}>{done}</p>}
       <form onSubmit={save} className="grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">
         <label className="col-span-2">
           Buyer
@@ -377,7 +377,7 @@ function Pay() {
         </label>
         <label>
           Amount (KES)
-          <input type="number" inputMode="decimal" min="1" className="mt-1 w-full rounded-lg border border-secondary-300 bg-white p-3 text-lg text-secondary-900" value={f.amount} onChange={(e) => setF({ ...f, amount: e.target.value })} required />
+          <input type="number" inputMode="decimal" min="1" className="mt-1 w-full rounded-lg border border-border bg-surface p-3 text-lg text-foreground" value={f.amount} onChange={(e) => setF({ ...f, amount: e.target.value })} required />
         </label>
         <label>
           How
@@ -453,14 +453,14 @@ function SalesReport({ manager }: { manager: boolean }) {
             </thead>
             <tbody>
               {r.rows.map((x) => (
-                <tr key={x.enterpriseId ?? "none"} className="border-t border-secondary-100">
+                <tr key={x.enterpriseId ?? "none"} className="border-t border-border">
                   <td className="py-1.5">{x.name}</td>
                   <td>{kes(x.till)}</td>
                   <td>{kes(x.credit)}</td>
                   <td className="font-semibold">{kes(x.total)}</td>
                 </tr>
               ))}
-              <tr className="border-t-2 border-secondary-300 font-bold">
+              <tr className="border-t-2 border-border font-bold">
                 <td className="py-1.5">All</td>
                 <td />
                 <td />
@@ -473,12 +473,12 @@ function SalesReport({ manager }: { manager: boolean }) {
       {manager && (
         <Card title="Which enterprise each product belongs to">
           <p className="mb-2 text-xs text-secondary-500">Till sales and deliveries of a product count toward its enterprise (Fresh milk to Dairy herd).</p>
-          {saved && <p className="text-sm" style={{ color: SHAMBA_BRAND.navy }}>Saved.</p>}
+          {saved && <p className="text-sm" style={{ color: SHAMBA_INK }}>Saved.</p>}
           <div className="space-y-1 text-sm">
             {options(prods).map((o) => (
               <label key={o.id} className="grid grid-cols-2 items-center gap-2">
                 <span>{o.label}</span>
-                <select className="rounded-lg border border-secondary-300 bg-white p-2" value={tags[o.id] ?? ""} onChange={(e) => setTags({ ...tags, [o.id]: e.target.value })}>
+                <select className="rounded-lg border border-border bg-surface p-2" value={tags[o.id] ?? ""} onChange={(e) => setTags({ ...tags, [o.id]: e.target.value })}>
                   <option value="">-</option>
                   {enterprises.map((x) => (
                     <option key={x.id} value={x.id}>
@@ -507,7 +507,7 @@ export default function BuyersPage() {
         return (
           <div className="space-y-4">
             <div>
-              <h1 className="text-2xl font-bold" style={{ color: SHAMBA_BRAND.navy }}>Buyers &amp; credit</h1>
+              <h1 className="text-2xl font-bold" style={{ color: SHAMBA_INK }}>Buyers &amp; credit</h1>
               <p className="text-sm text-secondary-600">Co-ops, hotels and schools that take produce on credit: deliveries, payments, what each owes and statements.</p>
             </div>
             <div className="flex flex-wrap gap-1">

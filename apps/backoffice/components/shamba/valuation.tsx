@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { apiGet } from "../../lib/api";
-import { SHAMBA_BRAND } from "../../lib/shamba";
+import { SHAMBA_BRAND, SHAMBA_INK } from "../../lib/shamba";
 import { Card } from "./frame";
 
 export interface ValuationRate { birthValue: number; pricePerKg: number; primeAgeMonths: number | null; ageDropRate: number }
@@ -42,7 +42,7 @@ function Lines({ rows }: { rows: [string, string][] }) {
   return (
     <dl className="space-y-0.5">
       {rows.map(([k, val]) => (
-        <div key={k} className="flex justify-between gap-2 border-t border-secondary-100 pt-0.5">
+        <div key={k} className="flex justify-between gap-2 border-t border-border pt-0.5">
           <dt className="text-secondary-600">{k}</dt>
           <dd className="text-right">{val}</dd>
         </div>
@@ -71,7 +71,7 @@ export function PriceBreakdown({ v, margin, sellingCost }: { v: ValuedItem; marg
   return (
     <div className="space-y-3 text-sm">
       <div>
-        <p className="text-2xl font-bold" style={{ color: SHAMBA_BRAND.navy }}>
+        <p className="text-2xl font-bold" style={{ color: SHAMBA_INK }}>
           {kes(v.value)}
           <span className="text-sm font-normal text-secondary-500">{each}</span>
         </p>
@@ -89,7 +89,7 @@ export function PriceBreakdown({ v, margin, sellingCost }: { v: ValuedItem; marg
         </p>
       </div>
       <div>
-        <p className="font-semibold" style={{ color: SHAMBA_BRAND.navy }}>Is it paying its way?</p>
+        <p className="font-semibold" style={{ color: SHAMBA_INK }}>Is it paying its way?</p>
         <p className="mb-1 text-xs text-secondary-500">Milk, eggs and young are income, not part of its value.</p>
         <Lines rows={pays} />
         <p className="mt-1 font-semibold">Profit so far: {kes(v.profit)}</p>

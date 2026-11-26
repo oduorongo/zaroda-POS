@@ -6,7 +6,7 @@ import { apiGet, ApiError } from "../../../lib/api";
 import { getSession } from "../../../lib/auth";
 import { Card, ShambaAppFrame } from "../../../components/shamba/frame";
 import { Btn, ErrorBox, errText } from "../../../components/shamba/livestock";
-import { SHAMBA_BRAND, inputClass, todayKey } from "../../../lib/shamba";
+import { SHAMBA_BRAND, SHAMBA_INK, inputClass, todayKey } from "../../../lib/shamba";
 import { downloadPdf, fromReport, printPdf } from "../../../lib/pdf";
 
 interface Entry { key: string; title: string; period: boolean; allowed: boolean }
@@ -79,7 +79,7 @@ export default function ReportsPage() {
       {() => (
         <div className="space-y-4">
           <div className="print:hidden">
-            <h1 className="text-2xl font-bold" style={{ color: SHAMBA_BRAND.navy }}>Reports</h1>
+            <h1 className="text-2xl font-bold" style={{ color: SHAMBA_INK }}>Reports</h1>
             <p className="text-sm text-secondary-600">Profit per enterprise, what each litre, egg, kg and acre costs, and the registers inspectors and buyers ask for. Download to Excel or print to PDF.</p>
           </div>
           <Card>
@@ -129,7 +129,7 @@ export default function ReportsPage() {
 
           {report && (
             <Card>
-              <h2 className="text-lg font-bold" style={{ color: SHAMBA_BRAND.navy }}>{report.title}</h2>
+              <h2 className="text-lg font-bold" style={{ color: SHAMBA_INK }}>{report.title}</h2>
               <p className="mb-3 text-sm text-secondary-600">{report.subtitle}</p>
               {report.rows.length === 0 ? (
                 <p className="text-sm text-secondary-500">Nothing to show for this period.</p>
@@ -147,7 +147,7 @@ export default function ReportsPage() {
                     </thead>
                     <tbody>
                       {report.rows.map((r, i) => (
-                        <tr key={i} className="border-t border-secondary-100">
+                        <tr key={i} className="border-t border-border">
                           {report.columns.map((c) => (
                             <td key={c.key} className={`py-1.5 pr-3 ${c.type === "money" || c.type === "number" ? "text-right tabular-nums" : ""}`}>
                               {show(r[c.key], c.type)}
@@ -156,7 +156,7 @@ export default function ReportsPage() {
                         </tr>
                       ))}
                       {report.totals && (
-                        <tr className="border-t-2 border-secondary-300 font-bold">
+                        <tr className="border-t-2 border-border font-bold">
                           {report.columns.map((c) => (
                             <td key={c.key} className={`py-1.5 pr-3 ${c.type === "money" || c.type === "number" ? "text-right tabular-nums" : ""}`}>
                               {report.totals![c.key] === undefined ? "" : show(report.totals![c.key], c.type)}

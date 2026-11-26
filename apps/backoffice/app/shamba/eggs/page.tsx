@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { apiGet, apiPost } from "../../../lib/api";
 import { Card, ShambaAppFrame } from "../../../components/shamba/frame";
 import { Btn, ErrorBox, errText } from "../../../components/shamba/livestock";
-import { SHAMBA_BRAND, day, inputClass, todayKey } from "../../../lib/shamba";
+import { SHAMBA_BRAND, SHAMBA_INK, day, inputClass, todayKey } from "../../../lib/shamba";
 
 interface Flock { id: string; name: string; species: string; headCount: number; active: boolean; withheldUntil: string | null }
 interface EggRecord {
@@ -89,7 +89,7 @@ function EggForm({ flocks, onDone }: { flocks: Flock[]; onDone: (msg: string) =>
             inputMode={k === "feedKg" ? "decimal" : "numeric"}
             step={k === "feedKg" ? "0.1" : "1"}
             min="0"
-            className="mt-1 w-full rounded-lg border border-secondary-300 bg-white p-3 text-lg text-secondary-900"
+            className="mt-1 w-full rounded-lg border border-border bg-surface p-3 text-lg text-foreground"
             value={f[k]}
             onChange={(e) => setF({ ...f, [k]: e.target.value })}
             required={required}
@@ -138,11 +138,11 @@ export default function EggsPage() {
       {(session) => (
         <div className="space-y-4">
           <div>
-            <h1 className="text-2xl font-bold" style={{ color: SHAMBA_BRAND.navy }}>Eggs</h1>
+            <h1 className="text-2xl font-bold" style={{ color: SHAMBA_INK }}>Eggs</h1>
             <p className="text-sm text-secondary-600">Each flock&apos;s eggs for the day, with feed and deaths. Good eggs go into stock as trays; eggs from treated birds are withheld.</p>
           </div>
           <ErrorBox error={error} />
-          {done && <p className="rounded-lg border px-3 py-2 text-sm" style={{ borderColor: SHAMBA_BRAND.gold, background: "#fbf6e3", color: SHAMBA_BRAND.navy }}>{done}</p>}
+          {done && <p className="rounded-lg border px-3 py-2 text-sm" style={{ borderColor: SHAMBA_BRAND.gold, background: "#fbf6e3", color: SHAMBA_INK }}>{done}</p>}
           <Card title="Record today's eggs">
             {data ? <EggForm key={data.groups.map((g) => g.id + g.headCount).join()} flocks={data.groups} onDone={(m) => { setDone(m); void load(); }} /> : <p className="text-sm text-secondary-500">Loading...</p>}
           </Card>
@@ -166,7 +166,7 @@ export default function EggsPage() {
                   </thead>
                   <tbody>
                     {data.records.map((r) => (
-                      <tr key={r.id} className={`border-t border-secondary-100 ${r.voidedAt ? "text-secondary-400 line-through" : ""}`} title={r.voidReason ?? undefined}>
+                      <tr key={r.id} className={`border-t border-border ${r.voidedAt ? "text-secondary-400 line-through" : ""}`} title={r.voidReason ?? undefined}>
                         <td className="py-1.5 whitespace-nowrap">{day(r.date)}</td>
                         <td>{r.groupName}</td>
                         <td>{r.goodEggs}</td>

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { apiGet, apiPatch, apiPost, ApiError } from "../../../lib/api";
 import { Card, ShambaAppFrame } from "../../../components/shamba/frame";
-import { ENTERPRISE_KINDS, SHAMBA_BRAND, inputClass, type FarmEnterprise, type FarmUnit } from "../../../lib/shamba";
+import { ENTERPRISE_KINDS, SHAMBA_BRAND, SHAMBA_INK, inputClass, type FarmEnterprise, type FarmUnit } from "../../../lib/shamba";
 
 function Enterprises() {
   const [list, setList] = useState<FarmEnterprise[] | null>(null);
@@ -53,7 +53,7 @@ function Enterprises() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-bold" style={{ color: SHAMBA_BRAND.navy }}>Enterprises</h1>
+      <h1 className="text-2xl font-bold" style={{ color: SHAMBA_INK }}>Enterprises</h1>
       <p className="text-sm text-secondary-600">Each line of business on your farm. Costs and income are tagged to one, so you can see which makes money.</p>
       {error && <p className="rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800">{error}</p>}
 
@@ -78,7 +78,7 @@ function Enterprises() {
               <legend>Parts of the farm it uses</legend>
               <div className="mt-1 flex flex-wrap gap-2">
                 {units.map((u) => (
-                  <label key={u.id} className="flex items-center gap-1 rounded-full border border-secondary-200 px-2 py-1">
+                  <label key={u.id} className="flex items-center gap-1 rounded-full border border-border px-2 py-1">
                     <input
                       type="checkbox"
                       checked={form.unitIds.includes(u.id)}
@@ -104,7 +104,7 @@ function Enterprises() {
         ) : list.length === 0 ? (
           <p className="text-sm text-secondary-500">None yet.</p>
         ) : (
-          <ul className="divide-y divide-secondary-100 text-sm">
+          <ul className="divide-y divide-border text-sm">
             {list.map((x) => (
               <li key={x.id} className={`flex flex-wrap items-center justify-between gap-2 py-2 ${x.active ? "" : "text-secondary-400"}`}>
                 <span>
