@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { db } from "../../lib/db";
+import { db, forgetOldBusiness, unsentSales } from "../../lib/db";
 import { apiPost, apiGet, ApiError } from "../../lib/api";
 import { ThemeToggle, PasswordInput } from "@zaroda/ui";
 
@@ -113,6 +113,15 @@ export default function SetupPage() {
     setBusy(true);
     try {
       const org = await apiGet<OrganizationResponse>("/organizations/me", accessToken, apiBaseUrl);
+      const previous = await db.deviceConfig.get("device");
+      if (previous && previous.terminalId !== terminalId) {
+        const unsent = await unsentSales();
+        if (unsent > 0) {
+          setError(`This till still has ${unsent} sale${unsent === 1 ? "" : "s"} not yet sent to the business it was set up for. Open the till online so they send, then set it up again.`);
+          return;
+        }
+        await forgetOldBusiness();
+      }
 
       await db.deviceConfig.put({
         id: "device",
