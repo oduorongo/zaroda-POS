@@ -103,6 +103,15 @@ export default function LoginPage() {
             </p>
           )}
         </div>
+        <button
+          type="button"
+          onClick={() => {
+            if (window.confirm("Set this till up for another business or terminal? A manager of that business signs in next. Until then this till stays as it is.")) router.push("/setup");
+          }}
+          className="mt-8 text-sm text-primary-400 underline hover:text-primary-300"
+        >
+          Not your business? Set up this till again
+        </button>
         <p className="mt-auto pt-8 text-center text-xs text-secondary-600">
           Powered by Zaroda Solutions. Innovative. Reliable. Forward.
         </p>
