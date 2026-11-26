@@ -70,6 +70,8 @@ export const CONSTRUCTION_ACCOUNTS = [
 
 /** Extra accounts only farms get (docs/farm): what feed, field inputs and casual labour cost the farm. */
 export const FARM_ACCOUNTS = [
+  { key: 'LIVESTOCK', code: '1300', name: 'Livestock (animals and flocks)', type: 'ASSET' },
+  { key: 'LIVESTOCK_GAIN', code: '4300', name: 'Change in livestock value', type: 'INCOME' },
   { key: 'FEED_USED', code: '5400', name: 'Feed used', type: 'EXPENSE' },
   { key: 'FARM_INPUTS', code: '5410', name: 'Seed, fertiliser and chemicals used', type: 'EXPENSE' },
   { key: 'FARM_LABOUR', code: '5420', name: 'Farm labour (casual wages)', type: 'EXPENSE' },

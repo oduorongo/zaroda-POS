@@ -1,63 +1,55 @@
-import { DEFAULT_RATES, monthsBetween, round50, valuationWarnings, valueOf, type ValuationInput } from './farm-valuation.util';
+import { DEFAULT_RATES, monthsBetween, profitOf, round50, valuationWarnings, valueOf, type ValuationInput } from './farm-valuation.util';
 
 const base: ValuationInput = {
   entry: 60000,
   feed: 20000,
   vet: 2000,
   weightKg: null,
-  dailyProduce: 0,
-  producePrice: 0,
   ageMonths: 36,
   rate: DEFAULT_RATES.CATTLE,
   margin: 0.2,
-  productionDays: 90,
+  sellingCost: 0.05,
 };
 
-describe('farm valuation', () => {
-  it('prices on cost plus margin when it is more than the weight value', () => {
-    const v = valueOf({ ...base, weightKg: 300 });
-    expect(v.cost).toBe(82000);
-    expect(v.costPrice).toBe(98400);
-    expect(v.weightValue).toBe(75000);
+describe('farm valuation (IAS 41)', () => {
+  it('values a weighed animal at fair value: weight x market price less costs to sell', () => {
+    const v = valueOf({ ...base, weightKg: 400 });
+    expect(v.basis).toBe('MARKET');
+    expect(v.marketValue).toBe(100000);
+    expect(v.sellingCosts).toBe(-5000);
+    expect(v.value).toBe(95000);
+  });
+
+  it('with no market price uses the cost model: bought or born value plus rearing costs', () => {
+    const v = valueOf(base);
     expect(v.basis).toBe('COST');
-    expect(v.suggested).toBe(98400);
+    expect(v.value).toBe(82000);
+    expect(v.sellingCosts).toBe(0);
   });
 
-  it('prices on weight when the animal is worth more than it cost', () => {
-    const v = valueOf({ ...base, entry: 5000, feed: 10000, vet: 0, weightKg: 400 });
-    expect(v.basis).toBe('WEIGHT');
-    expect(v.suggested).toBe(100000);
-  });
-
-  it('adds recent production: 15 litres a day at KES 50 for 90 days', () => {
-    const v = valueOf({ ...base, dailyProduce: 15, producePrice: 50 });
-    expect(v.productionValue).toBe(67500);
-    expect(v.suggested).toBe(round50(98400 + 67500));
-  });
-
-  it('drops 15% a year past prime age, never below the weight value', () => {
-    const old = valueOf({ ...base, ageMonths: 120 });
-    expect(old.ageAdjustment).toBeCloseTo(-98400 * 0.3, 2);
-    expect(old.suggested).toBe(round50(98400 * 0.7));
-    const veryOld = valueOf({ ...base, ageMonths: 300, weightKg: 350 });
-    expect(veryOld.suggested).toBe(87500);
-  });
-
-  it('leaves price alone before prime age or with no age', () => {
+  it('past prime age the value drops by the yearly rate, never by more than half', () => {
+    expect(valueOf({ ...base, weightKg: 400, ageMonths: 120 }).ageAdjustment).toBe(-30000);
+    expect(valueOf({ ...base, weightKg: 400, ageMonths: 120 }).value).toBe(66500);
+    expect(valueOf({ ...base, weightKg: 400, ageMonths: 400 }).ageAdjustment).toBe(-50000);
     expect(valueOf({ ...base, ageMonths: 95 }).ageAdjustment).toBe(0);
-    expect(valueOf({ ...base, ageMonths: null }).ageAdjustment).toBe(0);
+  });
+
+  it('asks at least cost plus margin, in round 50s', () => {
+    expect(valueOf({ ...base, weightKg: 300 }).askingPrice).toBe(round50(82000 * 1.2));
+    expect(valueOf({ ...base, entry: 5000, feed: 1000, vet: 0, weightKg: 400 }).askingPrice).toBe(100000);
+  });
+
+  it('profit so far: income + young + value today - what it cost', () => {
+    expect(profitOf({ income: 80000, offspringValue: 5000, value: 95000, cost: 82000 })).toBe(98000);
+  });
+
+  it('flags a missing weight and feed', () => {
+    expect(valuationWarnings({ weightKg: null, feed: 0, ageMonths: 72, pricePerKg: 250 })).toHaveLength(2);
+    expect(valuationWarnings({ weightKg: 400, feed: 100, ageMonths: 72, pricePerKg: 250 })).toEqual([]);
   });
 
   it('counts whole months', () => {
     expect(monthsBetween(new Date('2024-01-15'), new Date('2026-01-14'))).toBe(23);
     expect(monthsBetween(new Date('2024-01-15'), new Date('2026-01-15'))).toBe(24);
-  });
-});
-
-describe('valuation warnings', () => {
-  it('asks for a weight and flags no feed past weaning', () => {
-    expect(valuationWarnings({ weightKg: null, feed: 0, ageMonths: 72, pricePerKg: 250 })).toEqual(['Not weighed: weigh it for a fairer price', 'No feed recorded against it']);
-    expect(valuationWarnings({ weightKg: 400, feed: 100, ageMonths: 72, pricePerKg: 250 })).toEqual([]);
-    expect(valuationWarnings({ weightKg: null, feed: 0, ageMonths: 2, pricePerKg: 0 })).toEqual([]);
   });
 });

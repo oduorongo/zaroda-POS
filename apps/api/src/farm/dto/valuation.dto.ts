@@ -34,11 +34,12 @@ export class UpdateValuationSettingsDto {
   @Max(5)
   margin?: number;
 
+  /** Transport, commission and market fees, 0.05 = 5% of the market value. */
   @IsOptional()
-  @IsInt()
+  @IsNumber({ maxDecimalPlaces: 4 })
   @Min(0)
-  @Max(730)
-  productionDays?: number;
+  @Max(0.5)
+  sellingCost?: number;
 
   @IsOptional()
   @IsArray()

@@ -8433,6 +8433,8 @@ model FarmSettings {
   /// Valuation: the margin on cost to date (0.20 = 20%) and how many days of recent milk or eggs a buyer pays for.
   valuationMarginRate     Decimal @default(0.20) @db.Decimal(5, 4)
   valuationProductionDays Int     @default(90)
+  /// Costs to sell an animal (transport, commission, market fees) as a share of its market value.
+  valuationSellingCostRate Decimal @default(0.05) @db.Decimal(5, 4)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 

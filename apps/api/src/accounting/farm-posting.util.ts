@@ -52,6 +52,18 @@ export function farmBuyerPaymentDraft(p: { date: string; reference: string; amou
   return { date: p.date, memo: `Payment from ${p.reference}`, lines: tidy([dr(moneyAccount(p.method), p.amountCents), cr('AR', p.amountCents)]) };
 }
 
+/**
+ * The farm's livestock in the books at its value (IAS 41: fair value less costs to sell, else cost). The first time, the herd
+ * already on the farm is the owner's capital; after that a change in its value is a gain or loss of the year.
+ */
+export function livestockValueDraft(l: { date: string; diffCents: number; opening: boolean }): Draft {
+  return {
+    date: l.date,
+    memo: l.opening ? 'Livestock on the farm when it was first counted in the books' : 'Livestock brought to its value today',
+    lines: tidy([dr('LIVESTOCK', l.diffCents), cr(l.opening ? 'CAPITAL' : 'LIVESTOCK_GAIN', l.diffCents)]),
+  };
+}
+
 /** Feed fed, or seed, fertiliser and chemicals used on a field: out of stock at cost, into what the farm spends on them. */
 export function farmStockUseDraft(u: { date: string; branchId: string | null; kind: 'FEED' | 'INPUTS'; reference: string; costCents: number }): Draft {
   const into: AccountKey = u.kind === 'FEED' ? 'FEED_USED' : 'FARM_INPUTS';

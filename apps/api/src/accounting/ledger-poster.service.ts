@@ -44,7 +44,8 @@ import {
   pettyTopUpDraft,
   pettyCountDraft,
 } from './ledger-posting.util';
-import { farmBuyerPaymentDraft, farmDeliveryDraft, farmStockUseDraft, farmWagesDraft } from './farm-posting.util';
+import { farmBuyerPaymentDraft, farmDeliveryDraft, farmStockUseDraft, farmWagesDraft, livestockValueDraft } from './farm-posting.util';
+import { FarmValuationService } from '../farm/farm-valuation.service';
 import { CON_PAYMENT_LABEL, conPayrollDraft, conZarodaDraft, ipcReceiptDraft, materialIssueDraft, retentionDraft, subPaymentDraft, subValuationDraft } from './construction-posting.util';
 
 const BATCH = 200;
@@ -128,6 +129,17 @@ const bookedStockCents = async (tx: TenantTx, day: string, through: boolean) => 
     WHERE l."organizationId" = ${organizationId} AND ${through ? Prisma.sql`e."entryDate" <= ${day}::date` : Prisma.sql`e."entryDate" < ${day}::date`}`);
   return toCents(r?.v ?? 0);
 };
+/** An account in the books up to and through a day. */
+const bookedCents = async (tx: TenantTx, key: string, day: string) => {
+  const { organizationId } = getTenantStore();
+  const [r] = await tx.$queryRaw<{ v: Prisma.Decimal | null }[]>(Prisma.sql`
+    SELECT sum(l.debit - l.credit) AS v FROM journal_lines l
+    JOIN journal_entries e ON e.id = l."entryId"
+    JOIN ledger_accounts a ON a.id = l."accountId" AND a."systemKey" = ${key}
+    WHERE l."organizationId" = ${organizationId} AND e."entryDate" <= ${day}::date`);
+  return toCents(r?.v ?? 0);
+};
+const isFarm = async (tx: TenantTx) => (await tx.organization.findFirst({ select: { industryType: true } }))?.industryType === 'FARM';
 const postedKeys = async (tx: TenantTx, type: string) =>
   new Set((await tx.ledgerPosting.findMany({ where: { sourceType: type }, select: { sourceId: true } })).map((p) => p.sourceId));
 /** A bill's claimable VAT: its supplier's PIN and the eTIMS invoice number, or a link to KRA's invoice. */
@@ -147,6 +159,7 @@ export class LedgerPosterService {
   constructor(
     private readonly tenantPrisma: TenantScopedPrismaService,
     private readonly books: LedgerBooksService,
+    private readonly livestock: FarmValuationService,
   ) {}
 
   private readonly sources: Source[] = [
@@ -818,6 +831,29 @@ export class LedgerPosterService {
       draft: async (tx, _id, c) => {
         const diff = (await shelfCents(tx, c.stockAt)) - (await bookedStockCents(tx, c.stockDay, false));
         return Math.abs(diff) < 100 ? null : stockValueDraft({ date: c.stockDay, diffCents: diff, opening: true });
+      },
+    },
+    {
+      type: 'LIVESTOCK_OPENING',
+      candidates: async (tx) => (!(await isFarm(tx)) || (await postedKeys(tx, 'LIVESTOCK_OPENING')).has('opening') ? [] : ['opening']),
+      draft: async (tx, _id, c) => {
+        const diff = toCents(await this.livestock.totalInTx(tx)) - (await bookedCents(tx, 'LIVESTOCK', c.stockDay));
+        return Math.abs(diff) < 100 ? null : livestockValueDraft({ date: c.stockDay, diffCents: diff, opening: true });
+      },
+    },
+    {
+      type: 'LIVESTOCK_VALUE',
+      candidates: async (tx, c) => {
+        if (!(await postedKeys(tx, 'LIVESTOCK_OPENING')).has('opening')) return [];
+        const done = await postedKeys(tx, 'LIVESTOCK_VALUE');
+        const today = nairobiDayOf(new Date());
+        const days: string[] = [];
+        for (let d = nextDay(c.stockDay); d < today && days.length < BATCH; d = nextDay(d)) if (!done.has(d)) days.push(d);
+        return days;
+      },
+      draft: async (tx, day) => {
+        const diff = toCents(await this.livestock.totalInTx(tx)) - (await bookedCents(tx, 'LIVESTOCK', day));
+        return Math.abs(diff) < 100 ? null : livestockValueDraft({ date: day, diffCents: diff, opening: false });
       },
     },
     {
