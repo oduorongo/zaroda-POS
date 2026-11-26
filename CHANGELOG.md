@@ -1,5 +1,10 @@
 # Changelog
 
+## Livestock value in the books the same day (2026-11-26)
+
+- Today's livestock entry is re-worked on every books pass, so a new market price per kg, a new weight or a change in the herd reaches Livestock (1300) at once (the old entry is reversed and a new one posted; past days stay as they were). Saving the rates on the Valuation screen posts to the books straight away.
+- No DB step.
+
 ## Stock on the balance sheet (2026-11-26)
 
 - The Stock account now matches what is on the shelves (quantity x cost) for every business. Before, only supplier bills put stock into the books while every sale took it out, so balance sheets showed too little stock (the demo farm showed minus KES 109,374 against KES 193,370 on its shelves).

@@ -130,13 +130,15 @@ const bookedStockCents = async (tx: TenantTx, day: string, through: boolean) => 
   return toCents(r?.v ?? 0);
 };
 /** An account in the books up to and through a day. */
-const bookedCents = async (tx: TenantTx, key: string, day: string) => {
+/** An account in the books through a day, leaving out one source's own entries (and their reversals) when it is being re-worked. */
+const bookedCents = async (tx: TenantTx, key: string, day: string, without?: { type: string; id: string }) => {
   const { organizationId } = getTenantStore();
   const [r] = await tx.$queryRaw<{ v: Prisma.Decimal | null }[]>(Prisma.sql`
     SELECT sum(l.debit - l.credit) AS v FROM journal_lines l
     JOIN journal_entries e ON e.id = l."entryId"
     JOIN ledger_accounts a ON a.id = l."accountId" AND a."systemKey" = ${key}
-    WHERE l."organizationId" = ${organizationId} AND e."entryDate" <= ${day}::date`);
+    WHERE l."organizationId" = ${organizationId} AND e."entryDate" <= ${day}::date
+      ${without ? Prisma.sql`AND NOT (e."sourceType" IS NOT DISTINCT FROM ${without.type} AND e."sourceId" IS NOT DISTINCT FROM ${without.id})` : Prisma.empty}`);
   return toCents(r?.v ?? 0);
 };
 const isFarm = async (tx: TenantTx) => (await tx.organization.findFirst({ select: { industryType: true } }))?.industryType === 'FARM';
@@ -845,14 +847,15 @@ export class LedgerPosterService {
       type: 'LIVESTOCK_VALUE',
       candidates: async (tx, c) => {
         if (!(await postedKeys(tx, 'LIVESTOCK_OPENING')).has('opening')) return [];
+        // past days once; today on every pass, so a new rate or weight reaches the books at once (re-posted when it changes)
         const done = await postedKeys(tx, 'LIVESTOCK_VALUE');
         const today = nairobiDayOf(new Date());
         const days: string[] = [];
-        for (let d = nextDay(c.stockDay); d < today && days.length < BATCH; d = nextDay(d)) if (!done.has(d)) days.push(d);
+        for (let d = c.stockDay; d <= today && days.length < BATCH; d = nextDay(d)) if (d === today || !done.has(d)) days.push(d);
         return days;
       },
       draft: async (tx, day) => {
-        const diff = toCents(await this.livestock.totalInTx(tx)) - (await bookedCents(tx, 'LIVESTOCK', day));
+        const diff = toCents(await this.livestock.totalInTx(tx)) - (await bookedCents(tx, 'LIVESTOCK', day, { type: 'LIVESTOCK_VALUE', id: day }));
         return Math.abs(diff) < 100 ? null : livestockValueDraft({ date: day, diffCents: diff, opening: false });
       },
     },
