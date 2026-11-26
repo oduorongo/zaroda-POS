@@ -5794,6 +5794,8 @@ model LedgerSettings {
   payrollPaidFrom String    @default("BANK")
   lastPassAt      DateTime?
   lastPassNote    String?
+  /// From when stock is kept equal to what is on the shelves (deliveries booked as received, daily stock value).
+  stockFrom       DateTime  @default(now())
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 

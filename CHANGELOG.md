@@ -1,5 +1,13 @@
 # Changelog
 
+## Stock on the balance sheet (2026-11-26)
+
+- The Stock account now matches what is on the shelves (quantity x cost) for every business. Before, only supplier bills put stock into the books while every sale took it out, so balance sheets showed too little stock (the demo farm showed minus KES 109,374 against KES 193,370 on its shelves).
+- Once per business, the stock already on the shelves is booked as owner's capital (Owner's decision).
+- Goods received on a delivery note are booked as stock owed to the supplier ("Goods received, not yet billed", 2005). The bill for that delivery clears it instead of adding the stock again; a price difference goes to stock.
+- Each day the stock is brought up to the shelves for everything else (farm produce, goods returned to the shelf, manual stock-ins, corrections, new costs) through "Stock adjustments and own produce" (5120, in cost of sales).
+- DB step BEFORE merge: prisma migrate deploy (20270122100000_stock_in_books). No new table, so no apply-rls. Checks: ledger-posting.util.spec (4 new), local passes on the demo farm and builder (books = shelves, balance sheets balance).
+
 ## New plan pricing (2026-11-25)
 
 - Plans: Basic KES 1,000 a month / 10,000 a year / 3 x 3,500 (1 device, 1 branch); Standard 3,500 / 35,000 / 3 x 12,000 (3 devices); new Business 7,500 / 75,000 / 4 x 19,500 (10 devices, 3 branches); School Supplier 12,000 a year in 2 termly instalments of 6,000 (2 devices). Extra till KES 500 a month or 5,000 a year on any plan.

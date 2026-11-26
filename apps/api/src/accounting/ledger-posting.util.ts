@@ -164,9 +164,35 @@ export function expenseDraft(e: { date: string; branchId?: string | null; catego
 }
 
 /** A supplier's bill for stock: the stock comes in, and the business owes the supplier. */
-export function billDraft(b: { date: string; reference: string; supplier: string; totalCents: number; taxCents?: number }): Draft {
+export function billDraft(b: { date: string; reference: string; supplier: string; totalCents: number; taxCents?: number; receivedCents?: number }): Draft {
   const tax = b.taxCents ?? 0;
-  return { date: b.date, memo: `Bill ${b.reference} from ${b.supplier}`, lines: tidy([dr('INVENTORY', b.totalCents - tax), dr('VAT_INPUT', tax), cr('AP', b.totalCents)]) };
+  // A bill for a delivery already booked as received clears "not yet billed" instead of adding the stock again; a price
+  // difference between the delivery and the bill goes to the stock.
+  const received = b.receivedCents ?? 0;
+  return {
+    date: b.date,
+    memo: `Bill ${b.reference} from ${b.supplier}`,
+    lines: tidy([dr('GRNI', received), dr('INVENTORY', b.totalCents - tax - received), dr('VAT_INPUT', tax), cr('AP', b.totalCents)]),
+  };
+}
+
+/** Goods received on a delivery note: the stock comes in, owed to the supplier until their bill is entered. */
+export function stockReceiptDraft(r: { date: string; branchId?: string | null; reference: string; valueCents: number }): Draft {
+  return { date: r.date, branchId: r.branchId ?? null, memo: `Goods received ${r.reference}`, lines: tidy([dr('INVENTORY', r.valueCents), cr('GRNI', r.valueCents)]) };
+}
+
+/**
+ * The stock in the books brought to what is on the shelves (quantity x cost). The first time, the stock already there is the
+ * owner's capital; after that, a difference is stock gained or lost other than by buying and selling (own produce, goods
+ * returned to the shelf, corrections, a new cost).
+ */
+export function stockValueDraft(s: { date: string; diffCents: number; opening: boolean }): Draft {
+  const other: AccountKey = s.opening ? 'CAPITAL' : 'STOCK_ADJUST';
+  return {
+    date: s.date,
+    memo: s.opening ? 'Stock on the shelves when stock was first counted in the books' : 'Stock brought up to what is on the shelves',
+    lines: tidy([dr('INVENTORY', s.diffCents), cr(other, s.diffCents)]),
+  };
 }
 
 /** A credit from a supplier against a bill (goods sent back, a price corrected): less owed, less stock. */
