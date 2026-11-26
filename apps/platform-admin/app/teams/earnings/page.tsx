@@ -30,8 +30,8 @@ interface Settings {
   withholdingTaxRate: number;
   available: Record<Gateway, boolean>;
 }
-type App = "POS" | "ONLINE_SHOP" | "CONSTRUCTION" | "RENTALS" | "SCHOOL";
-const APP_LABEL: Record<App, string> = { POS: "POS", ONLINE_SHOP: "Online shop", CONSTRUCTION: "Construction", RENTALS: "Rentals", SCHOOL: "School" };
+type App = "POS" | "ONLINE_SHOP" | "CONSTRUCTION" | "RENTALS" | "SHAMBA" | "SCHOOL";
+const APP_LABEL: Record<App, string> = { POS: "POS", ONLINE_SHOP: "Online shop", CONSTRUCTION: "Construction", RENTALS: "Rentals", SHAMBA: "Shamba", SCHOOL: "School" };
 interface Overview {
   month: string;
   byApp: { app: App; earnedThisMonth: number }[];

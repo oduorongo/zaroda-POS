@@ -117,6 +117,7 @@ export const PLATFORM_ACCOUNTS = [
   { key: 'COLLECTION_FEE_INCOME', code: '4040', name: 'Rent collection fees', type: 'INCOME' },
   { key: 'ADVERT_INCOME', code: '4050', name: 'House advert fees', type: 'INCOME' },
   { key: 'CONSTRUCTION_PLAN_INCOME', code: '4060', name: 'Construction plans and extra projects', type: 'INCOME' },
+  { key: 'SHAMBA_PLAN_INCOME', code: '4065', name: 'Zaroda Shamba plans', type: 'INCOME' },
   { key: 'SMS_INCOME', code: '4070', name: 'SMS bundles', type: 'INCOME' },
   { key: 'PAYOUT_FEE_INCOME', code: '4080', name: 'Wage payout fees', type: 'INCOME' },
   { key: 'SCHOOL_SUBSCRIPTION_INCOME', code: '4090', name: 'Zaroda School subscriptions', type: 'INCOME' },

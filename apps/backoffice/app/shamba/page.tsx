@@ -185,8 +185,8 @@ function Dashboard() {
             <Usage label="Livestock" used={data.usage.head} cap={data.plan.limits.head} />
             <Usage label="Birds" used={data.usage.birds} cap={data.plan.limits.birds} />
           </div>
-          <Link href="/shamba/pricing" className="mt-4 inline-block text-sm font-semibold underline" style={{ color: SHAMBA_BRAND.orange }}>
-            See plans
+          <Link href="/shamba/plan" className="mt-4 inline-block text-sm font-semibold underline" style={{ color: SHAMBA_BRAND.orange }}>
+            Plan, payments and SMS credits
           </Link>
         </Card>
         <Card title="Your farm">

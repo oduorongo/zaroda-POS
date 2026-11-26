@@ -2,6 +2,7 @@ import { Module, OnModuleInit } from '@nestjs/common';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { InventoryModule } from '../inventory/inventory.module';
 import { ModuleRegistryModule } from '../module-registry/module-registry.module';
+import { OnlineStoreModule } from '../online-store/online-store.module';
 import { ModuleRegistryService } from '../module-registry/module-registry.service';
 import { MpesaB2cClient } from '../sales-teams/mpesa-b2c.client';
 import { FarmController, PublicFarmPlansController } from './farm.controller';
@@ -23,19 +24,21 @@ import { FarmLabourService } from './farm-labour.service';
 import { FarmSalesService } from './farm-sales.service';
 import { FarmReportsController } from './farm-reports.controller';
 import { FarmReportsService } from './farm-reports.service';
+import { FarmBillingCallbackController, FarmBillingController } from './farm-billing.controller';
+import { FarmBillingService } from './farm-billing.service';
 
 /** Zaroda Shamba - farm management (industryType FARM). docs/farm, prompts/farm. */
 @Module({
-  imports: [NotificationsModule, InventoryModule, ModuleRegistryModule],
+  imports: [NotificationsModule, InventoryModule, ModuleRegistryModule, OnlineStoreModule],
   controllers: [
     FarmController, FarmLivestockController, FarmProductionController, FarmCropsController, FarmFeedController, FarmLabourController, FarmSalesController,
-    FarmWagesCallbackController, FarmReportsController, PublicFarmPlansController,
+    FarmWagesCallbackController, FarmReportsController, FarmBillingController, FarmBillingCallbackController, PublicFarmPlansController,
   ],
   providers: [
     FarmService, FarmSetupService, FarmGuard, FarmLivestockService, FarmHealthService, FarmRemindersService, FarmProductionService, FarmCropsService, FarmFeedService,
-    FarmLabourService, FarmSalesService, FarmReportsService, MpesaB2cClient,
+    FarmLabourService, FarmSalesService, FarmReportsService, FarmBillingService, MpesaB2cClient,
   ],
-  exports: [FarmSetupService],
+  exports: [FarmSetupService, FarmBillingService],
 })
 export class FarmModule implements OnModuleInit {
   constructor(

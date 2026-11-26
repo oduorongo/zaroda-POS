@@ -15,6 +15,8 @@ import { TenderAdvertsModule } from '../tender-adverts/tender-adverts.module';
 import { AccountingModule } from '../accounting/accounting.module';
 import { PlatformAccountingController } from './platform-accounting.controller';
 import { PlatformConstructionController } from './platform-construction.controller';
+import { PlatformFarmController } from './platform-farm.controller';
+import { FarmModule } from '../farm/farm.module';
 import { ConstructionModule } from '../construction/construction.module';
 import { PlatformSeasonalController } from './platform-seasonal.controller';
 import { SeasonalBillingModule } from '../seasonal-billing/seasonal-billing.module';
@@ -42,6 +44,8 @@ import { EtimsModule } from '../etims/etims.module';
     SeasonalBillingModule,
     // ZARODA's KRA GavaConnect keys and each business's live eTIMS approval.
     EtimsModule,
+    // FarmBillingService - Shamba plans, trials and payments.
+    FarmModule,
     // A second, independent JwtModule registration (separate from
     // AuthModule's) - its own secret (PLATFORM_ADMIN_JWT_SECRET), its
     // own JwtService instance. Deliberately not sharing JWT_SECRET with
@@ -58,7 +62,7 @@ import { EtimsModule } from '../etims/etims.module';
       }),
     }),
   ],
-  controllers: [PlatformAdminController, PlatformAccountingController, PlatformConstructionController, PlatformSeasonalController, PlatformEtimsController],
+  controllers: [PlatformAdminController, PlatformAccountingController, PlatformConstructionController, PlatformSeasonalController, PlatformEtimsController, PlatformFarmController],
   providers: [
     PlatformAdminAuthService,
     PlatformAdminService,

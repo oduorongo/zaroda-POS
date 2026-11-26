@@ -671,6 +671,16 @@ export class LedgerPosterService {
         return conZarodaDraft({ date: nairobiDayOf(p.paidAt), label: `${CON_PAYMENT_LABEL[p.purpose]}${p.receipt ? ` (${p.receipt})` : ''}`, amountCents: toCents(p.amount), method: p.method });
       },
     },
+    {
+      type: 'ZARODA_FARM_PAYMENT',
+      candidates: (tx, c) => ids(tx, Prisma.sql`SELECT t.id FROM farm_subscription_payments t WHERE t.status::text = 'PAID' AND t."paidAt" >= ${c.since} AND ${unposted('ZARODA_FARM_PAYMENT')} ORDER BY t."paidAt" LIMIT ${BATCH}`),
+      draft: async (tx, id) => {
+        const p = await tx.farmSubscriptionPayment.findUnique({ where: { id } });
+        if (!p || p.status !== 'PAID' || !p.paidAt) return null;
+        const label = p.purpose === 'PLAN' ? `Zaroda Shamba plan` : p.purpose === 'SMS' ? 'SMS bundle' : 'Wage payout fees';
+        return conZarodaDraft({ date: nairobiDayOf(p.paidAt), label: `${label}${p.receipt ? ` (${p.receipt})` : ''}`, amountCents: toCents(p.amount), method: p.method });
+      },
+    },
     // ── Farms (Zaroda Shamba): wages, credit deliveries and their payments, feed fed and field inputs used ──
     {
       type: 'FARM_WAGES',

@@ -16,7 +16,7 @@ const FIRST_YEAR_MONTHS = 10;
 
 const num = (d: Prisma.Decimal | number | null | undefined) => (d == null ? 0 : Number(d));
 
-export const SALES_APPS = ['POS', 'ONLINE_SHOP', 'CONSTRUCTION', 'RENTALS', 'SCHOOL'] as const;
+export const SALES_APPS = ['POS', 'ONLINE_SHOP', 'CONSTRUCTION', 'RENTALS', 'SHAMBA', 'SCHOOL'] as const;
 export type SalesApp = (typeof SALES_APPS)[number];
 
 /**
@@ -117,6 +117,7 @@ export class SalesEarningsService {
             ONLINE_SHOP: suspended ?? posUnpaid,
             CONSTRUCTION: suspended ?? conUnpaid,
             RENTALS: suspended,
+            SHAMBA: suspended,
             SCHOOL: suspended,
           },
           memberInactive: members.get(org.salesAgentId as string) !== SalesAgentStatus.ACTIVE,
@@ -158,7 +159,7 @@ export class SalesEarningsService {
         org: { id: school.id, name: school.name, createdAt: firstPaidAt, salesAgentId: school.agentId, salesAssignedAt: school.signedUpAt },
         team: { ...school.team, onboardingBonusKes: new Prisma.Decimal(0), earningMonths: FIRST_YEAR_MONTHS },
         leader: leaders.get(school.teamId) ?? null,
-        appBlocked: { POS: blocked, ONLINE_SHOP: blocked, CONSTRUCTION: blocked, RENTALS: blocked, SCHOOL: blocked },
+        appBlocked: { POS: blocked, ONLINE_SHOP: blocked, CONSTRUCTION: blocked, RENTALS: blocked, SHAMBA: blocked, SCHOOL: blocked },
         memberInactive: school.agent.status !== SalesAgentStatus.ACTIVE,
         loadSources: async () => sources,
       });
@@ -171,7 +172,7 @@ export class SalesEarningsService {
   /** Everything a POS business paid Zaroda, across its apps, read under its own tenant. */
   private async businessSources(tx: Prisma.TransactionClient, orgId: string, payments: { id: string; amount: number; paidAt: Date }[]): Promise<Source[]> {
     await tx.$executeRaw`SELECT set_config('app.current_tenant', ${orgId}, true)`;
-    const [invoices, conPayments, rentalInvoices] = await Promise.all([
+    const [invoices, conPayments, rentalInvoices, farmPayments] = await Promise.all([
       tx.commissionInvoice.findMany({ where: { status: 'PAID', paidAt: { not: null } }, select: { id: true, commissionTotal: true, paidAt: true } }),
       tx.conSubscriptionPayment.findMany({
         where: { organizationId: orgId, status: 'PAID', paidAt: { not: null }, amount: { gt: 0 }, purpose: { in: ['PLAN', 'EXTRA_PROJECTS', 'FEES'] } },
@@ -181,12 +182,17 @@ export class SalesEarningsService {
         where: { organizationId: orgId, status: 'PAID', paidAt: { not: null }, amountDue: { gt: 0 } },
         select: { id: true, kind: true, amountDue: true, paidAt: true },
       }),
+      tx.farmSubscriptionPayment.findMany({
+        where: { organizationId: orgId, status: 'PAID', paidAt: { not: null }, amount: { gt: 0 }, purpose: { in: ['PLAN', 'FEES'] } },
+        select: { id: true, amount: true, paidAt: true, purpose: true },
+      }),
     ]);
     return [
       ...invoices.map((i): Source => ({ type: 'COMMISSION', app: 'ONLINE_SHOP', id: i.id, base: num(i.commissionTotal), earnedAt: i.paidAt as Date })),
       ...payments.map((p): Source => ({ type: 'SUBSCRIPTION', app: 'POS', id: p.id, base: p.amount, earnedAt: p.paidAt })),
       ...(conPayments ?? []).map((p): Source => ({ type: p.purpose === 'FEES' ? 'COMMISSION' : 'SUBSCRIPTION', app: 'CONSTRUCTION', id: p.id, base: num(p.amount), earnedAt: p.paidAt as Date })),
       ...(rentalInvoices ?? []).map((i): Source => ({ type: i.kind === 'SUBSCRIPTION' ? 'SUBSCRIPTION' : 'COMMISSION', app: 'RENTALS', id: i.id, base: i.amountDue, earnedAt: i.paidAt as Date })),
+      ...(farmPayments ?? []).map((p): Source => ({ type: p.purpose === 'FEES' ? 'COMMISSION' : 'SUBSCRIPTION', app: 'SHAMBA', id: p.id, base: num(p.amount), earnedAt: p.paidAt as Date })),
     ];
   }
 

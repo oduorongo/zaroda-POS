@@ -244,6 +244,8 @@ export class PayrollService {
         }
         return ok ? line.runId : null;
       });
+      // Results for one run can arrive together; each transaction then sees the others still sending. Check again once committed.
+      if (done) await asOrg(this.prisma, organizationId, (tx) => this.settleRun(tx, done));
       if (done) await this.sendPayslips(organizationId, done);
       return { ResultCode: 0, ResultDesc: 'Accepted' };
     });

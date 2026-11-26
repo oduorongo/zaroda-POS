@@ -290,6 +290,21 @@ export class PlatformLedgerService {
       },
     },
     {
+      type: 'P_FARM_PAYMENT',
+      perBusiness: true,
+      scan: async (tx, c) => ({
+        fresh: (await tx.farmSubscriptionPayment.findMany({ where: { status: 'PAID', paidAt: { gte: c.since } }, select: { id: true } })).map((r) => r.id),
+        gone: [],
+      }),
+      draft: async (tx, id, business) => {
+        const p = await tx.farmSubscriptionPayment.findUnique({ where: { id } });
+        if (!p || p.status !== 'PAID' || !p.paidAt) return null;
+        const label = p.purpose === 'PLAN' ? `Shamba plan ${p.planCode} (${p.cycle.toLowerCase()})` : p.purpose === 'SMS' ? 'Shamba SMS bundle' : 'Shamba wage payout fees';
+        const income = p.purpose === 'PLAN' ? 'SHAMBA_PLAN_INCOME' : p.purpose === 'SMS' ? 'SMS_INCOME' : 'PAYOUT_FEE_INCOME';
+        return platformConPaymentDraft({ date: nairobiDayOf(p.paidAt), business, label, income, amountCents: cents(p.amount), method: p.method });
+      },
+    },
+    {
       type: 'P_SCHOOL_PAYMENT',
       perBusiness: false,
       scan: async (tx, c) => ({

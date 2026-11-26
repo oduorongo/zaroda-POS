@@ -7,40 +7,36 @@
  * anywhere in the process. Importing this file later would silently just
  * not instrument whatever already loaded first.
  *
- * Exports OTLP/HTTP if OTEL_EXPORTER_OTLP_ENDPOINT is set (point this at a
- * real collector - Jaeger, Tempo, an APM vendor's OTLP ingest - in any
- * real environment); otherwise falls back to a console exporter, so
- * tracing is genuinely visible and verifiable with zero external
- * infrastructure rather than silently doing nothing until someone
- * provisions a backend.
+ * Tracing starts only when it has somewhere to go: OTEL_EXPORTER_OTLP_ENDPOINT
+ * (a real collector - Jaeger, Tempo, an APM vendor's OTLP ingest), or
+ * OTEL_CONSOLE=on for looking at spans while testing. It never prints to the
+ * console by default: on Render the log is a pipe, writes to it block the
+ * process, and a span for every query and Redis call froze the live API
+ * (2026-11-25). OTEL_SDK_DISABLED=true switches it off whatever else is set.
  */
 import { NodeSDK } from '@opentelemetry/sdk-node';
 import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentations-node';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
 import { ConsoleSpanExporter } from '@opentelemetry/sdk-trace-node';
 
-const otlpEndpoint = process.env.OTEL_EXPORTER_OTLP_ENDPOINT;
+const otlpEndpoint = process.env.OTEL_EXPORTER_OTLP_ENDPOINT?.trim();
+const toConsole = process.env.OTEL_CONSOLE === 'on';
 
-const sdk = new NodeSDK({
-  serviceName: process.env.OTEL_SERVICE_NAME ?? 'zaroda-api',
-  traceExporter: otlpEndpoint
-    ? new OTLPTraceExporter({ url: otlpEndpoint })
-    : new ConsoleSpanExporter(),
-  instrumentations: [
-    getNodeAutoInstrumentations({
-      // Every fs read/write (config loads, template reads) would otherwise
-      // produce a span per call - overwhelming noise for near-zero
-      // diagnostic value in this app.
-      '@opentelemetry/instrumentation-fs': { enabled: false },
-    }),
-  ],
-});
+if (otlpEndpoint || toConsole) {
+  const sdk = new NodeSDK({
+    serviceName: process.env.OTEL_SERVICE_NAME ?? 'zaroda-api',
+    traceExporter: otlpEndpoint ? new OTLPTraceExporter({ url: otlpEndpoint }) : new ConsoleSpanExporter(),
+    instrumentations: [
+      getNodeAutoInstrumentations({
+        // Every fs read/write would otherwise produce a span per call - noise for near-zero diagnostic value.
+        '@opentelemetry/instrumentation-fs': { enabled: false },
+      }),
+    ],
+  });
 
-sdk.start();
+  sdk.start();
 
-// Best-effort flush before the process actually exits - same
-// enableShutdownHooks() moment main.ts/worker.ts already drain
-// PrismaService/BullMQ through; tracing shouldn't lose its last spans to
-// the same shutdown.
-process.on('SIGTERM', () => void sdk.shutdown().catch(() => undefined));
-process.on('SIGINT', () => void sdk.shutdown().catch(() => undefined));
+  // Best-effort flush before the process exits - same moment main.ts/worker.ts drain PrismaService/BullMQ.
+  process.on('SIGTERM', () => void sdk.shutdown().catch(() => undefined));
+  process.on('SIGINT', () => void sdk.shutdown().catch(() => undefined));
+}

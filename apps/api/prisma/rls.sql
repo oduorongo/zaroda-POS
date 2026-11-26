@@ -2431,3 +2431,23 @@ DROP POLICY IF EXISTS tenant_isolation ON farm_product_tags;
 CREATE POLICY tenant_isolation ON farm_product_tags
   USING ("organizationId" = current_setting('app.current_tenant', true))
   WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+
+-- Zaroda Shamba billing: plan payments, fee charges, fee invoices
+ALTER TABLE farm_subscription_payments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE farm_subscription_payments FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON farm_subscription_payments;
+CREATE POLICY tenant_isolation ON farm_subscription_payments
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+ALTER TABLE farm_fee_charges ENABLE ROW LEVEL SECURITY;
+ALTER TABLE farm_fee_charges FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON farm_fee_charges;
+CREATE POLICY tenant_isolation ON farm_fee_charges
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
+ALTER TABLE farm_fee_invoices ENABLE ROW LEVEL SECURITY;
+ALTER TABLE farm_fee_invoices FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON farm_fee_invoices;
+CREATE POLICY tenant_isolation ON farm_fee_invoices
+  USING ("organizationId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("organizationId" = current_setting('app.current_tenant', true));
