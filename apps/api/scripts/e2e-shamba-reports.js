@@ -18,7 +18,7 @@ const day = (n = 0) => new Date(Date.now() + 3 * 3600_000 + n * 86_400_000).toIS
   const get = (key, extra = "") => call(owner, "GET", `/farm/reports/${key}?${q}${extra}`);
 
   const cat = (await call(owner, "GET", "/farm/reports")).body;
-  check("eight reports, all on the Farmer plan", cat.length === 8 && cat.every((r) => r.allowed), cat);
+  check("nine reports, all on the Farmer plan", cat.length === 9 && cat.every((r) => r.allowed), cat);
   check("a herdsman cannot open reports", (await call(herd, "GET", "/farm/reports/herd")).status === 403);
   check("an unknown report is refused", (await get("nonsense")).status === 400);
   check("a period ending before it starts is refused", (await call(owner, "GET", `/farm/reports/crops?from=${day()}&to=${day(-5)}`)).status === 400);

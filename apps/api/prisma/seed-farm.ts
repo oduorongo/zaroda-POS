@@ -22,6 +22,7 @@ async function main() {
     await seedCrops(existing.id);
     await seedFeed(existing.id);
     await seedLabourSales(existing.id);
+    await seedValuation(existing.id);
     return;
   }
   const orgId = randomUUID();
@@ -92,6 +93,7 @@ async function main() {
   await seedCrops(orgId);
   await seedFeed(orgId);
   await seedLabourSales(orgId);
+  await seedValuation(orgId);
   console.log("Seeded the demo farm. Sign in at /login as owner@shamba.demo and the DEMO_PASSWORD (default password123).");
 }
 
@@ -549,6 +551,23 @@ async function seedLabourSales(orgId: string) {
     },
     { timeout: 120_000, maxWait: 15_000 },
   );
+}
+
+/** Valuation rates set to Migori market prices, and a 25% margin. */
+async function seedValuation(orgId: string) {
+  await prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT set_config('app.current_tenant', ${orgId}, true)`;
+    if (await tx.farmValuationRate.count({ where: { organizationId: orgId } })) return;
+    await tx.farmSettings.update({ where: { organizationId: orgId }, data: { valuationMarginRate: 0.25, valuationProductionDays: 90 } });
+    await tx.farmValuationRate.createMany({
+      data: [
+        { organizationId: orgId, species: "CATTLE", birthValueKes: 6000, pricePerKgKes: 280, primeAgeMonths: 96, ageDropRate: 0.15 },
+        { organizationId: orgId, species: "CHICKEN", birthValueKes: 120, pricePerKgKes: 450, primeAgeMonths: 18, ageDropRate: 0.2 },
+        { organizationId: orgId, species: "GOAT", birthValueKes: 1800, pricePerKgKes: 420, primeAgeMonths: 72, ageDropRate: 0.15 },
+      ],
+    });
+    console.log("Seeded the demo farm's valuation rates (cattle, chickens, goats) and a 25% margin.");
+  });
 }
 
 const dayKey = (d: Date) => d.toISOString().slice(0, 10);

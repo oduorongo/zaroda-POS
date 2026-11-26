@@ -21,14 +21,14 @@ const SELECT = {
 export class OrganizationsService {
   constructor(private readonly tenantPrisma: TenantScopedPrismaService) {}
 
+  /** The business, and the signed-in user's name (printed on reports as who prepared them). */
   async findMine() {
-    const { organizationId } = getTenantStore();
-    return this.tenantPrisma.run((tx) =>
-      tx.organization.findUniqueOrThrow({
-        where: { id: organizationId },
-        select: SELECT,
-      }),
-    );
+    const { organizationId, orgUserId } = getTenantStore();
+    return this.tenantPrisma.run(async (tx) => {
+      const org = await tx.organization.findUniqueOrThrow({ where: { id: organizationId }, select: SELECT });
+      const me = await tx.orgUser.findUnique({ where: { id: orgUserId }, select: { user: { select: { fullName: true } } } });
+      return { ...org, me: { fullName: me?.user.fullName ?? null } };
+    });
   }
 
   async updateMine(dto: UpdateOrganizationDto) {

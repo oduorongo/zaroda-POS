@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { apiGet, ApiError } from "../../../lib/api";
-import { API, downloadCsv, inputClass, kes, niceDay, quietButtonClass, todayKey } from "../shared";
+import { API, downloadCsv, exportRows, inputClass, kes, niceDay, quietButtonClass, todayKey } from "../shared";
 
 interface Row {
   accountId: string;
@@ -108,7 +108,7 @@ export function CashFlowReport({ from, to }: { from: string; to: string }) {
     ["Buying and selling long-term assets (investing)", cf.investing],
     ["Owner's money and loans (financing)", cf.financing],
   ];
-  function download() {
+  function download(pdf?: boolean) {
     const rows: (string | number)[][] = [["Cash flow statement", `${cf!.from} to ${cf!.to}`], [], ["", "Cash at the start", cf!.opening]];
     for (const [title, p] of parts) {
       rows.push([title]);
@@ -116,7 +116,7 @@ export function CashFlowReport({ from, to }: { from: string; to: string }) {
       rows.push(["", `Net cash from ${title.split(" (")[0].toLowerCase()}`, p.total]);
     }
     rows.push(["", "Net change in cash", cf!.net], ["", "Cash at the end", cf!.closing]);
-    downloadCsv(`cash-flow-${cf!.from}-${cf!.to}.csv`, csv(rows));
+    exportRows(`cash-flow-${cf!.from}-${cf!.to}.csv`, rows, csv, pdf);
   }
   return (
     <div className="space-y-1 rounded-lg border border-border bg-surface p-4 text-sm">
@@ -124,7 +124,8 @@ export function CashFlowReport({ from, to }: { from: string; to: string }) {
         <p className="text-xs text-secondary-500">
           {niceDay(cf.from)} to {niceDay(cf.to)} · cash, M-Pesa, bank and card payments on their way. Positive is money in.
         </p>
-        <button onClick={download} className={quietButtonClass}>Download (CSV)</button>
+        <button onClick={() => download()} className={quietButtonClass}>Download (CSV)</button>
+        <button onClick={() => download(true)} className={quietButtonClass}>Download PDF</button>
       </div>
       <Line label="Cash at the start" value={cf.opening} strong />
       {parts.map(([title, p]) => (
@@ -152,12 +153,12 @@ export function AgedReport({ kind }: { kind: "debtors" | "creditors" }) {
   if (!a) return <Err message={error} />;
   const title = kind === "debtors" ? "Aged debtors" : "Aged creditors";
   const gap = Math.round((a.booksTotal - a.totals.total) * 100) / 100;
-  function download() {
+  function download(pdf?: boolean) {
     const rows: (string | number)[][] = [[title, a!.asOf], [], [kind === "debtors" ? "Customer" : "Supplier", ...COLUMNS.map(([, l]) => l)]];
     for (const r of a!.rows) rows.push([r.party, ...COLUMNS.map(([k]) => r[k])]);
     rows.push(["Total", ...COLUMNS.map(([k]) => a!.totals[k])], [], ["Party", "Type", "Reference", "Date", "Due", "Days late", "Owed"]);
     for (const d of a!.documents) rows.push([d.party, d.kind, d.reference, d.date, d.dueDate ?? "on release", d.daysLate ?? "", d.owed]);
-    downloadCsv(`${kind}-${a!.asOf}.csv`, csv(rows));
+    exportRows(`${kind}-${a!.asOf}.csv`, rows, csv, pdf);
   }
   return (
     <div className="space-y-3">
@@ -166,7 +167,8 @@ export function AgedReport({ kind }: { kind: "debtors" | "creditors" }) {
           On {niceDay(a.asOf)}, by days past the due date.{" "}
           {kind === "debtors" ? "School invoices, construction IPCs (due 30 days after certification) and rent." : "Supplier bills and approved subcontractor valuations (due 30 days after approval)."} Tap a name for its documents.
         </p>
-        <button onClick={download} className={quietButtonClass}>Download (CSV)</button>
+        <button onClick={() => download()} className={quietButtonClass}>Download (CSV)</button>
+        <button onClick={() => download(true)} className={quietButtonClass}>Download PDF</button>
       </div>
       <div className="overflow-x-auto rounded-lg border border-border bg-surface">
         <table className="w-full min-w-[44rem] text-sm">
@@ -222,7 +224,7 @@ export function AgedReport({ kind }: { kind: "debtors" | "creditors" }) {
 export function VatReport() {
   const [month, setMonth] = useState(todayKey().slice(0, 7));
   const { data: v, error } = useReport<Vat>(`${API}/reports/vat-return?month=${month}`);
-  function download() {
+  function download(pdf?: boolean) {
     if (!v) return;
     const rows: (string | number)[][] = [["VAT return", v.month], [], ["Sales", "Value excl. VAT", "VAT"]];
     for (const s of v.sales) rows.push([s.label, s.net, s.vat]);
@@ -231,7 +233,7 @@ export function VatReport() {
     rows.push(["Withholding VAT certificates", "", v.withholdingVat.total]);
     for (const c of v.withholdingVat.certificates) rows.push([`  ${c.date} ${c.reference} ${c.certificateNo ?? ""}`, "", c.amount]);
     rows.push([], ["VAT to pay KRA", "", v.payable], ["Credit carried forward", "", v.creditCarriedForward]);
-    downloadCsv(`vat-return-${v.month}.csv`, csv(rows));
+    exportRows(`vat-return-${v.month}.csv`, rows, csv, pdf);
   }
   function downloadSchedule() {
     if (!v) return;
@@ -247,7 +249,8 @@ export function VatReport() {
           <input type="month" max={todayKey().slice(0, 7)} value={month} onChange={(e) => e.target.value && setMonth(e.target.value)} className={inputClass} />
         </label>
         <div className="flex flex-wrap gap-2">
-          <button onClick={download} className={quietButtonClass}>Download (CSV)</button>
+          <button onClick={() => download()} className={quietButtonClass}>Download (CSV)</button>
+        <button onClick={() => download(true)} className={quietButtonClass}>Download PDF</button>
           <button onClick={downloadSchedule} className={quietButtonClass}>Purchases list for iTax (CSV)</button>
         </div>
       </div>

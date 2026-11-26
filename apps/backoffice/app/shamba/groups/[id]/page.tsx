@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { apiGet, apiPost } from "../../../../lib/api";
 import { Card, ShambaAppFrame } from "../../../../components/shamba/frame";
+import { SuggestedPriceCard } from "../../../../components/shamba/valuation";
 import { ActionTabs, Btn, ErrorBox, HealthForm, HealthList, WeightForm, WithdrawalBanner, errText } from "../../../../components/shamba/livestock";
 import { COUNT_REASONS, SHAMBA_BRAND, SPECIES, TASK_KINDS, ageText, day, inputClass, todayKey, type DueTask, type FarmGroup, type HealthEvent } from "../../../../lib/shamba";
 
@@ -140,6 +141,8 @@ function GroupPage() {
           </ul>
         </Card>
       )}
+
+      <SuggestedPriceCard id={id} />
 
       <div className="grid gap-4 md:grid-cols-2">
         <Card title="Head count history">
