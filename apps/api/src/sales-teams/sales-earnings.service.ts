@@ -30,7 +30,11 @@ interface Source {
   id: string;
   base: number;
   earnedAt: Date;
+  /** A plan payment that pays for a year or an instalment of it (90 days or more), not a single month. */
+  long?: boolean;
 }
+
+const LONG_PAYMENT_MS = 90 * 86_400_000;
 
 const MEMBER_KIND = { COMMISSION: SalesEarningKind.COMMISSION_SHARE, SUBSCRIPTION: SalesEarningKind.SUBSCRIPTION_SHARE } as const;
 const SHARE_KINDS: SalesEarningKind[] = [SalesEarningKind.COMMISSION_SHARE, SalesEarningKind.SUBSCRIPTION_SHARE, SalesEarningKind.LEADER_OVERRIDE];
@@ -40,7 +44,8 @@ const SHARE_KINDS: SalesEarningKind[] = [SalesEarningKind.COMMISSION_SHARE, Sale
  * - COMMISSION: when a shop's monthly online-order commission invoice is PAID, the member who signed the shop earns
  *   their team's member share of it, and the team leader earns the leader override.
  * - SUBSCRIPTION: the same for each subscription payment the shop makes (a different member rate).
- * - BONUS: a flat amount, once per shop, when its SECOND subscription payment is made.
+ * - BONUS: a flat amount, once per shop, when its SECOND subscription payment is made - or its first, when that one pays
+ *   for a year or an instalment of it (a yearly payer's second payment would fall outside the earning window).
  * Rules applied to each (see the commission spec):
  * - only within `earningMonths` of the shop's sign-up, and only for money received after the current member was
  *   assigned the shop (a reassignment never back-pays history);
@@ -94,7 +99,7 @@ export class SalesEarningsService {
       const payments = await this.prisma.subscriptionPayment.findMany({
         where: { amount: { gt: 0 }, commissionable: true, subscription: { organizationId: { in: orgs.map((o) => o.id) } } },
         orderBy: { paidAt: 'asc' },
-        select: { id: true, amount: true, paidAt: true, subscription: { select: { organizationId: true } } },
+        select: { id: true, amount: true, paidAt: true, periodEnd: true, subscription: { select: { organizationId: true } } },
       });
       const paymentsByOrg = new Map<string, typeof payments>();
       for (const p of payments) paymentsByOrg.set(p.subscription.organizationId, [...(paymentsByOrg.get(p.subscription.organizationId) ?? []), p]);
@@ -121,7 +126,7 @@ export class SalesEarningsService {
             SCHOOL: suspended,
           },
           memberInactive: members.get(org.salesAgentId as string) !== SalesAgentStatus.ACTIVE,
-          loadSources: (tx) => this.businessSources(tx, org.id, (paymentsByOrg.get(org.id) ?? []).map((p) => ({ id: p.id, amount: num(p.amount), paidAt: p.paidAt }))),
+          loadSources: (tx) => this.businessSources(tx, org.id, (paymentsByOrg.get(org.id) ?? []).map((p) => ({ id: p.id, amount: num(p.amount), paidAt: p.paidAt, long: p.periodEnd.getTime() - p.paidAt.getTime() >= LONG_PAYMENT_MS }))),
         });
         totals.commission += result.commission;
         totals.subscriptions += result.subscriptions;
@@ -170,7 +175,7 @@ export class SalesEarningsService {
   }
 
   /** Everything a POS business paid Zaroda, across its apps, read under its own tenant. */
-  private async businessSources(tx: Prisma.TransactionClient, orgId: string, payments: { id: string; amount: number; paidAt: Date }[]): Promise<Source[]> {
+  private async businessSources(tx: Prisma.TransactionClient, orgId: string, payments: { id: string; amount: number; paidAt: Date; long?: boolean }[]): Promise<Source[]> {
     await tx.$executeRaw`SELECT set_config('app.current_tenant', ${orgId}, true)`;
     const [invoices, conPayments, rentalInvoices, farmPayments] = await Promise.all([
       tx.commissionInvoice.findMany({ where: { status: 'PAID', paidAt: { not: null } }, select: { id: true, commissionTotal: true, paidAt: true } }),
@@ -189,7 +194,7 @@ export class SalesEarningsService {
     ]);
     return [
       ...invoices.map((i): Source => ({ type: 'COMMISSION', app: 'ONLINE_SHOP', id: i.id, base: num(i.commissionTotal), earnedAt: i.paidAt as Date })),
-      ...payments.map((p): Source => ({ type: 'SUBSCRIPTION', app: 'POS', id: p.id, base: p.amount, earnedAt: p.paidAt })),
+      ...payments.map((p): Source => ({ type: 'SUBSCRIPTION', app: 'POS', id: p.id, base: p.amount, earnedAt: p.paidAt, long: p.long })),
       ...(conPayments ?? []).map((p): Source => ({ type: p.purpose === 'FEES' ? 'COMMISSION' : 'SUBSCRIPTION', app: 'CONSTRUCTION', id: p.id, base: num(p.amount), earnedAt: p.paidAt as Date })),
       ...(rentalInvoices ?? []).map((i): Source => ({ type: i.kind === 'SUBSCRIPTION' ? 'SUBSCRIPTION' : 'COMMISSION', app: 'RENTALS', id: i.id, base: i.amountDue, earnedAt: i.paidAt as Date })),
       ...(farmPayments ?? []).map((p): Source => ({ type: p.purpose === 'FEES' ? 'COMMISSION' : 'SUBSCRIPTION', app: 'SHAMBA', id: p.id, base: num(p.amount), earnedAt: p.paidAt as Date })),
@@ -300,9 +305,10 @@ export class SalesEarningsService {
         }
       }
 
-      // Bonus: once per business, on its second plan payment in any app.
+      // Bonus: once per business, on its second plan payment in any app - or its first when that pays for a year or an instalment.
       const bonus = num(team.onboardingBonusKes);
-      const second = sources.filter((s) => s.type === 'SUBSCRIPTION')[1];
+      const planPayments = sources.filter((s) => s.type === 'SUBSCRIPTION');
+      const second = planPayments[0]?.long ? planPayments[0] : planPayments[1];
       if (bonus > 0 && second && !existing.some((e) => e.kind === SalesEarningKind.ONBOARDING_BONUS)) {
         const s: Source = { ...second, base: bonus };
         const blocked = appBlocked[s.app] ?? (memberInactive ? 'The member was no longer active' : null);
