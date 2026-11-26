@@ -229,7 +229,10 @@ export class PlatformAdminService {
     options: { attribution?: { salesTeamId: string; salesAgentId: string }; trial?: boolean } = {},
   ) {
     const plan = await this.prisma.plan.findUnique({ where: { tier: dto.planTier } });
-    if (!plan) throw new NotFoundException(`No plan with tier ${dto.planTier}`);
+    if (!plan || !plan.active) throw new NotFoundException(`No plan on sale with tier ${dto.planTier}`);
+    const choiceIssue = dto.billingChoice ? choiceProblem(plan, dto.billingChoice) : null;
+    if (choiceIssue && plan.billingCycle !== 'SEASONAL') throw new BadRequestException(choiceIssue);
+    const billingChoice = dto.billingChoice && !choiceIssue ? dto.billingChoice : 'MONTHLY';
     const problem = dto.monthlyPriceKes == null ? null : priceProblem(plan, dto.monthlyPriceKes);
     if (problem) throw new BadRequestException(problem);
     const extraTills = dto.extraTills ?? 0;
@@ -291,7 +294,13 @@ export class PlatformAdminService {
                 planId: plan.id,
                 agreedPriceKes: dto.monthlyPriceKes ?? null,
                 extraTills,
-                currentPeriodEnd: free ? FREE_PLAN_UNTIL : new Date(Date.now() + (options.trial ? 14 : plan.billingPeriodDays) * 24 * 60 * 60 * 1000),
+                billingChoice,
+                // Not a trial: the first bill (a month, a year, or one instalment) is taken as agreed.
+                currentPeriodEnd: free
+                  ? FREE_PLAN_UNTIL
+                  : options.trial
+                    ? new Date(Date.now() + 14 * 86_400_000)
+                    : periodAfterBill(new Date(), billFor({ plan, extraTills, agreedPriceKes: dto.monthlyPriceKes ?? null, billingChoice })),
                 isTrial: free ? false : options.trial ?? false,
               },
             });
