@@ -79,11 +79,19 @@ describe('SalesPortalService.onboardTenant', () => {
     expect(result).not.toHaveProperty('temporaryPassword');
   });
 
-  it('needs the agreed monthly price for a business with tills, but not for a landlord', async () => {
-    const { service } = setup();
+  it('needs an agreed price only on a plan with a price range; passes the plan and billing chosen', async () => {
+    const { service, prisma, platformAdmin } = setup();
     const { monthlyPriceKes: _drop, ...noPrice } = dto;
+    prisma.plan = { findUnique: jest.fn().mockResolvedValue({ priceKes: '2500', minPriceKes: '1000' }) };
     await expect(service.onboardTenant(member, noPrice)).rejects.toThrow(/monthly price/);
+    prisma.plan.findUnique.mockResolvedValue({ priceKes: '1000', minPriceKes: null });
+    await expect(service.onboardTenant(member, { ...noPrice, planTier: 'STANDARD', billingChoice: 'ANNUAL' })).resolves.toBeDefined();
+    const [sent] = platformAdmin.onboardTenant.mock.calls.at(-1);
+    expect(sent.planTier).toBe('STANDARD');
+    expect(sent.billingChoice).toBe('ANNUAL');
     await expect(service.onboardTenant(member, { ...noPrice, industryType: 'RENTAL' })).resolves.toBeDefined();
+    await service.onboardTenant(member, { ...noPrice, industryType: 'SCHOOL_SUPPLIER', planTier: 'BASIC', extraTills: 2 });
+    expect(platformAdmin.onboardTenant.mock.calls.at(-1)[0]).toMatchObject({ planTier: 'SEASONAL', extraTills: 0, terminalCount: 1 });
   });
 });
 

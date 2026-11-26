@@ -94,12 +94,24 @@ export interface TeamMember extends AgentProfile {
 export const teamApiBase = defaultBase;
 
 /** The Basic plan's monthly price range per device (set by ZARODA on the Billing screen). */
-export async function basicPriceRange(): Promise<{ min: number; max: number; extraTills: number }> {
-  const plans = await request<{ tier: string; priceKes: string; minPriceKes: string | null; maxExtraTills?: number }[]>("/public/plans", { method: "GET" }, false);
-  const basic = plans.find((p) => p.tier === "BASIC");
-  const max = Number(basic?.priceKes ?? 2500);
-  return { min: basic?.minPriceKes != null ? Number(basic.minPriceKes) : max, max, extraTills: basic?.maxExtraTills ?? 0 };
+export interface TeamPlan {
+  tier: string;
+  name: string;
+  priceKes: string;
+  minPriceKes: string | null;
+  maxExtraTills: number;
+  billingCycle: string;
+  annualPriceKes: string | null;
+  instalmentCount: number | null;
+  instalmentKes: string | null;
+  extraTillKes: string;
+  extraTillAnnualKes: string;
+  maxDevices: number;
+  maxBranches: number;
 }
+
+/** The plans a team member can sign a business up on. */
+export const teamPlans = () => request<TeamPlan[]>("/public/plans", { method: "GET" }, false);
 
 export const teamLogin = (email: string, password: string) =>
   request<{ accessToken: string } & TeamMe>("/sales-agent/auth/login", { method: "POST", body: JSON.stringify({ email, password }) }, false);

@@ -4,7 +4,7 @@ import { IsEmail, IsEnum, IsIn, IsInt, IsOptional, IsString, Max, MaxLength, Min
 const INDUSTRY_TYPES = ['RETAIL', 'RESTAURANT', 'SALON', 'RENTAL', 'SCHOOL_SUPPLIER', 'UNIFORM_MAKER', 'HOTEL', 'FARM'] as const;
 
 /**
- * A team member signing a shop up. The shop starts on a 14-day free trial of the entry plan, like a self-signup.
+ * A team member signing a shop up. The shop starts on a 14-day free trial of the plan chosen (default Basic), like a self-signup.
  * The owner's password may be chosen on the spot; if it is left out, a temporary one is made and shown once.
  */
 export class OnboardTenantByAgentDto {
@@ -57,17 +57,27 @@ export class OnboardTenantByAgentDto {
   @Max(10)
   terminalCount?: number;
 
-  /** The monthly price agreed with the shop for the Basic plan (KES 1,000 - 2,500 per device; the plan's range is checked). Needed for every business with tills. */
+  /** Basic, Standard or Business (school suppliers always go on the School Supplier plan). */
+  @IsOptional()
+  @IsIn(['BASIC', 'STANDARD', 'BUSINESS'])
+  planTier?: 'BASIC' | 'STANDARD' | 'BUSINESS';
+
+  /** How the shop will pay after the trial: monthly, the year at once, or the year in instalments. */
+  @IsOptional()
+  @IsIn(['MONTHLY', 'ANNUAL', 'INSTALMENTS'])
+  billingChoice?: 'MONTHLY' | 'ANNUAL' | 'INSTALMENTS';
+
+  /** A monthly price agreed with the shop, only when the plan has a price range (the range is checked). */
   @IsOptional()
   @IsInt()
   @Min(1)
   monthlyPriceKes?: number;
 
-  /** 1 = a second till at the same agreed price (the plan's limit is checked). */
+  /** Extra tills on top of the plan's (the plan's limit is checked). */
   @IsOptional()
   @IsInt()
   @Min(0)
-  @Max(1)
+  @Max(10)
   extraTills?: number;
 }
 
