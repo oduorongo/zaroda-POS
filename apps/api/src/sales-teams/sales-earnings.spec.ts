@@ -143,7 +143,7 @@ function setup(
   return { service: new SalesEarningsService(prisma, payouts), prisma, tx, created, payouts };
 }
 
-const payment = (id: string, paidAt: string, amount = 1000) => ({ id, amount, paidAt: new Date(paidAt), subscription: { organizationId: 'org-1' } });
+const payment = (id: string, paidAt: string, amount = 1000, days = 30) => ({ id, amount, paidAt: new Date(paidAt), periodEnd: new Date(new Date(paidAt).getTime() + days * 86_400_000), subscription: { organizationId: 'org-1' } });
 const invoice = (id: string, commissionTotal: number, paidAt = '2026-10-10T08:00:00Z') => ({ id, commissionTotal, paidAt: new Date(paidAt) });
 
 describe('SalesEarningsService.accrue - spec worked example', () => {
@@ -338,6 +338,12 @@ describe('SalesEarningsService.accrue - bonus', () => {
     const result = await service.accrue(true);
     expect(result.bonuses).toBe(1);
     expect(created).toEqual([expect.objectContaining({ kind: 'ONBOARDING_BONUS', agentId: 'member-1', sourceId: 'p2', amountKes: 500, periodMonth: '2026-11' })]);
+  });
+
+  it('pays the bonus on the first payment when it pays for a year or an instalment', async () => {
+    const { service, created } = setup({ payments: [payment('p1', '2026-10-05T08:00:00Z', 10000, 365)], team: { subscriptionShareRate: 0, leaderOverrideRate: 0 } });
+    await service.accrue(true);
+    expect(created).toEqual([expect.objectContaining({ kind: 'ONBOARDING_BONUS', sourceId: 'p1', amountKes: 500 })]);
   });
 
   it('pays no bonus after only one payment', async () => {
