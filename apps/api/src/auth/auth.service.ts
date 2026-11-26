@@ -276,7 +276,9 @@ export class AuthService {
             // The plan picked on the pricing page, if it is on sale; else Basic.
             const picked = dto.planTier ? await tx.plan.findFirst({ where: { tier: dto.planTier, active: true } }) : null;
             const basicPlan = picked ?? (await tx.plan.findUniqueOrThrow({ where: { tier: 'BASIC' } }));
-            const choice = dto.billingChoice && !choiceProblem(basicPlan, dto.billingChoice) ? dto.billingChoice : 'MONTHLY';
+            // Yearly by default; monthly only when asked for or the plan has no yearly price (free and seasonal plans).
+            const wanted = dto.billingChoice ?? 'ANNUAL';
+            const choice = !choiceProblem(basicPlan, wanted) ? wanted : 'MONTHLY';
             const trialDays = 14;
             await tx.subscription.create({
               data: {

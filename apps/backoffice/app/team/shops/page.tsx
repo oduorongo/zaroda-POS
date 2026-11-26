@@ -46,7 +46,7 @@ function ShopsBody({ me }: { me: TeamMe }) {
   const [subCounty, setSubCounty] = useState("");
   const [plans, setPlans] = useState<TeamPlan[]>([]);
   const [planTier, setPlanTier] = useState("BASIC");
-  const [billing, setBilling] = useState<Billing>("MONTHLY");
+  const [billing, setBilling] = useState<Billing>("ANNUAL");
   const [price, setPrice] = useState("");
   const [extraTills, setExtraTills] = useState(0);
   const [busy, setBusy] = useState(false);
@@ -113,7 +113,7 @@ function ShopsBody({ me }: { me: TeamMe }) {
       setSubCounty("");
       setPrice("");
       setExtraTills(0);
-      setBilling("MONTHLY");
+      setBilling("ANNUAL");
       setPlanTier("BASIC");
       await load();
     } catch (err) {
@@ -209,7 +209,7 @@ function ShopsBody({ me }: { me: TeamMe }) {
                     const next = shopPlans.find((p) => p.tier === e.target.value);
                     setPlanTier(e.target.value);
                     setExtraTills(0);
-                    if (billing === "INSTALMENTS" && !next?.instalmentCount) setBilling("MONTHLY");
+                    if (billing === "INSTALMENTS" && !next?.instalmentCount) setBilling("ANNUAL");
                   }}
                 >
                   {shopPlans.map((p) => (
@@ -224,8 +224,8 @@ function ShopsBody({ me }: { me: TeamMe }) {
               <label className="text-sm">
                 How the shop pays after the trial
                 <select className={inputClass} value={billing} onChange={(e) => setBilling(e.target.value as Billing)}>
-                  <option value="MONTHLY">Monthly - {kes(Number(plan.priceKes))} a month</option>
                   <option value="ANNUAL">Yearly - {kes(annualOf(plan))} (2 months free)</option>
+                  <option value="MONTHLY">Monthly - {kes(Number(plan.priceKes))} a month</option>
                   {plan.instalmentCount ? <option value="INSTALMENTS">Yearly in {plan.instalmentCount} instalments of {kes(Number(plan.instalmentKes))}</option> : null}
                 </select>
               </label>
@@ -267,7 +267,7 @@ function ShopsBody({ me }: { me: TeamMe }) {
             )}
           </div>
           <p className="text-xs text-secondary-500">
-            The shop is credited to you for good once it is signed up. It starts on a 14-day free trial. You earn a share of each plan payment it makes in your earning period, and the sign-up bonus on its second plan payment.
+            The shop is credited to you for good once it is signed up. It starts on a 14-day free trial. You earn a share of each plan payment it makes in your earning period, and the sign-up bonus on its second payment (or its first, if it pays yearly or by instalments).
           </p>
           {formError && <p className="text-sm text-error-600">{formError}</p>}
           <Button type="submit" disabled={busy || !organizationName.trim() || !ownerFullName.trim() || !ownerEmail.trim() || !priceOk}>
