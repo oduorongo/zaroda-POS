@@ -232,7 +232,8 @@ export class PlatformAdminService {
     if (!plan || !plan.active) throw new NotFoundException(`No plan on sale with tier ${dto.planTier}`);
     const choiceIssue = dto.billingChoice ? choiceProblem(plan, dto.billingChoice) : null;
     if (choiceIssue && plan.billingCycle !== 'SEASONAL') throw new BadRequestException(choiceIssue);
-    const billingChoice = dto.billingChoice && !choiceIssue ? dto.billingChoice : 'MONTHLY';
+    // Yearly by default, where the plan has a yearly price.
+    const billingChoice = dto.billingChoice && !choiceIssue ? dto.billingChoice : choiceProblem(plan, 'ANNUAL') ? 'MONTHLY' : 'ANNUAL';
     const problem = dto.monthlyPriceKes == null ? null : priceProblem(plan, dto.monthlyPriceKes);
     if (problem) throw new BadRequestException(problem);
     const extraTills = dto.extraTills ?? 0;

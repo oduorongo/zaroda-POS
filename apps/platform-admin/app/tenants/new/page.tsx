@@ -50,7 +50,7 @@ export default function NewTenantPage() {
   const [terminalCount, setTerminalCount] = useState("1");
   const [planTier, setPlanTier] = useState("");
   const [price, setPrice] = useState("");
-  const [billing, setBilling] = useState<"MONTHLY" | "ANNUAL" | "INSTALMENTS">("MONTHLY");
+  const [billing, setBilling] = useState<"MONTHLY" | "ANNUAL" | "INSTALMENTS">("ANNUAL");
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -220,7 +220,7 @@ export default function NewTenantPage() {
                   {plans.map((plan) => (
                     <button
                       key={plan.id}
-                      onClick={() => { setPlanTier(plan.tier); if (billing === "INSTALMENTS" && !plan.instalmentCount) setBilling("MONTHLY"); }}
+                      onClick={() => { setPlanTier(plan.tier); if (billing === "INSTALMENTS" && !plan.instalmentCount) setBilling("ANNUAL"); }}
                       className={`rounded-lg border p-3 text-left ${planTier === plan.tier ? "border-amber-500 bg-amber-500/10" : "border-border hover:border-primary-500"}`}
                     >
                       <p className="font-semibold text-foreground">{plan.name}</p>
@@ -248,8 +248,8 @@ export default function NewTenantPage() {
                   <div className="mt-3">
                     <label className="mb-1.5 block text-sm text-secondary-500">How the business pays</label>
                     <select value={billing} onChange={(e) => setBilling(e.target.value as typeof billing)} className="rounded-md border border-border bg-background p-2 text-sm">
-                      <option value="MONTHLY">Monthly - KES {Number(chosen!.priceKes).toLocaleString()} a month</option>
                       <option value="ANNUAL">Yearly - KES {annualOf(chosen!).toLocaleString()} (2 months free)</option>
+                      <option value="MONTHLY">Monthly - KES {Number(chosen!.priceKes).toLocaleString()} a month</option>
                       {chosen!.instalmentCount ? (
                         <option value="INSTALMENTS">Yearly in {chosen!.instalmentCount} instalments - {chosen!.instalmentCount} × KES {Number(chosen!.instalmentKes).toLocaleString()}</option>
                       ) : null}
