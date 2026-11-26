@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Card, CardContent } from "@zaroda/ui";
 
 type Billing = "annual" | "monthly";
 
@@ -48,7 +47,11 @@ export const PRICING_PLANS = [
 
 const kes = (n: number) => "KES " + n.toLocaleString("en-KE");
 
-/** The plans with an Annual / Monthly toggle. "Start free trial" opens sign-up with the plan and billing chosen. */
+const NAVY = "#0f1f45";
+const GOLD = "#d4af37";
+const ORANGE = "#f5820a";
+
+/** The plans with an Annual / Monthly toggle, in fixed brand colours so it looks the same in light and dark mode. "Start free trial" opens sign-up with the plan and billing chosen. */
 export default function PricingSection() {
   const [billing, setBilling] = useState<Billing>("annual");
 
@@ -57,72 +60,86 @@ export default function PricingSection() {
       type="button"
       onClick={() => setBilling(b)}
       aria-pressed={billing === b}
-      className={`rounded-full px-[22px] py-2.5 font-semibold transition-colors ${billing === b ? "bg-primary-600 text-white" : "text-foreground hover:bg-primary-600/10"}`}
+      className="rounded-full px-5 py-2 text-sm font-semibold transition-colors"
+      style={billing === b ? { background: NAVY, color: "#fff" } : { color: NAVY }}
     >
       {label}
     </button>
   );
 
   return (
-    <section className="rounded-2xl bg-surface px-5 py-12">
+    <section className="rounded-2xl px-4 py-10 sm:px-6" style={{ background: "#f3f4f8", color: NAVY }}>
       <div className="mb-8 text-center">
-        <div className="inline-flex rounded-full border border-border bg-background p-1">
+        <div className="inline-flex rounded-full border border-slate-300 bg-white p-1">
           {toggleBtn("annual", "Annual")}
           {toggleBtn("monthly", "Monthly")}
         </div>
-        <p className="mt-2.5 text-secondary-500">
-          Pay yearly and get <b className="text-foreground">2 months free</b> + free setup and onboarding.
+        <p className="mt-2.5 text-sm text-slate-500">
+          Pay yearly and get <b style={{ color: NAVY }}>2 months free</b> + free setup and onboarding.
         </p>
       </div>
 
-      <div className="mx-auto grid max-w-[1200px] gap-5 [grid-template-columns:repeat(auto-fit,minmax(250px,1fr))]">
+      <div className="mx-auto grid max-w-[1200px] gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {PRICING_PLANS.map((p) => {
           const annualOnly = p.monthly === null;
           const showAnnual = billing === "annual" || annualOnly;
           const popular = "popular" in p && p.popular;
           return (
-            <Card key={p.id} className={`flex flex-col rounded-2xl ${popular ? "border-2 border-primary-600 shadow-lg" : ""}`}>
-              <CardContent className="flex flex-1 flex-col p-7">
-                <div className="min-h-[28px]">
-                  {popular && <span className="rounded-full bg-primary-600/10 px-3 py-1 text-sm text-foreground">Most popular</span>}
-                  {showAnnual && !annualOnly && (
-                    <span className={`rounded-full bg-[#d4af37] px-3 py-1 text-sm font-semibold text-[#0b1a3a] ${popular ? "ml-2" : ""}`}>Save 2 months</span>
-                  )}
-                </div>
-                <h3 className="my-2.5 text-[22px] font-bold text-foreground">{p.name}</h3>
+            <div
+              key={p.id}
+              className="flex flex-col rounded-xl bg-white p-5 shadow-sm"
+              style={{ border: popular ? `2px solid ${NAVY}` : "1px solid #e2e5ec" }}
+            >
+              <div className="flex min-h-[24px] flex-wrap gap-1.5">
+                {popular && <span className="whitespace-nowrap rounded-full bg-slate-100 px-2.5 py-0.5 text-xs" style={{ color: NAVY }}>Most popular</span>}
+                {showAnnual && !annualOnly && (
+                  <span className="whitespace-nowrap rounded-full px-2.5 py-0.5 text-xs font-semibold" style={{ background: GOLD, color: NAVY }}>Save 2 months</span>
+                )}
+              </div>
+              <h3 className="mt-2 text-lg font-medium">{p.name}</h3>
 
-                <div className="text-[34px] font-extrabold text-foreground">
-                  {kes(showAnnual ? p.annual : p.monthly!)}
-                  <span className="text-base font-normal text-secondary-500">{showAnnual ? "/year" : "/mo"}</span>
-                </div>
-                <p className="mt-1.5 text-sm text-secondary-500">
-                  {showAnnual
-                    ? annualOnly
-                      ? p.instalments
-                      : `${p.instalments} · or ${kes(p.monthly!)}/mo billed monthly`
-                    : `Pay ${kes(p.annual)}/year and save ${kes(p.monthly! * 12 - p.annual)}`}
-                </p>
+              <div className="mt-3 whitespace-nowrap text-[28px] font-extrabold leading-tight">
+                {kes(showAnnual ? p.annual : p.monthly!)}
+                <span className="text-sm font-normal" style={{ color: ORANGE }}>{showAnnual ? "/year" : "/mo"}</span>
+              </div>
+              <p className="mt-1 text-xs leading-5 text-slate-500">
+                {showAnnual ? (
+                  annualOnly ? (
+                    p.instalments
+                  ) : (
+                    <>
+                      {p.instalments} · or <span style={{ color: ORANGE }}>{kes(p.monthly!)}/mo billed monthly</span>
+                    </>
+                  )
+                ) : (
+                  <>
+                    Pay <span style={{ color: ORANGE }}>{kes(p.annual)}/year</span> and save {kes(p.monthly! * 12 - p.annual)}
+                  </>
+                )}
+              </p>
 
-                <p className="my-4 text-secondary-500">{p.blurb}</p>
-                <ul className="mb-6 space-y-1 leading-8 text-secondary-600">
-                  {[...p.features, "Free 14-day trial"].map((f) => (
-                    <li key={f}>✓ {f}</li>
-                  ))}
-                </ul>
+              <p className="my-3 text-sm leading-6 text-slate-500">{p.blurb}</p>
+              <ul className="mb-5 space-y-1 text-sm leading-7">
+                {[...p.features, "Free 14-day trial"].map((f) => (
+                  <li key={f}>
+                    <span style={{ color: ORANGE }}>✓</span> {f}
+                  </li>
+                ))}
+              </ul>
 
-                <Link
-                  href={`/signup?plan=${p.id}&billing=${showAnnual ? "annual" : "monthly"}`}
-                  className="mt-auto rounded-[10px] bg-primary-600 p-3.5 text-center font-semibold text-white hover:bg-primary-700"
-                >
-                  Start free trial
-                </Link>
-              </CardContent>
-            </Card>
+              <Link
+                href={`/signup?plan=${p.id}&billing=${showAnnual ? "annual" : "monthly"}`}
+                className="mt-auto rounded-lg p-3 text-center text-sm font-semibold text-white hover:opacity-90"
+                style={{ background: NAVY }}
+              >
+                Start free trial
+              </Link>
+            </div>
           );
         })}
       </div>
 
-      <p className="mt-6 text-center text-secondary-500">
+      <p className="mt-6 text-center text-sm text-slate-500">
         Need another till? Add one to any plan for {kes(500)}/mo or {kes(5000)}/year.
       </p>
     </section>
