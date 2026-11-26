@@ -16,6 +16,11 @@ interface Plan {
   maxExtraTills: number;
   billingPeriodDays: number;
   billingCycle?: string;
+  annualPriceKes?: string | null;
+  instalmentCount?: number | null;
+  instalmentKes?: string | null;
+  extraTillKes?: string;
+  extraTillAnnualKes?: string;
   maxDevices: number;
   maxBranches: number;
   active: boolean;
@@ -28,6 +33,8 @@ interface Organization {
     planTier: string;
     planName: string;
     monthlyPriceKes: number;
+    billingChoice?: string;
+    bill?: { amount: number; label: string };
     currentPeriodEnd: string;
     status: "TRIAL" | "ACTIVE" | "GRACE" | "SUSPENDED";
   } | null;
@@ -60,6 +67,11 @@ export default function BillingPage() {
   const [editPrice, setEditPrice] = useState("");
   const [editMin, setEditMin] = useState("");
   const [editExtra, setEditExtra] = useState("0");
+  const [editAnnual, setEditAnnual] = useState("");
+  const [editCount, setEditCount] = useState("");
+  const [editEach, setEditEach] = useState("");
+  const [editTill, setEditTill] = useState("500");
+  const [editTillYear, setEditTillYear] = useState("5000");
   const [planError, setPlanError] = useState<string | null>(null);
   const [savingPlan, setSavingPlan] = useState(false);
 
@@ -111,7 +123,29 @@ export default function BillingPage() {
     setPlanError(null);
     try {
       // A seasonal plan's price is its annual price (billed in term instalments).
-      await apiPatch(`/platform-admin/plans/${editingPlan.id}`, editingPlan.billingCycle === "SEASONAL" ? { priceKes: price, annualPriceKes: price } : { priceKes: price, minPriceKes: min, maxExtraTills: Math.max(0, Math.floor(Number(editExtra) || 0)) });
+      const count = editCount.trim() === "" ? null : Math.floor(Number(editCount));
+      const each = editEach.trim() === "" ? null : Number(editEach);
+      if (editingPlan.billingCycle !== "SEASONAL" && ((count == null) !== (each == null) || (count != null && (count < 2 || !(each! > 0))))) {
+        setPlanError("Give both the number of instalments (2 or more) and each instalment, or leave both empty");
+        setSavingPlan(false);
+        return;
+      }
+      const annual = editAnnual.trim() === "" ? null : Number(editAnnual);
+      await apiPatch(
+        `/platform-admin/plans/${editingPlan.id}`,
+        editingPlan.billingCycle === "SEASONAL"
+          ? { priceKes: price, annualPriceKes: price }
+          : {
+              priceKes: price,
+              minPriceKes: min,
+              maxExtraTills: Math.max(0, Math.floor(Number(editExtra) || 0)),
+              ...(annual && annual > 0 ? { annualPriceKes: annual } : {}),
+              instalmentCount: count,
+              instalmentKes: each,
+              extraTillKes: Math.max(0, Number(editTill) || 0),
+              extraTillAnnualKes: Math.max(0, Number(editTillYear) || 0),
+            },
+      );
       setEditingPlan(null);
       await load();
     } catch (err) {
@@ -162,7 +196,7 @@ export default function BillingPage() {
             <Card className="border-border bg-surface">
               <CardHeader className="border-border"><CardTitle className="text-foreground">Plan pricing</CardTitle></CardHeader>
               <CardContent>
-                <div className="grid gap-3 sm:grid-cols-3">
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                   {plans.map((plan) => (
                     <div key={plan.id} className="rounded-lg border border-border p-4">
                       <div className="flex items-center justify-between">
@@ -174,11 +208,15 @@ export default function BillingPage() {
                         {Number(plan.priceKes).toLocaleString()}
                         <span className="text-xs font-normal text-secondary-500">{plan.billingCycle === "SEASONAL" ? "/year" : `/${plan.billingPeriodDays}d`}</span>
                       </p>
+                      {plan.billingCycle !== "SEASONAL" && plan.annualPriceKes != null && (
+                        <p className="text-sm">KES {Number(plan.annualPriceKes).toLocaleString()} a year{plan.instalmentCount ? ` or ${plan.instalmentCount} × ${Number(plan.instalmentKes).toLocaleString()}` : ""}</p>
+                      )}
+                      {plan.billingCycle === "SEASONAL" && plan.instalmentCount ? <p className="text-sm">{plan.instalmentCount} termly instalments of KES {Number(plan.instalmentKes).toLocaleString()}</p> : null}
                       <p className="mt-1 text-xs text-secondary-500">
-                        {plan.maxDevices} devices{plan.maxExtraTills > 0 ? ` (+${plan.maxExtraTills} extra at the same price)` : ""} · {plan.maxBranches} branches
+                        {plan.maxDevices} devices{plan.maxExtraTills > 0 ? ` (+${plan.maxExtraTills} extra at KES ${Number(plan.extraTillKes ?? 500).toLocaleString()}/mo or ${Number(plan.extraTillAnnualKes ?? 5000).toLocaleString()}/yr)` : ""} · {plan.maxBranches} branches
                       </p>
                       <button
-                        onClick={() => { setEditingPlan(plan); setEditPrice(plan.priceKes); setEditMin(plan.minPriceKes ?? ""); setEditExtra(String(plan.maxExtraTills ?? 0)); setPlanError(null); }}
+                        onClick={() => { setEditingPlan(plan); setEditPrice(plan.priceKes); setEditMin(plan.minPriceKes ?? ""); setEditExtra(String(plan.maxExtraTills ?? 0)); setEditAnnual(plan.annualPriceKes ?? ""); setEditCount(plan.instalmentCount ? String(plan.instalmentCount) : ""); setEditEach(plan.instalmentKes ?? ""); setEditTill(plan.extraTillKes ?? "500"); setEditTillYear(plan.extraTillAnnualKes ?? "5000"); setPlanError(null); }}
                         className="mt-3 text-sm text-amber-400 hover:underline"
                       >
                         Edit price
@@ -201,13 +239,13 @@ export default function BillingPage() {
                         <div>
                           <p className="font-medium">{org.name}</p>
                           <p className="text-xs text-secondary-500">
-                            {org.subscription!.planName} · KES {org.subscription!.monthlyPriceKes.toLocaleString()} a month · billed through {new Date(org.subscription!.currentPeriodEnd).toLocaleDateString()}
+                            {org.subscription!.planName} · KES {(org.subscription!.bill?.amount ?? org.subscription!.monthlyPriceKes).toLocaleString()} {org.subscription!.bill?.label ?? "a month"} · billed through {new Date(org.subscription!.currentPeriodEnd).toLocaleDateString()}
                           </p>
                         </div>
                         <div className="flex items-center gap-3">
                           <Badge variant={STATUS_VARIANT[org.subscription!.status]}>{org.subscription!.status}</Badge>
                           <button
-                            onClick={() => { setPayingOrg(org); setPayAmount(String(org.subscription!.monthlyPriceKes)); }}
+                            onClick={() => { setPayingOrg(org); setPayAmount(String(org.subscription!.bill?.amount ?? org.subscription!.monthlyPriceKes)); }}
                             className="rounded-md bg-amber-500 px-3 py-1.5 text-sm font-semibold text-zinc-950 hover:bg-amber-400"
                           >
                             Record payment
@@ -223,8 +261,24 @@ export default function BillingPage() {
         )}
 
         <Modal open={!!editingPlan} onClose={() => setEditingPlan(null)} title={editingPlan ? `Edit ${editingPlan.name} price` : ""}>
-          <label className="mb-1.5 block text-sm text-secondary-500">Full price (KES / period)</label>
+          <label className="mb-1.5 block text-sm text-secondary-500">{editingPlan?.billingCycle === "SEASONAL" ? "Price a year (KES)" : "Price a month (KES)"}</label>
           <Input type="number" value={editPrice} onChange={(e) => setEditPrice(e.target.value)} />
+          {editingPlan?.billingCycle !== "SEASONAL" && (
+            <>
+              <label className="mb-1.5 mt-3 block text-sm text-secondary-500">Price a year, paid at once (KES)</label>
+              <Input type="number" value={editAnnual} onChange={(e) => setEditAnnual(e.target.value)} />
+          <div className="mt-3 grid grid-cols-2 gap-2">
+            <div>
+              <label className="mb-1.5 block text-sm text-secondary-500">Yearly instalments</label>
+              <Input type="number" min={2} value={editCount} onChange={(e) => setEditCount(e.target.value)} placeholder="None" />
+            </div>
+            <div>
+              <label className="mb-1.5 block text-sm text-secondary-500">Each instalment (KES)</label>
+              <Input type="number" value={editEach} onChange={(e) => setEditEach(e.target.value)} />
+            </div>
+          </div>
+            </>
+          )}
           {editingPlan?.billingCycle !== "SEASONAL" && (
             <>
               <label className="mb-1.5 mt-3 block text-sm text-secondary-500">Lowest price a team member may agree (KES, optional)</label>
@@ -233,8 +287,19 @@ export default function BillingPage() {
                 With a lowest price, the team member onboarding a business chooses its monthly price between the two (for self-registered
                 businesses, you set it on the business&apos;s page). Prices already agreed stay as they are.
               </p>
-              <label className="mb-1.5 mt-3 block text-sm text-secondary-500">Extra tills a business may add (each at its own till price)</label>
+              <label className="mb-1.5 mt-3 block text-sm text-secondary-500">Extra tills a business may add</label>
               <Input type="number" min={0} value={editExtra} onChange={(e) => setEditExtra(e.target.value)} />
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                <div>
+                  <label className="mb-1.5 block text-sm text-secondary-500">Extra till a month (KES)</label>
+                  <Input type="number" value={editTill} onChange={(e) => setEditTill(e.target.value)} />
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-sm text-secondary-500">Extra till a year (KES)</label>
+                  <Input type="number" value={editTillYear} onChange={(e) => setEditTillYear(e.target.value)} />
+                </div>
+              </div>
+              <p className="mt-1 text-xs text-secondary-500">A business on an old agreed price pays its own till price for an extra till.</p>
             </>
           )}
           {planError && <p className="mt-2 text-sm text-error-600">{planError}</p>}

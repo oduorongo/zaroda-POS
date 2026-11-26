@@ -34,6 +34,11 @@ export class SetExtraTillsDto {
   extraTills!: number;
 }
 
+export class SetBillingChoiceDto {
+  @IsIn(['MONTHLY', 'ANNUAL', 'INSTALMENTS'])
+  billingChoice!: 'MONTHLY' | 'ANNUAL' | 'INSTALMENTS';
+}
+
 export class ChangePlanDto {
   @IsString()
   @MaxLength(40)

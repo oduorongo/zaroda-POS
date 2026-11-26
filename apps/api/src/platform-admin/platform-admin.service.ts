@@ -10,7 +10,7 @@ import { OnboardTenantDto } from './dto/onboard-tenant.dto';
 import { RecordPaymentDto } from './dto/record-payment.dto';
 import { SetOnlineStoreAddonDto, UpdateOrganizationDto } from './dto/update-organization.dto';
 import { DEFAULT_COMMISSION_RATE } from '../online-store/online-store.constants';
-import { effectiveStatus, FREE_PLAN_UNTIL, isFreePlan, needsDeviceSubscription, ONLINE_ONLY_TIER, monthlyPrice, priceProblem, tillPrice } from './subscriptions.util';
+import { effectiveStatus, FREE_PLAN_UNTIL, isFreePlan, needsDeviceSubscription, ONLINE_ONLY_TIER, monthlyPrice, priceProblem, tillPrice, billFor, periodAfterBill, monthlyEquivalent, extraTillPrice, choiceProblem, type BillingChoice } from './subscriptions.util';
 
 const SALT_ROUNDS = 10;
 
@@ -100,7 +100,7 @@ export class PlatformAdminService {
           ? {
               planTier: sub.plan.tier,
               planName: sub.plan.name,
-              monthlyPriceKes: monthlyPrice(sub),
+              monthlyPriceKes: monthlyPrice(sub), billingChoice: sub.billingChoice, bill: billFor(sub),
               currentPeriodEnd: sub.currentPeriodEnd,
               status: effectiveStatus(sub),
             }
@@ -147,7 +147,7 @@ export class PlatformAdminService {
       orgUsers,
       onlineStore: toPlatformOnlineStoreView(onlineStore),
       subscription: subscription
-        ? { ...subscription, monthlyPriceKes: monthlyPrice(subscription), tillPriceKes: tillPrice(subscription), status: effectiveStatus(subscription) }
+        ? { ...subscription, monthlyPriceKes: monthlyPrice(subscription), tillPriceKes: tillPrice(subscription), extraTillPriceKes: extraTillPrice(subscription), bill: billFor(subscription), status: effectiveStatus(subscription) }
         : null,
     };
   }
@@ -331,8 +331,8 @@ export class PlatformAdminService {
     if (subscription.plan.billingCycle === 'SEASONAL') throw new BadRequestException('This business is on a seasonal plan: record the payment against its instalment (Seasonal billing)');
     if (isFreePlan(subscription.plan)) throw new BadRequestException(`This business is on the free ${subscription.plan.name} plan: there is nothing to pay`);
 
-    const base = subscription.currentPeriodEnd > new Date() ? subscription.currentPeriodEnd : new Date();
-    const newPeriodEnd = new Date(base.getTime() + subscription.plan.billingPeriodDays * 24 * 60 * 60 * 1000);
+    // One bill for the way the business pays: a month, a year, or one instalment of the year.
+    const newPeriodEnd = periodAfterBill(subscription.currentPeriodEnd, billFor(subscription));
 
     return this.prisma.$transaction(async (tx) => {
       const payment = await tx.subscriptionPayment.create({
@@ -453,7 +453,7 @@ export class PlatformAdminService {
     return { before, after: tillPrice(updated), subscription: { ...updated, monthlyPriceKes: monthlyPrice(updated), tillPriceKes: tillPrice(updated), status: effectiveStatus(updated) } };
   }
 
-  /** Adds or removes the extra till (Basic: one, at the agreed price). Removing it needs the business to be down to its plan's tills first. */
+  /** Adds or removes extra tills (plan.extraTillKes each; an old agreed price keeps paying its till price). Removing it needs the business to be down to its plan's tills first. */
   async setExtraTills(organizationId: string, extraTills: number) {
     const subscription = await this.prisma.subscription.findUnique({ where: { organizationId }, include: { plan: true } });
     if (!subscription) throw new NotFoundException('This business has no device plan');
@@ -471,6 +471,17 @@ export class PlatformAdminService {
     const before = subscription.extraTills;
     const updated = await this.prisma.subscription.update({ where: { organizationId }, data: { extraTills }, include: { plan: true } });
     return { before, after: updated.extraTills, subscription: { ...updated, monthlyPriceKes: monthlyPrice(updated), tillPriceKes: tillPrice(updated), status: effectiveStatus(updated) } };
+  }
+
+  /** How a business pays: monthly, yearly, or the year in instalments. Changing it is switching, so an old agreed price gives way to the plan's prices. */
+  async setBillingChoice(organizationId: string, choice: BillingChoice) {
+    const subscription = await this.prisma.subscription.findUnique({ where: { organizationId }, include: { plan: true } });
+    if (!subscription) throw new NotFoundException('This business has no device plan');
+    const problem = choiceProblem(subscription.plan, choice);
+    if (problem) throw new BadRequestException(problem);
+    if (subscription.billingChoice === choice) return { before: choice, after: choice, subscription: { ...subscription, bill: billFor(subscription), status: effectiveStatus(subscription) } };
+    const updated = await this.prisma.subscription.update({ where: { organizationId }, data: { billingChoice: choice, agreedPriceKes: null }, include: { plan: true } });
+    return { before: subscription.billingChoice, after: choice, subscription: { ...updated, monthlyPriceKes: monthlyPrice(updated), bill: billFor(updated), status: effectiveStatus(updated) } };
   }
 
   async changePlan(organizationId: string, planTier: string) {
@@ -494,7 +505,12 @@ export class PlatformAdminService {
     // An agreed price belongs to the old plan; the new plan starts at its own price until one is agreed again. Extra tills go if the new plan has none.
     const updated = await this.prisma.subscription.update({
       where: { organizationId },
-      data: { ...data, agreedPriceKes: null, extraTills: Math.min(subscription.extraTills, plan.maxExtraTills) },
+      data: {
+        ...data,
+        agreedPriceKes: null,
+        extraTills: Math.min(subscription.extraTills, plan.maxExtraTills),
+        billingChoice: choiceProblem(plan, subscription.billingChoice as BillingChoice) ? 'MONTHLY' : subscription.billingChoice,
+      },
       include: { plan: true },
     });
     return { from: subscription.plan.tier, to: plan.tier, subscription: { ...updated, status: effectiveStatus(updated) } };
@@ -548,8 +564,7 @@ export class PlatformAdminService {
       // MRR counts paying (non-trial), non-suspended subscriptions only -
       // a trial or a suspended tenant contributes no recurring revenue.
       if (!sub.isTrial && status !== 'SUSPENDED' && status !== 'READ_ONLY') {
-        const monthlyEquivalent = (monthlyPrice(sub) / sub.plan.billingPeriodDays) * 30;
-        mrrKes += monthlyEquivalent;
+        mrrKes += monthlyEquivalent(sub);
       }
     }
 

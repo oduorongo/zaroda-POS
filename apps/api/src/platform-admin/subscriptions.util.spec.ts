@@ -1,4 +1,4 @@
-import { effectiveStatus, FREE_PLAN_UNTIL, isFreePlan, monthlyPrice, needsDeviceSubscription, priceProblem, tillLimit, tillPrice } from './subscriptions.util';
+import { billFor, choiceProblem, effectiveStatus, extraTillPrice, FREE_PLAN_UNTIL, isFreePlan, monthlyEquivalent, monthlyPrice, needsDeviceSubscription, periodAfterBill, priceProblem, tillLimit, tillPrice } from './subscriptions.util';
 
 describe('needsDeviceSubscription', () => {
   it('gives shops, restaurants, pharmacies and salons the device subscription', () => {
@@ -46,9 +46,9 @@ describe('agreed monthly price', () => {
 
 describe('extra till', () => {
   const plan = { name: 'Basic', priceKes: '2500.00', minPriceKes: '1000.00', maxDevices: 1 };
-  it('costs the same as the agreed till price', () => {
+  it('costs the agreed till price for a business on an old agreed price, else the plan extra till price', () => {
     expect(monthlyPrice({ agreedPriceKes: '1500.00', extraTills: 1, plan })).toBe(3000);
-    expect(monthlyPrice({ agreedPriceKes: null, extraTills: 1, plan })).toBe(5000);
+    expect(monthlyPrice({ agreedPriceKes: null, extraTills: 1, plan })).toBe(3000);
     expect(monthlyPrice({ agreedPriceKes: '1500.00', extraTills: 0, plan })).toBe(1500);
   });
   it('raises the till limit', () => {
@@ -57,5 +57,42 @@ describe('extra till', () => {
   });
   it('one till still costs the till price', () => {
     expect(tillPrice({ agreedPriceKes: '1200.00', plan })).toBe(1200);
+  });
+});
+
+describe('billing choice (new pricing)', () => {
+  const basic = { name: 'Basic', priceKes: '1000', billingPeriodDays: 30, annualPriceKes: '10000', instalmentCount: 3, instalmentKes: '3500', extraTillKes: '500', extraTillAnnualKes: '5000' };
+  const business = { ...basic, name: 'Business', priceKes: '7500', annualPriceKes: '75000', instalmentCount: 4, instalmentKes: '19500' };
+
+  it('bills a month, a year, or one instalment, with extra tills at the plan price', () => {
+    expect(billFor({ plan: basic, extraTills: 1 })).toMatchObject({ choice: 'MONTHLY', amount: 1500, days: 30 });
+    expect(billFor({ plan: basic, extraTills: 1, billingChoice: 'ANNUAL' })).toMatchObject({ amount: 15000, months: 12 });
+    expect(billFor({ plan: basic, billingChoice: 'INSTALMENTS' })).toMatchObject({ amount: 3500, months: 4 });
+    expect(billFor({ plan: business, extraTills: 2, billingChoice: 'INSTALMENTS' })).toMatchObject({ amount: 22000, months: 3 });
+  });
+
+  it('keeps a business on its old agreed price, extra tills included, while it pays monthly', () => {
+    const standard = { ...basic, name: 'Standard', priceKes: '3500' };
+    expect(monthlyPrice({ plan: standard, agreedPriceKes: '6000.00' })).toBe(6000);
+    expect(monthlyPrice({ plan: basic, agreedPriceKes: '2000', extraTills: 1 })).toBe(4000);
+    expect(extraTillPrice({ plan: basic })).toBe(500);
+  });
+
+  it('moves the paid-up date by the bill', () => {
+    const now = new Date('2026-11-25T10:00:00Z');
+    expect(periodAfterBill(new Date('2026-12-01T00:00:00Z'), { months: 4 }, now).toISOString().slice(0, 10)).toBe('2027-04-01');
+    expect(periodAfterBill(new Date('2026-10-01T00:00:00Z'), { days: 30 }, now).toISOString().slice(0, 10)).toBe('2026-12-25');
+  });
+
+  it('spreads yearly and instalment plans over months for MRR', () => {
+    expect(monthlyEquivalent({ plan: basic, billingChoice: 'ANNUAL' })).toBeCloseTo(833.33, 2);
+    expect(monthlyEquivalent({ plan: basic, billingChoice: 'INSTALMENTS' })).toBe(875);
+  });
+
+  it('only offers instalments where the plan has them, and nothing but monthly on a free plan', () => {
+    expect(choiceProblem({ ...basic, instalmentCount: null }, 'INSTALMENTS')).toMatch(/no instalment/);
+    expect(choiceProblem({ name: 'Online', priceKes: '0' }, 'ANNUAL')).toMatch(/free/);
+    expect(choiceProblem({ ...basic, billingCycle: 'SEASONAL' }, 'MONTHLY')).toMatch(/seasonal/);
+    expect(choiceProblem(basic, 'ANNUAL')).toBeNull();
   });
 });

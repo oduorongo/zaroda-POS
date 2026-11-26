@@ -49,9 +49,63 @@ export function tillPrice(sub: { agreedPriceKes?: unknown; plan: { priceKes: unk
   return sub.agreedPriceKes != null ? Number(sub.agreedPriceKes) : Number(sub.plan.priceKes);
 }
 
-/** What a business pays a month: its till price, plus the same again for each extra till. */
-export function monthlyPrice(sub: { agreedPriceKes?: unknown; extraTills?: number | null; plan: { priceKes: unknown } }): number {
-  return tillPrice(sub) * (1 + (sub.extraTills ?? 0));
+export type BillingChoice = 'MONTHLY' | 'ANNUAL' | 'INSTALMENTS';
+export const BILLING_CHOICES: readonly BillingChoice[] = ['MONTHLY', 'ANNUAL', 'INSTALMENTS'];
+
+interface PricedSub {
+  agreedPriceKes?: unknown;
+  extraTills?: number | null;
+  billingChoice?: string | null;
+  plan: { priceKes: unknown; billingPeriodDays?: number; annualPriceKes?: unknown; instalmentCount?: number | null; instalmentKes?: unknown; extraTillKes?: unknown; extraTillAnnualKes?: unknown };
+}
+
+/** One extra till a month. A business keeping an old agreed price pays its till price for each (as it always has); others pay the plan's extra till price. */
+export function extraTillPrice(sub: PricedSub): number {
+  return sub.agreedPriceKes != null ? tillPrice(sub) : Number(sub.plan.extraTillKes ?? 500);
+}
+
+/** What a business pays a month on monthly billing: its plan (or agreed) price plus its extra tills. */
+export function monthlyPrice(sub: PricedSub): number {
+  return tillPrice(sub) + (sub.extraTills ?? 0) * extraTillPrice(sub);
+}
+
+/** Whether a plan can be paid this way: yearly needs a paid plan, instalments a plan with an instalment option. */
+export function choiceProblem(plan: { name: string; priceKes: unknown; billingCycle?: string; instalmentCount?: number | null }, choice: BillingChoice): string | null {
+  if (plan.billingCycle === 'SEASONAL') return 'A seasonal plan is paid by school term (Seasonal billing)';
+  if (choice !== 'MONTHLY' && isFreePlan(plan)) return `The ${plan.name} plan is free`;
+  if (choice === 'INSTALMENTS' && !plan.instalmentCount) return `The ${plan.name} plan has no instalment option`;
+  return null;
+}
+
+/** One bill for the way the business pays: its amount and how far it moves the paid-up date (days for monthly, months otherwise). */
+export function billFor(sub: PricedSub): { choice: BillingChoice; amount: number; days?: number; months?: number; label: string } {
+  const extras = sub.extraTills ?? 0;
+  const choice = (BILLING_CHOICES as readonly string[]).includes(sub.billingChoice ?? '') ? (sub.billingChoice as BillingChoice) : 'MONTHLY';
+  const annual = sub.plan.annualPriceKes != null ? Number(sub.plan.annualPriceKes) : Number(sub.plan.priceKes) * 12;
+  const tillYear = Number(sub.plan.extraTillAnnualKes ?? 5000);
+  if (choice === 'ANNUAL') return { choice, amount: Math.round(annual + extras * tillYear), months: 12, label: 'a year' };
+  const n = sub.plan.instalmentCount ?? 0;
+  if (choice === 'INSTALMENTS' && n > 0) {
+    const each = sub.plan.instalmentKes != null ? Number(sub.plan.instalmentKes) : Math.round(annual / n);
+    return { choice, amount: Math.round(each + (extras * tillYear) / n), months: Math.round(12 / n), label: `each of ${n} instalments` };
+  }
+  return { choice: 'MONTHLY', amount: monthlyPrice(sub), days: sub.plan.billingPeriodDays ?? 30, label: 'a month' };
+}
+
+/** The paid-up date after paying one bill: from the current end while still paid up, else from now. */
+export function periodAfterBill(currentEnd: Date, bill: { days?: number; months?: number }, now: Date = new Date()): Date {
+  const from = new Date(Math.max(currentEnd.getTime(), now.getTime()));
+  if (bill.months) {
+    from.setUTCMonth(from.getUTCMonth() + bill.months);
+    return from;
+  }
+  return new Date(from.getTime() + (bill.days ?? 30) * 86_400_000);
+}
+
+/** Recurring revenue a month from this subscription, whichever way it pays. */
+export function monthlyEquivalent(sub: PricedSub): number {
+  const bill = billFor(sub);
+  return bill.months ? bill.amount / bill.months : (bill.amount / (bill.days ?? 30)) * 30;
 }
 
 /** How many tills the business may have: its plan's, plus the extra tills it pays for. */

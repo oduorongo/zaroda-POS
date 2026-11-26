@@ -6,6 +6,7 @@ import { apiGet, apiPatch, ApiError } from "../../../lib/api";
 import { ChangePlan } from "./change-plan";
 import { AgreedPrice } from "./agreed-price";
 import { ExtraTill } from "./extra-till";
+import { BillingChoice } from "./billing-choice";
 import { getSession, type Session } from "../../../lib/auth";
 import { Nav } from "../../../components/nav";
 import { Badge } from "@zaroda/ui";
@@ -40,7 +41,11 @@ interface Subscription {
   isTrial: boolean;
   manuallySuspended: boolean;
   status: "TRIAL" | "ACTIVE" | "GRACE" | "SUSPENDED";
-  plan: { name: string; tier: string; priceKes: string; minPriceKes: string | null; maxDevices: number; maxExtraTills: number };
+  plan: { name: string; tier: string; priceKes: string; minPriceKes: string | null; maxDevices: number; maxExtraTills: number; billingCycle?: string; annualPriceKes?: string | null; instalmentCount?: number | null; instalmentKes?: string | null };
+  billingChoice: string;
+  agreedPriceKes: string | null;
+  extraTillPriceKes: number;
+  bill?: { amount: number; label: string };
   /** The price this business pays a month: its till price for every till, extra till included. */
   monthlyPriceKes: number;
   /** One till a month (agreed price, else the plan's). */
@@ -388,7 +393,7 @@ export default function OrganizationDetailPage() {
                       <p>KES {org.subscription.monthlyPriceKes.toLocaleString()}</p>
                       {org.subscription.extraTills > 0 && (
                         <p className="text-xs text-secondary-500">
-                          {org.subscription.plan.maxDevices + org.subscription.extraTills} tills × KES {org.subscription.tillPriceKes.toLocaleString()}
+                          {org.subscription.plan.maxDevices} × KES {org.subscription.tillPriceKes.toLocaleString()} + {org.subscription.extraTills} extra × KES {org.subscription.extraTillPriceKes.toLocaleString()}
                         </p>
                       )}
                     </div>
@@ -412,7 +417,8 @@ export default function OrganizationDetailPage() {
                     onboardedByTeam={!!org.salesAgentId}
                     onChanged={load}
                   />
-                  <ExtraTill organizationId={org.id} plan={org.subscription.plan} extraTills={org.subscription.extraTills} tillPriceKes={org.subscription.tillPriceKes} onChanged={load} />
+                  <ExtraTill organizationId={org.id} plan={org.subscription.plan} extraTills={org.subscription.extraTills} tillPriceKes={org.subscription.extraTillPriceKes} onChanged={load} />
+                  <BillingChoice organizationId={org.id} plan={org.subscription.plan} choice={org.subscription.billingChoice} bill={org.subscription.bill} hasAgreedPrice={org.subscription.agreedPriceKes != null} onChanged={load} />
                   <ChangePlan organizationId={org.id} currentTier={org.subscription.plan.tier} onChanged={load} />
 
                   {org.subscription.payments.length > 0 && (

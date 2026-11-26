@@ -1,7 +1,7 @@
 import { IsBoolean, IsIn, IsInt, IsNumber, IsOptional, IsPositive, IsString, MaxLength, Min, MinLength } from 'class-validator';
 import { PartialType } from '@nestjs/mapped-types';
 
-const TIERS = ['ONLINE_ONLY', 'BASIC', 'STANDARD', 'PREMIUM', 'SEASONAL'] as const;
+const TIERS = ['ONLINE_ONLY', 'BASIC', 'STANDARD', 'BUSINESS', 'PREMIUM', 'SEASONAL'] as const;
 
 export class CreatePlanDto {
   @IsIn(TIERS)
@@ -50,6 +50,27 @@ export class CreatePlanDto {
   @IsPositive()
   @IsOptional()
   annualPriceKes?: number;
+
+  /** Paying the year in instalments: how many (2-12) and each one. Leave out for no instalment option. */
+  @IsInt()
+  @Min(2)
+  @IsOptional()
+  instalmentCount?: number | null;
+
+  @IsPositive()
+  @IsOptional()
+  instalmentKes?: number | null;
+
+  /** An extra till on this plan, a month and a year. */
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  extraTillKes?: number;
+
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  extraTillAnnualKes?: number;
 }
 
 export class UpdatePlanDto extends PartialType(CreatePlanDto) {

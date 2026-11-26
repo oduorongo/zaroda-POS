@@ -1,5 +1,14 @@
 # Changelog
 
+## New plan pricing (2026-11-25)
+
+- Plans: Basic KES 1,000 a month / 10,000 a year / 3 x 3,500 (1 device, 1 branch); Standard 3,500 / 35,000 / 3 x 12,000 (3 devices); new Business 7,500 / 75,000 / 4 x 19,500 (10 devices, 3 branches); School Supplier 12,000 a year in 2 termly instalments of 6,000 (2 devices). Extra till KES 500 a month or 5,000 a year on any plan.
+- Billing choice per business (monthly, yearly, or yearly in instalments): set on the business's page in platform admin; a payment moves the paid-up date by one month, one year or one instalment. MRR counts each the same way.
+- Paying Basic and Standard businesses keep what they pay now (their price is kept as their agreed price) until they switch plan or billing. Trials get the new prices. Premium businesses with up to 3 branches move to Business; Premium comes off sale (larger Premium businesses stay on it).
+- School Supplier: half in Term 1, half by Term 2; next school year's untouched instalments are re-cut into the two halves, this year's stay as they are.
+- Website: new pricing section (Annual/Monthly toggle); Start free trial opens sign-up with the plan and billing, and the trial starts on that plan.
+- DB step BEFORE merge: prisma migrate deploy (20270120100000_new_plan_pricing). No new tables, so no apply-rls.
+
 ## Zaroda Shamba billing: plan payments, SMS credits, payout fees, commission (2026-11-25)
 
 - Plan & billing (/shamba/plan, owners and farm managers, works while a plan has lapsed): choose a plan monthly or yearly and pay by M-Pesa through ZARODA's Tuma account (Build's flow: callback first, "I have paid - check" as backup). A plan the farm does not fit is refused with what does not fit; Estate is by quote; the free plan is switched to at once. Paying early adds the period on to the current end.
