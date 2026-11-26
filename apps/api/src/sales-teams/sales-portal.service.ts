@@ -9,6 +9,9 @@ import { CreateShopRiderDto } from '../riders/dto/rider.dto';
 import { RidersService } from '../riders/riders.service';
 import { AddMemberDto, OnboardTenantByAgentDto } from './dto/sales-portal.dto';
 import type { AuthenticatedAgent } from './sales-agent-auth';
+
+/** School suppliers and uniform makers go on the School Supplier (seasonal) plan. */
+const SCHOOL_TYPES = ['SCHOOL_SUPPLIER', 'UNIFORM_MAKER'];
 import { SalesTeamsService, toAgentView } from './sales-teams.service';
 
 const TX_OPTIONS = { timeout: 15_000, maxWait: 15_000 };
@@ -100,13 +103,22 @@ export class SalesPortalService {
   }
 
   async onboardTenant(agent: AuthenticatedAgent, dto: OnboardTenantByAgentDto) {
-    if (needsDeviceSubscription(dto.industryType) && dto.monthlyPriceKes == null) {
-      throw new BadRequestException('Choose the monthly price agreed with the business');
+    const school = SCHOOL_TYPES.includes(dto.industryType);
+    const planTier = school ? 'SEASONAL' : dto.planTier ?? 'BASIC';
+    if (needsDeviceSubscription(dto.industryType) && !school && dto.monthlyPriceKes == null) {
+      const plan = await this.prisma.plan.findUnique({ where: { tier: planTier }, select: { priceKes: true, minPriceKes: true } });
+      if (plan?.minPriceKes != null && Number(plan.minPriceKes) < Number(plan.priceKes)) throw new BadRequestException('Choose the monthly price agreed with the business');
     }
     const generated = !dto.ownerPassword;
     const ownerPassword = dto.ownerPassword ?? generateTempPassword();
     const result = await this.platformAdmin.onboardTenant(
-      { ...dto, ownerPassword, planTier: 'BASIC', terminalCount: 1 + (dto.extraTills ?? 0) } as OnboardTenantDto,
+      {
+        ...dto,
+        ownerPassword,
+        planTier,
+        terminalCount: 1 + (school ? 0 : dto.extraTills ?? 0),
+        ...(school ? { extraTills: 0, monthlyPriceKes: undefined, billingChoice: undefined } : {}),
+      } as OnboardTenantDto,
       { attribution: { salesTeamId: agent.teamId, salesAgentId: agent.agentId }, trial: true },
     );
     return {

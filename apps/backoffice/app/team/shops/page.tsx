@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { Badge, Button, EmptyState, LoadingState, PasswordInput } from "@zaroda/ui";
 import { ApiError } from "../../../lib/api";
 import { TeamShell } from "../../../components/team-shell";
-import { basicPriceRange, teamGet, teamPost, type TeamMe, type TeamShop } from "../../../lib/team-api";
+import { teamGet, teamPlans, teamPost, type TeamMe, type TeamPlan, type TeamShop } from "../../../lib/team-api";
 
 const STATUS: Record<NonNullable<TeamShop["subscription"]>["status"], { label: string; variant: "success" | "warning" | "error" | "neutral" }> = {
   TRIAL: { label: "On free trial", variant: "warning" },
@@ -24,6 +24,9 @@ const INDUSTRIES = [
 
 /** Rental landlords have no tills, so no monthly device price. */
 const NO_DEVICE_PLAN = new Set(["RENTAL"]);
+/** School suppliers and uniform makers go on the School Supplier plan (yearly, in termly instalments). */
+const SCHOOL_TYPES = new Set(["SCHOOL_SUPPLIER", "UNIFORM_MAKER"]);
+type Billing = "MONTHLY" | "ANNUAL" | "INSTALMENTS";
 const kes = (n: number) => `KES ${n.toLocaleString("en-KE")}`;
 
 const inputClass = "mt-1 w-full rounded-md border border-border bg-background p-2";
@@ -41,9 +44,11 @@ function ShopsBody({ me }: { me: TeamMe }) {
   const [branchName, setBranchName] = useState("");
   const [county, setCounty] = useState("");
   const [subCounty, setSubCounty] = useState("");
-  const [range, setRange] = useState<{ min: number; max: number; extraTills: number } | null>(null);
+  const [plans, setPlans] = useState<TeamPlan[]>([]);
+  const [planTier, setPlanTier] = useState("BASIC");
+  const [billing, setBilling] = useState<Billing>("MONTHLY");
   const [price, setPrice] = useState("");
-  const [secondTill, setSecondTill] = useState(false);
+  const [extraTills, setExtraTills] = useState(0);
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [created, setCreated] = useState<{ name: string; email: string; password: string | null } | null>(null);
@@ -58,12 +63,26 @@ function ShopsBody({ me }: { me: TeamMe }) {
 
   useEffect(() => {
     void load();
-    basicPriceRange().then(setRange, () => setRange(null));
+    teamPlans().then(setPlans, () => setPlans([]));
   }, []);
 
-  const needsPrice = !NO_DEVICE_PLAN.has(industryType);
+  const school = SCHOOL_TYPES.has(industryType);
+  const picksPlan = !NO_DEVICE_PLAN.has(industryType) && !school;
+  const shopPlans = plans.filter((p) => ["BASIC", "STANDARD", "BUSINESS"].includes(p.tier));
+  const plan = shopPlans.find((p) => p.tier === planTier);
+  const seasonal = plans.find((p) => p.billingCycle === "SEASONAL");
+  const ranged = picksPlan && !!plan && plan.minPriceKes != null && Number(plan.minPriceKes) < Number(plan.priceKes);
   const priceNum = Number(price);
-  const priceOk = !needsPrice || (price !== "" && Number.isInteger(priceNum) && (!range || (priceNum >= range.min && priceNum <= range.max)));
+  const priceOk = !ranged || billing !== "MONTHLY" || (price !== "" && Number.isInteger(priceNum) && priceNum >= Number(plan!.minPriceKes) && priceNum <= Number(plan!.priceKes));
+  const annualOf = (p: TeamPlan) => Number(p.annualPriceKes ?? Number(p.priceKes) * 12);
+  const bill =
+    !picksPlan || !plan
+      ? null
+      : billing === "ANNUAL"
+        ? `${kes(annualOf(plan) + extraTills * Number(plan.extraTillAnnualKes))} a year`
+        : billing === "INSTALMENTS" && plan.instalmentCount
+          ? `${plan.instalmentCount} × ${kes(Math.round(Number(plan.instalmentKes) + (extraTills * Number(plan.extraTillAnnualKes)) / plan.instalmentCount))}`
+          : `${kes((ranged && price ? priceNum : Number(plan.priceKes)) + extraTills * Number(plan.extraTillKes))} a month`;
 
   async function onboard(e: React.FormEvent) {
     e.preventDefault();
@@ -79,8 +98,9 @@ function ShopsBody({ me }: { me: TeamMe }) {
         branchName: branchName.trim() || organizationName.trim(),
         ...(county.trim() ? { county: county.trim() } : {}),
         ...(subCounty.trim() ? { subCounty: subCounty.trim() } : {}),
-        ...(needsPrice ? { monthlyPriceKes: priceNum } : {}),
-        ...(needsPrice && secondTill ? { extraTills: 1 } : {}),
+        ...(picksPlan ? { planTier, billingChoice: billing } : {}),
+        ...(ranged && billing === "MONTHLY" ? { monthlyPriceKes: priceNum } : {}),
+        ...(picksPlan && extraTills > 0 ? { extraTills } : {}),
       });
       setCreated({ name: organizationName.trim(), email: result.ownerEmail, password: result.temporaryPassword ?? null });
       setShowForm(false);
@@ -92,7 +112,9 @@ function ShopsBody({ me }: { me: TeamMe }) {
       setCounty("");
       setSubCounty("");
       setPrice("");
-      setSecondTill(false);
+      setExtraTills(0);
+      setBilling("MONTHLY");
+      setPlanTier("BASIC");
       await load();
     } catch (err) {
       setFormError(err instanceof ApiError ? err.message : "Could not sign the shop up.");
@@ -171,7 +193,44 @@ function ShopsBody({ me }: { me: TeamMe }) {
               Sub-county / town
               <input className={inputClass} value={subCounty} onChange={(e) => setSubCounty(e.target.value)} />
             </label>
-            {needsPrice && (
+            {school && seasonal && (
+              <p className="text-sm sm:col-span-2">
+                {seasonal.name} plan: {kes(Number(seasonal.annualPriceKes ?? seasonal.priceKes))} a year
+                {seasonal.instalmentCount ? `, or ${seasonal.instalmentCount} termly instalments of ${kes(Number(seasonal.instalmentKes))}` : ""}.
+              </p>
+            )}
+            {picksPlan && (
+              <label className="text-sm">
+                Plan
+                <select
+                  className={inputClass}
+                  value={planTier}
+                  onChange={(e) => {
+                    const next = shopPlans.find((p) => p.tier === e.target.value);
+                    setPlanTier(e.target.value);
+                    setExtraTills(0);
+                    if (billing === "INSTALMENTS" && !next?.instalmentCount) setBilling("MONTHLY");
+                  }}
+                >
+                  {shopPlans.map((p) => (
+                    <option key={p.tier} value={p.tier}>
+                      {p.name} - {kes(Number(p.priceKes))}/mo ({p.maxDevices} till{p.maxDevices === 1 ? "" : "s"}, {p.maxBranches} branch{p.maxBranches === 1 ? "" : "es"})
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+            {picksPlan && plan && (
+              <label className="text-sm">
+                How the shop pays after the trial
+                <select className={inputClass} value={billing} onChange={(e) => setBilling(e.target.value as Billing)}>
+                  <option value="MONTHLY">Monthly - {kes(Number(plan.priceKes))} a month</option>
+                  <option value="ANNUAL">Yearly - {kes(annualOf(plan))} (2 months free)</option>
+                  {plan.instalmentCount ? <option value="INSTALMENTS">Yearly in {plan.instalmentCount} instalments of {kes(Number(plan.instalmentKes))}</option> : null}
+                </select>
+              </label>
+            )}
+            {ranged && billing === "MONTHLY" && (
               <label className="text-sm">
                 Monthly price agreed with the owner (KES per till)
                 <input
@@ -179,31 +238,36 @@ function ShopsBody({ me }: { me: TeamMe }) {
                   type="number"
                   inputMode="numeric"
                   step={50}
-                  min={range?.min}
-                  max={range?.max}
-                  placeholder={range ? `${range.min} - ${range.max}` : ""}
+                  min={Number(plan!.minPriceKes)}
+                  max={Number(plan!.priceKes)}
+                  placeholder={`${Number(plan!.minPriceKes)} - ${Number(plan!.priceKes)}`}
                   className={inputClass}
                   value={price}
                   onChange={(e) => setPrice(e.target.value)}
                 />
-                <span className="mt-1 block text-xs text-secondary-500">
-                  {range ? `Anything from ${kes(range.min)} to ${kes(range.max)} a month. ` : ""}Choose what the business can afford: a small kiosk can start low.
-                  ZARODA bills this price after the free trial.
-                </span>
               </label>
             )}
-            {needsPrice && !!range?.extraTills && (
-              <label className="flex items-start gap-2 text-sm sm:col-span-2">
-                <input type="checkbox" className="mt-1" checked={secondTill} onChange={(e) => setSecondTill(e.target.checked)} />
-                <span>
-                  Add a second till at the same price{priceOk && price ? ` (+${kes(priceNum)}, ${kes(priceNum * 2)} a month in all)` : ""}. A shop can also ask ZARODA
-                  for it later.
-                </span>
+            {picksPlan && plan && plan.maxExtraTills > 0 && (
+              <label className="text-sm">
+                Extra tills ({kes(Number(plan.extraTillKes))} a month or {kes(Number(plan.extraTillAnnualKes))} a year each)
+                <input
+                  type="number"
+                  min={0}
+                  max={plan.maxExtraTills}
+                  className={inputClass}
+                  value={extraTills}
+                  onChange={(e) => setExtraTills(Math.max(0, Math.min(plan.maxExtraTills, Math.floor(Number(e.target.value) || 0))))}
+                />
               </label>
+            )}
+            {bill && (
+              <p className="text-sm sm:col-span-2">
+                After the free trial the shop pays <strong>{bill}</strong>.
+              </p>
             )}
           </div>
           <p className="text-xs text-secondary-500">
-            The shop is credited to you for good once it is signed up. It starts on a 14-day free trial; your bonus comes after it pays its first monthly subscription.
+            The shop is credited to you for good once it is signed up. It starts on a 14-day free trial. You earn a share of each plan payment it makes in your earning period, and the sign-up bonus on its second plan payment.
           </p>
           {formError && <p className="text-sm text-error-600">{formError}</p>}
           <Button type="submit" disabled={busy || !organizationName.trim() || !ownerFullName.trim() || !ownerEmail.trim() || !priceOk}>
