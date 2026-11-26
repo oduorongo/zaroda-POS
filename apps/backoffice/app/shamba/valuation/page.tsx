@@ -13,7 +13,7 @@ const RATE_SPECIES = ["CATTLE", "GOAT", "SHEEP", "PIG", "CHICKEN", "DUCK", "TURK
 
 function Rates({ settings, onSaved }: { settings: ValuationSettings; onSaved: () => void }) {
   const [margin, setMargin] = useState(String(Math.round(settings.margin * 100)));
-  const [days, setDays] = useState(String(settings.productionDays));
+  const [selling, setSelling] = useState(String(Math.round(settings.sellingCost * 100)));
   const [rates, setRates] = useState<Record<string, ValuationRate>>(settings.rates);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -29,7 +29,7 @@ function Rates({ settings, onSaved }: { settings: ValuationSettings; onSaved: ()
     try {
       await apiPut("/farm/valuation/settings", {
         margin: Number(margin) / 100,
-        productionDays: Math.floor(Number(days)),
+        sellingCost: Number(selling) / 100,
         rates: RATE_SPECIES.map((species) => ({ species, ...rates[species] })),
       });
       setSaved(true);
@@ -50,8 +50,8 @@ function Rates({ settings, onSaved }: { settings: ValuationSettings; onSaved: ()
             <input type="number" min={0} max={500} className={inputClass} value={margin} onChange={(e) => setMargin(e.target.value)} />
           </label>
           <label>
-            Days of milk/eggs a buyer pays for
-            <input type="number" min={0} max={730} className={inputClass} value={days} onChange={(e) => setDays(e.target.value)} />
+            Costs to sell (transport, commission, %)
+            <input type="number" min={0} max={50} className={inputClass} value={selling} onChange={(e) => setSelling(e.target.value)} />
           </label>
         </div>
         <div className="overflow-x-auto">
@@ -78,9 +78,9 @@ function Rates({ settings, onSaved }: { settings: ValuationSettings; onSaved: ()
             </tbody>
           </table>
         </div>
-        <p className="text-xs text-secondary-500">These start as rough Kenyan figures. Set them to what buyers pay in your area. Milk and egg prices come from your milk and egg products at the till.</p>
+        <p className="text-xs text-secondary-500">These start as rough Kenyan figures. Set the market price per kg to what similar animals sell for in your area. The margin only sets the asking price; it is not part of the value in the books.</p>
         <ErrorBox error={error} />
-        {saved && <p className="text-sm font-semibold" style={{ color: SHAMBA_BRAND.navy }}>Saved. Prices are updated.</p>}
+        {saved && <p className="text-sm font-semibold" style={{ color: SHAMBA_BRAND.navy }}>Saved. Values are updated.</p>}
         <Btn busy={busy}>Save rates</Btn>
       </form>
     </Card>
@@ -112,14 +112,15 @@ function ValuationPage({ manager }: { manager: boolean }) {
       <div>
         <h1 className="text-2xl font-bold" style={{ color: SHAMBA_BRAND.navy }}>Valuation</h1>
         <p className="text-sm text-secondary-600">
-          What each animal and flock is worth and a suggested selling price: the higher of what it cost (bought or born value, feed and vet) plus your margin and its weight at the
-          market price, plus the milk or eggs it gives, less for age past its prime.
+          What each animal and flock is worth as an asset (IAS 41): a weighed animal at its weight x the market price less costs to sell; one not yet weighed at what it cost
+          (bought or born value, feed, vet). Past its prime the value drops. Milk, eggs and young are income, shown apart under &quot;Is it paying its way?&quot;. The total is carried in
+          the farm&apos;s books as Livestock.
         </p>
       </div>
       <ErrorBox error={error} />
       {data && (
         <Card
-          title={`All stock: ${kes(total)}`}
+          title={`All livestock: ${kes(total)}`}
           action={
             <span className="flex gap-3 text-sm">
               <button type="button" className="underline" onClick={() => void pdf(false)}>Download PDF</button>
@@ -141,14 +142,14 @@ function ValuationPage({ manager }: { manager: boolean }) {
                       </span>
                     </span>
                     <span className="text-right">
-                      <span className="font-bold" style={{ color: SHAMBA_BRAND.navy }}>{kes(v.suggested)}</span>
+                      <span className="font-bold" style={{ color: SHAMBA_BRAND.navy }}>{kes(v.value)}</span>
                       {v.warnings.length > 0 && <span className="block text-xs" style={{ color: SHAMBA_BRAND.orange }}>{v.warnings[0].split(":")[0]}</span>}
                       {v.kind === "GROUP" && <span className="block text-xs text-secondary-500">each · {kes(v.total)} all</span>}
                     </span>
                   </button>
                   {open === v.id && (
                     <div className="mt-2 rounded-lg bg-secondary-50 p-3">
-                      <PriceBreakdown v={v} margin={data.settings.margin} days={data.settings.productionDays} />
+                      <PriceBreakdown v={v} margin={data.settings.margin} sellingCost={data.settings.sellingCost} />
                       <Link href={v.kind === "GROUP" ? `/shamba/groups/${v.id}` : `/shamba/animals/${v.id}`} className="mt-2 inline-block text-sm underline">
                         Open {v.kind === "GROUP" ? "flock" : "animal"}
                       </Link>

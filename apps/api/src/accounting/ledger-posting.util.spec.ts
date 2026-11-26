@@ -2,6 +2,8 @@ import { expenseAccount, SYSTEM_ACCOUNTS } from './ledger-chart';
 import {
   billCreditDraft,
   billDraft,
+  stockReceiptDraft,
+  stockValueDraft,
   billPaymentDraft,
   cancelFeeDraft,
   Draft,
@@ -267,5 +269,38 @@ describe('manual journals and closed periods', () => {
     expect(postingDate('2026-10-05', '2026-09-30')).toBe('2026-10-05');
     expect(postingDate('2026-12-31', '2026-12-31')).toBe('2027-01-01');
     expect(postingDate('2026-09-15', null)).toBe('2026-09-15');
+  });
+});
+
+describe('stock on the balance sheet', () => {
+  const amt = (d: Draft, account: string) => d.lines.find((l) => l.account === account);
+  it('books a delivery as stock owed to the supplier', () => {
+    const d = stockReceiptDraft({ date: '2026-11-27', reference: 'GRN-2026-0001', valueCents: 500000 });
+    expect(isBalanced(d.lines)).toBe(true);
+    expect(amt(d, 'INVENTORY')).toMatchObject({ debit: 500000 });
+    expect(amt(d, 'GRNI')).toMatchObject({ credit: 500000 });
+  });
+
+  it('a bill for that delivery clears what it is owed; a price difference goes to stock', () => {
+    const d = billDraft({ date: '2026-11-28', reference: 'INV-9', supplier: 'Bidco', totalCents: 580000, taxCents: 80000, receivedCents: 480000 });
+    expect(isBalanced(d.lines)).toBe(true);
+    expect(amt(d, 'GRNI')).toMatchObject({ debit: 480000 });
+    expect(amt(d, 'INVENTORY')).toMatchObject({ debit: 20000 });
+    expect(amt(d, 'AP')).toMatchObject({ credit: 580000 });
+  });
+
+  it('a bill with no delivery booked adds the stock as before', () => {
+    const d = billDraft({ date: '2026-11-28', reference: 'INV-9', supplier: 'Bidco', totalCents: 100000 });
+    expect(amt(d, 'INVENTORY')).toMatchObject({ debit: 100000 });
+    expect(amt(d, 'GRNI')).toBeUndefined();
+  });
+
+  it('the first time, stock on the shelves is owner capital; after that a difference is a stock adjustment', () => {
+    const open = stockValueDraft({ date: '2026-11-27', diffCents: 30274400, opening: true });
+    expect(amt(open, 'INVENTORY')).toMatchObject({ debit: 30274400 });
+    expect(amt(open, 'CAPITAL')).toMatchObject({ credit: 30274400 });
+    const loss = stockValueDraft({ date: '2026-11-28', diffCents: -12000, opening: false });
+    expect(amt(loss, 'INVENTORY')).toMatchObject({ credit: 12000 });
+    expect(amt(loss, 'STOCK_ADJUST')).toMatchObject({ debit: 12000 });
   });
 });

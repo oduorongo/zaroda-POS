@@ -20,6 +20,8 @@ import {
   payrollDraft,
   postingDate,
   provisionDraft,
+  stockReceiptDraft,
+  stockValueDraft,
   refundDraft,
   rentInvoiceDraft,
   rentPaymentDraft,
@@ -42,7 +44,8 @@ import {
   pettyTopUpDraft,
   pettyCountDraft,
 } from './ledger-posting.util';
-import { farmBuyerPaymentDraft, farmDeliveryDraft, farmStockUseDraft, farmWagesDraft } from './farm-posting.util';
+import { farmBuyerPaymentDraft, farmDeliveryDraft, farmStockUseDraft, farmWagesDraft, livestockValueDraft } from './farm-posting.util';
+import { FarmValuationService } from '../farm/farm-valuation.service';
 import { CON_PAYMENT_LABEL, conPayrollDraft, conZarodaDraft, ipcReceiptDraft, materialIssueDraft, retentionDraft, subPaymentDraft, subValuationDraft } from './construction-posting.util';
 
 const BATCH = 200;
@@ -67,6 +70,10 @@ interface Ctx {
   sinceDay: Prisma.Sql;
   lock: string | null;
   payrollPaidFrom: string;
+  /** From when stock is kept equal to the shelves: the later of the books' start and the day this was switched on. */
+  stockAt: Date;
+  stockDay: string;
+  stockSince: Prisma.Sql;
 }
 
 /** A kind of thing that is posted: which ones need (re)posting now, and what each one should say in the books (null: nothing). */
@@ -85,6 +92,56 @@ const postedWhere = (type: string, table: string, cond: Prisma.Sql) =>
 const originalPosted = (type: string) =>
   Prisma.sql`EXISTS (SELECT 1 FROM ledger_postings o WHERE o."sourceType" = ${type} AND o."sourceId" = t.id AND o."entryId" IS NOT NULL)`;
 const dateKey = (d: Date) => d.toISOString().slice(0, 10);
+/** The first instant of a Nairobi day. */
+const dayStart = (day: string) => new Date(new Date(`${day}T00:00:00.000Z`).getTime() - NAIROBI_OFFSET_MS);
+const nextDay = (day: string) => dateKey(new Date(new Date(`${day}T00:00:00.000Z`).getTime() + 86_400_000));
+const sqlTime = (d: Date) => Prisma.sql`${d.toISOString().replace('T', ' ').replace('Z', '')}::timestamp`;
+function stockStart(startAt: Date, stockFrom: Date) {
+  const stockDay = nairobiDayOf(new Date(Math.max(startAt.getTime(), stockFrom.getTime())));
+  return { stockAt: dayStart(stockDay), stockDay, stockSince: sqlTime(dayStart(stockDay)) };
+}
+/** What a delivery added to stock: each line received x what was paid for it (else the product's cost). */
+const receivedCents = async (tx: TenantTx, receiptId: string) => {
+  const [r] = await tx.$queryRaw<{ v: Prisma.Decimal | null }[]>(
+    Prisma.sql`SELECT sum(t."quantityDelta" * coalesce(t."unitCost", v.cost, 0)) AS v FROM inventory_transactions t JOIN product_variants v ON v.id = t."variantId" WHERE t.type::text = 'RECEIPT' AND t."referenceId" = ${receiptId}`,
+  );
+  return toCents(r?.v ?? 0);
+};
+/** The stock on the shelves at an instant (quantity then x today's cost; nothing below zero). */
+const shelfCents = async (tx: TenantTx, at: Date) => {
+  const { organizationId } = getTenantStore();
+  const [r] = await tx.$queryRaw<{ v: Prisma.Decimal | null }[]>(Prisma.sql`
+    SELECT sum(greatest(i.quantity - coalesce(l.delta, 0), 0) * coalesce(v.cost, 0)) AS v
+    FROM inventory_items i
+    JOIN branches b ON b.id = i."branchId" AND b."organizationId" = ${organizationId}
+    JOIN product_variants v ON v.id = i."variantId"
+    LEFT JOIN (SELECT "branchId", "variantId", sum("quantityDelta") AS delta FROM inventory_transactions WHERE "createdAt" >= ${sqlTime(at)} GROUP BY 1, 2) l
+      ON l."branchId" = i."branchId" AND l."variantId" = i."variantId"`);
+  return toCents(r?.v ?? 0);
+};
+/** The Stock account in the books up to a day (before it, or through it). */
+const bookedStockCents = async (tx: TenantTx, day: string, through: boolean) => {
+  const { organizationId } = getTenantStore();
+  const [r] = await tx.$queryRaw<{ v: Prisma.Decimal | null }[]>(Prisma.sql`
+    SELECT sum(l.debit - l.credit) AS v FROM journal_lines l
+    JOIN journal_entries e ON e.id = l."entryId"
+    JOIN ledger_accounts a ON a.id = l."accountId" AND a."systemKey" = 'INVENTORY'
+    WHERE l."organizationId" = ${organizationId} AND ${through ? Prisma.sql`e."entryDate" <= ${day}::date` : Prisma.sql`e."entryDate" < ${day}::date`}`);
+  return toCents(r?.v ?? 0);
+};
+/** An account in the books up to and through a day. */
+const bookedCents = async (tx: TenantTx, key: string, day: string) => {
+  const { organizationId } = getTenantStore();
+  const [r] = await tx.$queryRaw<{ v: Prisma.Decimal | null }[]>(Prisma.sql`
+    SELECT sum(l.debit - l.credit) AS v FROM journal_lines l
+    JOIN journal_entries e ON e.id = l."entryId"
+    JOIN ledger_accounts a ON a.id = l."accountId" AND a."systemKey" = ${key}
+    WHERE l."organizationId" = ${organizationId} AND e."entryDate" <= ${day}::date`);
+  return toCents(r?.v ?? 0);
+};
+const isFarm = async (tx: TenantTx) => (await tx.organization.findFirst({ select: { industryType: true } }))?.industryType === 'FARM';
+const postedKeys = async (tx: TenantTx, type: string) =>
+  new Set((await tx.ledgerPosting.findMany({ where: { sourceType: type }, select: { sourceId: true } })).map((p) => p.sourceId));
 /** A bill's claimable VAT: its supplier's PIN and the eTIMS invoice number, or a link to KRA's invoice. */
 const billVat = (b: { taxAmount: Prisma.Decimal; kraInvoiceNo: string | null; etimsInvoiceId: string | null; supplier: { kraPin: string | null } }) =>
   claimableCents({ taxCents: toCents(b.taxAmount), pin: b.supplier.kraPin, invoiceNo: b.kraInvoiceNo, linked: !!b.etimsInvoiceId });
@@ -102,9 +159,19 @@ export class LedgerPosterService {
   constructor(
     private readonly tenantPrisma: TenantScopedPrismaService,
     private readonly books: LedgerBooksService,
+    private readonly livestock: FarmValuationService,
   ) {}
 
   private readonly sources: Source[] = [
+    {
+      type: 'STOCK_RECEIPT',
+      candidates: (tx, c) => ids(tx, Prisma.sql`SELECT t.id FROM goods_receipts t WHERE t."createdAt" >= ${c.stockSince} AND ${unposted('STOCK_RECEIPT')} ORDER BY t."createdAt" LIMIT ${BATCH}`),
+      draft: async (tx, id) => {
+        const r = await tx.goodsReceipt.findUnique({ where: { id }, include: { supplier: { select: { name: true } } } });
+        if (!r) return null;
+        return stockReceiptDraft({ date: nairobiDayOf(r.createdAt), branchId: r.branchId, reference: [r.receiptNumber, r.supplier?.name].filter(Boolean).join(' from '), valueCents: await receivedCents(tx, id) });
+      },
+    },
     {
       type: 'SALE',
       candidates: async (tx, c) => [
@@ -220,9 +287,11 @@ export class LedgerPosterService {
         ...(await ids(tx, Prisma.sql`SELECT t.id FROM ledger_postings p JOIN supplier_bills t ON t.id = p."sourceId" JOIN suppliers s ON s.id = t."supplierId" WHERE p."sourceType" = 'BILL' AND t."taxAmount" > 0 AND (t."updatedAt" > p."updatedAt" OR s."updatedAt" > p."updatedAt") LIMIT ${BATCH}`)),
       ],
       draft: async (tx, id, c) => {
-        const b = await tx.supplierBill.findUnique({ where: { id }, include: { supplier: { select: { name: true, kraPin: true } } } });
+        const b = await tx.supplierBill.findUnique({ where: { id }, include: { supplier: { select: { name: true, kraPin: true } }, receipt: { select: { createdAt: true } } } });
         if (!b || b.status === 'VOID' || b.billDate < c.start) return null;
-        return billDraft({ date: dateKey(b.billDate), reference: b.billNumber, supplier: b.supplier.name, totalCents: toCents(b.total), taxCents: billVat(b) });
+        // a delivery booked as received (STOCK_RECEIPT): the bill clears what it is owed instead of adding the stock again
+        const received = b.goodsReceiptId && b.receipt && b.receipt.createdAt >= c.stockAt ? await receivedCents(tx, b.goodsReceiptId) : 0;
+        return billDraft({ date: dateKey(b.billDate), reference: b.billNumber, supplier: b.supplier.name, totalCents: toCents(b.total), taxCents: billVat(b), receivedCents: received });
       },
     },
     {
@@ -755,6 +824,53 @@ export class LedgerPosterService {
         return farmStockUseDraft({ date: dateKey(a.date), branchId: a.stockBranchId, kind: 'INPUTS', reference: `${s?.crop ?? 'crop'}: ${a.product ?? a.kind.toLowerCase()}`, costCents: toCents(a.inputCost) });
       },
     },
+    // Last, once everything else is in: stock in the books kept equal to the shelves.
+    {
+      type: 'STOCK_OPENING',
+      candidates: async (tx) => ((await postedKeys(tx, 'STOCK_OPENING')).has('opening') ? [] : ['opening']),
+      draft: async (tx, _id, c) => {
+        const diff = (await shelfCents(tx, c.stockAt)) - (await bookedStockCents(tx, c.stockDay, false));
+        return Math.abs(diff) < 100 ? null : stockValueDraft({ date: c.stockDay, diffCents: diff, opening: true });
+      },
+    },
+    {
+      type: 'LIVESTOCK_OPENING',
+      candidates: async (tx) => (!(await isFarm(tx)) || (await postedKeys(tx, 'LIVESTOCK_OPENING')).has('opening') ? [] : ['opening']),
+      draft: async (tx, _id, c) => {
+        const diff = toCents(await this.livestock.totalInTx(tx)) - (await bookedCents(tx, 'LIVESTOCK', c.stockDay));
+        return Math.abs(diff) < 100 ? null : livestockValueDraft({ date: c.stockDay, diffCents: diff, opening: true });
+      },
+    },
+    {
+      type: 'LIVESTOCK_VALUE',
+      candidates: async (tx, c) => {
+        if (!(await postedKeys(tx, 'LIVESTOCK_OPENING')).has('opening')) return [];
+        const done = await postedKeys(tx, 'LIVESTOCK_VALUE');
+        const today = nairobiDayOf(new Date());
+        const days: string[] = [];
+        for (let d = nextDay(c.stockDay); d < today && days.length < BATCH; d = nextDay(d)) if (!done.has(d)) days.push(d);
+        return days;
+      },
+      draft: async (tx, day) => {
+        const diff = toCents(await this.livestock.totalInTx(tx)) - (await bookedCents(tx, 'LIVESTOCK', day));
+        return Math.abs(diff) < 100 ? null : livestockValueDraft({ date: day, diffCents: diff, opening: false });
+      },
+    },
+    {
+      type: 'STOCK_VALUE',
+      candidates: async (tx, c) => {
+        if (!(await postedKeys(tx, 'STOCK_OPENING')).has('opening')) return [];
+        const done = await postedKeys(tx, 'STOCK_VALUE');
+        const today = nairobiDayOf(new Date());
+        const days: string[] = [];
+        for (let d = c.stockDay; d < today && days.length < BATCH; d = nextDay(d)) if (!done.has(d)) days.push(d);
+        return days;
+      },
+      draft: async (tx, day) => {
+        const diff = (await shelfCents(tx, dayStart(nextDay(day)))) - (await bookedStockCents(tx, day, true));
+        return Math.abs(diff) < 100 ? null : stockValueDraft({ date: day, diffCents: diff, opening: false });
+      },
+    },
   ];
 
   /** A follow-up that undoes exactly what the original posted (null when the original posted nothing). */
@@ -820,6 +936,7 @@ export class LedgerPosterService {
         sinceDay: Prisma.sql`${startDay}::date`,
         lock: dayOf(s.lockDate),
         payrollPaidFrom: s.payrollPaidFrom,
+        ...stockStart(startAt, s.stockFrom),
       } satisfies Ctx;
     });
     for (const source of this.sources) {

@@ -49,43 +49,41 @@ export class FarmReportsService {
     });
   }
 
-  /** Every animal and flock with what it cost, its weight and production value, and the suggested selling price. */
+  /** Livestock as assets (IAS 41) with what each cost, and apart from that what it has brought in (profitability). */
   private async valuationRows(farm: FarmContext) {
     const { settings, items } = await this.valuation.list(farm);
-    const pct = Math.round(settings.margin * 100);
     const rows: Row[] = items.map((v) => ({
       animal: v.kind === 'GROUP' ? `${v.name} (${v.heads} head)` : [v.tag, v.name].filter(Boolean).join(' '),
       species: v.species,
       age: v.ageMonths,
       weight: v.weightKg,
-      produce: v.produce ? `${v.dailyProduce} ${v.produce === 'MILK' ? 'L' : 'eggs'}/day` : null,
-      entry: v.entry,
-      feed: v.feed,
-      vet: v.vet,
+      basis: v.basis === 'MARKET' ? 'Market' : 'Cost',
       cost: v.cost,
-      costPrice: v.costPrice,
-      weightValue: v.weightValue,
-      production: v.productionValue,
+      market: v.marketValue,
       ageAdj: v.ageAdjustment,
-      suggested: v.suggested,
+      selling: v.sellingCosts,
+      value: v.value,
       total: v.total,
+      asking: v.askingPrice,
+      income: v.produceIncome + v.offspringValue,
+      profit: v.profit,
       check: v.warnings.join('; ') || null,
     }));
     const columns = [
       { key: 'animal', label: 'Animal' }, { key: 'species', label: 'Species' }, { key: 'age', label: 'Age (months)', type: 'number' as const },
-      { key: 'weight', label: 'Weight (kg)', type: 'number' as const }, { key: 'produce', label: 'Produces' }, { key: 'entry', label: 'Bought / born value', type: 'money' as const },
-      { key: 'feed', label: 'Feed', type: 'money' as const }, { key: 'vet', label: 'Vet', type: 'money' as const }, { key: 'cost', label: 'Cost to date', type: 'money' as const },
-      { key: 'costPrice', label: `Cost + ${pct}%`, type: 'money' as const }, { key: 'weightValue', label: 'Weight value', type: 'money' as const },
-      { key: 'production', label: 'Production value', type: 'money' as const }, { key: 'ageAdj', label: 'Age', type: 'money' as const },
-      { key: 'suggested', label: 'Suggested price (each)', type: 'money' as const }, { key: 'total', label: 'Total value', type: 'money' as const }, { key: 'check', label: 'Check' },
+      { key: 'weight', label: 'Weight (kg)', type: 'number' as const }, { key: 'basis', label: 'Basis' }, { key: 'cost', label: 'Cost (bought/born, feed, vet)', type: 'money' as const },
+      { key: 'market', label: 'Market value', type: 'money' as const }, { key: 'ageAdj', label: 'Age', type: 'money' as const }, { key: 'selling', label: 'Costs to sell', type: 'money' as const },
+      { key: 'value', label: 'Value (each)', type: 'money' as const }, { key: 'total', label: 'Value (all)', type: 'money' as const }, { key: 'asking', label: 'Asking price', type: 'money' as const },
+      { key: 'income', label: 'Produce and young so far', type: 'money' as const }, { key: 'profit', label: 'Profit so far', type: 'money' as const }, { key: 'check', label: 'Check' },
     ];
     return {
       columns,
       rows,
       totals: { animal: 'Total', total: r2(items.reduce((s, v) => s + v.total, 0)) },
       notes: [
-        `Suggested price = the higher of cost to date + ${pct}% and last weight x the market price per kg, plus ${settings.productionDays} days of the last 30 days average milk or eggs at your selling price. Past prime age it drops by the yearly rate, but never below the weight value. Flocks are priced per head.`,
-        'Rates per animal type are set under Valuation; change them to your local market.',
+        `Value (IAS 41): a weighed animal at fair value, its weight x the market price per kg less ${Math.round(settings.sellingCost * 100)}% costs to sell; one with no market price at cost (bought or born value, feed and vet). Past prime age it drops by the yearly rate, by at most half. Flocks are valued per head.`,
+        'Milk, eggs and young are income in the books, never part of an animal\'s value. "Produce and young so far" and "Profit so far" (produce + young + value today - cost) only show whether it pays its way.',
+        `Asking price: the market value, and never below cost + ${Math.round(settings.margin * 100)}%.`,
       ],
     };
   }

@@ -4,11 +4,11 @@ import { FarmSpecies } from '@prisma/client';
 export interface ValuationRate {
   /** What an animal born on the farm is worth at birth (KES). */
   birthValue: number;
-  /** Market price per kg live weight (KES). */
+  /** Market price per kg live weight (KES): what a similar animal sells for. */
   pricePerKg: number;
-  /** Past this age the price starts to drop; null = age never lowers it. */
+  /** Past this age it has fewer productive years left and its value drops; null = age never lowers it. */
   primeAgeMonths: number | null;
-  /** How much the price drops for each year past prime age (0.15 = 15%). */
+  /** How much the value drops for each year past prime age (0.15 = 15%). */
   ageDropRate: number;
 }
 
@@ -27,7 +27,9 @@ export const DEFAULT_RATES: Record<FarmSpecies, ValuationRate> = {
 };
 
 export const DEFAULT_MARGIN = 0.2;
-export const DEFAULT_PRODUCTION_DAYS = 90;
+export const DEFAULT_SELLING_COST = 0.05;
+/** Age never takes more than this off: an old animal still sells for meat. */
+export const MAX_AGE_DROP = 0.5;
 
 const r2 = (n: number) => Math.round(n * 100) / 100;
 /** Prices are offered in round 50s. */
@@ -40,52 +42,73 @@ export interface ValuationInput {
   vet: number;
   /** Latest weight, kg (per head for a group); null if never weighed. */
   weightKg: number | null;
-  /** Average milk (litres) or good eggs a day over the last 30 days, and what one sells for. */
-  dailyProduce: number;
-  producePrice: number;
   ageMonths: number | null;
   rate: ValuationRate;
   margin: number;
-  productionDays: number;
+  /** Transport, commission and market fees, as a share of the market value. */
+  sellingCost: number;
 }
 
 export interface Valuation {
   entry: number;
   feed: number;
   vet: number;
+  /** What it has cost: bought or born value, feed and vet (rearing costs). */
   cost: number;
-  costPrice: number;
-  weightValue: number | null;
-  productionValue: number;
+  /** MARKET (IAS 41 fair value from its weight at the market price) or COST (no market price: cost model). */
+  basis: 'MARKET' | 'COST';
+  /** Weight x market price per kg; null when not weighed or no price set. */
+  marketValue: number | null;
+  /** Fewer productive years left: the drop past prime age (negative). */
   ageAdjustment: number;
-  suggested: number;
-  basis: 'COST' | 'WEIGHT';
+  /** Selling costs taken off (negative); none on the cost model. */
+  sellingCosts: number;
+  /** The animal's value in the books: fair value less costs to sell, or cost less the age drop. */
+  value: number;
+  /** A sensible asking price: its market value, and never below cost plus the margin. */
+  askingPrice: number;
 }
 
 /**
- * The suggested selling price: the higher of cost to date plus the margin and live weight x the market price, plus the
- * value of what it produces (recent daily milk or eggs x price x the production days). Past prime age the price drops by
- * the yearly rate, but never below its weight (meat) value.
+ * An animal's value as an asset (IAS 41). With a market price it is its fair value: last weight x the market price per kg, less
+ * the drop past prime age, less the costs to sell. With no market price it is the cost model: what it cost to buy or raise
+ * (bought or born value, feed, vet) less the drop past prime age. Milk, eggs and young it produced are income, never part of it.
  */
 export function valueOf(i: ValuationInput): Valuation {
   const cost = r2(i.entry + i.feed + i.vet);
-  const costPrice = r2(cost * (1 + i.margin));
-  const weightValue = i.weightKg != null && i.rate.pricePerKg > 0 ? r2(i.weightKg * i.rate.pricePerKg) : null;
-  const productionValue = r2(Math.max(0, i.dailyProduce) * Math.max(0, i.producePrice) * Math.max(0, i.productionDays));
-  const basis = weightValue != null && weightValue > costPrice ? 'WEIGHT' : 'COST';
-  const base = Math.max(costPrice, weightValue ?? 0) + productionValue;
-  let price = base;
+  const marketValue = i.weightKg != null && i.weightKg > 0 && i.rate.pricePerKg > 0 ? r2(i.weightKg * i.rate.pricePerKg) : null;
+  const basis = marketValue != null ? 'MARKET' : 'COST';
+  const gross = marketValue ?? cost;
+  let drop = 0;
   if (i.rate.primeAgeMonths != null && i.ageMonths != null && i.ageMonths > i.rate.primeAgeMonths) {
-    const yearsPast = (i.ageMonths - i.rate.primeAgeMonths) / 12;
-    price = Math.max(base * Math.max(0, 1 - i.rate.ageDropRate * yearsPast), weightValue ?? 0);
+    drop = Math.min(MAX_AGE_DROP, i.rate.ageDropRate * ((i.ageMonths - i.rate.primeAgeMonths) / 12));
   }
-  return { entry: r2(i.entry), feed: r2(i.feed), vet: r2(i.vet), cost, costPrice, weightValue, productionValue, ageAdjustment: r2(price - base), suggested: round50(price), basis };
+  const ageAdjustment = drop > 0 ? r2(-gross * drop) : 0;
+  const afterAge = gross + ageAdjustment;
+  const sellingCosts = basis === 'MARKET' ? r2(-afterAge * i.sellingCost) : 0;
+  return {
+    entry: r2(i.entry),
+    feed: r2(i.feed),
+    vet: r2(i.vet),
+    cost,
+    basis,
+    marketValue,
+    ageAdjustment,
+    sellingCosts,
+    value: r2(afterAge + sellingCosts),
+    askingPrice: round50(Math.max(afterAge, cost * (1 + i.margin))),
+  };
 }
 
-/** What is missing for a fair price: never weighed, or no feed recorded for an animal past weaning. */
+/** What an animal has brought in and cost so far, with its value today: is it paying its way? */
+export function profitOf(p: { income: number; offspringValue: number; value: number; cost: number }) {
+  return r2(p.income + p.offspringValue + p.value - p.cost);
+}
+
+/** What is missing for a fair value: never weighed, or no feed recorded for an animal past weaning. */
 export function valuationWarnings(i: { weightKg: number | null; feed: number; ageMonths: number | null; pricePerKg: number }): string[] {
   const out: string[] = [];
-  if (i.weightKg == null && i.pricePerKg > 0) out.push('Not weighed: weigh it for a fairer price');
+  if (i.weightKg == null && i.pricePerKg > 0) out.push('Not weighed: valued at cost; weigh it for its market value');
   if (i.feed === 0 && (i.ageMonths ?? 0) > 6) out.push('No feed recorded against it');
   return out;
 }

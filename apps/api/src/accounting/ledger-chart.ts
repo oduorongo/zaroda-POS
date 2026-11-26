@@ -18,6 +18,7 @@ export const SYSTEM_ACCOUNTS = [
   { key: 'VAT_INPUT', code: '1165', name: 'VAT paid on purchases (claimable)', type: 'ASSET' },
   { key: 'INVENTORY', code: '1200', name: 'Stock', type: 'ASSET' },
   { key: 'AP', code: '2000', name: 'Suppliers we owe (creditors)', type: 'LIABILITY' },
+  { key: 'GRNI', code: '2005', name: 'Goods received, not yet billed', type: 'LIABILITY' },
   { key: 'AP_ZARODA', code: '2010', name: 'Owed to ZARODA', type: 'LIABILITY' },
   { key: 'VAT_OUTPUT', code: '2100', name: 'VAT owed to KRA', type: 'LIABILITY' },
   { key: 'PAYE', code: '2110', name: 'PAYE owed to KRA', type: 'LIABILITY' },
@@ -42,6 +43,7 @@ export const SYSTEM_ACCOUNTS = [
   { key: 'COGS', code: '5000', name: 'Cost of goods sold', type: 'EXPENSE' },
   { key: 'WASTE', code: '5100', name: 'Stock wasted or lost', type: 'EXPENSE' },
   { key: 'STOCK_COUNT', code: '5110', name: 'Stock count differences', type: 'EXPENSE' },
+  { key: 'STOCK_ADJUST', code: '5120', name: 'Stock adjustments and own produce', type: 'EXPENSE' },
   { key: 'SALARIES', code: '6000', name: 'Salaries and wages', type: 'EXPENSE' },
   { key: 'EXP_RENT', code: '6010', name: 'Rent', type: 'EXPENSE' },
   { key: 'EXP_UTILITIES', code: '6020', name: 'Electricity, water and internet', type: 'EXPENSE' },
@@ -68,6 +70,8 @@ export const CONSTRUCTION_ACCOUNTS = [
 
 /** Extra accounts only farms get (docs/farm): what feed, field inputs and casual labour cost the farm. */
 export const FARM_ACCOUNTS = [
+  { key: 'LIVESTOCK', code: '1300', name: 'Livestock (animals and flocks)', type: 'ASSET' },
+  { key: 'LIVESTOCK_GAIN', code: '4300', name: 'Change in livestock value', type: 'INCOME' },
   { key: 'FEED_USED', code: '5400', name: 'Feed used', type: 'EXPENSE' },
   { key: 'FARM_INPUTS', code: '5410', name: 'Seed, fertiliser and chemicals used', type: 'EXPENSE' },
   { key: 'FARM_LABOUR', code: '5420', name: 'Farm labour (casual wages)', type: 'EXPENSE' },
