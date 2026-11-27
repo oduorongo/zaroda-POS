@@ -1,5 +1,13 @@
 # Changelog
 
+## Shamba: farm inputs apart from farm products (2026-11-27)
+
+- New Production > Farm inputs screen for what comes into the farm: seed, fertiliser, sprays, vet drugs, bought feed and feed ingredients. Add each with its unit and cost; "Received" records a delivery as a goods-received note (stock in at the price paid, owed to the supplier until their bill). Items already added as products can be moved in (and back).
+- "Products & prices" is now "Farm products & prices" for farms and lists only what the farm produces (milk, eggs, harvests, home-mixed feed). Field work and spraying pick from farm inputs; harvests, milk, eggs, other produce and buyer deliveries pick from farm products; feed rations can use both.
+- Inputs stay POS products underneath (stock, cost, deliveries, books unchanged); farm_inputs marks them. Existing farms: the products already used for spraying, fertiliser, planting, vet drugs and ration ingredients become inputs by themselves.
+- Guide: new step 5 "Farm inputs and farm products" (in-app) and a section in docs/farm/USER-GUIDE.md.
+- DB step BEFORE merge: prisma migrate deploy (20270123100000_farm_inputs), then apply-rls (new table farm_inputs). Checks: scripts/e2e-shamba-inputs.js (10 pass).
+
 ## Livestock value in the books the same day (2026-11-26)
 
 - Today's livestock entry is re-worked on every books pass, so a new market price per kg, a new weight or a change in the herd reaches Livestock (1300) at once (the old entry is reversed and a new one posted; past days stay as they were). Saving the rates on the Valuation screen posts to the books straight away.

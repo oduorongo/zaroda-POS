@@ -115,7 +115,9 @@ export default function ProductsPage() {
         apiGet<Category[]>("/categories"),
         apiGet<TaxClass[]>("/tax-classes"),
       ]);
-      setProducts(productsResult);
+      // A farm keeps its bought inputs (seed, fertiliser, sprays, drugs, bought feed) under Farm inputs, apart from what it produces.
+      const inputIds = getSession()?.industryType === "FARM" ? new Set(await apiGet<string[]>("/farm/inputs/ids").catch(() => [] as string[])) : null;
+      setProducts(inputIds ? productsResult.filter((p) => !inputIds.has(p.id)) : productsResult);
       setCategories(categoriesResult);
       setTaxClasses(taxClassesResult);
       apiGet<{ addonActive: boolean }>("/online-store/me")
@@ -322,7 +324,15 @@ export default function ProductsPage() {
       <PageHeader />
       <main className="mx-auto max-w-4xl p-6">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-          <h1 className="text-xl font-bold">Products</h1>
+          <div>
+            <h1 className="text-xl font-bold">{session.industryType === "FARM" ? "Farm products" : "Products"}</h1>
+            {session.industryType === "FARM" && (
+              <p className="text-sm text-secondary-500">
+                What the farm produces and sells: milk, eggs, harvests, home-mixed feed. Seed, fertiliser, sprays, drugs and bought feed are under{" "}
+                <Link href="/shamba/inputs" className="underline">Farm inputs</Link>.
+              </p>
+            )}
+          </div>
           <div className="flex flex-wrap gap-2">
             <Link href="/categories" className="rounded-md border border-border px-3 py-2 text-sm hover:bg-secondary-500/10">Categories</Link>
             <button onClick={exportCatalog} disabled={sortedProducts.length === 0} className="rounded-md border border-border px-3 py-2 text-sm hover:bg-secondary-500/10 disabled:opacity-40">Export CSV</button>

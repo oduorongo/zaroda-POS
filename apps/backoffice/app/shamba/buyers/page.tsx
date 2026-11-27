@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { apiGet, apiPost, apiPut, ApiError } from "../../../lib/api";
 import { Card, ShambaAppFrame } from "../../../components/shamba/frame";
 import { Btn, ErrorBox, errText } from "../../../components/shamba/livestock";
-import { BUYER_KINDS, SHAMBA_BRAND, SHAMBA_INK, day, inputClass, todayKey, type FarmEnterprise } from "../../../lib/shamba";
+import { BUYER_KINDS, SHAMBA_BRAND, SHAMBA_INK, day, inputClass, todayKey, type FarmEnterprise, farmInputIds, splitFarmItems } from "../../../lib/shamba";
 import { downloadPdf, printPdf, type PdfDocument } from "../../../lib/pdf";
 
 const salesPdf = (r: Report): PdfDocument => ({
@@ -28,7 +28,10 @@ interface Report { from: string; to: string; total: number; rows: { enterpriseId
 
 const kes = (n: number) => `KES ${n.toLocaleString("en-KE", { maximumFractionDigits: 2 })}`;
 const pill = (on: boolean) => (on ? { background: SHAMBA_BRAND.navy, color: "white", borderColor: SHAMBA_BRAND.navy } : { borderColor: "#cbd5e1", color: SHAMBA_INK });
-const products = () => apiGet<ProductRow[]>("/products").then((p) => (Array.isArray(p) ? p : [])).catch(() => [] as ProductRow[]);
+const products = () =>
+  Promise.all([apiGet<ProductRow[]>("/products"), farmInputIds()])
+    .then(([p, ids]) => splitFarmItems(Array.isArray(p) ? p : [], ids).produce)
+    .catch(() => [] as ProductRow[]);
 const options = (rows: ProductRow[]) => rows.flatMap((p) => p.variants.map((v) => ({ id: v.id, label: `${p.name}${v.name ? ` - ${v.name}` : ""}`, unit: p.baseUnit, price: Number(v.price) })));
 
 function useBuyers() {

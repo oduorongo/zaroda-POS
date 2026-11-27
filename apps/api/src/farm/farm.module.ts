@@ -25,20 +25,23 @@ import { FarmSalesService } from './farm-sales.service';
 import { FarmReportsController } from './farm-reports.controller';
 import { FarmReportsService } from './farm-reports.service';
 import { FarmValuationController } from './farm-valuation.controller';
+import { FarmInputsController } from './farm-inputs.controller';
+import { FarmInputsService } from './farm-inputs.service';
+import { PurchasingModule } from '../purchasing/purchasing.module';
 import { FarmValuationService } from './farm-valuation.service';
 import { FarmBillingCallbackController, FarmBillingController } from './farm-billing.controller';
 import { FarmBillingService } from './farm-billing.service';
 
 /** Zaroda Shamba - farm management (industryType FARM). docs/farm, prompts/farm. */
 @Module({
-  imports: [NotificationsModule, InventoryModule, ModuleRegistryModule, OnlineStoreModule],
+  imports: [NotificationsModule, InventoryModule, ModuleRegistryModule, OnlineStoreModule, PurchasingModule],
   controllers: [
     FarmController, FarmLivestockController, FarmProductionController, FarmCropsController, FarmFeedController, FarmLabourController, FarmSalesController,
-    FarmWagesCallbackController, FarmReportsController, FarmValuationController, FarmBillingController, FarmBillingCallbackController, PublicFarmPlansController,
+    FarmWagesCallbackController, FarmReportsController, FarmValuationController, FarmInputsController, FarmBillingController, FarmBillingCallbackController, PublicFarmPlansController,
   ],
   providers: [
     FarmService, FarmSetupService, FarmGuard, FarmLivestockService, FarmHealthService, FarmRemindersService, FarmProductionService, FarmCropsService, FarmFeedService,
-    FarmLabourService, FarmSalesService, FarmReportsService, FarmValuationService, FarmBillingService, MpesaB2cClient,
+    FarmLabourService, FarmSalesService, FarmReportsService, FarmValuationService, FarmInputsService, FarmBillingService, MpesaB2cClient,
   ],
   exports: [FarmSetupService, FarmBillingService],
 })

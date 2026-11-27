@@ -8441,6 +8441,28 @@ model FarmSettings {
   @@map("farm_settings")
 }
 
+enum FarmInputKind {
+  SEED
+  FERTILISER
+  CHEMICAL
+  VET_DRUG
+  FEED
+  OTHER
+}
+
+/// A farm input: something that comes into the farm (seed, fertiliser, sprays, vet drugs, bought feed and feed ingredients). It is
+/// a POS product underneath (stock, cost, deliveries), marked here so the farm keeps it apart from what it produces.
+model FarmInput {
+  id             String        @id @default(uuid())
+  organizationId String
+  productId      String
+  kind           FarmInputKind
+  createdAt      DateTime      @default(now())
+
+  @@unique([organizationId, productId])
+  @@map("farm_inputs")
+}
+
 /// Valuation rates per animal type: birth value, market price per kg live weight, prime age and the yearly drop past it.
 model FarmValuationRate {
   id             String      @id @default(uuid())
