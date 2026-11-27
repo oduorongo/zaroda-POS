@@ -1,5 +1,12 @@
 # Changelog
 
+## Shamba plan limits, yearly by default, install the app (2026-11-27)
+
+- Shamba plan limits: Kienyeji 5 livestock, 200 birds, 2 acres, 2 users; Mkulima 20, 1,000, 5, 5; Farmer 100, 3,000, 10, 8; Commercial 300, 6,000, 20, 20 (Estate unlimited). A farm already over a new limit keeps what it has; the farm home shows "Over your plan" and adding more asks for an upgrade.
+- Yearly payment is the default: the Shamba pricing page opens on Yearly (with Monthly), the Plan page and platform-admin farm payments start on yearly.
+- Install the app: the back office (shop, Build, Rentals, Shamba) and the till now offer "Install" (Chrome/Edge on Android, Windows, Mac) or "Share > Add to Home Screen" (iPhone), named for the app in use. The online shop and team app already had theirs.
+- DB step BEFORE merge: prisma migrate deploy (20270124100000_shamba_plan_limits). No new table, so no apply-rls.
+
 ## Shamba: farm inputs apart from farm products (2026-11-27)
 
 - New Production > Farm inputs screen for what comes into the farm: seed, fertiliser, sprays, vet drugs, bought feed and feed ingredients. Add each with its unit and cost; "Received" records a delivery as a goods-received note (stock in at the price paid, owed to the supplier until their bill). Items already added as products can be moved in (and back).

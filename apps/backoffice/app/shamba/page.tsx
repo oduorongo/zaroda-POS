@@ -18,8 +18,13 @@ function Usage({ label, used, cap }: { label: string; used: number; cap: number 
       </div>
       {cap !== null && (
         <div className="mt-1 h-2 rounded-full bg-background">
-          <div className="h-2 rounded-full" style={{ width: `${pct}%`, background: pct >= 90 ? SHAMBA_BRAND.orange : SHAMBA_BRAND.navy }} />
+          <div className="h-2 rounded-full" style={{ width: `${pct}%`, background: pct >= 90 ? SHAMBA_BRAND.orange : "var(--shamba-ink)" }} />
         </div>
+      )}
+      {cap !== null && used > cap && (
+        <p className="mt-1 text-xs font-semibold" style={{ color: SHAMBA_BRAND.orange }}>
+          Over your plan by {(used - cap).toLocaleString("en-KE")}: what you have keeps working, but nothing more can be added until you upgrade.
+        </p>
       )}
     </div>
   );

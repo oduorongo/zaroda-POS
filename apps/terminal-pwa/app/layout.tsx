@@ -4,6 +4,7 @@ import "./globals.css";
 import { TillFrame } from "../components/till-frame";
 import { ServiceWorkerRegistration } from "../components/service-worker-registration";
 import TillAlerts from "../components/till-alerts";
+import InstallPrompt from "../components/install-prompt";
 
 const geistSans = localFont({
   src: "./fonts/GeistVF.woff",
@@ -38,6 +39,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         <ServiceWorkerRegistration />
         <TillFrame>{children}</TillFrame>
         <TillAlerts />
+        <InstallPrompt />
       </body>
     </html>
   );

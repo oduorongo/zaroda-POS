@@ -23,6 +23,7 @@ const FEATURE_LABELS: [string, string][] = [
 export default function ShambaPricing() {
   const [plans, setPlans] = useState<FarmPlan[] | null>(null);
   const [error, setError] = useState(false);
+  const [yearly, setYearly] = useState(true);
 
   useEffect(() => {
     fetch(`${apiBaseUrl.replace(/\/+$/, "")}/public/farm-plans`)
@@ -34,7 +35,14 @@ export default function ShambaPricing() {
     <ShambaPublicFrame>
       <main className="mx-auto w-full max-w-6xl px-4 py-10">
         <h1 className="text-3xl font-bold" style={{ color: SHAMBA_INK }}>Prices for every size of farm</h1>
-        <p className="mt-2 text-secondary-600">Start free. Pay monthly by M-Pesa, or yearly and get 2 months free.</p>
+        <p className="mt-2 text-secondary-600">Start free. Pay yearly and get 2 months free, or monthly by M-Pesa.</p>
+        <div className="mt-4 inline-flex rounded-full border border-border bg-surface p-1 text-sm">
+          {([["Yearly", true], ["Monthly", false]] as const).map(([label, y]) => (
+            <button key={label} type="button" onClick={() => setYearly(y)} aria-pressed={yearly === y} className="rounded-full px-4 py-1.5 font-semibold" style={yearly === y ? { background: SHAMBA_BRAND.navy, color: "white" } : { color: SHAMBA_INK }}>
+              {label}
+            </button>
+          ))}
+        </div>
         {error && <p className="mt-6 text-red-700">Prices could not be loaded. Try again shortly.</p>}
         {!plans && !error && <p className="mt-6 text-secondary-500">Loading...</p>}
         <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
@@ -42,9 +50,12 @@ export default function ShambaPricing() {
             <div key={p.code} className="flex flex-col rounded-xl border border-border bg-surface p-5 shadow-sm">
               <h2 className="text-lg font-bold" style={{ color: SHAMBA_INK }}>{p.name}</h2>
               <p className="mt-2 text-2xl font-bold" style={{ color: SHAMBA_BRAND.orange }}>
-                {p.quoteOnly ? "Ask us" : p.monthlyPrice === 0 ? "Free" : kes(p.monthlyPrice)}
-                {!p.quoteOnly && p.monthlyPrice > 0 && <span className="text-sm font-normal text-secondary-500"> /month</span>}
+                {p.quoteOnly ? "Ask us" : p.monthlyPrice === 0 ? "Free" : kes(yearly ? p.annualPrice ?? p.monthlyPrice * 12 : p.monthlyPrice)}
+                {!p.quoteOnly && p.monthlyPrice > 0 && <span className="text-sm font-normal text-secondary-500">{yearly ? " /year" : " /month"}</span>}
               </p>
+              {!p.quoteOnly && p.monthlyPrice > 0 && (
+                <p className="text-xs text-secondary-500">{yearly ? `or ${kes(p.monthlyPrice)} a month` : `or ${kes(p.annualPrice ?? p.monthlyPrice * 12)} a year (2 months free)`}</p>
+              )}
               <ul className="mt-3 space-y-1 text-sm text-secondary-700">
                 <li>{limitText(p.limits.head)} livestock</li>
                 <li>{limitText(p.limits.birds)} birds</li>
