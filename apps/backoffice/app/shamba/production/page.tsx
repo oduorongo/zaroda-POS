@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { apiGet, apiPost, apiPut } from "../../../lib/api";
 import { Card, ShambaAppFrame } from "../../../components/shamba/frame";
 import { ActionTabs, Btn, ErrorBox, errText } from "../../../components/shamba/livestock";
-import { SHAMBA_BRAND, SHAMBA_INK, day, inputClass, todayKey, type FarmEnterprise } from "../../../lib/shamba";
+import { SHAMBA_BRAND, SHAMBA_INK, day, inputClass, todayKey, type FarmEnterprise, farmInputIds, splitFarmItems } from "../../../lib/shamba";
 
 type By = "day" | "week" | "month";
 interface Bucket {
@@ -184,7 +184,7 @@ function OtherProduce() {
   useEffect(() => {
     void load();
     apiGet<FarmEnterprise[]>("/farm/enterprises").then(setEnterprises).catch(() => {});
-    apiGet<ProductRow[]>("/products").then((p) => setProducts(Array.isArray(p) ? p : [])).catch(() => {});
+    Promise.all([apiGet<ProductRow[]>("/products"), farmInputIds()]).then(([p, ids]) => setProducts(splitFarmItems(Array.isArray(p) ? p : [], ids).produce)).catch(() => {});
   }, []);
   const options = variantOptions(products);
 
@@ -304,7 +304,7 @@ function ProduceSettings() {
   const load = () => apiGet<Settings>("/farm/production/settings").then(setS).catch((err) => setError(errText(err, "Could not load the settings")));
   useEffect(() => {
     void load();
-    apiGet<ProductRow[]>("/products").then((p) => setProducts(Array.isArray(p) ? p : [])).catch(() => {});
+    Promise.all([apiGet<ProductRow[]>("/products"), farmInputIds()]).then(([p, ids]) => setProducts(splitFarmItems(Array.isArray(p) ? p : [], ids).produce)).catch(() => {});
   }, []);
   if (!s) return <p className="text-sm text-secondary-500">Loading...</p>;
   const options = variantOptions(products);
@@ -317,7 +317,7 @@ function ProduceSettings() {
       await fn();
       setSaved(msg);
       await load();
-      apiGet<ProductRow[]>("/products").then((p) => setProducts(Array.isArray(p) ? p : [])).catch(() => {});
+      Promise.all([apiGet<ProductRow[]>("/products"), farmInputIds()]).then(([p, ids]) => setProducts(splitFarmItems(Array.isArray(p) ? p : [], ids).produce)).catch(() => {});
     } catch (err) {
       setError(errText(err, "Could not save"));
     } finally {

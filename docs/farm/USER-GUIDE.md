@@ -15,6 +15,10 @@ Plans: Kienyeji (free), Mkulima (KES 1,000 a month), Farmer (KES 2,500), Commerc
 - **Layout:** add the parts of the farm: blocks, fields and paddocks (with acres), cow sheds, pens, poultry houses, ponds, apiaries, stores and the feed room. Parts can sit inside others. Acres of fields and paddocks count toward your plan.
 - **Enterprises:** each line of business, such as Dairy herd, Layers, Maize long rains or Feed mixing, and the parts of the farm it uses. Tagging costs and income to enterprises is what gives you profit per enterprise.
 - **Staff:** add people in the back office, then give each a farm role: farm manager, herdsman, vet, crops officer, feed miller, storekeeper, sales or auditor. A herdsman or crops officer can be limited to their own sheds or fields; they then see and record only there. Casual workers are not staff (see section 9).
+- **Farm inputs and farm products:** the system keeps two lists.
+  - **Farm inputs** (Production > Farm inputs) are what **comes into** the farm: seed and seedlings, fertiliser and manure, sprays and chemicals, vet drugs and vaccines, bought feed and feed ingredients. Add each one with what it is counted in (bag, kg, litre, packet) and its cost, then press **Received** for each delivery: how many, what you paid, the supplier and their delivery note. The stock goes up, the cost is averaged, and the delivery is a goods-received note, owed to the supplier until their bill is entered. Something you had already added as a product can be moved here with **Already added it as a product?**
+  - **Farm products** (Selling > Farm products & prices) are what the farm **produces**, to sell or to use in making other products: milk, eggs, harvests, honey, and home-mixed feed. These are what you sell at the till and to buyers, and what milk, egg and harvest records go into.
+  - Each screen offers the right list: field work and spraying pick from farm inputs; harvests, milk, eggs, other produce and buyer deliveries go into farm products; feed rations can use both (bought ingredients and your own maize).
 
 ## 3. Animals and flocks
 
@@ -41,13 +45,13 @@ Plans: Kienyeji (free), Mkulima (KES 1,000 a month), Farmer (KES 2,500), Commerc
 ## 6. Crops
 
 - **New season:** pick the field, the crop and variety, the acres (never more than the field), planting and expected harvest dates, and the seed supplier and lot number (KEPHIS).
-- **Field work:** land preparation, planting, weeding, top dressing, spraying, irrigation, scouting. Fertiliser, seed or chemical taken from stock comes off stock at its cost; workers and labour cost are kept.
+- **Field work:** land preparation, planting, weeding, top dressing, spraying, irrigation, scouting. Fertiliser, seed or chemical (from **Farm inputs**) taken from stock comes off stock at its cost; workers and labour cost are kept.
 - **Spraying:** the chemical, rate, who sprayed and the **pre-harvest interval** from the label are required. Harvest before the interval ends is refused (Pest Control Products Board).
-- **Harvest:** in kg, 90 or 50 kg bags, tonnes, or crates and bunches with their kg. Put it into stock if you sell it. Each season shows the yield and cost per acre and per kg.
+- **Harvest:** in kg, 90 or 50 kg bags, tonnes, or crates and bunches with their kg. Put it into stock (a **farm product**) if you sell it. Each season shows the yield and cost per acre and per kg.
 
 ## 7. Feed
 
-- **Rations** (Mkulima and up): the recipe for a home-mixed feed from stock ingredients, and the kg one batch makes.
+- **Rations** (Mkulima and up): the recipe for a home-mixed feed from stock ingredients (bought ones are **farm inputs**; your own maize or beans are farm products), and the kg one batch makes. The finished feed is a farm product.
 - **Mixing:** the feed miller records each batch and the kg weighed out (numbered for tracing, KEBS). Nothing moves in stock until a farm manager **approves** it; then the ingredients come off and the feed goes in at its real cost per kg. An approved batch is never edited: it is reversed.
 - **Feeding:** each day's feed per flock, group or cow, from stock at its cost.
 - **Overview:** feed cost per litre of milk, per egg and per head per day, and how many days each feed will last. A feed with less than a week left is flagged in orange on the Feed page and the farm home.

@@ -23,6 +23,7 @@ async function main() {
     await seedFeed(existing.id);
     await seedLabourSales(existing.id);
     await seedValuation(existing.id);
+    await seedInputs(existing.id);
     return;
   }
   const orgId = randomUUID();
@@ -94,6 +95,7 @@ async function main() {
   await seedFeed(orgId);
   await seedLabourSales(orgId);
   await seedValuation(orgId);
+  await seedInputs(orgId);
   console.log("Seeded the demo farm. Sign in at /login as owner@shamba.demo and the DEMO_PASSWORD (default password123).");
 }
 
@@ -567,6 +569,25 @@ async function seedValuation(orgId: string) {
       ],
     });
     console.log("Seeded the demo farm's valuation rates (cattle, chickens, goats) and a 25% margin.");
+  });
+}
+
+/** The demo farm's bought items (fertiliser, spray, feed ingredients, bought mash, vet drugs) are farm inputs, apart from its own produce. */
+async function seedInputs(orgId: string) {
+  await prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT set_config('app.current_tenant', ${orgId}, true)`;
+
+    const kinds: Record<string, "FERTILISER" | "CHEMICAL" | "FEED"> = {
+      "FARM-DAP": "FERTILISER", "FARM-CAN": "FERTILISER", "FARM-DUDU": "CHEMICAL",
+      "FEED-GERM": "FEED", "FEED-CAKE": "FEED", "FEED-OMENA": "FEED", "FEED-DCP": "FEED", "FEED-DPREMIX": "FEED", "FEED-LPREMIX": "FEED", "FEED-LIME": "FEED", "FEED-LMASH": "FEED",
+    };
+    const variants = await tx.productVariant.findMany({ where: { sku: { in: Object.keys(kinds) }, product: { organizationId: orgId } }, select: { sku: true, productId: true } });
+    const drugs = await tx.farmDrug.findMany({ where: { organizationId: orgId, variantId: { not: null } }, select: { variantId: true } });
+    const drugProducts = await tx.productVariant.findMany({ where: { id: { in: drugs.map((d) => d.variantId as string) } }, select: { productId: true } });
+    const rows = [...variants.map((v) => ({ organizationId: orgId, productId: v.productId, kind: kinds[v.sku] })), ...drugProducts.map((d) => ({ organizationId: orgId, productId: d.productId, kind: "VET_DRUG" as const }))];
+
+    const added = await tx.farmInput.createMany({ data: rows, skipDuplicates: true });
+    if (added.count) console.log(`Seeded the demo farm's inputs: ${added.count} bought items kept apart from its own produce.`);
   });
 }
 

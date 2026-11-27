@@ -6,7 +6,7 @@ import { useEffect, useState } from "react";
 import { apiGet, apiPost } from "../../../../lib/api";
 import { Card, ShambaAppFrame } from "../../../../components/shamba/frame";
 import { ActionTabs, Btn, ErrorBox, errText } from "../../../../components/shamba/livestock";
-import { CROP_ACTIVITIES, CROP_STATUS, HARVEST_UNITS, SHAMBA_BRAND, SHAMBA_INK, day, inputClass, todayKey } from "../../../../lib/shamba";
+import { CROP_ACTIVITIES, CROP_STATUS, HARVEST_UNITS, SHAMBA_BRAND, SHAMBA_INK, day, inputClass, todayKey, farmInputIds, splitFarmItems } from "../../../../lib/shamba";
 
 interface Activity {
   id: string; date: string; kind: string; product: string | null; rate: string | null; inputName: string | null; quantity: number | null; inputCost: number;
@@ -236,12 +236,15 @@ export default function SeasonPage() {
   const { id } = useParams<{ id: string }>();
   const [s, setS] = useState<Season | null>(null);
   const [products, setProducts] = useState<ProductRow[]>([]);
+  const [inputIds, setInputIds] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
+  const { inputs, produce } = splitFarmItems(products, inputIds);
   const load = () => apiGet<Season>(`/farm/crops/seasons/${id}`).then(setS).catch((err) => setError(errText(err, "Could not load the season")));
   useEffect(() => {
     void load();
     apiGet<ProductRow[]>("/products").then((p) => setProducts(Array.isArray(p) ? p : [])).catch(() => {});
+    void farmInputIds().then(setInputIds);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
@@ -319,8 +322,8 @@ export default function SeasonPage() {
               <Card>
                 <ActionTabs
                   tabs={[
-                    ["Field work or spray", <ActivityForm key="a" seasonId={s.id} products={products} onDone={() => void load()} />],
-                    ["Harvest", <HarvestForm key="h" seasonId={s.id} products={products} blocked={s.safeHarvestFrom} onDone={(m) => { setDone(m); void load(); }} />],
+                    ["Field work or spray", <ActivityForm key="a" seasonId={s.id} products={inputs.length ? inputs : products} onDone={() => void load()} />],
+                    ["Harvest", <HarvestForm key="h" seasonId={s.id} products={produce} blocked={s.safeHarvestFrom} onDone={(m) => { setDone(m); void load(); }} />],
                   ]}
                 />
               </Card>

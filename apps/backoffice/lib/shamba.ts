@@ -1,6 +1,26 @@
 /** Zaroda Shamba (farm management, industryType FARM) - shared labels and types for the /shamba screens. docs/farm. */
 
+import { apiGet } from "./api";
+
 export const SHAMBA_BRAND = { navy: "#0f1f45", gold: "#d4af37", orange: "#f5820a" };
+
+/** Farm inputs: what comes into the farm. Farm products are what it produces (milk, eggs, harvests, home-mixed feed). */
+export const INPUT_KINDS: Record<string, string> = {
+  SEED: "Seed and seedlings",
+  FERTILISER: "Fertiliser and manure",
+  CHEMICAL: "Sprays and chemicals",
+  VET_DRUG: "Vet drugs and vaccines",
+  FEED: "Bought feed and feed ingredients",
+  OTHER: "Other inputs",
+};
+
+/** The products that are farm inputs (bought in), so each screen offers the right ones. */
+export const farmInputIds = () => apiGet<string[]>("/farm/inputs/ids").then((ids) => new Set(ids)).catch(() => new Set<string>());
+
+/** The product list split into farm inputs and the farm's own products. */
+export function splitFarmItems<T extends { id: string }>(products: T[], inputIds: Set<string>) {
+  return { inputs: products.filter((p) => inputIds.has(p.id)), produce: products.filter((p) => !inputIds.has(p.id)) };
+}
 /** Headings and figures in the brand navy, gold in dark mode (globals.css --shamba-ink). */
 export const SHAMBA_INK = "var(--shamba-ink)";
 
