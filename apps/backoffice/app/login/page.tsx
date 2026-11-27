@@ -1,6 +1,8 @@
 "use client";
 
 import { FloatingThemeToggle, PasswordInput } from "@zaroda/ui";
+import { setTeamSession } from "../../lib/team-auth";
+import { teamApiBase, teamLogin } from "../../lib/team-api";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { login, getOrganization, ApiError } from "../../lib/api";
@@ -36,6 +38,21 @@ export default function LoginPage() {
       setSession({ apiBaseUrl, accessToken, role, email: email.trim(), industryType: org.industryType, orgName: org.name });
       openApp(homePath(role, org.industryType), accessToken, email.trim(), (p) => router.replace(p));
     } catch (err) {
+      // Not a business account: sales team leaders and members have their own accounts, so try those before saying no.
+      if (err instanceof ApiError && err.status === 401) {
+        try {
+          const team = await teamLogin(email.trim(), password);
+          setTeamSession({ apiBaseUrl: teamApiBase, accessToken: team.accessToken });
+          router.replace("/team");
+          return;
+        } catch (teamErr) {
+          // a suspended person or paused team gets that message; anything else is the usual wrong email or password
+          if (teamErr instanceof ApiError && /suspended|paused/i.test(teamErr.message)) {
+            setError(teamErr.message);
+            return;
+          }
+        }
+      }
       setError(err instanceof ApiError ? err.message : "Login failed - check the API URL and try again");
     } finally {
       setBusy(false);
