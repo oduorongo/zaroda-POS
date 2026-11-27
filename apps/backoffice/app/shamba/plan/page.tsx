@@ -30,7 +30,7 @@ const priceOf = (p: PlanOffer, cycle: Cycle) => (cycle === "ANNUAL" ? p.annualPr
 
 export default function PlanPage() {
   const [b, setB] = useState<Billing | null>(null);
-  const [cycle, setCycle] = useState<Cycle>("MONTHLY");
+  const [cycle, setCycle] = useState<Cycle>("ANNUAL");
   const [phone, setPhone] = useState("");
   const [pending, setPending] = useState<Payment | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -110,7 +110,7 @@ export default function PlanPage() {
 
             <Card title="Choose a plan">
               <div className="mb-3 flex gap-1">
-                {(["MONTHLY", "ANNUAL"] as Cycle[]).map((c) => (
+                {(["ANNUAL", "MONTHLY"] as Cycle[]).map((c) => (
                   <button key={c} type="button" onClick={() => setCycle(c)} className="rounded-lg border px-3 py-1.5 text-sm font-semibold" style={cycle === c ? { background: SHAMBA_BRAND.navy, color: "white", borderColor: SHAMBA_BRAND.navy } : { borderColor: "#cbd5e1", color: SHAMBA_INK }}>
                     {c === "MONTHLY" ? "Monthly" : "Yearly"}
                   </button>

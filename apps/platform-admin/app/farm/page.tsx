@@ -197,7 +197,7 @@ export default function FarmAdminPage() {
                           className="underline"
                           onClick={() => {
                             const planCode = prompt("Plan code (e.g. FARM_FARMER)", t.planCode ?? "FARM_FARMER");
-                            const cycle = planCode ? prompt("MONTHLY or ANNUAL", "MONTHLY") : null;
+                            const cycle = planCode ? prompt("ANNUAL or MONTHLY", "ANNUAL") : null;
                             const amount = cycle ? prompt("Amount received (KES)") : null;
                             const method = amount ? prompt("BANK, CHEQUE, CASH or MPESA", "BANK") : null;
                             const reference = method ? prompt("Reference (optional)") : null;

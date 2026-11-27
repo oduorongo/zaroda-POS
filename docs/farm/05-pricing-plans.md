@@ -8,13 +8,13 @@ going over shows an upgrade prompt, never a silent failure. Launch figures, to b
 ## Plans (KES)
 | Code | Name | Fits | Monthly | Annual (pay 10, get 12) | Head | Birds | Acres | Users |
 |---|---|---|---|---|---|---|---|---|
-| `FARM_KIENYEJI` | Kienyeji | A small family shamba | Free | Free | 20 | 200 | 2 | 1 |
-| `FARM_MKULIMA` | Mkulima | A small commercial farm | 1,000 | 10,000 | 100 | 2,000 | 10 | 3 |
-| `FARM_FARMER` | Farmer | A growing mixed farm | 2,500 | 25,000 | 500 | 10,000 | 50 | 8 |
-| `FARM_COMMERCIAL` | Commercial | A large farm or ranch | 6,500 | 65,000 | 3,000 | 100,000 | 300 | 25 |
+| `FARM_KIENYEJI` | Kienyeji | A small family shamba | Free | Free | 5 | 200 | 2 | 2 |
+| `FARM_MKULIMA` | Mkulima | A small commercial farm | 1,000 | 10,000 | 20 | 1,000 | 5 | 5 |
+| `FARM_FARMER` | Farmer | A growing mixed farm | 2,500 | 25,000 | 100 | 3,000 | 10 | 8 |
+| `FARM_COMMERCIAL` | Commercial | A large farm or ranch | 6,500 | 65,000 | 300 | 6,000 | 20 | 20 |
 | `FARM_ESTATE` | Estate | Estates, co-ops, groups | Quote | Quote | Unlimited | Unlimited | Unlimited | Unlimited |
 
-New farms start on a 14-day free trial of Farmer, then choose a plan (Kienyeji if they do nothing).
+New farms start on a 14-day free trial of Farmer, then choose a plan (Kienyeji if they do nothing). Paying yearly is the default (pay 10 months, get 12); monthly is still offered. Limits as of 2026-11-27 (migration 20270124100000_shamba_plan_limits): a farm already over a new limit keeps what it has; only adding more is stopped, with an upgrade prompt.
 
 ## Features per plan
 | Feature | Kienyeji | Mkulima | Farmer | Commercial | Estate |
