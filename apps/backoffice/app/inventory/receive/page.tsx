@@ -186,6 +186,12 @@ export default function ReceiveStockPage() {
     if (selectedVariantId) quantityRef.current?.focus();
   }, [selectedVariantId]);
 
+  // Opened from "Add stock" (the Stock page or Farm inputs): that item is picked, ready for the quantity.
+  useEffect(() => {
+    const wanted = new URLSearchParams(window.location.search).get("variant");
+    if (wanted && products.some((p) => p.variants.some((v) => v.id === wanted))) setSelectedVariantId(wanted);
+  }, [products]);
+
   const selectedVariant = useMemo(
     () => variantOptions.find((v) => v.id === selectedVariantId) ||
       products.flatMap((p) => p.variants.map((v) => ({ ...v, product: { name: p.name } }))).find((v) => v.id === selectedVariantId),
