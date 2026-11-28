@@ -222,11 +222,14 @@ describe('SalesAgentJwtStrategy', () => {
 });
 
 describe('SalesTeamsService.assignShop', () => {
-  it('gives the shop to the person, stamps when, and logs it', async () => {
+  it('gives the shop to the person as that business (row-level security), stamps when, and logs it', async () => {
     const { service, prisma } = teamsSetup();
     prisma.organization = { findUnique: jest.fn().mockResolvedValue({ id: 'org-1' }), update: jest.fn() };
+    const executeRaw = jest.fn();
+    prisma.$transaction = jest.fn((fn: (tx: unknown) => unknown) => fn({ $executeRaw: executeRaw, organization: prisma.organization }));
     prisma.salesAgent.findUnique.mockResolvedValue(agentRow({ id: 'member-1', teamId: 'team-2' }));
     await service.assignShop(ADMIN, 'org-1', { teamId: 'team-2', agentId: 'member-1' });
+    expect(executeRaw).toHaveBeenCalled();
     expect(prisma.organization.update).toHaveBeenCalledWith({ where: { id: 'org-1' }, data: { salesTeamId: 'team-2', salesAgentId: 'member-1', salesAssignedAt: expect.any(Date) } });
     expect(prisma.platformAuditLog.create).toHaveBeenCalledWith({ data: expect.objectContaining({ action: 'sales_team.assign_shop', platformAdminId: ADMIN }) });
   });
