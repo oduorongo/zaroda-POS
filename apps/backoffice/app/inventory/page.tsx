@@ -17,6 +17,8 @@ interface Variant {
   product: { name: string };
 }
 
+interface CatalogProduct { id: string; name: string; isActive?: boolean; variants: (Variant & { id: string })[] }
+
 interface InventoryItem {
   branchId: string;
   variantId: string;
@@ -64,6 +66,7 @@ export default function InventoryPage() {
   const [tab, setTab] = useState<Tab>("items");
 
   const [items, setItems] = useState<InventoryItem[]>([]);
+  const [noStock, setNoStock] = useState<{ id: string; title: string; sku: string }[]>([]);
   const [lowStockOnly, setLowStockOnly] = useState(false);
   const [alerts, setAlerts] = useState<LowStockAlert[]>([]);
   const [conflicts, setConflicts] = useState<Conflict[]>([]);
@@ -114,7 +117,14 @@ export default function InventoryPage() {
     setError(null);
     try {
       if (tab === "items") {
-        setItems(await apiGet<InventoryItem[]>(`/inventory/items?branchId=${branchId}${lowStockOnly ? "&lowStockOnly=true" : ""}`));
+        const [stock, catalog] = await Promise.all([
+          apiGet<InventoryItem[]>(`/inventory/items?branchId=${branchId}${lowStockOnly ? "&lowStockOnly=true" : ""}`),
+          apiGet<CatalogProduct[]>("/products").catch(() => [] as CatalogProduct[]),
+        ]);
+        setItems(stock);
+        // a new item has no stock row until its first delivery, so list it here with a way to add stock
+        const counted = new Set(stock.map((i) => i.variantId));
+        setNoStock(lowStockOnly ? [] : catalog.flatMap((p) => p.variants.filter((v) => !counted.has(v.id)).map((v) => ({ id: v.id, title: variantTitleOf(p.name, v), sku: v.sku }))));
       } else if (tab === "alerts") {
         setAlerts(await apiGet<LowStockAlert[]>(`/inventory/alerts?branchId=${branchId}`));
       } else {
@@ -258,6 +268,24 @@ export default function InventoryPage() {
                   <input type="checkbox" checked={lowStockOnly} onChange={(e) => setLowStockOnly(e.target.checked)} />
                   Low stock only
                 </label>
+                {noStock.length > 0 && (
+                  <div className="mb-4 rounded-lg border border-border bg-surface p-3 text-sm">
+                    <p className="mb-2 font-semibold">Not in stock yet ({noStock.length})</p>
+                    <p className="mb-2 text-xs text-secondary-500">New items show here until their first delivery. Add stock to start counting them.</p>
+                    <ul className="divide-y divide-border">
+                      {noStock.map((v) => (
+                        <li key={v.id} className="flex items-center justify-between gap-2 py-1.5">
+                          <span>
+                            {v.title} <span className="text-xs text-secondary-500">{v.sku}</span>
+                          </span>
+                          <Link href={`/inventory/receive?variant=${v.id}`} className="shrink-0 rounded-md bg-primary-600 px-3 py-1 text-xs font-semibold text-white">
+                            Add stock
+                          </Link>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
                 {items.length === 0 ? (
                   <p className="text-secondary-500">No inventory records for this branch.</p>
                 ) : (

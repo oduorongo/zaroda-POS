@@ -198,7 +198,7 @@ function InputsPage({ manager }: { manager: boolean }) {
       <ErrorBox error={error} />
       {done && <p className="rounded-lg bg-success-50 p-2 text-sm text-success-700">{done}</p>}
       {manager && <AddInput onDone={() => void load()} />}
-      {inputs && inputs.length === 0 && <p className="text-sm text-secondary-500">No inputs yet. Add the seed, fertiliser and sprays you buy.</p>}
+      {inputs && inputs.length === 0 && <p className="text-sm text-secondary-500">No inputs yet. Add the seed, fertiliser and sprays you buy, then press Add stock on each when it is delivered.</p>}
       {groups.map(([kind, list]) => (
         <Card key={kind} title={INPUT_KINDS[kind]}>
           <ul className="divide-y divide-border">
@@ -215,7 +215,9 @@ function InputsPage({ manager }: { manager: boolean }) {
                     </span>
                     {manager && (
                       <>
-                        <button type="button" className="underline" onClick={() => setOpen(open === i.productId ? null : i.productId)}>Received</button>
+                        <button type="button" className="rounded-lg px-3 py-1.5 text-xs font-semibold text-white" style={{ background: "#f5820a" }} onClick={() => setOpen(open === i.productId ? null : i.productId)}>
+                          {open === i.productId ? "Close" : "Add stock"}
+                        </button>
                         <button type="button" className="text-xs text-secondary-500 underline" onClick={() => void back(i.productId)}>Not an input</button>
                       </>
                     )}
@@ -233,5 +235,14 @@ function InputsPage({ manager }: { manager: boolean }) {
 }
 
 export default function Page() {
-  return <ShambaAppFrame>{(session) => <InputsPage manager={session.role === "OWNER" || session.role === "MANAGER"} />}</ShambaAppFrame>;
+  return <ShambaAppFrame>{(session) => <InputsGate owner={session.role === "OWNER" || session.role === "MANAGER"} />}</ShambaAppFrame>;
+}
+
+/** Owners and managers, and the farm's storekeepers and managers by farm role, keep the inputs and take deliveries. */
+function InputsGate({ owner }: { owner: boolean }) {
+  const [roles, setRoles] = useState<string[]>([]);
+  useEffect(() => {
+    apiGet<{ me: { isOwner: boolean; roles: string[] } }>("/farm/overview").then((o) => setRoles(o.me.isOwner ? ["FARM_OWNER"] : o.me.roles), () => setRoles([]));
+  }, []);
+  return <InputsPage manager={owner || roles.some((r) => ["FARM_OWNER", "FARM_MANAGER", "STOREKEEPER"].includes(r))} />;
 }
