@@ -10,13 +10,9 @@ interface InstallEvent extends Event {
 
 const DISMISSED_KEY = "zaroda-app-install-dismissed";
 
-/** Which ZARODA app this address is, for the wording. */
-function appName(host: string, path: string) {
-  const is = (d?: string) => !!d && host === d.replace(/^https?:\/\//, "").replace(/\/.*$/, "");
-  if (is(process.env.NEXT_PUBLIC_SHAMBA_DOMAIN) || path.startsWith("/shamba")) return "ZARODA Shamba";
-  if (is(process.env.NEXT_PUBLIC_CONSTRUCTION_DOMAIN) || path.startsWith("/construction")) return "ZARODA Build";
-  if (is(process.env.NEXT_PUBLIC_RENTALS_DOMAIN) || path.startsWith("/rentals")) return "ZARODA Rentals";
-  return "the ZARODA back office";
+/** One installed app for every product: it opens on /apps (Shop, Build, Shamba, Rentals and the one sign-in). */
+function appName() {
+  return "the ZARODA app (Shop, Build, Shamba and Rentals)";
 }
 
 /**
@@ -29,10 +25,10 @@ export default function InstallPrompt() {
   const [event, setEvent] = useState<InstallEvent | null>(null);
   const [ios, setIos] = useState(false);
   const [hidden, setHidden] = useState(true);
-  const [name, setName] = useState("the ZARODA back office");
+  const [name, setName] = useState(appName());
 
   useEffect(() => {
-    setName(appName(window.location.host, window.location.pathname));
+    setName(appName());
     try {
       if (window.localStorage.getItem(DISMISSED_KEY)) return;
     } catch {

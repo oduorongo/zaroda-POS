@@ -79,7 +79,10 @@ export function middleware(req: NextRequest) {
   // Until POS_DOMAIN is set, another product's pages opened on a product address (a farm on the Build address) move to that product's own address.
   const owner = ownerOf(pathname);
   const stray = product !== "POS" && !isLocal && !mainDomain && owner && owner !== product && domains[owner] ? owner : undefined;
-  if (stray) {
+  if (pathname === "/apps") {
+    // the installed ZARODA app's front page: every app and the one sign-in, the same on every address
+    res = NextResponse.next();
+  } else if (stray) {
     res = NextResponse.redirect(`https://${domains[stray]}${back(stray)[pathname] ?? pathname}${search}`);
   } else if (product !== "POS" && PUBLIC[product][pathname]) {
     res = NextResponse.rewrite(new URL(PUBLIC[product][pathname], req.url));
