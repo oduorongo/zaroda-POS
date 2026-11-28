@@ -291,7 +291,11 @@ ${link ? `<p><a href="${link}" style="display:inline-block;background:#0f1f45;co
     ]);
     if (!org) throw new NotFoundException('Business not found');
     if (!agent || agent.teamId !== dto.teamId) throw new BadRequestException('That person is not in that team');
-    await this.prisma.organization.update({ where: { id: organizationId }, data: { salesTeamId: dto.teamId, salesAgentId: dto.agentId, salesAssignedAt: new Date() } });
+    // The business row is tenant-protected (row-level security): write it as that business.
+    await this.prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT set_config('app.current_tenant', ${organizationId}, true)`;
+      await tx.organization.update({ where: { id: organizationId }, data: { salesTeamId: dto.teamId, salesAgentId: dto.agentId, salesAssignedAt: new Date() } });
+    });
     await this.audit(platformAdminId, 'sales_team.assign_shop', 'Organization', organizationId);
     return { organizationId, teamId: dto.teamId, agentId: dto.agentId };
   }
